@@ -1,6 +1,8 @@
 defmodule WallopWeb.Router do
   use WallopWeb, :router
 
+  import Phoenix.LiveDashboard.Router
+
   pipeline :browser do
     plug(:accepts, ["html"])
     plug(:fetch_session)
@@ -29,6 +31,16 @@ defmodule WallopWeb.Router do
   scope "/", WallopWeb do
     pipe_through(:browser)
     live("/proof/:id", ProofLive)
+  end
+
+  if Mix.env() == :dev do
+    scope "/dev" do
+      pipe_through(:browser)
+
+      live_dashboard("/dashboard",
+        additional_pages: [obanalyze: Obanalyze.Dashboard]
+      )
+    end
   end
 
   scope "/", WallopWeb do

@@ -37,6 +37,8 @@ defmodule WallopWeb.MixProject do
       {:bandit, "~> 1.0"},
       {:ash_json_api, "~> 1.0"},
       {:open_api_spex, "~> 3.16"},
+      {:phoenix_live_dashboard, "~> 0.8"},
+      {:obanalyze, "~> 1.4", only: :dev},
       {:tailwind, "~> 0.3", runtime: Mix.env() == :dev},
       {:esbuild, "~> 0.9", runtime: Mix.env() == :dev},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},

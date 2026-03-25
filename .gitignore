@@ -17,6 +17,9 @@ CLAUDE.md
 # Visual brainstorming sessions
 .superpowers/
 
+# Environment variables
+.env
+
 # Node.js dependencies (daisyUI etc.)
 /apps/wallop_web/assets/node_modules/
 .mcp.json
