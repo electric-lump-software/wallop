@@ -79,7 +79,7 @@ defmodule WallopCore.Entropy.IntegrationTest do
     test "create → entropy worker → completed with correct results" do
       api_key = create_api_key()
 
-      # Create draw with entropy (skip_entropy: false)
+      # Create draw with entropy (entropy: true)
       draw =
         create_draw(api_key, %{
           entries: [
@@ -88,7 +88,7 @@ defmodule WallopCore.Entropy.IntegrationTest do
             %{"id" => "charlie", "weight" => 3}
           ],
           winner_count: 2,
-          skip_entropy: false
+          entropy: true
         })
 
       assert draw.status == :awaiting_entropy
@@ -137,7 +137,7 @@ defmodule WallopCore.Entropy.IntegrationTest do
     test "seed_json contains the JCS-canonical entropy inputs" do
       api_key = create_api_key()
 
-      draw = create_draw(api_key, %{skip_entropy: false})
+      draw = create_draw(api_key, %{entropy: true})
 
       job = %Oban.Job{
         args: %{"draw_id" => draw.id},
