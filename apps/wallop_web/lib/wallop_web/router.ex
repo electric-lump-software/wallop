@@ -1,5 +1,14 @@
 defmodule WallopWeb.Router do
-  use Phoenix.Router
+  use WallopWeb, :router
+
+  pipeline :browser do
+    plug(:accepts, ["html"])
+    plug(:fetch_session)
+    plug(:fetch_live_flash)
+    plug(:put_root_layout, html: {WallopWeb.Layouts, :root})
+    plug(:protect_from_forgery)
+    plug(:put_secure_browser_headers)
+  end
 
   pipeline :api do
     plug(:accepts, ["json"])
@@ -15,6 +24,11 @@ defmodule WallopWeb.Router do
     pipe_through([:api, :api_authenticated])
 
     forward("/", WallopWeb.AshJsonApiRouter)
+  end
+
+  scope "/", WallopWeb do
+    pipe_through(:browser)
+    live("/proof/:id", ProofLive)
   end
 
   scope "/", WallopWeb do
