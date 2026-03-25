@@ -10,11 +10,21 @@ defmodule WallopCore.Resources.ApiKey.Changes.GenerateKey do
     prefix = String.slice(random_part, 0, 8)
     hash = Bcrypt.hash_pwd_salt(raw_key)
 
+    webhook_secret = :crypto.strong_rand_bytes(32) |> Base.encode64(padding: false)
+    {:ok, encrypted_secret} = WallopCore.Vault.encrypt(webhook_secret)
+    encoded_secret = Base.encode64(encrypted_secret)
+
     changeset
     |> Ash.Changeset.force_change_attribute(:key_hash, hash)
     |> Ash.Changeset.force_change_attribute(:key_prefix, prefix)
+    |> Ash.Changeset.force_change_attribute(:webhook_secret, encoded_secret)
     |> Ash.Changeset.after_action(fn _changeset, api_key ->
-      {:ok, Ash.Resource.put_metadata(api_key, :raw_key, raw_key)}
+      api_key =
+        api_key
+        |> Ash.Resource.put_metadata(:raw_key, raw_key)
+        |> Ash.Resource.put_metadata(:raw_webhook_secret, webhook_secret)
+
+      {:ok, api_key}
     end)
   end
 end

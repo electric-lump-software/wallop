@@ -14,7 +14,7 @@ defmodule WallopCore.Resources.DrawImmutabilityTest do
     end
 
     test "cannot UPDATE a completed draw via raw SQL", %{draw: draw} do
-      assert_raise Postgrex.Error, ~r/Cannot modify or delete a completed draw/, fn ->
+      assert_raise Postgrex.Error, ~r/Cannot modify a completed draw/, fn ->
         SQL.query!(
           WallopCore.Repo,
           "UPDATE draws SET winner_count = 999 WHERE id = $1",
@@ -24,7 +24,7 @@ defmodule WallopCore.Resources.DrawImmutabilityTest do
     end
 
     test "cannot DELETE a completed draw via raw SQL", %{draw: draw} do
-      assert_raise Postgrex.Error, ~r/Cannot modify or delete a completed draw/, fn ->
+      assert_raise Postgrex.Error, ~r/Cannot delete a completed draw/, fn ->
         SQL.query!(
           WallopCore.Repo,
           "DELETE FROM draws WHERE id = $1",
@@ -42,7 +42,7 @@ defmodule WallopCore.Resources.DrawImmutabilityTest do
     end
 
     test "cannot modify committed fields on a locked draw", %{draw: draw} do
-      assert_raise Postgrex.Error, ~r/Cannot modify committed fields/, fn ->
+      assert_raise Postgrex.Error, ~r/Cannot modify committed entry fields/, fn ->
         SQL.query!(
           WallopCore.Repo,
           "UPDATE draws SET winner_count = 999 WHERE id = $1",

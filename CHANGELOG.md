@@ -9,16 +9,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Draw resource with locked/completed state machine and ownership policies
-- Execute action: caller-provided seed runs FairPick algorithm, stores results
-- ApiKey resource with bcrypt hashing and prefix-based lookup
-- Mix tasks: `wallop.gen.api_key`, `wallop.list.api_keys`, `wallop.deactivate.api_key`
-- JSON:API endpoints: POST /draws, PATCH /draws/:id/execute, GET /draws/:id, GET /draws
-- Bearer token authentication with timing-safe bcrypt verification
-- ETS-based rate limiting on auth failures (10/min per IP)
-- PostgreSQL immutability trigger (completed draws cannot be modified, locked draw committed fields protected)
-- Ash policies enforcing draw ownership and status constraints
-- Protocol integration test against frozen spec vector P-3
+- Automatic entropy fetching: drand beacon + Met Office weather observations
+- Draw state machine expanded: locked → awaiting_entropy → pending_entropy → completed/failed
+- EntropyWorker (Oban): parallel entropy fetch, seed computation, automatic draw execution
+- WebhookWorker (Oban): HMAC-SHA256 signed delivery to callback URLs
+- DrandClient: HTTP client for drand randomness beacon with chain hash validation
+- WeatherClient: Met Office Land Observations client with Decimal pressure normalization
+- Callback URL SSRF protection (HTTPS only, no private IPs)
+- Lock time entropy declarations (drand round + weather time computed at draw creation)
+- Caller-provided seed blocked when entropy sources are declared (Ash + DB trigger)
+- 24-hour failure timeout with automatic transition to failed state
+- Webhook secret on ApiKey (generated alongside API key)
+- Entry structure validation with bounds (max 10k entries, max weight 1000)
+
+### Changed
+
+- Draw creation now declares entropy sources by default (status: awaiting_entropy)
+- Immutability trigger restructured for 5 states with transition validation
+- Updated mix task output to show webhook secret
 
 ## [0.1.0] - 2026-03-24
 

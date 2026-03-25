@@ -57,6 +57,11 @@ defmodule WallopCore.Resources.ApiKey do
       public?(true)
     end
 
+    attribute :webhook_secret, :string do
+      allow_nil?(true)
+      public?(false)
+    end
+
     attribute :deactivated_at, :utc_datetime_usec do
       allow_nil?(true)
       public?(false)

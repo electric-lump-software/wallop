@@ -1,6 +1,20 @@
 import Config
 
 if config_env() == :prod do
+  met_office_api_key =
+    System.get_env("MET_OFFICE_API_KEY") ||
+      raise "MET_OFFICE_API_KEY environment variable is not set"
+
+  config :wallop_core, :met_office_api_key, met_office_api_key
+
+  cloak_key =
+    System.get_env("CLOAK_KEY") ||
+      raise "CLOAK_KEY environment variable is not set"
+
+  config :wallop_core, WallopCore.Vault,
+    ciphers: [
+      default: {Cloak.Ciphers.AES.GCM, tag: "AES.GCM.V1", key: Base.decode64!(cloak_key)}
+    ]
   database_url =
     System.get_env("DATABASE_URL") ||
       raise "DATABASE_URL environment variable is not set"
