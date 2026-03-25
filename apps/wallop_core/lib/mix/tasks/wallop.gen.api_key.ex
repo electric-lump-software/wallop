@@ -19,11 +19,12 @@ defmodule Mix.Tasks.Wallop.Gen.ApiKey do
 
     API Key created successfully!
 
-      Name:   #{api_key.name}
-      Prefix: #{api_key.key_prefix}
-      Key:    #{raw_key}
+      Name:           #{api_key.name}
+      Prefix:         #{api_key.key_prefix}
+      Key:            #{raw_key}
+      Webhook Secret: #{Ash.Resource.get_metadata(api_key, :raw_webhook_secret)}
 
-    Save this key now — it cannot be retrieved again.
+    Save these values now — they cannot be retrieved again.
     """)
   end
 

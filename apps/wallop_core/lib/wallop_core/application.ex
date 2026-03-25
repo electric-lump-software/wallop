@@ -5,7 +5,9 @@ defmodule WallopCore.Application do
   @impl true
   def start(_type, _args) do
     children = [
-      WallopCore.Repo
+      WallopCore.Repo,
+      WallopCore.Vault,
+      {Oban, Application.fetch_env!(:wallop_core, Oban)}
     ]
 
     opts = [strategy: :one_for_one, name: WallopCore.Supervisor]

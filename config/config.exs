@@ -13,6 +13,10 @@ config :wallop_core,
   generators: [timestamp_type: :utc_datetime_usec],
   ash_domains: [WallopCore.Domain]
 
+config :wallop_core, Oban,
+  repo: WallopCore.Repo,
+  queues: [entropy: 10, webhooks: 5]
+
 config :wallop_web, WallopWeb.Endpoint,
   url: [host: "localhost"],
   adapter: Bandit.PhoenixAdapter,

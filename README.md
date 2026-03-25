@@ -53,7 +53,7 @@ mix credo --strict
 
 ## Status
 
-Active development. The algorithm, protocol layer, and API are implemented. Entropy layer and proof pages are next.
+Active development. The algorithm, protocol layer, API, and entropy layer (drand + Met Office weather) are implemented. Proof pages are next.
 
 ## License
 
