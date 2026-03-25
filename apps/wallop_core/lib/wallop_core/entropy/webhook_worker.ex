@@ -61,7 +61,8 @@ defmodule WallopCore.Entropy.WebhookWorker do
   defp post_webhook(url, draw, api_key) do
     payload = build_payload(draw)
     timestamp = System.system_time(:second)
-    signature = compute_signature(payload, timestamp, api_key.webhook_secret)
+    secret = decrypt_webhook_secret(api_key.webhook_secret)
+    signature = compute_signature(payload, timestamp, secret)
 
     headers = [
       {"content-type", "application/json"},
@@ -94,6 +95,15 @@ defmodule WallopCore.Entropy.WebhookWorker do
       end
 
     Jason.encode!(payload)
+  end
+
+  defp decrypt_webhook_secret(encrypted_base64) do
+    {:ok, decrypted} =
+      encrypted_base64
+      |> Base.decode64!()
+      |> WallopCore.Vault.decrypt()
+
+    decrypted
   end
 
   defp compute_signature(payload, timestamp, secret) do

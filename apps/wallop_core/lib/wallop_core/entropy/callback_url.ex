@@ -63,14 +63,33 @@ defmodule WallopCore.Entropy.CallbackUrl do
     end
   end
 
+  # RFC 1918 private ranges
   defp check_private({10, _, _, _}), do: {:error, "cannot use private IP address"}
 
   defp check_private({172, b, _, _}) when b >= 16 and b <= 31,
     do: {:error, "cannot use private IP address"}
 
   defp check_private({192, 168, _, _}), do: {:error, "cannot use private IP address"}
+
+  # Loopback
   defp check_private({127, _, _, _}), do: {:error, "cannot use private IP address"}
   defp check_private({0, 0, 0, 0}), do: {:error, "cannot use private IP address"}
+
+  # Link-local (cloud metadata services: AWS 169.254.169.254, GCP, Azure)
+  defp check_private({169, 254, _, _}), do: {:error, "cannot use link-local address"}
+
+  # CGNAT shared address space
+  defp check_private({100, b, _, _}) when b >= 64 and b <= 127,
+    do: {:error, "cannot use shared address space"}
+
+  # IPv6 loopback, ULA, link-local
   defp check_private({0, 0, 0, 0, 0, 0, 0, 1}), do: {:error, "cannot use private IP address"}
+
+  defp check_private({0xFD00, _, _, _, _, _, _, _}),
+    do: {:error, "cannot use private IP address"}
+
+  defp check_private({0xFE80, _, _, _, _, _, _, _}),
+    do: {:error, "cannot use link-local address"}
+
   defp check_private(_), do: :ok
 end

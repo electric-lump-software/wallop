@@ -173,8 +173,9 @@ defmodule WallopCore.Entropy.EntropyWorker do
 
   defp maybe_enqueue_webhook(%{callback_url: nil}), do: :ok
 
-  defp maybe_enqueue_webhook(%{callback_url: url, id: draw_id}) when is_binary(url) do
-    %{draw_id: draw_id, callback_url: url}
+  defp maybe_enqueue_webhook(%{callback_url: url, id: draw_id, api_key_id: api_key_id})
+       when is_binary(url) do
+    %{draw_id: draw_id, api_key_id: api_key_id}
     |> WebhookWorker.new()
     |> Oban.insert()
 

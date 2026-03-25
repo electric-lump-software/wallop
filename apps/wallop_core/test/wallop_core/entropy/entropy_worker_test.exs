@@ -87,7 +87,7 @@ defmodule WallopCore.Entropy.EntropyWorkerTest do
 
       assert [webhook_job] = all_enqueued(worker: WallopCore.Entropy.WebhookWorker)
       assert webhook_job.args["draw_id"] == draw.id
-      assert webhook_job.args["callback_url"] == "https://example.com/hook"
+      assert webhook_job.args["api_key_id"] == draw.api_key_id
     end
 
     test "does not enqueue webhook when callback_url is nil" do

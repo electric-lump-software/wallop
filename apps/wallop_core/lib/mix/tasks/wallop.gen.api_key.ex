@@ -22,7 +22,7 @@ defmodule Mix.Tasks.Wallop.Gen.ApiKey do
       Name:           #{api_key.name}
       Prefix:         #{api_key.key_prefix}
       Key:            #{raw_key}
-      Webhook Secret: #{api_key.webhook_secret}
+      Webhook Secret: #{Ash.Resource.get_metadata(api_key, :raw_webhook_secret)}
 
     Save these values now — they cannot be retrieved again.
     """)

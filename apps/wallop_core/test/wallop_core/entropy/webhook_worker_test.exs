@@ -113,8 +113,11 @@ defmodule WallopCore.Entropy.WebhookWorkerTest do
 
       message = "#{timestamp}.#{body}"
 
+      {:ok, decrypted_secret} =
+        api_key.webhook_secret |> Base.decode64!() |> WallopCore.Vault.decrypt()
+
       expected_hmac =
-        :crypto.mac(:hmac, :sha256, api_key.webhook_secret, message)
+        :crypto.mac(:hmac, :sha256, decrypted_secret, message)
         |> Base.encode16(case: :lower)
 
       assert hmac == expected_hmac

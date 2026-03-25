@@ -79,12 +79,16 @@ defmodule WallopCore.Resources.Draw do
       argument(:weather_value, :string, allow_nil?: false)
       argument(:weather_raw, :string, allow_nil?: false)
 
+      validate match(:drand_randomness, ~r/^[0-9a-f]{64}$/) do
+        message("must be a 64-character lowercase hex string")
+      end
+
       change({WallopCore.Resources.Draw.Changes.ExecuteWithEntropy, []})
     end
 
     update :mark_failed do
       require_atomic?(false)
-      filter(expr(status == :pending_entropy))
+      filter(expr(status in [:pending_entropy, :awaiting_entropy]))
 
       argument(:failure_reason, :string, allow_nil?: false)
 
