@@ -16,6 +16,7 @@ defmodule WallopWeb.MixProject do
 
   def application do
     [
+      mod: {WallopWeb.Application, []},
       extra_applications: [:logger]
     ]
   end
@@ -23,6 +24,9 @@ defmodule WallopWeb.MixProject do
   defp deps do
     [
       {:wallop_core, in_umbrella: true},
+      {:phoenix, "~> 1.8"},
+      {:bandit, "~> 1.0"},
+      {:ash_json_api, "~> 1.0"},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false}
     ]
   end
