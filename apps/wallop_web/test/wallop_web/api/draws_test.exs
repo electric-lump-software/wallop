@@ -112,36 +112,8 @@ defmodule WallopWeb.Api.DrawsTest do
     end
   end
 
-  describe "PATCH /api/v1/draws/:id/execute" do
-    test "executes a draw with a valid seed", %{conn: conn} do
-      {api_key, raw_key} = create_key_with_raw()
-      draw = create_draw(api_key)
-
-      payload = %{
-        "data" => %{
-          "type" => "draw",
-          "id" => draw.id,
-          "attributes" => %{
-            "seed" => test_seed()
-          }
-        }
-      }
-
-      resp =
-        conn
-        |> auth_conn(raw_key)
-        |> patch("/api/v1/draws/#{draw.id}/execute", payload)
-        |> json_response(200)
-
-      assert %{"data" => data} = resp
-      assert data["attributes"]["status"] == "completed"
-      assert is_list(data["attributes"]["results"])
-      assert length(data["attributes"]["results"]) == 2
-    end
-  end
-
-  describe "skip_entropy via API" do
-    test "draws created via API without skip_entropy default to awaiting_entropy", %{conn: conn} do
+  describe "API always uses entropy" do
+    test "draws created via API always get awaiting_entropy status", %{conn: conn} do
       {_api_key, raw_key} = create_key_with_raw()
 
       payload = %{
@@ -161,31 +133,27 @@ defmodule WallopWeb.Api.DrawsTest do
         |> json_response(201)
 
       assert resp["data"]["attributes"]["status"] == "awaiting_entropy"
+      assert resp["data"]["attributes"]["drand_round"] != nil
     end
 
-    test "skip_entropy via API creates a locked draw (caller-seed path)", %{conn: conn} do
-      {_api_key, raw_key} = create_key_with_raw()
+    test "caller-seed execute endpoint is not exposed via API", %{conn: conn} do
+      {api_key, raw_key} = create_key_with_raw()
+      draw = create_draw(api_key)
 
       payload = %{
         "data" => %{
           "type" => "draw",
+          "id" => draw.id,
           "attributes" => %{
-            "entries" => [%{"id" => "a", "weight" => 1}, %{"id" => "b", "weight" => 1}],
-            "winner_count" => 1,
-            "skip_entropy" => true
+            "seed" => test_seed()
           }
         }
       }
 
-      resp =
-        conn
-        |> auth_conn(raw_key)
-        |> post("/api/v1/draws", payload)
-        |> json_response(201)
-
-      # Caller-seed path: draw is locked with no entropy sources
-      assert resp["data"]["attributes"]["status"] == "locked"
-      assert resp["data"]["attributes"]["drand_round"] == nil
+      conn
+      |> auth_conn(raw_key)
+      |> patch("/api/v1/draws/#{draw.id}/execute", payload)
+      |> json_response(404)
     end
   end
 end

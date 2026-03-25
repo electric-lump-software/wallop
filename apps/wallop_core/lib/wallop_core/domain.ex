@@ -8,7 +8,6 @@ defmodule WallopCore.Domain do
         index(:read)
         get(:read, route: "/:id")
         post(:create)
-        patch(:execute, route: "/:id/execute")
       end
     end
   end

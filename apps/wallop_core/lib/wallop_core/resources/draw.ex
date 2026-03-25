@@ -31,8 +31,6 @@ defmodule WallopCore.Resources.Draw do
     create :create do
       accept([:entries, :winner_count, :metadata, :callback_url])
 
-      argument(:skip_entropy, :boolean, default: false)
-
       validate attribute_does_not_equal(:entries, []) do
         message("must not be empty")
       end
@@ -41,6 +39,19 @@ defmodule WallopCore.Resources.Draw do
       change({WallopCore.Resources.Draw.Changes.ValidateEntries, []})
       change({WallopCore.Resources.Draw.Changes.ComputeEntryHash, []})
       change({WallopCore.Resources.Draw.Changes.DeclareEntropy, []})
+    end
+
+    create :create_manual do
+      @doc "Internal only: creates a draw without entropy for testing and fallback use."
+      accept([:entries, :winner_count, :metadata, :callback_url])
+
+      validate attribute_does_not_equal(:entries, []) do
+        message("must not be empty")
+      end
+
+      change(set_attribute(:api_key_id, actor(:id)))
+      change({WallopCore.Resources.Draw.Changes.ValidateEntries, []})
+      change({WallopCore.Resources.Draw.Changes.ComputeEntryHash, []})
     end
 
     update :execute do
@@ -104,6 +115,13 @@ defmodule WallopCore.Resources.Draw do
 
   policies do
     policy action(:create) do
+      authorize_if(actor_present())
+    end
+
+    # INTERNAL ONLY: :create_manual bypasses entropy declaration.
+    # Must NEVER be exposed via JSON:API routes. Used only by tests
+    # and the PAM inline fallback (unverified draws).
+    policy action(:create_manual) do
       authorize_if(actor_present())
     end
 

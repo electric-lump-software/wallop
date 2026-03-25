@@ -11,14 +11,14 @@ defmodule WallopCore.Resources.DrawEntropyTest do
   describe "create with entropy declarations" do
     test "sets status to awaiting_entropy" do
       api_key = create_api_key()
-      draw = create_draw(api_key, %{skip_entropy: false})
+      draw = create_draw(api_key, %{entropy: true})
 
       assert draw.status == :awaiting_entropy
     end
 
     test "declares drand round in the future" do
       api_key = create_api_key()
-      draw = create_draw(api_key, %{skip_entropy: false})
+      draw = create_draw(api_key, %{entropy: true})
 
       assert draw.drand_round != nil
       assert draw.drand_round > 0
@@ -27,7 +27,7 @@ defmodule WallopCore.Resources.DrawEntropyTest do
 
     test "declares weather_time as next whole hour" do
       api_key = create_api_key()
-      draw = create_draw(api_key, %{skip_entropy: false})
+      draw = create_draw(api_key, %{entropy: true})
 
       assert draw.weather_time != nil
       assert draw.weather_time.minute == 0
@@ -37,7 +37,7 @@ defmodule WallopCore.Resources.DrawEntropyTest do
 
     test "declares weather_station as middle-wallop" do
       api_key = create_api_key()
-      draw = create_draw(api_key, %{skip_entropy: false})
+      draw = create_draw(api_key, %{entropy: true})
 
       assert draw.weather_station == "middle-wallop"
     end
@@ -46,7 +46,7 @@ defmodule WallopCore.Resources.DrawEntropyTest do
       api_key = create_api_key()
 
       assert_raise Ash.Error.Invalid, fn ->
-        create_draw(api_key, %{skip_entropy: false, callback_url: "http://example.com/hook"})
+        create_draw(api_key, %{entropy: true, callback_url: "http://example.com/hook"})
       end
     end
 
@@ -54,23 +54,23 @@ defmodule WallopCore.Resources.DrawEntropyTest do
       api_key = create_api_key()
 
       draw =
-        create_draw(api_key, %{skip_entropy: false, callback_url: "https://example.com/hook"})
+        create_draw(api_key, %{entropy: true, callback_url: "https://example.com/hook"})
 
       assert draw.callback_url == "https://example.com/hook"
     end
 
     test "schedules an Oban EntropyWorker job" do
       api_key = create_api_key()
-      draw = create_draw(api_key, %{skip_entropy: false})
+      draw = create_draw(api_key, %{entropy: true})
 
       assert [job] = all_enqueued(worker: WallopCore.Entropy.EntropyWorker)
       assert job.args["draw_id"] == draw.id
       assert job.scheduled_at != nil
     end
 
-    test "skip_entropy: true leaves draw in locked state" do
+    test " leaves draw in locked state" do
       api_key = create_api_key()
-      draw = create_draw(api_key, %{skip_entropy: true})
+      draw = create_draw(api_key, %{})
 
       assert draw.status == :locked
       assert draw.drand_round == nil

@@ -36,7 +36,7 @@ defmodule WallopCore.Entropy.EntropyWorkerTest do
   describe "happy path" do
     test "completes draw with entropy-derived seed" do
       api_key = create_api_key()
-      draw = create_draw(api_key, %{skip_entropy: false})
+      draw = create_draw(api_key, %{entropy: true})
 
       assert draw.status == :awaiting_entropy
 
@@ -78,7 +78,7 @@ defmodule WallopCore.Entropy.EntropyWorkerTest do
 
       draw =
         create_draw(api_key, %{
-          skip_entropy: false,
+          entropy: true,
           callback_url: "https://example.com/hook"
         })
 
@@ -92,7 +92,7 @@ defmodule WallopCore.Entropy.EntropyWorkerTest do
 
     test "does not enqueue webhook when callback_url is nil" do
       api_key = create_api_key()
-      draw = create_draw(api_key, %{skip_entropy: false})
+      draw = create_draw(api_key, %{entropy: true})
 
       job = fake_job(draw)
       assert :ok = EntropyWorker.perform(job)
@@ -106,7 +106,7 @@ defmodule WallopCore.Entropy.EntropyWorkerTest do
       stub_drand_error()
 
       api_key = create_api_key()
-      draw = create_draw(api_key, %{skip_entropy: false})
+      draw = create_draw(api_key, %{entropy: true})
 
       job = fake_job(draw)
       assert {:snooze, seconds} = EntropyWorker.perform(job)
@@ -123,7 +123,7 @@ defmodule WallopCore.Entropy.EntropyWorkerTest do
       stub_weather_error()
 
       api_key = create_api_key()
-      draw = create_draw(api_key, %{skip_entropy: false})
+      draw = create_draw(api_key, %{entropy: true})
 
       job = fake_job(draw)
       assert {:snooze, seconds} = EntropyWorker.perform(job)
@@ -134,7 +134,7 @@ defmodule WallopCore.Entropy.EntropyWorkerTest do
   describe "already completed" do
     test "returns :ok for completed draw (idempotent)" do
       api_key = create_api_key()
-      draw = create_draw(api_key, %{skip_entropy: false})
+      draw = create_draw(api_key, %{entropy: true})
 
       # First execution completes the draw
       job = fake_job(draw)
@@ -151,7 +151,7 @@ defmodule WallopCore.Entropy.EntropyWorkerTest do
   describe "entry hash re-verification" do
     test "execute_with_entropy change rejects mismatched entry hash" do
       api_key = create_api_key()
-      draw = create_draw(api_key, %{skip_entropy: false})
+      draw = create_draw(api_key, %{entropy: true})
 
       # Transition to pending_entropy so the execute_with_entropy action can fire
       {:ok, draw} =
@@ -184,7 +184,7 @@ defmodule WallopCore.Entropy.EntropyWorkerTest do
   describe "failure timeout" do
     test "marks draw as failed when job was inserted 25 hours ago" do
       api_key = create_api_key()
-      draw = create_draw(api_key, %{skip_entropy: false})
+      draw = create_draw(api_key, %{entropy: true})
 
       # Build a job that appears to have been inserted 25 hours ago
       old_inserted_at = DateTime.add(DateTime.utc_now(), -25 * 3600, :second)
