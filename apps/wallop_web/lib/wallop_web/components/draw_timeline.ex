@@ -17,6 +17,19 @@ defmodule WallopWeb.Components.DrawTimeline do
       <li :for={stage <- @stages} class={step_class(stage.state)}>
         <div class="text-left py-2">
           <div class="font-semibold text-sm">{stage.label}</div>
+          <div :if={stage[:countdown_target]} class="text-xs text-base-content/60 mt-1">
+            <div>Entropy available in</div>
+            <span
+              id="entropy-countdown"
+              class="countdown font-mono text-lg"
+              phx-hook="Countdown"
+              data-target={DateTime.to_iso8601(stage.countdown_target)}
+            >
+              <span data-hours style="--value:0;" aria-label="hours">00</span>:
+              <span data-minutes style="--value:0;" aria-label="minutes">00</span>:
+              <span data-seconds style="--value:0;" aria-label="seconds">00</span>
+            </span>
+          </div>
           <div :if={stage.detail} class="text-xs text-base-content/60 mt-0.5">
             {stage.detail}
           </div>
@@ -72,8 +85,16 @@ defmodule WallopWeb.Components.DrawTimeline do
 
   defp fetching_entropy_stage(draw, status) do
     case status do
-      s when s in [:locked, :awaiting_entropy] ->
+      :locked ->
         %{label: "Fetching Entropy", detail: nil, state: :pending}
+
+      :awaiting_entropy ->
+        %{
+          label: "Fetching Entropy",
+          detail: nil,
+          state: :current,
+          countdown_target: draw.weather_time
+        }
 
       :pending_entropy ->
         %{

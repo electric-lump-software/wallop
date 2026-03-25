@@ -1,5 +1,13 @@
 import Config
 
+if config_env() in [:dev, :test] do
+  env = Dotenvy.source!([".env", System.get_env()])
+
+  if met_key = env["MET_OFFICE_API_KEY"] do
+    config :wallop_core, :met_office_api_key, met_key
+  end
+end
+
 if config_env() == :prod do
   met_office_api_key =
     System.get_env("MET_OFFICE_API_KEY") ||

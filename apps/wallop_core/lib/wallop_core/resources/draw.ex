@@ -120,7 +120,7 @@ defmodule WallopCore.Resources.Draw do
 
     # INTERNAL ONLY: :create_manual bypasses entropy declaration.
     # Must NEVER be exposed via JSON:API routes. Used only by tests
-    # and the PAM inline fallback (unverified draws).
+    # and internal fallback integrations (produces unverified draws).
     policy action(:create_manual) do
       authorize_if(actor_present())
     end

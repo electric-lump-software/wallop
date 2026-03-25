@@ -16,7 +16,8 @@ defmodule Wallop.MixProject do
 
   defp deps do
     [
-      {:dialyxir, "~> 1.4", only: [:dev, :test], runtime: false}
+      {:dialyxir, "~> 1.4", only: [:dev, :test], runtime: false},
+      {:dotenvy, "~> 0.8", only: [:dev, :test]}
     ]
   end
 end
