@@ -3,5 +3,6 @@ defmodule WallopCore.Domain do
   use Ash.Domain, otp_app: :wallop_core
 
   resources do
+    resource(WallopCore.Resources.ApiKey)
   end
 end
