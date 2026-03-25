@@ -27,6 +27,11 @@ defmodule WallopWeb.Router do
   end
 
   scope "/", WallopWeb do
+    pipe_through(:browser)
+    live("/proof/:id", ProofLive)
+  end
+
+  scope "/", WallopWeb do
     pipe_through(:api)
     get("/health", HealthController, :index)
   end

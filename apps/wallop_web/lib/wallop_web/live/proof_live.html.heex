@@ -1,0 +1,101 @@
+<%!-- Completed draw: verification-first view --%>
+<div :if={@draw.status == :completed} class="space-y-6">
+  <div class="flex items-center gap-3">
+    <span class="badge badge-success badge-lg gap-1">
+      Verified by Wallop
+    </span>
+  </div>
+
+  <div class="text-sm text-base-content/60">
+    <div>Draw ID: <span class="font-mono">{@draw.id}</span></div>
+    <div :if={@draw.executed_at}>
+      Completed: {Calendar.strftime(@draw.executed_at, "%Y-%m-%d %H:%M:%S UTC")}
+    </div>
+  </div>
+
+  <div class="card bg-base-100 shadow">
+    <div class="card-body">
+      <.winner_list results={@draw.results || []} />
+    </div>
+  </div>
+
+  <div class="card bg-base-100 shadow">
+    <div class="card-body">
+      <.proof_chain draw={@draw} />
+    </div>
+  </div>
+
+  <div class="card bg-base-100 shadow">
+    <div class="card-body space-y-4">
+      <div>
+        <button phx-click="re_verify" class="btn btn-ghost btn-sm">
+          Re-verify results
+        </button>
+        <div :if={@verify_result == {:ok, :verified}} class="alert alert-success text-sm mt-2">
+          Results verified — algorithm output matches stored results.
+        </div>
+        <div :if={@verify_result == {:error, :mismatch}} class="alert alert-error text-sm mt-2">
+          Verification failed — please report this draw ID.
+        </div>
+      </div>
+
+      <.entry_check check_result={@check_result} />
+
+      <div class="text-xs text-base-content/60">
+        <a
+          href="https://github.com/drj/fair_pick"
+          target="_blank"
+          rel="noopener"
+          class="link link-primary"
+        >
+          Verify locally with fair_pick
+        </a>
+      </div>
+    </div>
+  </div>
+</div>
+
+<%!-- Failed draw --%>
+<div :if={@draw.status == :failed} class="space-y-6">
+  <div class="flex items-center gap-3">
+    <span class="badge badge-error badge-lg gap-1">
+      Draw Failed
+    </span>
+  </div>
+
+  <div class="text-sm text-base-content/60">
+    <div>Draw ID: <span class="font-mono">{@draw.id}</span></div>
+    <div :if={@draw.failed_at}>
+      Failed: {Calendar.strftime(@draw.failed_at, "%Y-%m-%d %H:%M:%S UTC")}
+    </div>
+  </div>
+
+  <div :if={@draw.failure_reason} class="alert alert-error text-sm">
+    {@draw.failure_reason}
+  </div>
+
+  <div class="card bg-base-100 shadow">
+    <div class="card-body">
+      <.draw_timeline draw={@draw} />
+    </div>
+  </div>
+</div>
+
+<%!-- Live draw (locked, awaiting_entropy, pending_entropy) --%>
+<div :if={@draw.status not in [:completed, :failed]} class="space-y-6">
+  <div class="flex items-center gap-3">
+    <span class="badge badge-info badge-lg gap-1">
+      Draw in Progress
+    </span>
+  </div>
+
+  <div class="text-sm text-base-content/60">
+    <div>Draw ID: <span class="font-mono">{@draw.id}</span></div>
+  </div>
+
+  <div class="card bg-base-100 shadow">
+    <div class="card-body">
+      <.draw_timeline draw={@draw} />
+    </div>
+  </div>
+</div>

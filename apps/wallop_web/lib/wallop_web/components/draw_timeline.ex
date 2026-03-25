@@ -1,0 +1,148 @@
+defmodule WallopWeb.Components.DrawTimeline do
+  @moduledoc """
+  Vertical timeline showing draw stages.
+
+  Renders a daisyUI steps component that reflects the current
+  progress of a draw through its lifecycle.
+  """
+  use WallopWeb, :html
+
+  attr(:draw, :map, required: true)
+
+  def draw_timeline(assigns) do
+    assigns = assign(assigns, :stages, build_stages(assigns.draw))
+
+    ~H"""
+    <ul class="steps steps-vertical w-full">
+      <li :for={stage <- @stages} class={step_class(stage.state)}>
+        <div class="text-left py-2">
+          <div class="font-semibold text-sm">{stage.label}</div>
+          <div :if={stage.detail} class="text-xs text-base-content/60 mt-0.5">
+            {stage.detail}
+          </div>
+        </div>
+      </li>
+    </ul>
+    """
+  end
+
+  defp build_stages(draw) do
+    status = draw.status
+
+    [
+      entries_locked_stage(draw),
+      entropy_declared_stage(draw, status),
+      fetching_entropy_stage(draw, status),
+      computing_seed_stage(draw, status),
+      winners_selected_stage(draw, status)
+    ]
+  end
+
+  defp entries_locked_stage(draw) do
+    count = length(draw.entries || [])
+    hash = truncate_hash(draw.entry_hash)
+
+    %{
+      label: "Entries Locked",
+      detail: "#{count} entries committed, hash: #{hash}",
+      state: :done
+    }
+  end
+
+  defp entropy_declared_stage(draw, status) do
+    if status == :locked do
+      %{label: "Entropy Declared", detail: nil, state: :pending}
+    else
+      round_text = if draw.drand_round, do: "drand round ##{draw.drand_round}", else: nil
+
+      weather_text =
+        if draw.weather_time,
+          do: "weather at #{Calendar.strftime(draw.weather_time, "%H:%M UTC")}",
+          else: nil
+
+      detail = [round_text, weather_text] |> Enum.reject(&is_nil/1) |> Enum.join(", ")
+
+      %{
+        label: "Entropy Declared",
+        detail: if(detail != "", do: detail, else: "sources declared"),
+        state: :done
+      }
+    end
+  end
+
+  defp fetching_entropy_stage(draw, status) do
+    case status do
+      s when s in [:locked, :awaiting_entropy] ->
+        %{label: "Fetching Entropy", detail: nil, state: :pending}
+
+      :pending_entropy ->
+        %{
+          label: "Fetching Entropy",
+          detail: "waiting for drand round and weather observation...",
+          state: :current
+        }
+
+      :completed ->
+        detail =
+          [
+            if(draw.drand_randomness, do: "drand: #{truncate_hash(draw.drand_randomness)}"),
+            if(draw.weather_value, do: "weather: #{draw.weather_value}")
+          ]
+          |> Enum.reject(&is_nil/1)
+          |> Enum.join(", ")
+
+        %{label: "Fetching Entropy", detail: detail, state: :done}
+
+      :failed ->
+        %{
+          label: "Fetching Entropy",
+          detail: draw.failure_reason || "failed",
+          state: :failed
+        }
+    end
+  end
+
+  defp computing_seed_stage(draw, status) do
+    case status do
+      :completed ->
+        %{
+          label: "Computing Seed",
+          detail: "seed: #{truncate_hash(draw.seed)}",
+          state: :done
+        }
+
+      :failed ->
+        %{label: "Computing Seed", detail: nil, state: :failed}
+
+      _ ->
+        %{label: "Computing Seed", detail: nil, state: :pending}
+    end
+  end
+
+  defp winners_selected_stage(draw, status) do
+    case status do
+      :completed ->
+        count = length(draw.results || [])
+        %{label: "Winners Selected", detail: "#{count} winner(s)", state: :done}
+
+      :failed ->
+        %{
+          label: "Winners Selected",
+          detail: draw.failure_reason || "draw failed",
+          state: :failed
+        }
+
+      _ ->
+        %{label: "Winners Selected", detail: nil, state: :pending}
+    end
+  end
+
+  defp step_class(:done), do: "step step-primary"
+  defp step_class(:current), do: "step step-info"
+  defp step_class(:failed), do: "step step-error"
+  defp step_class(:pending), do: "step step-neutral"
+
+  defp truncate_hash(nil), do: "..."
+  defp truncate_hash(hash) when byte_size(hash) > 12, do: String.slice(hash, 0, 12) <> "..."
+  defp truncate_hash(hash), do: hash
+end

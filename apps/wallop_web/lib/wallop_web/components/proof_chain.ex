@@ -1,0 +1,116 @@
+defmodule WallopWeb.Components.ProofChain do
+  @moduledoc """
+  Proof chain component showing the four verification steps
+  for a completed draw.
+  """
+  use WallopWeb, :html
+
+  @drand_base_url "https://api.drand.sh"
+
+  attr(:draw, :map, required: true)
+
+  def proof_chain(assigns) do
+    ~H"""
+    <div class="space-y-4">
+      <h3 class="text-lg font-bold">How to verify</h3>
+
+      <%!-- Step 1: Entry Hash --%>
+      <div class="card bg-base-200">
+        <div class="card-body p-4">
+          <div class="flex items-start gap-3">
+            <span class="badge badge-neutral font-mono">1</span>
+            <div>
+              <div class="font-semibold text-sm">Entry Hash</div>
+              <div class="text-xs text-base-content/60 mt-1">
+                SHA-256 of the canonical entry list, computed before the draw.
+              </div>
+              <code class="text-xs font-mono mt-1 block break-all">
+                {@draw.entry_hash}
+              </code>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <%!-- Step 2: Entropy Sources --%>
+      <div class="card bg-base-200">
+        <div class="card-body p-4">
+          <div class="flex items-start gap-3">
+            <span class="badge badge-neutral font-mono">2</span>
+            <div>
+              <div class="font-semibold text-sm">Entropy Sources</div>
+              <div :if={@draw.drand_round} class="mt-2">
+                <span class="text-xs text-base-content/60">drand round: </span>
+                <a
+                  href={drand_url(@draw.drand_chain, @draw.drand_round)}
+                  target="_blank"
+                  rel="noopener"
+                  class="link link-primary text-xs"
+                >
+                  #{@draw.drand_round}
+                </a>
+                <div :if={@draw.drand_randomness} class="text-xs font-mono mt-1 break-all">
+                  {@draw.drand_randomness}
+                </div>
+              </div>
+              <div :if={@draw.weather_value} class="mt-2">
+                <span class="text-xs text-base-content/60">Weather value: </span>
+                <span class="text-xs font-mono">{@draw.weather_value}</span>
+                <span :if={@draw.weather_station} class="text-xs text-base-content/60">
+                  (station: {@draw.weather_station})
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <%!-- Step 3: Seed Computation --%>
+      <div class="card bg-base-200">
+        <div class="card-body p-4">
+          <div class="flex items-start gap-3">
+            <span class="badge badge-neutral font-mono">3</span>
+            <div>
+              <div class="font-semibold text-sm">Seed Computation</div>
+              <div class="text-xs text-base-content/60 mt-1">
+                seed = SHA-256(JCS(entry_hash, drand_randomness, weather_value))
+              </div>
+              <code class="text-xs font-mono mt-1 block break-all">
+                {@draw.seed}
+              </code>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <%!-- Step 4: Algorithm --%>
+      <div class="card bg-base-200">
+        <div class="card-body p-4">
+          <div class="flex items-start gap-3">
+            <span class="badge badge-neutral font-mono">4</span>
+            <div>
+              <div class="font-semibold text-sm">Algorithm</div>
+              <div class="text-xs text-base-content/60 mt-1">
+                Deterministic Fisher-Yates shuffle via
+                <a
+                  href="https://github.com/drj/fair_pick"
+                  target="_blank"
+                  rel="noopener"
+                  class="link link-primary"
+                >
+                  fair_pick
+                </a>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    """
+  end
+
+  defp drand_url(chain, round) do
+    chain = chain || "dbd506d6ef76e5f386f41c651dcb808c5bcbd75471cc4eafa3f4df7ad4e4c493"
+    "#{@drand_base_url}/#{chain}/public/#{round}"
+  end
+end
