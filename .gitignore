@@ -6,6 +6,7 @@
 *.ez
 erl_crash.dump
 
-# Private docs (kept locally, not published)
+# Private docs and config (kept locally, not published)
 /docs/
 CLAUDE.md
+.claude/
