@@ -54,10 +54,12 @@ defmodule WallopWeb.Api.DrawsTest do
 
       assert %{"data" => data} = resp
       assert data["type"] == "draw"
-      assert data["attributes"]["status"] == "locked"
+      assert data["attributes"]["status"] == "awaiting_entropy"
       assert is_binary(data["attributes"]["entry_hash"])
       assert data["attributes"]["winner_count"] == 2
       assert data["id"]
+      assert is_binary(data["attributes"]["drand_chain"])
+      assert is_integer(data["attributes"]["drand_round"])
     end
 
     test "returns 401 without auth", %{conn: conn} do

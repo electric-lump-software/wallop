@@ -29,7 +29,9 @@ defmodule WallopCore.Resources.Draw do
     defaults([:read])
 
     create :create do
-      accept([:entries, :winner_count, :metadata])
+      accept([:entries, :winner_count, :metadata, :callback_url])
+
+      argument(:skip_entropy, :boolean, default: false)
 
       validate attribute_does_not_equal(:entries, []) do
         message("must not be empty")
@@ -38,6 +40,7 @@ defmodule WallopCore.Resources.Draw do
       change(set_attribute(:api_key_id, actor(:id)))
       change({WallopCore.Resources.Draw.Changes.ValidateEntries, []})
       change({WallopCore.Resources.Draw.Changes.ComputeEntryHash, []})
+      change({WallopCore.Resources.Draw.Changes.DeclareEntropy, []})
     end
 
     update :execute do
