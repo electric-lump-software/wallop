@@ -41,3 +41,6 @@ config :wallop_core, WallopCore.Vault,
   ]
 
 config :wallop_core, :met_office_api_key, System.get_env("MET_OFFICE_API_KEY", "dev-placeholder")
+
+# Note: MET_OFFICE_API_KEY is also read in runtime.exs via .env file.
+# The value here is a compile-time fallback. Prefer setting it in .env.

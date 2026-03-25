@@ -14,11 +14,14 @@ defmodule WallopWeb.ProofLive do
 
   alias WallopCore.Proof
 
+  @poll_interval_ms 30_000
+
   def mount(%{"id" => id}, _session, socket) do
     case load_draw(id) do
       {:ok, draw} ->
         if connected?(socket) do
           Phoenix.PubSub.subscribe(WallopWeb.PubSub, "draw:#{id}")
+          schedule_poll_if_live(draw)
         end
 
         {:ok,
@@ -40,9 +43,21 @@ defmodule WallopWeb.ProofLive do
 
   def handle_info({:draw_updated, draw}, socket) do
     if draw.id == socket.assigns.draw_id do
+      schedule_poll_if_live(draw)
       {:noreply, assign(socket, :draw, draw)}
     else
       {:noreply, socket}
+    end
+  end
+
+  def handle_info(:poll_draw, socket) do
+    case load_draw(socket.assigns.draw_id) do
+      {:ok, draw} ->
+        schedule_poll_if_live(draw)
+        {:noreply, assign(socket, :draw, draw)}
+
+      {:error, _} ->
+        {:noreply, socket}
     end
   end
 
@@ -54,6 +69,12 @@ defmodule WallopWeb.ProofLive do
   def handle_event("re_verify", _params, socket) do
     result = Proof.verify(socket.assigns.draw)
     {:noreply, assign(socket, :verify_result, result)}
+  end
+
+  defp schedule_poll_if_live(%{status: status}) when status in [:completed, :failed], do: :ok
+
+  defp schedule_poll_if_live(_draw) do
+    Process.send_after(self(), :poll_draw, @poll_interval_ms)
   end
 
   defp load_draw(id) do

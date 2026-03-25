@@ -68,7 +68,7 @@ defmodule WallopCore.Resources.DrawEntropyTest do
       assert job.scheduled_at != nil
     end
 
-    test " leaves draw in locked state" do
+    test "create_manual leaves draw in locked state" do
       api_key = create_api_key()
       draw = create_draw(api_key, %{})
 

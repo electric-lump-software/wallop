@@ -16,6 +16,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Entry self-check form
 - Server-side re-verify button
 - Tailwind CSS + daisyUI styling
+- Countdown timer on proof page during "Fetching Entropy" stage (daisyUI countdown + JS hook)
+- 30-second poll loop on proof page as PubSub safety net for reliable real-time updates
+- Phoenix LiveDashboard with Obanalyze at `/dev/dashboard` (dev only)
+- dotenvy `.env` file support for dev/test configuration
 - PubSub broadcasts from EntropyWorker for live updates
 - Automatic entropy fetching: drand beacon + Met Office weather observations
 - Draw state machine expanded: locked → awaiting_entropy → pending_entropy → completed/failed
