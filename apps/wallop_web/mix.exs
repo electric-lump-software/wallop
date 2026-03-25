@@ -29,9 +29,15 @@ defmodule WallopWeb.MixProject do
     [
       {:wallop_core, in_umbrella: true},
       {:phoenix, "~> 1.8"},
+      {:phoenix_html, "~> 4.1"},
+      {:phoenix_live_view, "~> 1.1"},
+      {:phoenix_live_reload, "~> 1.2", only: :dev},
+      {:ash_phoenix, "~> 2.0"},
       {:bandit, "~> 1.0"},
       {:ash_json_api, "~> 1.0"},
       {:open_api_spex, "~> 3.16"},
+      {:tailwind, "~> 0.3", runtime: Mix.env() == :dev},
+      {:esbuild, "~> 0.9", runtime: Mix.env() == :dev},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false}
     ]
   end
