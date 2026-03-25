@@ -51,6 +51,8 @@ defmodule WallopCore.Resources.Draw do
         message("must be a 64-character hex string")
       end
 
+      validate({WallopCore.Resources.Draw.Validations.NoEntropyDeclared, []})
+
       # Atomic filter: ensures the row is still :locked at UPDATE time,
       # preventing race conditions with concurrent execute requests.
       filter(expr(status == :locked))
