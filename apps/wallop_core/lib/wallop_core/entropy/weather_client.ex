@@ -133,12 +133,18 @@ defmodule WallopCore.Entropy.WeatherClient do
       receive_timeout: @receive_timeout
     ]
 
+    config = Application.get_env(:wallop_core, __MODULE__, [])
+
     base =
-      case Application.get_env(:wallop_core, __MODULE__, []) |> Keyword.get(:plug) do
+      case Keyword.get(config, :plug) do
         nil -> base
         plug -> Keyword.put(base, :plug, plug)
       end
 
-    Keyword.merge(base, extra)
+    overrides = Keyword.get(config, :req_options, [])
+
+    base
+    |> Keyword.merge(overrides)
+    |> Keyword.merge(extra)
   end
 end

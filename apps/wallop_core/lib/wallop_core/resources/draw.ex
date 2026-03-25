@@ -62,6 +62,40 @@ defmodule WallopCore.Resources.Draw do
 
       change({WallopCore.Resources.Draw.Changes.ExecuteDraw, []})
     end
+
+    update :transition_to_pending do
+      require_atomic?(false)
+      filter(expr(status == :awaiting_entropy))
+      change(set_attribute(:status, :pending_entropy))
+    end
+
+    update :execute_with_entropy do
+      require_atomic?(false)
+      filter(expr(status == :pending_entropy))
+
+      argument(:drand_randomness, :string, allow_nil?: false)
+      argument(:drand_signature, :string, allow_nil?: false)
+      argument(:drand_response, :string, allow_nil?: false)
+      argument(:weather_value, :string, allow_nil?: false)
+      argument(:weather_raw, :string, allow_nil?: false)
+
+      change({WallopCore.Resources.Draw.Changes.ExecuteWithEntropy, []})
+    end
+
+    update :mark_failed do
+      require_atomic?(false)
+      filter(expr(status == :pending_entropy))
+
+      argument(:failure_reason, :string, allow_nil?: false)
+
+      change(set_attribute(:status, :failed))
+      change(set_attribute(:failed_at, &DateTime.utc_now/0))
+
+      change(fn changeset, _context ->
+        reason = Ash.Changeset.get_argument(changeset, :failure_reason)
+        Ash.Changeset.force_change_attribute(changeset, :failure_reason, reason)
+      end)
+    end
   end
 
   policies do
@@ -77,6 +111,10 @@ defmodule WallopCore.Resources.Draw do
     policy action(:read) do
       forbid_unless(actor_present())
       authorize_if(expr(api_key_id == ^actor(:id)))
+    end
+
+    policy action([:transition_to_pending, :execute_with_entropy, :mark_failed]) do
+      authorize_if(always())
     end
   end
 
