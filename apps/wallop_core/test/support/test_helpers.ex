@@ -13,23 +13,28 @@ defmodule WallopCore.TestHelpers do
   @doc """
   Creates a draw with sensible defaults, using the given api_key as actor.
 
-  By default, sets `skip_entropy: true` so the draw stays in `:locked` status
-  (suitable for caller-seed execute tests). Pass `skip_entropy: false` to test
-  the entropy declaration path (draw will be `:awaiting_entropy`).
+  By default, uses `:create_manual` (no entropy) so the draw stays in `:locked`
+  status — suitable for caller-seed execute tests. Pass `entropy: true` to use
+  the `:create` action (draw will be `:awaiting_entropy`).
   """
   def create_draw(api_key, attrs \\ %{}) do
+    {use_entropy, params} = Map.pop(attrs, :entropy, false)
+    # Also strip legacy skip_entropy if present
+    {_, params} = Map.pop(params, :skip_entropy)
+
     defaults = %{
       entries: [
         %{"id" => "ticket-47", "weight" => 1},
         %{"id" => "ticket-48", "weight" => 1},
         %{"id" => "ticket-49", "weight" => 1}
       ],
-      winner_count: 2,
-      skip_entropy: true
+      winner_count: 2
     }
 
+    action = if use_entropy, do: :create, else: :create_manual
+
     WallopCore.Resources.Draw
-    |> Ash.Changeset.for_create(:create, Map.merge(defaults, attrs), actor: api_key)
+    |> Ash.Changeset.for_create(action, Map.merge(defaults, params), actor: api_key)
     |> Ash.create!()
   end
 

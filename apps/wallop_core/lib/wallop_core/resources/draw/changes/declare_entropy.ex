@@ -2,7 +2,7 @@ defmodule WallopCore.Resources.Draw.Changes.DeclareEntropy do
   @moduledoc """
   Declares entropy sources at draw creation time.
 
-  When `skip_entropy` is false (the default), this change:
+  This change:
   1. Computes a future drand round (~30 seconds from now)
   2. Sets weather_time to the next whole hour after now
   3. Sets weather_station to "middle-wallop" (51.1494, -1.5714)
@@ -10,8 +10,6 @@ defmodule WallopCore.Resources.Draw.Changes.DeclareEntropy do
   5. Validates callback_url if provided
   6. Sets status to :awaiting_entropy
   7. Schedules an EntropyWorker job for the weather_time
-
-  When `skip_entropy` is true, the change is a no-op (draw stays :locked).
   """
   use Ash.Resource.Change
 
@@ -26,11 +24,7 @@ defmodule WallopCore.Resources.Draw.Changes.DeclareEntropy do
 
   @impl true
   def change(changeset, _opts, _context) do
-    if Ash.Changeset.get_argument(changeset, :skip_entropy) do
-      changeset
-    else
-      declare_entropy(changeset)
-    end
+    declare_entropy(changeset)
   end
 
   defp declare_entropy(changeset) do

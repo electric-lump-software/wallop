@@ -19,3 +19,4 @@ CLAUDE.md
 
 # Node.js dependencies (daisyUI etc.)
 /apps/wallop_web/assets/node_modules/
+.mcp.json

@@ -45,7 +45,7 @@ defmodule WallopCore.ProofTest do
   describe "verify/1" do
     test "returns :verified for a correctly executed draw" do
       api_key = create_api_key()
-      draw = create_draw(api_key, %{skip_entropy: true})
+      draw = create_draw(api_key, %{})
       draw = execute_draw(draw, test_seed(), api_key)
 
       assert {:ok, :verified} = Proof.verify(draw)
@@ -63,8 +63,7 @@ defmodule WallopCore.ProofTest do
             %{"id" => "winner-2", "weight" => 1},
             %{"id" => "loser-1", "weight" => 1}
           ],
-          winner_count: 2,
-          skip_entropy: true
+          winner_count: 2
         })
 
       draw = execute_draw(draw, test_seed(), api_key)

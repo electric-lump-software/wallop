@@ -7,7 +7,7 @@ defmodule WallopWeb.ProofLiveTest do
   describe "mount" do
     test "renders completed draw with verification badge", %{conn: conn} do
       api_key = create_api_key()
-      draw = create_draw(api_key, %{skip_entropy: true})
+      draw = create_draw(api_key, %{})
       draw = execute_draw(draw, test_seed(), api_key)
 
       {:ok, _view, html} = live(conn, "/proof/#{draw.id}")
@@ -17,7 +17,7 @@ defmodule WallopWeb.ProofLiveTest do
 
     test "renders in-progress draw with timeline", %{conn: conn} do
       api_key = create_api_key()
-      draw = create_draw(api_key, %{skip_entropy: true})
+      draw = create_draw(api_key, %{})
 
       {:ok, _view, html} = live(conn, "/proof/#{draw.id}")
 
@@ -34,7 +34,7 @@ defmodule WallopWeb.ProofLiveTest do
   describe "re-verify" do
     test "verifies a completed draw", %{conn: conn} do
       api_key = create_api_key()
-      draw = create_draw(api_key, %{skip_entropy: true})
+      draw = create_draw(api_key, %{})
       draw = execute_draw(draw, test_seed(), api_key)
 
       {:ok, view, _html} = live(conn, "/proof/#{draw.id}")
@@ -48,7 +48,7 @@ defmodule WallopWeb.ProofLiveTest do
   describe "entry check" do
     test "finds a winning entry", %{conn: conn} do
       api_key = create_api_key()
-      draw = create_draw(api_key, %{skip_entropy: true})
+      draw = create_draw(api_key, %{})
       draw = execute_draw(draw, test_seed(), api_key)
 
       winning_id = List.first(draw.results)["entry_id"]
@@ -65,7 +65,7 @@ defmodule WallopWeb.ProofLiveTest do
 
     test "reports not found for unknown entry", %{conn: conn} do
       api_key = create_api_key()
-      draw = create_draw(api_key, %{skip_entropy: true})
+      draw = create_draw(api_key, %{})
       draw = execute_draw(draw, test_seed(), api_key)
 
       {:ok, view, _html} = live(conn, "/proof/#{draw.id}")
@@ -82,7 +82,7 @@ defmodule WallopWeb.ProofLiveTest do
   describe "PubSub updates" do
     test "re-renders when draw is updated via PubSub", %{conn: conn} do
       api_key = create_api_key()
-      draw = create_draw(api_key, %{skip_entropy: true})
+      draw = create_draw(api_key, %{})
 
       {:ok, view, html} = live(conn, "/proof/#{draw.id}")
 

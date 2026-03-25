@@ -21,7 +21,7 @@ defmodule WallopCore.Entropy.WebhookWorkerTest do
   describe "perform/1" do
     test "delivers POST with correct payload for completed draw" do
       api_key = create_api_key()
-      draw = create_draw(api_key, %{callback_url: "https://example.com/hook", skip_entropy: true})
+      draw = create_draw(api_key, %{callback_url: "https://example.com/hook"})
       draw = execute_draw(draw, test_seed(), api_key)
       assert draw.status == :completed
 
@@ -52,7 +52,7 @@ defmodule WallopCore.Entropy.WebhookWorkerTest do
       api_key = create_api_key()
 
       draw =
-        create_draw(api_key, %{callback_url: "https://example.com/hook", skip_entropy: false})
+        create_draw(api_key, %{callback_url: "https://example.com/hook", entropy: true})
 
       assert draw.status == :awaiting_entropy
 
@@ -88,7 +88,7 @@ defmodule WallopCore.Entropy.WebhookWorkerTest do
 
     test "HMAC signature can be recomputed" do
       api_key = create_api_key()
-      draw = create_draw(api_key, %{callback_url: "https://example.com/hook", skip_entropy: true})
+      draw = create_draw(api_key, %{callback_url: "https://example.com/hook"})
       draw = execute_draw(draw, test_seed(), api_key)
 
       test_pid = self()
@@ -125,7 +125,7 @@ defmodule WallopCore.Entropy.WebhookWorkerTest do
 
     test "returns :ok when no callback_url" do
       api_key = create_api_key()
-      draw = create_draw(api_key, %{skip_entropy: true})
+      draw = create_draw(api_key, %{})
       draw = execute_draw(draw, test_seed(), api_key)
 
       assert :ok =
@@ -136,7 +136,7 @@ defmodule WallopCore.Entropy.WebhookWorkerTest do
 
     test "returns :ok on delivery failure (best effort)" do
       api_key = create_api_key()
-      draw = create_draw(api_key, %{callback_url: "https://example.com/hook", skip_entropy: true})
+      draw = create_draw(api_key, %{callback_url: "https://example.com/hook"})
       draw = execute_draw(draw, test_seed(), api_key)
 
       Req.Test.stub(WebhookWorker, fn conn ->
