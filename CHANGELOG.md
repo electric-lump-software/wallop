@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Public proof pages at `/proof/:id` with real-time LiveView updates
+- Vertical timeline showing draw progress (entries locked → entropy → winners)
+- Verification-first completed view with proof chain and external links
+- Entry anonymisation (first character + fixed mask)
+- Entry self-check form
+- Server-side re-verify button
+- Tailwind CSS + daisyUI styling
+- PubSub broadcasts from EntropyWorker for live updates
 - Automatic entropy fetching: drand beacon + Met Office weather observations
 - Draw state machine expanded: locked → awaiting_entropy → pending_entropy → completed/failed
 - EntropyWorker (Oban): parallel entropy fetch, seed computation, automatic draw execution
