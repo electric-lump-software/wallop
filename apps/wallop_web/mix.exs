@@ -31,6 +31,7 @@ defmodule WallopWeb.MixProject do
       {:phoenix, "~> 1.8"},
       {:bandit, "~> 1.0"},
       {:ash_json_api, "~> 1.0"},
+      {:open_api_spex, "~> 3.16"},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false}
     ]
   end

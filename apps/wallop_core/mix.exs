@@ -28,6 +28,7 @@ defmodule WallopCore.MixProject do
   defp deps do
     [
       {:ash, "~> 3.0"},
+      {:ash_json_api, "~> 1.0"},
       {:ash_postgres, "~> 2.0"},
       {:bcrypt_elixir, "~> 3.0"},
       {:fair_pick, path: "../../../fair_pick"},

@@ -10,7 +10,12 @@ defmodule WallopCore.Resources.Draw do
     otp_app: :wallop_core,
     domain: WallopCore.Domain,
     data_layer: AshPostgres.DataLayer,
-    authorizers: [Ash.Policy.Authorizer]
+    authorizers: [Ash.Policy.Authorizer],
+    extensions: [AshJsonApi.Resource]
+
+  json_api do
+    type("draw")
+  end
 
   postgres do
     table("draws")

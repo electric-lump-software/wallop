@@ -1,5 +1,13 @@
 import Config
 
+config :mime, :types, %{
+  "application/vnd.api+json" => ["json"]
+}
+
+config :mime, :extensions, %{
+  "json" => "application/json"
+}
+
 config :wallop_core,
   ecto_repos: [WallopCore.Repo],
   generators: [timestamp_type: :utc_datetime_usec],
