@@ -14,6 +14,20 @@ jobs:
       run:
         working-directory: wallop
 
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
     steps:
       - uses: actions/checkout@v4
         with:
@@ -47,6 +61,16 @@ jobs:
 
       - name: Credo
         run: mix credo --strict
+
+      - name: Create database
+        run: mix ecto.create -r WallopCore.Repo
+        env:
+          MIX_ENV: test
+
+      - name: Run migrations
+        run: mix ecto.migrate -r WallopCore.Repo
+        env:
+          MIX_ENV: test
 
       - name: Run tests
         run: mix test

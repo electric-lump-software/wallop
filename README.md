@@ -27,13 +27,25 @@ Entries are locked before the draw. The seed is computed from public, unpredicta
 ## Tech stack
 
 - **Language:** Elixir
-- **Framework:** Phoenix (coming soon)
-- **Database:** PostgreSQL (coming soon)
+- **Framework:** Phoenix + Ash Framework
+- **Database:** PostgreSQL
+- **API format:** JSON:API
 
 ## Development
 
+This repo depends on the [`fair_pick`](https://github.com/electric-lump-software/fair_pick) package as a sibling directory. Clone both repos side by side:
+
 ```bash
+git clone git@github.com:electric-lump-software/wallop.git
+git clone git@github.com:electric-lump-software/fair_pick.git
+```
+
+Then:
+
+```bash
+cd wallop
 mix deps.get
+mix ash.setup       # creates database and runs migrations
 mix test
 mix format
 mix credo --strict
@@ -41,7 +53,7 @@ mix credo --strict
 
 ## Status
 
-Early development. The algorithm ([fair_pick](https://github.com/electric-lump-software/fair_pick)) and protocol layer are complete. API and web layer are next.
+Active development. The algorithm, protocol layer, and API are implemented. Entropy layer and proof pages are next.
 
 ## License
 
