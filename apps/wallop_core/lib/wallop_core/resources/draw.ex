@@ -33,6 +33,7 @@ defmodule WallopCore.Resources.Draw do
       end
 
       change(set_attribute(:api_key_id, actor(:id)))
+      change({WallopCore.Resources.Draw.Changes.ValidateEntries, []})
       change({WallopCore.Resources.Draw.Changes.ComputeEntryHash, []})
     end
 
@@ -46,6 +47,10 @@ defmodule WallopCore.Resources.Draw do
       validate match(:seed, ~r/^[0-9a-fA-F]{64}$/) do
         message("must be a 64-character hex string")
       end
+
+      # Atomic filter: ensures the row is still :locked at UPDATE time,
+      # preventing race conditions with concurrent execute requests.
+      filter(expr(status == :locked))
 
       change({WallopCore.Resources.Draw.Changes.ExecuteDraw, []})
     end
@@ -95,6 +100,7 @@ defmodule WallopCore.Resources.Draw do
     attribute :winner_count, :integer do
       allow_nil?(false)
       public?(true)
+      constraints(min: 1, max: 10_000)
     end
 
     attribute :seed, :string do
@@ -135,7 +141,7 @@ defmodule WallopCore.Resources.Draw do
   relationships do
     belongs_to :api_key, WallopCore.Resources.ApiKey do
       allow_nil?(false)
-      public?(true)
+      public?(false)
     end
   end
 end

@@ -15,19 +15,12 @@ defmodule WallopCore.Resources.Draw.Changes.ComputeEntryHash do
         changeset
 
       entries ->
-        atom_entries = to_atom_keys(entries)
+        atom_entries = WallopCore.Entries.to_atom_keys(entries)
         {hash, canonical} = WallopCore.Protocol.entry_hash(atom_entries)
 
         changeset
         |> Ash.Changeset.force_change_attribute(:entry_hash, hash)
         |> Ash.Changeset.force_change_attribute(:entry_canonical, canonical)
     end
-  end
-
-  defp to_atom_keys(entries) when is_list(entries) do
-    Enum.map(entries, fn
-      %{id: _, weight: _} = entry -> entry
-      %{"id" => id, "weight" => weight} -> %{id: id, weight: weight}
-    end)
   end
 end

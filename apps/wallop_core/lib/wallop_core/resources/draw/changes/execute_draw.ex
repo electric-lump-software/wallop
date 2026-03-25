@@ -15,7 +15,7 @@ defmodule WallopCore.Resources.Draw.Changes.ExecuteDraw do
   defp run_draw(changeset) do
     draw = changeset.data
     seed_hex = Ash.Changeset.get_argument(changeset, :seed)
-    atom_entries = to_atom_keys(draw.entries)
+    atom_entries = WallopCore.Entries.to_atom_keys(draw.entries)
 
     # Integrity check: recompute entry hash and verify it matches
     {recomputed_hash, _canonical} = WallopCore.Protocol.entry_hash(atom_entries)
@@ -40,14 +40,8 @@ defmodule WallopCore.Resources.Draw.Changes.ExecuteDraw do
     |> Ash.Changeset.force_change_attribute(:results, string_results)
     |> Ash.Changeset.force_change_attribute(:seed, seed_hex)
     |> Ash.Changeset.force_change_attribute(:seed_source, :caller)
+    |> Ash.Changeset.force_change_attribute(:seed_json, nil)
     |> Ash.Changeset.force_change_attribute(:executed_at, DateTime.utc_now())
     |> Ash.Changeset.force_change_attribute(:status, :completed)
-  end
-
-  defp to_atom_keys(entries) when is_list(entries) do
-    Enum.map(entries, fn
-      %{id: _, weight: _} = entry -> entry
-      %{"id" => id, "weight" => weight} -> %{id: id, weight: weight}
-    end)
   end
 end
