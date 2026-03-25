@@ -10,3 +10,6 @@ erl_crash.dump
 /docs/
 CLAUDE.md
 .claude/
+
+# Dialyzer PLT files
+/priv/plts/

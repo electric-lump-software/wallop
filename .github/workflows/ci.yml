@@ -40,6 +40,7 @@ jobs:
           path: fair_pick
 
       - uses: erlef/setup-beam@v1
+        id: beam
         with:
           otp-version: "27"
           elixir-version: "1.19"
@@ -61,6 +62,28 @@ jobs:
 
       - name: Credo
         run: mix credo --strict
+
+      - name: Restore PLT cache
+        id: plt_cache
+        uses: actions/cache/restore@v4
+        with:
+          key: plt-${{ runner.os }}-${{ steps.beam.outputs.otp-version }}-${{ steps.beam.outputs.elixir-version }}-${{ hashFiles('wallop/mix.lock') }}
+          restore-keys: plt-${{ runner.os }}-${{ steps.beam.outputs.otp-version }}-${{ steps.beam.outputs.elixir-version }}-
+          path: wallop/priv/plts
+
+      - name: Create PLTs
+        if: steps.plt_cache.outputs.cache-hit != 'true'
+        run: mix dialyzer --plt
+
+      - name: Save PLT cache
+        if: steps.plt_cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          key: plt-${{ runner.os }}-${{ steps.beam.outputs.otp-version }}-${{ steps.beam.outputs.elixir-version }}-${{ hashFiles('wallop/mix.lock') }}
+          path: wallop/priv/plts
+
+      - name: Dialyzer
+        run: mix dialyzer --format github --format dialyxir
 
       - name: Create database
         run: mix ecto.create -r WallopCore.Repo
