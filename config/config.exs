@@ -20,7 +20,30 @@ config :wallop_core, Oban,
 config :wallop_web, WallopWeb.Endpoint,
   url: [host: "localhost"],
   adapter: Bandit.PhoenixAdapter,
-  render_errors: [formats: [json: WallopWeb.ErrorJSON]]
+  render_errors: [formats: [json: WallopWeb.ErrorJSON]],
+  pubsub_server: WallopWeb.PubSub,
+  live_view: [signing_salt: "Fp8kXm2Q"]
+
+# Configure esbuild (the version is required)
+config :esbuild,
+  version: "0.25.4",
+  wallop: [
+    args:
+      ~w(js/app.js --bundle --target=es2022 --outdir=../priv/static/assets --external:/fonts/* --external:/images/*),
+    cd: Path.expand("../apps/wallop_web/assets", __DIR__),
+    env: %{"NODE_PATH" => Path.expand("../deps", __DIR__)}
+  ]
+
+# Configure tailwind (the version is required)
+config :tailwind,
+  version: "4.1.18",
+  wallop: [
+    args: ~w(
+      --input=css/app.css
+      --output=../priv/static/assets/app.css
+    ),
+    cd: Path.expand("../apps/wallop_web/assets", __DIR__)
+  ]
 
 config :logger, :console,
   format: "$time $metadata[$level] $message\n",

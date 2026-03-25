@@ -105,6 +105,7 @@ defmodule WallopCore.Entropy.EntropyWorker do
     |> Ash.update(domain: WallopCore.Domain, authorize?: false)
     |> case do
       {:ok, completed_draw} ->
+        broadcast_update(completed_draw)
         maybe_enqueue_webhook(completed_draw)
         :ok
 
@@ -128,8 +129,12 @@ defmodule WallopCore.Entropy.EntropyWorker do
     case draw
          |> Ash.Changeset.for_update(:transition_to_pending, %{})
          |> Ash.update(domain: WallopCore.Domain, authorize?: false) do
-      {:ok, updated} -> updated
-      {:error, _} -> draw
+      {:ok, updated} ->
+        broadcast_update(updated)
+        updated
+
+      {:error, _} ->
+        draw
     end
   end
 
@@ -144,9 +149,17 @@ defmodule WallopCore.Entropy.EntropyWorker do
     })
     |> Ash.update(domain: WallopCore.Domain, authorize?: false)
     |> case do
-      {:ok, _} -> :ok
-      {:error, reason} -> {:error, reason}
+      {:ok, failed_draw} ->
+        broadcast_update(failed_draw)
+        :ok
+
+      {:error, reason} ->
+        {:error, reason}
     end
+  end
+
+  defp broadcast_update(draw) do
+    Phoenix.PubSub.broadcast(WallopWeb.PubSub, "draw:#{draw.id}", {:draw_updated, draw})
   end
 
   defp past_failure_timeout?(inserted_at) do

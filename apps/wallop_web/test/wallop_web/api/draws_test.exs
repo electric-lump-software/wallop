@@ -139,4 +139,53 @@ defmodule WallopWeb.Api.DrawsTest do
       assert length(data["attributes"]["results"]) == 2
     end
   end
+
+  describe "skip_entropy via API" do
+    test "draws created via API without skip_entropy default to awaiting_entropy", %{conn: conn} do
+      {_api_key, raw_key} = create_key_with_raw()
+
+      payload = %{
+        "data" => %{
+          "type" => "draw",
+          "attributes" => %{
+            "entries" => [%{"id" => "a", "weight" => 1}, %{"id" => "b", "weight" => 1}],
+            "winner_count" => 1
+          }
+        }
+      }
+
+      resp =
+        conn
+        |> auth_conn(raw_key)
+        |> post("/api/v1/draws", payload)
+        |> json_response(201)
+
+      assert resp["data"]["attributes"]["status"] == "awaiting_entropy"
+    end
+
+    test "skip_entropy via API creates a locked draw (caller-seed path)", %{conn: conn} do
+      {_api_key, raw_key} = create_key_with_raw()
+
+      payload = %{
+        "data" => %{
+          "type" => "draw",
+          "attributes" => %{
+            "entries" => [%{"id" => "a", "weight" => 1}, %{"id" => "b", "weight" => 1}],
+            "winner_count" => 1,
+            "skip_entropy" => true
+          }
+        }
+      }
+
+      resp =
+        conn
+        |> auth_conn(raw_key)
+        |> post("/api/v1/draws", payload)
+        |> json_response(201)
+
+      # Caller-seed path: draw is locked with no entropy sources
+      assert resp["data"]["attributes"]["status"] == "locked"
+      assert resp["data"]["attributes"]["drand_round"] == nil
+    end
+  end
 end

@@ -13,3 +13,9 @@ CLAUDE.md
 
 # Dialyzer PLT files
 /priv/plts/
+
+# Visual brainstorming sessions
+.superpowers/
+
+# Node.js dependencies (daisyUI etc.)
+/apps/wallop_web/assets/node_modules/
