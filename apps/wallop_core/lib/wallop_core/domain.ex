@@ -4,5 +4,6 @@ defmodule WallopCore.Domain do
 
   resources do
     resource(WallopCore.Resources.ApiKey)
+    resource(WallopCore.Resources.Draw)
   end
 end

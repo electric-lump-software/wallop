@@ -33,7 +33,8 @@ defmodule WallopCore.MixProject do
       {:fair_pick, path: "../../../fair_pick"},
       {:jcs, "~> 0.2.0"},
       {:jason, "~> 1.4"},
-      {:credo, "~> 1.7", only: [:dev, :test], runtime: false}
+      {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
+      {:simple_sat, "~> 0.1", only: [:dev, :test]}
     ]
   end
 end
