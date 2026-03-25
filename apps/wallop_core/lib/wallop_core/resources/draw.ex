@@ -2,9 +2,12 @@ defmodule WallopCore.Resources.Draw do
   @moduledoc """
   A provably fair random draw.
 
-  Draws follow a two-phase lifecycle: **locked** (entries committed, waiting for
-  seed) and **completed** (seed applied, winners determined). Once completed, a
-  draw record is immutable.
+  Draws follow a five-state lifecycle:
+  - **locked** — entries committed, waiting for seed or entropy declaration
+  - **awaiting_entropy** — entropy sources declared, waiting for beacon data
+  - **pending_entropy** — all entropy collected, ready for seed computation and execution
+  - **completed** — seed applied, winners determined (terminal, immutable)
+  - **failed** — entropy collection or execution failed (terminal, immutable)
   """
   use Ash.Resource,
     otp_app: :wallop_core,
@@ -76,7 +79,7 @@ defmodule WallopCore.Resources.Draw do
     uuid_primary_key(:id)
 
     attribute :status, :atom do
-      constraints(one_of: [:locked, :completed])
+      constraints(one_of: [:locked, :awaiting_entropy, :pending_entropy, :completed, :failed])
       default(:locked)
       allow_nil?(false)
       public?(true)
@@ -124,12 +127,72 @@ defmodule WallopCore.Resources.Draw do
       public?(true)
     end
 
+    attribute :drand_chain, :string do
+      allow_nil?(true)
+      public?(true)
+    end
+
+    attribute :drand_round, :integer do
+      allow_nil?(true)
+      public?(true)
+    end
+
+    attribute :drand_randomness, :string do
+      allow_nil?(true)
+      public?(true)
+    end
+
+    attribute :drand_signature, :string do
+      allow_nil?(true)
+      public?(true)
+    end
+
+    attribute :drand_response, :string do
+      allow_nil?(true)
+      public?(true)
+    end
+
+    attribute :weather_station, :string do
+      allow_nil?(true)
+      public?(true)
+    end
+
+    attribute :weather_time, :utc_datetime_usec do
+      allow_nil?(true)
+      public?(true)
+    end
+
+    attribute :weather_value, :string do
+      allow_nil?(true)
+      public?(true)
+    end
+
+    attribute :weather_raw, :string do
+      allow_nil?(true)
+      public?(true)
+    end
+
+    attribute :callback_url, :string do
+      allow_nil?(true)
+      public?(true)
+    end
+
     attribute :metadata, :map do
       allow_nil?(true)
       public?(true)
     end
 
     attribute :executed_at, :utc_datetime_usec do
+      allow_nil?(true)
+      public?(true)
+    end
+
+    attribute :failed_at, :utc_datetime_usec do
+      allow_nil?(true)
+      public?(true)
+    end
+
+    attribute :failure_reason, :string do
       allow_nil?(true)
       public?(true)
     end
