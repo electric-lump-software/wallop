@@ -9,8 +9,9 @@ defmodule Mix.Tasks.Wallop.Gen.ApiKey do
     Mix.Task.run("app.start")
 
     {:ok, api_key} =
-      Ash.ActionInput.for_action(WallopCore.Resources.ApiKey, :create, %{name: name})
-      |> Ash.run_action(domain: WallopCore.Domain)
+      WallopCore.Resources.ApiKey
+      |> Ash.Changeset.for_create(:create, %{name: name})
+      |> Ash.create(domain: WallopCore.Domain)
 
     raw_key = Ash.Resource.get_metadata(api_key, :raw_key)
 
