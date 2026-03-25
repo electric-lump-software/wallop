@@ -15,4 +15,16 @@ config :wallop_web, WallopWeb.Endpoint,
 
 config :bcrypt_elixir, log_rounds: 1
 
+config :wallop_core, Oban, testing: :manual
+
+config :wallop_core, WallopCore.Vault,
+  ciphers: [
+    default:
+      {Cloak.Ciphers.AES.GCM,
+       tag: "AES.GCM.V1",
+       key: Base.decode64!("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=")}
+  ]
+
+config :wallop_core, :met_office_api_key, "test-placeholder"
+
 config :logger, level: :warning
