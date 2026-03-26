@@ -1,12 +1,8 @@
-ARG ELIXIR_VERSION=1.19.5
-ARG OTP_VERSION=27.3
-ARG DEBIAN_VERSION=bookworm-20250224-slim
-
-ARG BUILDER_IMAGE="hexpm/elixir:${ELIXIR_VERSION}-erlang-${OTP_VERSION}-debian-${DEBIAN_VERSION}"
-ARG RUNNER_IMAGE="debian:${DEBIAN_VERSION}"
+ARG BUILDER_IMAGE="hexpm/elixir:1.18-erlang-27.3-debian-bookworm-20260316-slim"
+ARG RUNNER_IMAGE="debian:bookworm-20260316-slim"
 
 # Build stage
-FROM ${BUILDER_IMAGE} as builder
+FROM ${BUILDER_IMAGE} AS builder
 
 RUN apt-get update -y && apt-get install -y build-essential git npm \
     && apt-get clean && rm -f /var/lib/apt/lists/*_*
