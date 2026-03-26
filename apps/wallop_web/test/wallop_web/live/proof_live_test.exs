@@ -98,7 +98,12 @@ defmodule WallopWeb.ProofLiveTest do
         {:draw_updated, completed_draw}
       )
 
-      # Give the LiveView time to process the message
+      # Give the LiveView time to process the message — it enters reveal state first
+      html = render(view)
+      assert html =~ "Verifying..."
+
+      # Simulate the JS hook firing reveal_complete
+      render_click(view, "reveal_complete")
       html = render(view)
 
       assert html =~ "Verified by Wallop"

@@ -14,7 +14,7 @@ defmodule WallopWeb.Components.DrawTimeline do
 
     ~H"""
     <ul class="steps steps-vertical w-full">
-      <li :for={stage <- @stages} class={step_class(stage.state)}>
+      <li :for={{stage, idx} <- Enum.with_index(@stages)} class={step_class(stage.state)} data-content={idx} data-reveal-step={idx}>
         <div class="text-left py-2">
           <div class="font-semibold text-sm">{stage.label}</div>
           <div :if={stage[:countdown_target]} class="text-xs text-base-content/60 mt-1">
@@ -30,7 +30,7 @@ defmodule WallopWeb.Components.DrawTimeline do
               <span data-seconds style="--value:0; --digits:2;" aria-live="polite" aria-label="0">00</span>
             </span>
           </div>
-          <div :if={stage.detail} class="text-xs text-base-content/60 mt-0.5">
+          <div :if={stage.detail} class="text-xs text-base-content/60 mt-0.5" data-reveal-detail={idx}>
             {stage.detail}
           </div>
         </div>
@@ -188,7 +188,7 @@ defmodule WallopWeb.Components.DrawTimeline do
   end
 
   defp step_class(:done), do: "step step-primary"
-  defp step_class(:current), do: "step step-info"
+  defp step_class(:current), do: "step step-primary step-current"
   defp step_class(:failed), do: "step step-error"
   defp step_class(:pending), do: "step step-neutral"
 
