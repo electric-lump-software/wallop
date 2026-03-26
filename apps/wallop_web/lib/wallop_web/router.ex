@@ -40,6 +40,8 @@ defmodule WallopWeb.Router do
       live_dashboard("/dashboard",
         additional_pages: [obanalyze: Obanalyze.Dashboard]
       )
+
+      live("/reveal-demo", WallopWeb.RevealDemoLive)
     end
   end
 
