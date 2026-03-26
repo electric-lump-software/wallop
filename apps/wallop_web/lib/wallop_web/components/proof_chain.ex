@@ -59,6 +59,9 @@ defmodule WallopWeb.Components.ProofChain do
                 <span :if={@draw.weather_station} class="text-xs text-base-content/60">
                   (station: {@draw.weather_station})
                 </span>
+                <div :if={@draw.weather_observation_time} class="text-xs text-base-content/60 mt-0.5">
+                  Observation from {Calendar.strftime(@draw.weather_observation_time, "%H:%M UTC %d %b %Y")}
+                </div>
               </div>
             </div>
           </div>
@@ -93,7 +96,7 @@ defmodule WallopWeb.Components.ProofChain do
               <div class="text-xs text-base-content/60 mt-1">
                 Deterministic Fisher-Yates shuffle via
                 <a
-                  href="https://github.com/drj/fair_pick"
+                  href="https://github.com/electric-lump-software/fair_pick"
                   target="_blank"
                   rel="noopener"
                   class="link link-primary"

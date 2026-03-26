@@ -8,7 +8,7 @@ defmodule WallopCore.Entropy.EntropyWorkerTest do
 
   @drand_randomness "a" <> String.duplicate("0", 63)
   @drand_signature "abcdef1234567890"
-  @weather_pressure 1013.4
+  @weather_pressure 101_340
 
   setup do
     stub_drand_success()
@@ -51,8 +51,9 @@ defmodule WallopCore.Entropy.EntropyWorkerTest do
       assert completed.drand_randomness == @drand_randomness
       assert completed.drand_signature == @drand_signature
       assert completed.drand_response != nil
-      assert completed.weather_value == "1013"
+      assert completed.weather_value == "101340"
       assert completed.weather_raw != nil
+      assert completed.weather_observation_time != nil
       assert completed.executed_at != nil
       assert completed.results != nil
       assert length(completed.results) == draw.winner_count
@@ -61,7 +62,7 @@ defmodule WallopCore.Entropy.EntropyWorkerTest do
       atom_entries = WallopCore.Entries.to_atom_keys(draw.entries)
 
       {seed_bytes, _seed_json} =
-        WallopCore.Protocol.compute_seed(draw.entry_hash, @drand_randomness, "1013")
+        WallopCore.Protocol.compute_seed(draw.entry_hash, @drand_randomness, "101340")
 
       expected_results = FairPick.draw(atom_entries, seed_bytes, draw.winner_count)
 
@@ -172,8 +173,9 @@ defmodule WallopCore.Entropy.EntropyWorkerTest do
           drand_randomness: @drand_randomness,
           drand_signature: @drand_signature,
           drand_response: "{}",
-          weather_value: "1013",
-          weather_raw: "{}"
+          weather_value: "101340",
+          weather_raw: "{}",
+          weather_observation_time: DateTime.utc_now()
         })
         |> Ash.update(domain: WallopCore.Domain, authorize?: false)
 

@@ -5,7 +5,6 @@ defmodule WallopCore.Entropy.WeatherClientTest do
 
   @latitude 51.5074
   @longitude -0.1278
-  @observation_time ~U[2025-01-15 12:00:00Z]
 
   setup do
     Req.Test.stub(WeatherClient, &handle_request/1)
@@ -21,64 +20,19 @@ defmodule WallopCore.Entropy.WeatherClientTest do
     :ok
   end
 
-  describe "normalize_pressure/1 with float input" do
-    test "rounds 1013.0 to 1013" do
-      assert WeatherClient.normalize_pressure(1013.0) == "1013"
-    end
+  describe "fetch/2" do
+    test "returns raw mslp integer as string, observation_time, and raw response" do
+      assert {:ok, result} = WeatherClient.fetch(@latitude, @longitude)
 
-    test "rounds 1013.4 down" do
-      assert WeatherClient.normalize_pressure(1013.4) == "1013"
-    end
-
-    test "rounds 1013.5 up (half-up)" do
-      assert WeatherClient.normalize_pressure(1013.5) == "1014"
-    end
-
-    test "rounds 1013.9 up" do
-      assert WeatherClient.normalize_pressure(1013.9) == "1014"
-    end
-
-    test "rounds 998.0 to 998" do
-      assert WeatherClient.normalize_pressure(998.0) == "998"
-    end
-
-    test "rounds 1050.25 down" do
-      assert WeatherClient.normalize_pressure(1050.25) == "1050"
-    end
-
-    test "rounds 1050.75 up" do
-      assert WeatherClient.normalize_pressure(1050.75) == "1051"
-    end
-  end
-
-  describe "normalize_pressure/1 with string input" do
-    test "rounds string 1013.4 down" do
-      assert WeatherClient.normalize_pressure("1013.4") == "1013"
-    end
-
-    test "rounds string 1013.5 up (half-up)" do
-      assert WeatherClient.normalize_pressure("1013.5") == "1014"
-    end
-  end
-
-  describe "normalize_pressure/1 with Decimal input" do
-    test "rounds Decimal 1013.5 up (half-up)" do
-      assert WeatherClient.normalize_pressure(Decimal.new("1013.5")) == "1014"
-    end
-  end
-
-  describe "fetch/3" do
-    test "returns normalized value and raw response for valid data" do
-      assert {:ok, result} = WeatherClient.fetch(@latitude, @longitude, @observation_time)
-
-      assert result.value == "1013"
+      assert result.value == "101410"
+      assert result.observation_time == ~U[2025-01-15 13:00:00Z]
       assert is_binary(result.raw)
 
       # raw is valid JSON
       assert {:ok, _decoded} = Jason.decode(result.raw)
     end
 
-    test "returns error when reading not found for target hour" do
+    test "returns the latest observation time series entry" do
       Req.Test.stub(WeatherClient, fn conn ->
         body = %{
           "type" => "FeatureCollection",
@@ -86,10 +40,8 @@ defmodule WallopCore.Entropy.WeatherClientTest do
             %{
               "properties" => %{
                 "timeSeries" => [
-                  %{
-                    "time" => "2025-01-15T08:00Z",
-                    "mslp" => 1010.2
-                  }
+                  %{"time" => "2025-06-01T09:00Z", "mslp" => 100_830},
+                  %{"time" => "2025-06-01T10:00Z", "mslp" => 100_970}
                 ]
               }
             }
@@ -101,8 +53,32 @@ defmodule WallopCore.Entropy.WeatherClientTest do
         |> Plug.Conn.send_resp(200, Jason.encode!(body))
       end)
 
-      assert {:error, :reading_not_found} =
-               WeatherClient.fetch(@latitude, @longitude, @observation_time)
+      assert {:ok, result} = WeatherClient.fetch(@latitude, @longitude)
+      assert result.value == "100970"
+      assert result.observation_time == ~U[2025-06-01 10:00:00Z]
+    end
+
+    test "returns error when no readings have mslp" do
+      Req.Test.stub(WeatherClient, fn conn ->
+        body = %{
+          "type" => "FeatureCollection",
+          "features" => [
+            %{
+              "properties" => %{
+                "timeSeries" => [
+                  %{"time" => "2025-01-15T08:00Z"}
+                ]
+              }
+            }
+          ]
+        }
+
+        conn
+        |> Plug.Conn.put_resp_content_type("application/json")
+        |> Plug.Conn.send_resp(200, Jason.encode!(body))
+      end)
+
+      assert {:error, :no_readings_available} = WeatherClient.fetch(@latitude, @longitude)
     end
 
     test "returns error for non-200 response" do
@@ -110,8 +86,7 @@ defmodule WallopCore.Entropy.WeatherClientTest do
         Plug.Conn.send_resp(conn, 500, "internal error")
       end)
 
-      assert {:error, {:unexpected_status, 500}} =
-               WeatherClient.fetch(@latitude, @longitude, @observation_time)
+      assert {:error, {:unexpected_status, 500}} = WeatherClient.fetch(@latitude, @longitude)
     end
 
     test "returns error for invalid response structure" do
@@ -123,12 +98,12 @@ defmodule WallopCore.Entropy.WeatherClientTest do
         |> Plug.Conn.send_resp(200, Jason.encode!(body))
       end)
 
-      assert {:error, :invalid_response} =
-               WeatherClient.fetch(@latitude, @longitude, @observation_time)
+      assert {:error, :invalid_response} = WeatherClient.fetch(@latitude, @longitude)
     end
   end
 
-  # Default stub handler — returns a valid Met Office response with mslp at 12:00
+  # Default stub handler — returns a valid Met Office response with mslp in Pascals.
+  # Latest entry is 13:00 with mslp 101410 Pa (1014.10 hPa).
   defp handle_request(conn) do
     body = %{
       "type" => "FeatureCollection",
@@ -143,18 +118,9 @@ defmodule WallopCore.Entropy.WeatherClientTest do
             "requestPointDistance" => 0.0,
             "modelRunDate" => "2025-01-15T12:00Z",
             "timeSeries" => [
-              %{
-                "time" => "2025-01-15T11:00Z",
-                "mslp" => 1012.8
-              },
-              %{
-                "time" => "2025-01-15T12:00Z",
-                "mslp" => 1013.4
-              },
-              %{
-                "time" => "2025-01-15T13:00Z",
-                "mslp" => 1014.1
-              }
+              %{"time" => "2025-01-15T11:00Z", "mslp" => 101_280},
+              %{"time" => "2025-01-15T12:00Z", "mslp" => 101_340},
+              %{"time" => "2025-01-15T13:00Z", "mslp" => 101_410}
             ]
           }
         }

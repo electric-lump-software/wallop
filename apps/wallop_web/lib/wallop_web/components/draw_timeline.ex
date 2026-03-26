@@ -25,9 +25,9 @@ defmodule WallopWeb.Components.DrawTimeline do
               phx-hook="Countdown"
               data-target={DateTime.to_iso8601(stage.countdown_target)}
             >
-              <span data-hours style="--value:0;" aria-label="hours">00</span>:
-              <span data-minutes style="--value:0;" aria-label="minutes">00</span>:
-              <span data-seconds style="--value:0;" aria-label="seconds">00</span>
+              <span data-hours style="--value:0; --digits:2;" aria-live="polite" aria-label="0">00</span>:
+              <span data-minutes style="--value:0; --digits:2;" aria-live="polite" aria-label="0">00</span>:
+              <span data-seconds style="--value:0; --digits:2;" aria-live="polite" aria-label="0">00</span>
             </span>
           </div>
           <div :if={stage.detail} class="text-xs text-base-content/60 mt-0.5">
@@ -104,15 +104,7 @@ defmodule WallopWeb.Components.DrawTimeline do
         }
 
       :completed ->
-        detail =
-          [
-            if(draw.drand_randomness, do: "drand: #{truncate_hash(draw.drand_randomness)}"),
-            if(draw.weather_value, do: "weather: #{draw.weather_value}")
-          ]
-          |> Enum.reject(&is_nil/1)
-          |> Enum.join(", ")
-
-        %{label: "Fetching Entropy", detail: detail, state: :done}
+        %{label: "Fetching Entropy", detail: entropy_detail(draw), state: :done}
 
       :failed ->
         %{
@@ -156,6 +148,18 @@ defmodule WallopWeb.Components.DrawTimeline do
       _ ->
         %{label: "Winners Selected", detail: nil, state: :pending}
     end
+  end
+
+  defp entropy_detail(draw) do
+    [
+      if(draw.drand_randomness, do: "drand: #{truncate_hash(draw.drand_randomness)}"),
+      if(draw.weather_value, do: "weather: #{draw.weather_value}"),
+      if(draw.weather_observation_time,
+        do: "observed at #{Calendar.strftime(draw.weather_observation_time, "%H:%M UTC")}"
+      )
+    ]
+    |> Enum.reject(&is_nil/1)
+    |> Enum.join(", ")
   end
 
   defp step_class(:done), do: "step step-primary"

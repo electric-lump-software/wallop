@@ -21,10 +21,20 @@ defmodule WallopCore.Resources.Draw.Changes.ExecuteWithEntropy do
     # Integrity check: recompute entry hash and verify it matches
     {recomputed_hash, _canonical} = WallopCore.Protocol.entry_hash(atom_entries)
 
-    if recomputed_hash != draw.entry_hash do
-      Ash.Changeset.add_error(changeset, field: :entries, message: "entry hash mismatch")
-    else
-      apply_results(changeset, draw, atom_entries)
+    weather_observation_time = Ash.Changeset.get_argument(changeset, :weather_observation_time)
+
+    cond do
+      recomputed_hash != draw.entry_hash ->
+        Ash.Changeset.add_error(changeset, field: :entries, message: "entry hash mismatch")
+
+      DateTime.compare(weather_observation_time, draw.inserted_at) != :gt ->
+        Ash.Changeset.add_error(changeset,
+          field: :weather_observation_time,
+          message: "observation must be after draw creation"
+        )
+
+      true ->
+        apply_results(changeset, draw, atom_entries)
     end
   end
 
@@ -34,6 +44,7 @@ defmodule WallopCore.Resources.Draw.Changes.ExecuteWithEntropy do
     drand_response = Ash.Changeset.get_argument(changeset, :drand_response)
     weather_value = Ash.Changeset.get_argument(changeset, :weather_value)
     weather_raw = Ash.Changeset.get_argument(changeset, :weather_raw)
+    weather_observation_time = Ash.Changeset.get_argument(changeset, :weather_observation_time)
 
     {seed_bytes, seed_json} =
       WallopCore.Protocol.compute_seed(draw.entry_hash, drand_randomness, weather_value)
@@ -56,6 +67,7 @@ defmodule WallopCore.Resources.Draw.Changes.ExecuteWithEntropy do
     |> Ash.Changeset.force_change_attribute(:drand_response, drand_response)
     |> Ash.Changeset.force_change_attribute(:weather_value, weather_value)
     |> Ash.Changeset.force_change_attribute(:weather_raw, weather_raw)
+    |> Ash.Changeset.force_change_attribute(:weather_observation_time, weather_observation_time)
     |> Ash.Changeset.force_change_attribute(:executed_at, DateTime.utc_now())
     |> Ash.Changeset.force_change_attribute(:status, :completed)
   end

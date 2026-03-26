@@ -89,6 +89,7 @@ defmodule WallopCore.Resources.Draw do
       argument(:drand_response, :string, allow_nil?: false)
       argument(:weather_value, :string, allow_nil?: false)
       argument(:weather_raw, :string, allow_nil?: false)
+      argument(:weather_observation_time, :utc_datetime_usec, allow_nil?: false)
 
       validate match(:drand_randomness, ~r/^[0-9a-f]{64}$/) do
         message("must be a 64-character lowercase hex string")
@@ -233,6 +234,11 @@ defmodule WallopCore.Resources.Draw do
     end
 
     attribute :weather_raw, :string do
+      allow_nil?(true)
+      public?(true)
+    end
+
+    attribute :weather_observation_time, :utc_datetime_usec do
       allow_nil?(true)
       public?(true)
     end
