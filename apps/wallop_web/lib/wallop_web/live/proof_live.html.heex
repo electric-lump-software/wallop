@@ -28,7 +28,7 @@
   <div class="card bg-base-100 shadow">
     <div class="card-body space-y-4">
       <div>
-        <button phx-click="re_verify" class="btn btn-ghost btn-sm">
+        <button phx-click="re_verify" class="btn btn-outline btn-primary btn-sm">
           Re-verify results
         </button>
         <div :if={@verify_result == {:ok, :verified}} class="alert alert-success text-sm mt-2">
@@ -53,6 +53,13 @@
       </div>
     </div>
   </div>
+
+  <details class="collapse collapse-arrow bg-base-100 shadow">
+    <summary class="collapse-title text-sm font-semibold">View draw timeline</summary>
+    <div class="collapse-content">
+      <.draw_timeline draw={@draw} />
+    </div>
+  </details>
 </div>
 
 <%!-- Failed draw --%>

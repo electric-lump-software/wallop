@@ -1,7 +1,7 @@
 @import "tailwindcss";
 @source "../../lib/wallop_web";
 @plugin "daisyui" {
-  themes: light --default, dark;
+  themes: cmyk --default;
 }
 
 /* Timeline: pulse with expanding ring on the current step circle */
