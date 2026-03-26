@@ -153,6 +153,7 @@ defmodule WallopCore.Entropy.EntropyWorker do
     |> case do
       {:ok, failed_draw} ->
         broadcast_update(failed_draw)
+        maybe_enqueue_webhook(failed_draw)
         :ok
 
       {:error, reason} ->
