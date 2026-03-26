@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Staged reveal animation on proof page when draw completes (~10 second sequence)
+- Dev-only reveal demo page at `/dev/reveal-demo` for visual testing
+
 ## [0.2.0] - 2026-03-26
 
 ### Added

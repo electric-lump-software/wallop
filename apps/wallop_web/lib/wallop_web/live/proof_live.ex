@@ -30,6 +30,9 @@ defmodule WallopWeb.ProofLive do
            draw_id: id,
            check_result: nil,
            verify_result: nil,
+           revealing: false,
+           reveal_from: nil,
+           reveal_to: nil,
            page_title: "Draw Proof"
          )}
 
@@ -44,7 +47,7 @@ defmodule WallopWeb.ProofLive do
   def handle_info({:draw_updated, draw}, socket) do
     if draw.id == socket.assigns.draw_id do
       schedule_poll_if_live(draw)
-      {:noreply, assign(socket, :draw, draw)}
+      maybe_reveal(socket, draw)
     else
       {:noreply, socket}
     end
@@ -54,7 +57,7 @@ defmodule WallopWeb.ProofLive do
     case load_draw(socket.assigns.draw_id) do
       {:ok, draw} ->
         schedule_poll_if_live(draw)
-        {:noreply, assign(socket, :draw, draw)}
+        maybe_reveal(socket, draw)
 
       {:error, _} ->
         {:noreply, socket}
@@ -69,6 +72,28 @@ defmodule WallopWeb.ProofLive do
   def handle_event("re_verify", _params, socket) do
     result = Proof.verify(socket.assigns.draw)
     {:noreply, assign(socket, :verify_result, result)}
+  end
+
+  def handle_event("reveal_complete", _params, socket) do
+    {:noreply, assign(socket, revealing: false, reveal_from: nil, reveal_to: nil)}
+  end
+
+  defp maybe_reveal(socket, draw) do
+    old_status = socket.assigns.draw.status
+    new_status = draw.status
+
+    cond do
+      # Lock transition: open → awaiting_entropy (animate stages 0-3)
+      old_status == :open and new_status == :awaiting_entropy ->
+        {:noreply, assign(socket, draw: draw, revealing: true, reveal_from: 0, reveal_to: 3)}
+
+      # Completion transition: in-progress → completed (animate stages 4-5)
+      old_status in [:locked, :awaiting_entropy, :pending_entropy] and new_status == :completed ->
+        {:noreply, assign(socket, draw: draw, revealing: true, reveal_from: 4, reveal_to: 5)}
+
+      true ->
+        {:noreply, assign(socket, :draw, draw)}
+    end
   end
 
   defp schedule_poll_if_live(%{status: status}) when status in [:completed, :failed], do: :ok

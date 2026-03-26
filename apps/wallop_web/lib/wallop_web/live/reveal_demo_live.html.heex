@@ -1,0 +1,56 @@
+<div class="space-y-6">
+  <div class="alert alert-warning">
+    This is a demo page for testing the reveal animation. Not a real draw.
+  </div>
+
+  <div class="flex gap-2">
+    <button phx-click="start_stepping" class="btn btn-primary btn-sm" disabled={@revealing}>
+      Step Through
+    </button>
+    <button phx-click="start_reveal" class="btn btn-outline btn-primary btn-sm" disabled={@revealing}>
+      Auto Play
+    </button>
+    <button :if={@revealing and @mode == :step} phx-click="next_step" class="btn btn-success btn-sm">
+      Next Transition
+    </button>
+    <button phx-click="reset" class="btn btn-outline btn-sm">
+      Reset
+    </button>
+  </div>
+
+  <div
+    :if={@revealing}
+    id="draw-reveal"
+    phx-hook="DrawReveal"
+    data-mode={@mode}
+    data-reveal-from="0"
+    data-reveal-to="5"
+    class="space-y-6"
+  >
+    <div class="flex items-center gap-3">
+      <span class="badge badge-info badge-lg gap-1" data-reveal-badge>
+        Verifying...
+      </span>
+    </div>
+
+    <div class="card bg-base-100 shadow">
+      <div class="card-body">
+        <.draw_timeline draw={@draw} />
+      </div>
+    </div>
+  </div>
+
+  <div :if={not @revealing} class="space-y-6">
+    <div class="flex items-center gap-3">
+      <span class="badge badge-success badge-lg gap-1">
+        Verified by Wallop
+      </span>
+    </div>
+
+    <div class="card bg-base-100 shadow">
+      <div class="card-body">
+        <.draw_timeline draw={@draw} />
+      </div>
+    </div>
+  </div>
+</div>

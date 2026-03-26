@@ -1,5 +1,39 @@
+<%!-- Reveal animation (plays when draw transitions while user is watching) --%>
+<div
+  :if={@revealing}
+  id={"draw-reveal-#{@reveal_from}"}
+  phx-hook="DrawReveal"
+  data-mode="auto"
+  data-reveal-from={@reveal_from}
+  data-reveal-to={@reveal_to}
+  class="space-y-6"
+>
+  <div class="flex items-center gap-3">
+    <span
+      :if={@reveal_to == 5}
+      class="badge badge-info badge-lg gap-1"
+      data-reveal-badge
+    >
+      Verifying...
+    </span>
+    <span :if={@reveal_to == 3} class="badge badge-info badge-lg gap-1">
+      Locking Draw...
+    </span>
+  </div>
+
+  <div class="text-sm text-base-content/60">
+    <div>Draw ID: <span class="font-mono">{@draw.id}</span></div>
+  </div>
+
+  <div class="card bg-base-100 shadow">
+    <div class="card-body">
+      <.draw_timeline draw={@draw} />
+    </div>
+  </div>
+</div>
+
 <%!-- Completed draw: verification-first view --%>
-<div :if={@draw.status == :completed} class="space-y-6">
+<div :if={@draw.status == :completed and not @revealing} class="space-y-6">
   <div class="flex items-center gap-3">
     <span class="badge badge-success badge-lg gap-1">
       Verified by Wallop
@@ -63,7 +97,7 @@
 </div>
 
 <%!-- Open draw (accepting entries) --%>
-<div :if={@draw.status == :open} class="space-y-6">
+<div :if={@draw.status == :open and not @revealing} class="space-y-6">
   <div class="flex items-center gap-3">
     <span class="badge badge-info badge-lg gap-1">
       Draw Open
@@ -130,7 +164,7 @@
 </div>
 
 <%!-- Live draw (locked, awaiting_entropy, pending_entropy) --%>
-<div :if={@draw.status not in [:completed, :failed, :open, :expired]} class="space-y-6">
+<div :if={@draw.status not in [:completed, :failed, :open, :expired] and not @revealing} class="space-y-6">
   <div class="flex items-center gap-3">
     <span class="badge badge-info badge-lg gap-1">
       Draw in Progress
