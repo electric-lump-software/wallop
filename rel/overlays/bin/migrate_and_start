@@ -1,0 +1,8 @@
+#!/bin/sh
+set -eu
+
+echo "Running migrations..."
+/app/bin/wallop eval "WallopCore.Release.migrate()"
+
+echo "Starting application..."
+exec /app/bin/wallop start
