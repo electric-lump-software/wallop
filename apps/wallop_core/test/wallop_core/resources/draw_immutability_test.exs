@@ -45,7 +45,7 @@ defmodule WallopCore.Resources.DrawImmutabilityTest do
       assert_raise Postgrex.Error, ~r/Cannot modify committed entry fields/, fn ->
         SQL.query!(
           WallopCore.Repo,
-          "UPDATE draws SET winner_count = 999 WHERE id = $1",
+          "UPDATE draws SET entry_hash = 'tampered' WHERE id = $1",
           [Ecto.UUID.dump!(draw.id)]
         )
       end

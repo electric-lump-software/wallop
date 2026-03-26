@@ -2,12 +2,14 @@ defmodule WallopCore.Resources.Draw do
   @moduledoc """
   A provably fair random draw.
 
-  Draws follow a five-state lifecycle:
+  Draws follow a seven-state lifecycle:
+  - **open** — draw created, entries may still be added before locking
   - **locked** — entries committed, waiting for seed or entropy declaration
   - **awaiting_entropy** — entropy sources declared, waiting for beacon data
   - **pending_entropy** — all entropy collected, ready for seed computation and execution
   - **completed** — seed applied, winners determined (terminal, immutable)
   - **failed** — entropy collection or execution failed (terminal, immutable)
+  - **expired** — draw was never locked and has been abandoned (terminal, immutable)
   """
   use Ash.Resource,
     otp_app: :wallop_core,
@@ -29,16 +31,12 @@ defmodule WallopCore.Resources.Draw do
     defaults([:read])
 
     create :create do
-      accept([:entries, :winner_count, :metadata, :callback_url])
-
-      validate attribute_does_not_equal(:entries, []) do
-        message("must not be empty")
-      end
+      accept([:winner_count, :metadata, :callback_url])
 
       change(set_attribute(:api_key_id, actor(:id)))
-      change({WallopCore.Resources.Draw.Changes.ValidateEntries, []})
-      change({WallopCore.Resources.Draw.Changes.ComputeEntryHash, []})
-      change({WallopCore.Resources.Draw.Changes.DeclareEntropy, []})
+      change(set_attribute(:status, :open))
+      change({WallopCore.Resources.Draw.Changes.ValidateCallbackUrl, []})
+      change({WallopCore.Resources.Draw.Changes.RecordStageTimestamp, key: "opened_at"})
     end
 
     create :create_manual do
@@ -50,8 +48,42 @@ defmodule WallopCore.Resources.Draw do
       end
 
       change(set_attribute(:api_key_id, actor(:id)))
+      change(set_attribute(:status, :locked))
       change({WallopCore.Resources.Draw.Changes.ValidateEntries, []})
       change({WallopCore.Resources.Draw.Changes.ComputeEntryHash, []})
+    end
+
+    update :add_entries do
+      require_atomic?(false)
+      filter(expr(status == :open))
+
+      argument :entries, {:array, :map} do
+        allow_nil?(false)
+      end
+
+      change({WallopCore.Resources.Draw.Changes.ValidateEntries, []})
+      change({WallopCore.Resources.Draw.Changes.AddEntries, []})
+    end
+
+    update :remove_entry do
+      require_atomic?(false)
+      filter(expr(status == :open))
+
+      argument :entry_id, :string do
+        allow_nil?(false)
+      end
+
+      change({WallopCore.Resources.Draw.Changes.RemoveEntry, []})
+    end
+
+    update :lock do
+      require_atomic?(false)
+      filter(expr(status == :open))
+
+      change({WallopCore.Resources.Draw.Changes.LockDraw, []})
+      change({WallopCore.Resources.Draw.Changes.DeclareEntropy, []})
+      change({WallopCore.Resources.Draw.Changes.RecordStageTimestamp, key: "locked_at"})
+      change({WallopCore.Resources.Draw.Changes.RecordStageTimestamp, key: "entropy_declared_at"})
     end
 
     update :execute do
@@ -98,6 +130,12 @@ defmodule WallopCore.Resources.Draw do
       change({WallopCore.Resources.Draw.Changes.ExecuteWithEntropy, []})
     end
 
+    update :expire do
+      require_atomic?(false)
+      filter(expr(status == :open))
+      change(set_attribute(:status, :expired))
+    end
+
     update :mark_failed do
       require_atomic?(false)
       filter(expr(status in [:pending_entropy, :awaiting_entropy]))
@@ -126,6 +164,21 @@ defmodule WallopCore.Resources.Draw do
       authorize_if(actor_present())
     end
 
+    policy action(:add_entries) do
+      forbid_unless(actor_present())
+      authorize_if(expr(api_key_id == ^actor(:id) and status == :open))
+    end
+
+    policy action(:remove_entry) do
+      forbid_unless(actor_present())
+      authorize_if(expr(api_key_id == ^actor(:id) and status == :open))
+    end
+
+    policy action(:lock) do
+      forbid_unless(actor_present())
+      authorize_if(expr(api_key_id == ^actor(:id) and status == :open))
+    end
+
     policy action(:execute) do
       forbid_unless(actor_present())
       authorize_if(expr(api_key_id == ^actor(:id) and status == :locked))
@@ -134,6 +187,10 @@ defmodule WallopCore.Resources.Draw do
     policy action(:read) do
       forbid_unless(actor_present())
       authorize_if(expr(api_key_id == ^actor(:id)))
+    end
+
+    policy action(:expire) do
+      authorize_if(always())
     end
 
     policy action([:transition_to_pending, :execute_with_entropy, :mark_failed]) do
@@ -145,24 +202,36 @@ defmodule WallopCore.Resources.Draw do
     uuid_primary_key(:id)
 
     attribute :status, :atom do
-      constraints(one_of: [:locked, :awaiting_entropy, :pending_entropy, :completed, :failed])
-      default(:locked)
+      constraints(
+        one_of: [
+          :open,
+          :locked,
+          :awaiting_entropy,
+          :pending_entropy,
+          :completed,
+          :failed,
+          :expired
+        ]
+      )
+
+      default(:open)
       allow_nil?(false)
       public?(true)
     end
 
     attribute :entries, {:array, :map} do
-      allow_nil?(false)
+      allow_nil?(true)
       public?(true)
+      default([])
     end
 
     attribute :entry_hash, :string do
-      allow_nil?(false)
+      allow_nil?(true)
       public?(true)
     end
 
     attribute :entry_canonical, :string do
-      allow_nil?(false)
+      allow_nil?(true)
       public?(true)
     end
 
@@ -266,6 +335,12 @@ defmodule WallopCore.Resources.Draw do
     attribute :failure_reason, :string do
       allow_nil?(true)
       public?(true)
+    end
+
+    attribute :stage_timestamps, :map do
+      allow_nil?(true)
+      public?(true)
+      default(%{})
     end
 
     create_timestamp(:inserted_at)

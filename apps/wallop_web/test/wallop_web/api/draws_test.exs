@@ -26,11 +26,6 @@ defmodule WallopWeb.Api.DrawsTest do
 
   defp draw_payload(attrs \\ %{}) do
     defaults = %{
-      "entries" => [
-        %{"id" => "ticket-47", "weight" => 1},
-        %{"id" => "ticket-48", "weight" => 1},
-        %{"id" => "ticket-49", "weight" => 1}
-      ],
       "winner_count" => 2
     }
 
@@ -43,7 +38,7 @@ defmodule WallopWeb.Api.DrawsTest do
   end
 
   describe "POST /api/v1/draws" do
-    test "creates a draw with valid auth", %{conn: conn} do
+    test "creates an open draw with valid auth", %{conn: conn} do
       {_api_key, raw_key} = create_key_with_raw()
 
       resp =
@@ -54,12 +49,13 @@ defmodule WallopWeb.Api.DrawsTest do
 
       assert %{"data" => data} = resp
       assert data["type"] == "draw"
-      assert data["attributes"]["status"] == "awaiting_entropy"
-      assert is_binary(data["attributes"]["entry_hash"])
+      assert data["attributes"]["status"] == "open"
       assert data["attributes"]["winner_count"] == 2
       assert data["id"]
-      assert is_binary(data["attributes"]["drand_chain"])
-      assert is_integer(data["attributes"]["drand_round"])
+      # Open draws have no entry_hash or entropy until locked
+      assert data["attributes"]["entry_hash"] == nil
+      assert data["attributes"]["drand_chain"] == nil
+      assert data["attributes"]["drand_round"] == nil
     end
 
     test "returns 401 without auth", %{conn: conn} do
@@ -88,6 +84,99 @@ defmodule WallopWeb.Api.DrawsTest do
     end
   end
 
+  describe "PATCH /api/v1/draws/:id/entries" do
+    test "adds entries to an open draw", %{conn: conn} do
+      {_api_key, raw_key} = create_key_with_raw()
+
+      # Create open draw
+      create_resp =
+        conn
+        |> auth_conn(raw_key)
+        |> post("/api/v1/draws", draw_payload())
+        |> json_response(201)
+
+      draw_id = create_resp["data"]["id"]
+
+      # Add entries
+      entries_payload = %{
+        "data" => %{
+          "type" => "draw",
+          "id" => draw_id,
+          "attributes" => %{
+            "entries" => [
+              %{"id" => "a", "weight" => 1},
+              %{"id" => "b", "weight" => 1}
+            ]
+          }
+        }
+      }
+
+      resp =
+        conn
+        |> auth_conn(raw_key)
+        |> patch("/api/v1/draws/#{draw_id}/entries", entries_payload)
+        |> json_response(200)
+
+      assert resp["data"]["attributes"]["status"] == "open"
+      assert length(resp["data"]["attributes"]["entries"]) == 2
+    end
+  end
+
+  describe "PATCH /api/v1/draws/:id/lock" do
+    test "locks an open draw with entries", %{conn: conn} do
+      {_api_key, raw_key} = create_key_with_raw()
+
+      # Create open draw
+      create_resp =
+        conn
+        |> auth_conn(raw_key)
+        |> post("/api/v1/draws", draw_payload())
+        |> json_response(201)
+
+      draw_id = create_resp["data"]["id"]
+
+      # Add entries
+      entries_payload = %{
+        "data" => %{
+          "type" => "draw",
+          "id" => draw_id,
+          "attributes" => %{
+            "entries" => [
+              %{"id" => "a", "weight" => 1},
+              %{"id" => "b", "weight" => 1},
+              %{"id" => "c", "weight" => 1}
+            ]
+          }
+        }
+      }
+
+      conn
+      |> auth_conn(raw_key)
+      |> patch("/api/v1/draws/#{draw_id}/entries", entries_payload)
+      |> json_response(200)
+
+      # Lock the draw
+      lock_payload = %{
+        "data" => %{
+          "type" => "draw",
+          "id" => draw_id,
+          "attributes" => %{}
+        }
+      }
+
+      resp =
+        conn
+        |> auth_conn(raw_key)
+        |> patch("/api/v1/draws/#{draw_id}/lock", lock_payload)
+        |> json_response(200)
+
+      assert resp["data"]["attributes"]["status"] == "awaiting_entropy"
+      assert is_binary(resp["data"]["attributes"]["entry_hash"])
+      assert is_binary(resp["data"]["attributes"]["drand_chain"])
+      assert is_integer(resp["data"]["attributes"]["drand_round"])
+    end
+  end
+
   describe "GET /api/v1/draws" do
     test "returns list of draws for authenticated key", %{conn: conn} do
       {api_key, raw_key} = create_key_with_raw()
@@ -112,15 +201,14 @@ defmodule WallopWeb.Api.DrawsTest do
     end
   end
 
-  describe "API always uses entropy" do
-    test "draws created via API always get awaiting_entropy status", %{conn: conn} do
+  describe "API open draw flow" do
+    test "draws created via API start in open status", %{conn: conn} do
       {_api_key, raw_key} = create_key_with_raw()
 
       payload = %{
         "data" => %{
           "type" => "draw",
           "attributes" => %{
-            "entries" => [%{"id" => "a", "weight" => 1}, %{"id" => "b", "weight" => 1}],
             "winner_count" => 1
           }
         }
@@ -132,8 +220,8 @@ defmodule WallopWeb.Api.DrawsTest do
         |> post("/api/v1/draws", payload)
         |> json_response(201)
 
-      assert resp["data"]["attributes"]["status"] == "awaiting_entropy"
-      assert resp["data"]["attributes"]["drand_round"] != nil
+      assert resp["data"]["attributes"]["status"] == "open"
+      assert resp["data"]["attributes"]["drand_round"] == nil
     end
 
     test "caller-seed execute endpoint is not exposed via API", %{conn: conn} do

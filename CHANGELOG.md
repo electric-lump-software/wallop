@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-03-26
+
 ### Added
 
 - Public proof pages at `/proof/:id` with real-time LiveView updates
@@ -33,14 +35,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - 24-hour failure timeout with automatic transition to failed state
 - Webhook secret on ApiKey (generated alongside API key)
 - Entry structure validation with bounds (max 10k entries, max weight 1000)
+- Open draw state: draws accept entries over time before locking (breaking API change)
+- `POST /draws/:id/entries` — batch add entries to open draw
+- `PATCH /draws/:id/lock` — lock entries and start entropy collection
+- Stage 0 "Entries Open" in proof page timeline with live entry counter
+- Open draw view on proof page
+- Expired draw view on proof page
+- ExpiryWorker: hourly Oban cron job expires open draws after 90 days
+- `stage_timestamps` field records when each stage transition occurred
+- PubSub broadcasts on entry add/remove for real-time proof page updates
 
 ### Changed
 
 - Weather entropy: fetch latest available observation instead of exact declared hour
 - Weather entropy: reduce wait time from next whole hour (~60 min) to 10 minutes
 - Draw schema: new `weather_observation_time` field records actual observation used
-- Draw creation now declares entropy sources by default (status: awaiting_entropy)
-- Immutability trigger restructured for 5 states with transition validation
+- Draw lifecycle: new `open` state replaces one-shot create (breaking API change)
+- Draw creation no longer accepts entries — use add_entries + lock flow
+- New `expired` terminal state for abandoned open draws (90-day timeout)
+- Immutability trigger rewritten: protects `failed`/`expired` states, `winner_count` unconditionally
 - Updated mix task output to show webhook secret
 
 ## [0.1.0] - 2026-03-24

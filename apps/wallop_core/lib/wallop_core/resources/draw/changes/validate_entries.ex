@@ -14,7 +14,11 @@ defmodule WallopCore.Resources.Draw.Changes.ValidateEntries do
 
   @impl true
   def change(changeset, _opts, _context) do
-    case Ash.Changeset.get_attribute(changeset, :entries) do
+    entries =
+      Ash.Changeset.get_argument(changeset, :entries) ||
+        Ash.Changeset.get_attribute(changeset, :entries)
+
+    case entries do
       nil -> changeset
       entries -> validate(changeset, entries)
     end
