@@ -20,6 +20,9 @@ CLAUDE.md
 # Environment variables
 .env
 
+# Scripts
+/scripts/
+
 # Node.js dependencies (daisyUI etc.)
 /apps/wallop_web/assets/node_modules/
 .mcp.json

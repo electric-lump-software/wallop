@@ -43,7 +43,8 @@ defmodule WallopWeb.Components.DrawTimeline do
     status = draw.status
 
     [
-      entries_locked_stage(draw),
+      entries_open_stage(draw, status),
+      entries_locked_stage(draw, status),
       entropy_declared_stage(draw, status),
       fetching_entropy_stage(draw, status),
       computing_seed_stage(draw, status),
@@ -51,19 +52,43 @@ defmodule WallopWeb.Components.DrawTimeline do
     ]
   end
 
-  defp entries_locked_stage(draw) do
+  defp entries_open_stage(draw, status) do
     count = length(draw.entries || [])
-    hash = truncate_hash(draw.entry_hash)
 
-    %{
-      label: "Entries Locked",
-      detail: "#{count} entries committed, hash: #{hash}",
-      state: :done
-    }
+    case status do
+      :open ->
+        %{
+          label: "Entries Open",
+          detail: "#{count} entries",
+          state: :current
+        }
+
+      _ ->
+        %{
+          label: "Entries Open",
+          detail: "#{count} entries (closed)",
+          state: :done
+        }
+    end
+  end
+
+  defp entries_locked_stage(draw, status) do
+    if status == :open do
+      %{label: "Entries Locked", detail: nil, state: :pending}
+    else
+      count = length(draw.entries || [])
+      hash = truncate_hash(draw.entry_hash)
+
+      %{
+        label: "Entries Locked",
+        detail: "#{count} entries committed, hash: #{hash}",
+        state: :done
+      }
+    end
   end
 
   defp entropy_declared_stage(draw, status) do
-    if status == :locked do
+    if status in [:open, :locked] do
       %{label: "Entropy Declared", detail: nil, state: :pending}
     else
       round_text = if draw.drand_round, do: "drand round ##{draw.drand_round}", else: nil
@@ -85,7 +110,7 @@ defmodule WallopWeb.Components.DrawTimeline do
 
   defp fetching_entropy_stage(draw, status) do
     case status do
-      :locked ->
+      s when s in [:open, :locked] ->
         %{label: "Fetching Entropy", detail: nil, state: :pending}
 
       :awaiting_entropy ->

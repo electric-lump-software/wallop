@@ -1380,12 +1380,37 @@
       --badge-fg: var(--color-success-content);
     }
   }
+  .badge-warning {
+    @layer daisyui.l1.l2 {
+      --badge-color: var(--color-warning);
+      --badge-fg: var(--color-warning-content);
+    }
+  }
   .btn-primary {
     @layer daisyui.l1.l2.l3 {
       --btn-color: var(--color-primary);
       --btn-fg: var(--color-primary-content);
     }
   }
+}
+.step-info::after {
+  animation: step-pulse 2s ease-in-out infinite;
+}
+@keyframes step-pulse {
+  0%, 100% {
+    opacity: 1;
+    box-shadow: 0 0 0 0 oklch(var(--in) / 0.4);
+  }
+  50% {
+    opacity: 0.7;
+    box-shadow: 0 0 0 10px oklch(var(--in) / 0);
+  }
+}
+.step::after {
+  transition: background-color 0.6s ease, color 0.6s ease;
+}
+.step::before {
+  transition: background-color 0.6s ease;
 }
 @layer base {
   :where(:root),:root:has(input.theme-controller[value=light]:checked),[data-theme=light] {
