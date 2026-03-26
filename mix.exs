@@ -9,6 +9,12 @@ defmodule Wallop.MixProject do
       listeners: [Phoenix.CodeReloader],
       deps: deps(),
       aliases: aliases(),
+      releases: [
+        wallop: [
+          version: "0.2.0",
+          applications: [wallop_core: :permanent, wallop_web: :permanent]
+        ]
+      ],
       dialyzer: [
         plt_file: {:no_warn, "priv/plts/project.plt"},
         plt_add_apps: [:mix]

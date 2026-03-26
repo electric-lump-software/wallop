@@ -1,0 +1,9 @@
+_build/
+deps/
+.git/
+.env
+.superpowers/
+.claude/
+docs/
+priv/plts/
+apps/wallop_web/assets/node_modules/
