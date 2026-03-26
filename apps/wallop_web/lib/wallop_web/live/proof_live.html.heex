@@ -39,7 +39,7 @@
         </div>
       </div>
 
-      <.entry_check check_result={@check_result} />
+      <.entry_check check_result={@check_result} draw_status={@draw.status} />
 
       <div class="text-xs text-base-content/60">
         <a
@@ -60,6 +60,47 @@
       <.draw_timeline draw={@draw} />
     </div>
   </details>
+</div>
+
+<%!-- Open draw (accepting entries) --%>
+<div :if={@draw.status == :open} class="space-y-6">
+  <div class="flex items-center gap-3">
+    <span class="badge badge-info badge-lg gap-1">
+      Draw Open
+    </span>
+  </div>
+
+  <div class="text-sm text-base-content/60">
+    <div>Draw ID: <span class="font-mono">{@draw.id}</span></div>
+    <div>Drawing {@draw.winner_count} winner(s)</div>
+    <div>{length(@draw.entries || [])} entries so far</div>
+  </div>
+
+  <div class="card bg-base-100 shadow">
+    <div class="card-body">
+      <.draw_timeline draw={@draw} />
+    </div>
+  </div>
+
+  <div class="card bg-base-100 shadow">
+    <div class="card-body">
+      <.entry_check check_result={@check_result} draw_status={@draw.status} />
+    </div>
+  </div>
+</div>
+
+<%!-- Expired draw --%>
+<div :if={@draw.status == :expired} class="space-y-6">
+  <div class="flex items-center gap-3">
+    <span class="badge badge-warning badge-lg gap-1">
+      Draw Expired
+    </span>
+  </div>
+
+  <div class="text-sm text-base-content/60">
+    <div>Draw ID: <span class="font-mono">{@draw.id}</span></div>
+    <div>This draw was not completed.</div>
+  </div>
 </div>
 
 <%!-- Failed draw --%>
@@ -89,7 +130,7 @@
 </div>
 
 <%!-- Live draw (locked, awaiting_entropy, pending_entropy) --%>
-<div :if={@draw.status not in [:completed, :failed]} class="space-y-6">
+<div :if={@draw.status not in [:completed, :failed, :open, :expired]} class="space-y-6">
   <div class="flex items-center gap-3">
     <span class="badge badge-info badge-lg gap-1">
       Draw in Progress

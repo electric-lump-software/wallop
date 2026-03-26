@@ -7,13 +7,12 @@ defmodule WallopCore.Resources.Draw.Changes.DeclareEntropy do
   2. Sets weather_time to 10 minutes from now
   3. Sets weather_station to "middle-wallop" (51.1494, -1.5714)
   4. Sets drand_chain to the quicknet chain hash
-  5. Validates callback_url if provided
-  6. Sets status to :awaiting_entropy
-  7. Schedules an EntropyWorker job for the weather_time
+  5. Sets status to :awaiting_entropy
+  6. Schedules an EntropyWorker job for the weather_time
   """
   use Ash.Resource.Change
 
-  alias WallopCore.Entropy.{CallbackUrl, DrandClient, EntropyWorker}
+  alias WallopCore.Entropy.{DrandClient, EntropyWorker}
 
   # drand quicknet parameters
   @quicknet_genesis 1_692_803_367
@@ -29,25 +28,8 @@ defmodule WallopCore.Resources.Draw.Changes.DeclareEntropy do
 
   defp declare_entropy(changeset) do
     changeset
-    |> validate_callback_url()
     |> set_entropy_fields()
     |> schedule_entropy_worker()
-  end
-
-  defp validate_callback_url(changeset) do
-    case Ash.Changeset.get_attribute(changeset, :callback_url) do
-      nil ->
-        changeset
-
-      url ->
-        case CallbackUrl.validate(url) do
-          :ok ->
-            changeset
-
-          {:error, reason} ->
-            Ash.Changeset.add_error(changeset, field: :callback_url, message: reason)
-        end
-    end
   end
 
   defp set_entropy_fields(changeset) do

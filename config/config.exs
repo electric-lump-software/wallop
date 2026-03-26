@@ -15,7 +15,13 @@ config :wallop_core,
 
 config :wallop_core, Oban,
   repo: WallopCore.Repo,
-  queues: [entropy: 10, webhooks: 5]
+  queues: [entropy: 10, webhooks: 5],
+  plugins: [
+    {Oban.Plugins.Cron,
+     crontab: [
+       {"0 * * * *", WallopCore.Entropy.ExpiryWorker}
+     ]}
+  ]
 
 config :wallop_web, WallopWeb.Endpoint,
   url: [host: "localhost"],

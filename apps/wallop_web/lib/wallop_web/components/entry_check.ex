@@ -6,6 +6,7 @@ defmodule WallopWeb.Components.EntryCheck do
   use WallopWeb, :html
 
   attr(:check_result, :map, default: nil)
+  attr(:draw_status, :atom, default: :completed)
 
   def entry_check(assigns) do
     ~H"""
@@ -28,11 +29,14 @@ defmodule WallopWeb.Components.EntryCheck do
         <div :if={@check_result.found == false} class="alert alert-warning text-sm">
           Entry not found in this draw.
         </div>
-        <div :if={@check_result.found && @check_result.winner} class="alert alert-success text-sm">
+        <div :if={@check_result.found && @draw_status != :completed} class="alert alert-success text-sm">
+          Your entry is in this draw.
+        </div>
+        <div :if={@check_result.found && @draw_status == :completed && @check_result.winner} class="alert alert-success text-sm">
           Your entry won! Position: {@check_result.position}
         </div>
         <div
-          :if={@check_result.found && !@check_result.winner}
+          :if={@check_result.found && @draw_status == :completed && !@check_result.winner}
           class="alert alert-info text-sm"
         >
           Your entry was in this draw but did not win.
