@@ -2,9 +2,10 @@ defmodule WallopCore.Entropy.WeatherClient do
   @moduledoc """
   HTTP client for Met Office Land Observations API.
 
-  Fetches mean sea level pressure from a declared weather station at a
-  declared observation time. The pressure reading is normalized to an
-  integer string using Decimal rounding (half-up).
+  Fetches the latest mean sea level pressure observation from a declared
+  weather station. The entry with the most recent timestamp in the time
+  series is selected. The raw mslp value (integer, in Pascals) is
+  returned as a string.
   """
 
   @base_url "https://data.hub.api.metoffice.gov.uk/sitespecific/v0/point/hourly"
@@ -12,17 +13,18 @@ defmodule WallopCore.Entropy.WeatherClient do
   @receive_timeout 10_000
 
   @doc """
-  Fetch the MSL pressure reading for a location at a specific time.
+  Fetch the latest MSL pressure reading for a location.
 
   `latitude` and `longitude` identify the location.
-  `observation_time` is a DateTime for the target hour.
 
-  Returns `{:ok, %{value: "1013", raw: response_text}}` or `{:error, reason}`.
+  Returns `{:ok, %{value: "102340", observation_time: ~U[...], raw: response_text}}`
+  or `{:error, reason}`.
 
-  The value is normalized: the raw decimal pressure is rounded half-up to the
-  nearest integer and returned as a string.
+  The value is the raw mslp integer from the Met Office API (Pascals),
+  returned as a string. The `observation_time` reflects the timestamp of
+  the most recent entry in the time series.
   """
-  def fetch(latitude, longitude, observation_time) do
+  def fetch(latitude, longitude) do
     api_key = Application.get_env(:wallop_core, :met_office_api_key)
 
     params = [
@@ -39,7 +41,7 @@ defmodule WallopCore.Entropy.WeatherClient do
 
     case Req.get(base_url(), req_options(params: params, headers: headers)) do
       {:ok, %Req.Response{status: 200, body: body}} ->
-        parse_pressure(body, observation_time)
+        parse_latest_pressure(body)
 
       {:ok, %Req.Response{status: status}} ->
         {:error, {:unexpected_status, status}}
@@ -49,47 +51,11 @@ defmodule WallopCore.Entropy.WeatherClient do
     end
   end
 
-  @doc """
-  Normalize a pressure value to an integer string using Decimal half-up rounding.
+  defp pressure_to_string(value) when is_integer(value), do: Integer.to_string(value)
+  defp pressure_to_string(value) when is_float(value), do: value |> round() |> Integer.to_string()
 
-  ## Examples
-
-      iex> WallopCore.Entropy.WeatherClient.normalize_pressure(1013.4)
-      "1013"
-
-      iex> WallopCore.Entropy.WeatherClient.normalize_pressure(1013.5)
-      "1014"
-  """
-  def normalize_pressure(value) when is_float(value) do
-    # Convert float to string first to avoid floating-point precision issues.
-    # Decimal.new/1 with a float can produce unexpected representations.
-    value
-    |> to_string()
-    |> Decimal.new()
-    |> normalize_pressure()
-  end
-
-  def normalize_pressure(value) when is_integer(value) do
-    value
-    |> Integer.to_string()
-  end
-
-  def normalize_pressure(%Decimal{} = value) do
-    value
-    |> Decimal.round(0, :half_up)
-    |> Decimal.to_integer()
-    |> Integer.to_string()
-  end
-
-  def normalize_pressure(value) when is_binary(value) do
-    value
-    |> Decimal.new()
-    |> normalize_pressure()
-  end
-
-  defp parse_pressure(body, target_time) do
+  defp parse_latest_pressure(body) do
     raw = Jason.encode!(body)
-    target_hour = DateTime.truncate(target_time, :second)
 
     # Met Office response structure: features[0].properties.timeSeries[]
     # Each entry has a "time" and "mslp" (mean sea level pressure)
@@ -97,29 +63,48 @@ defmodule WallopCore.Entropy.WeatherClient do
          [feature | _] <- features,
          {:ok, properties} <- Map.fetch(feature, "properties"),
          {:ok, time_series} <- Map.fetch(properties, "timeSeries") do
-      case find_reading_for_hour(time_series, target_hour) do
-        {:ok, pressure} ->
-          {:ok, %{value: normalize_pressure(pressure), raw: raw}}
+      case find_latest_reading(time_series) do
+        {:ok, pressure, observation_time} ->
+          {:ok,
+           %{value: pressure_to_string(pressure), observation_time: observation_time, raw: raw}}
 
         :error ->
-          {:error, :reading_not_found}
+          {:error, :no_readings_available}
       end
     else
       _ -> {:error, :invalid_response}
     end
   end
 
-  defp find_reading_for_hour(time_series, target_hour) do
-    target_str = Calendar.strftime(target_hour, "%Y-%m-%dT%H:00Z")
+  defp find_latest_reading(time_series) do
+    time_series
+    |> Enum.filter(&Map.has_key?(&1, "mslp"))
+    |> Enum.flat_map(&parse_entry_time/1)
+    |> Enum.max_by(fn {dt, _} -> DateTime.to_unix(dt) end, fn -> nil end)
+    |> case do
+      nil -> :error
+      {observation_time, entry} -> {:ok, entry["mslp"], observation_time}
+    end
+  end
 
-    Enum.find_value(time_series, :error, fn entry ->
-      time = Map.get(entry, "time", "")
-      mslp = Map.get(entry, "mslp")
+  defp parse_entry_time(%{"time" => time} = entry) when is_binary(time) do
+    case parse_met_office_time(time) do
+      {:ok, dt} -> [{dt, entry}]
+      _ -> []
+    end
+  end
 
-      if String.starts_with?(time, String.slice(target_str, 0, 13)) and not is_nil(mslp) do
-        {:ok, mslp}
-      end
-    end)
+  defp parse_entry_time(_), do: []
+
+  # Met Office timestamps omit seconds (e.g. "2025-01-15T13:00Z").
+  # Normalise to full ISO 8601 before parsing.
+  defp parse_met_office_time(time_str) do
+    normalised = Regex.replace(~r/T(\d{2}:\d{2})Z$/, time_str, "T\\1:00Z")
+
+    case DateTime.from_iso8601(normalised) do
+      {:ok, dt, _} -> {:ok, dt}
+      _ -> :error
+    end
   end
 
   defp base_url do

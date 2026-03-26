@@ -14,7 +14,7 @@ defmodule WallopCore.Entropy.IntegrationTest do
 
   @drand_randomness "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789"
   @drand_signature "deadbeef" <> String.duplicate("00", 44)
-  @weather_pressure 1013.5
+  @weather_pressure 101_350
 
   setup do
     # Stub drand to return a known randomness value
@@ -116,7 +116,7 @@ defmodule WallopCore.Entropy.IntegrationTest do
       assert completed.seed != nil
       assert completed.seed_json != nil
       assert completed.drand_randomness == @drand_randomness
-      assert completed.weather_value == "1014"
+      assert completed.weather_value == "101350"
       assert completed.executed_at != nil
       assert completed.results != nil
       assert length(completed.results) == 2

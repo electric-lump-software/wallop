@@ -61,7 +61,7 @@ defmodule WallopCore.Entropy.EntropyWorker do
 
     weather_task =
       Task.async(fn ->
-        WeatherClient.fetch(@latitude, @longitude, draw.weather_time)
+        WeatherClient.fetch(@latitude, @longitude)
       end)
 
     drand_result = Task.await(drand_task, 30_000)
@@ -100,7 +100,8 @@ defmodule WallopCore.Entropy.EntropyWorker do
       drand_signature: drand.signature,
       drand_response: drand.response,
       weather_value: weather.value,
-      weather_raw: weather.raw
+      weather_raw: weather.raw,
+      weather_observation_time: weather.observation_time
     })
     |> Ash.update(domain: WallopCore.Domain, authorize?: false)
     |> case do
@@ -110,6 +111,7 @@ defmodule WallopCore.Entropy.EntropyWorker do
         :ok
 
       {:error, reason} ->
+        Logger.warning("EntropyWorker: execution failed for draw #{draw.id}: #{inspect(reason)}")
         {:error, reason}
     end
   end

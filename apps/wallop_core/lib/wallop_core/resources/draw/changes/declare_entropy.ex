@@ -4,7 +4,7 @@ defmodule WallopCore.Resources.Draw.Changes.DeclareEntropy do
 
   This change:
   1. Computes a future drand round (~30 seconds from now)
-  2. Sets weather_time to the next whole hour after now
+  2. Sets weather_time to 10 minutes from now
   3. Sets weather_station to "middle-wallop" (51.1494, -1.5714)
   4. Sets drand_chain to the quicknet chain hash
   5. Validates callback_url if provided
@@ -55,7 +55,7 @@ defmodule WallopCore.Resources.Draw.Changes.DeclareEntropy do
       changeset
     else
       future_round = compute_future_drand_round()
-      weather_time = next_whole_hour()
+      weather_time = ten_minutes_from_now()
 
       changeset
       |> Ash.Changeset.force_change_attribute(:drand_chain, DrandClient.quicknet_chain_hash())
@@ -86,11 +86,9 @@ defmodule WallopCore.Resources.Draw.Changes.DeclareEntropy do
     current_round + @round_buffer
   end
 
-  defp next_whole_hour do
-    now = DateTime.utc_now()
-
-    now
-    |> DateTime.add(3600, :second)
-    |> Map.merge(%{minute: 0, second: 0, microsecond: {0, 6}})
+  defp ten_minutes_from_now do
+    DateTime.utc_now()
+    |> DateTime.add(600, :second)
+    |> DateTime.truncate(:second)
   end
 end

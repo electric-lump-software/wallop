@@ -3,3 +3,28 @@
 @plugin "daisyui" {
   themes: light --default, dark;
 }
+
+/* Timeline: pulse with expanding ring on the current step circle */
+.step-info::after {
+  animation: step-pulse 2s ease-in-out infinite;
+}
+
+@keyframes step-pulse {
+  0%, 100% {
+    opacity: 1;
+    box-shadow: 0 0 0 0 oklch(var(--in) / 0.4);
+  }
+  50% {
+    opacity: 0.7;
+    box-shadow: 0 0 0 10px oklch(var(--in) / 0);
+  }
+}
+
+/* Timeline: smooth transitions between step states */
+.step::after {
+  transition: background-color 0.6s ease, color 0.6s ease;
+}
+
+.step::before {
+  transition: background-color 0.6s ease;
+}

@@ -36,6 +36,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Weather entropy: fetch latest available observation instead of exact declared hour
+- Weather entropy: reduce wait time from next whole hour (~60 min) to 10 minutes
+- Draw schema: new `weather_observation_time` field records actual observation used
 - Draw creation now declares entropy sources by default (status: awaiting_entropy)
 - Immutability trigger restructured for 5 states with transition validation
 - Updated mix task output to show webhook secret
