@@ -17,7 +17,7 @@ defmodule WallopWeb.Components.DrawTimeline do
       <li :for={{stage, idx} <- Enum.with_index(@stages)} class={step_class(stage.state)} data-content={idx} data-reveal-step={idx}>
         <div class="text-left py-2">
           <div class="font-semibold text-sm">{stage.label}</div>
-          <div :if={stage[:countdown_target]} class="text-xs text-base-content/60 mt-1">
+          <div :if={stage[:countdown_target]} class="text-xs text-[#555] mt-1">
             <div>Entropy available in</div>
             <span
               id="entropy-countdown"
@@ -30,7 +30,7 @@ defmodule WallopWeb.Components.DrawTimeline do
               <span data-seconds style="--value:0; --digits:2;" aria-live="polite" aria-label="0">00</span>
             </span>
           </div>
-          <div :if={stage.detail} class="text-xs text-base-content/60 mt-0.5" data-reveal-detail={idx}>
+          <div :if={stage.detail} class="text-xs text-[#555] mt-0.5" data-reveal-detail={idx}>
             {stage.detail}
           </div>
         </div>
@@ -187,10 +187,10 @@ defmodule WallopWeb.Components.DrawTimeline do
     |> Enum.join(", ")
   end
 
-  defp step_class(:done), do: "step step-primary"
-  defp step_class(:current), do: "step step-primary step-current"
-  defp step_class(:failed), do: "step step-error"
-  defp step_class(:pending), do: "step step-neutral"
+  defp step_class(:done), do: "step step-done"
+  defp step_class(:current), do: "step step-done step-current"
+  defp step_class(:failed), do: "step step-failed"
+  defp step_class(:pending), do: "step"
 
   defp truncate_hash(nil), do: "..."
   defp truncate_hash(hash) when byte_size(hash) > 12, do: String.slice(hash, 0, 12) <> "..."
