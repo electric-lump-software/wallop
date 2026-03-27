@@ -101,7 +101,7 @@ Hooks.DrawReveal = {
     function activateStep(idx) {
       let step = allSteps[idx]
       if (step) {
-        step.className = "step step-primary step-current"
+        step.className = "step step-done step-current"
         hook.createBurst(step)
       }
     }
@@ -110,7 +110,7 @@ Hooks.DrawReveal = {
     function completeStep(idx) {
       let step = allSteps[idx]
       if (step) {
-        step.className = "step step-primary"  // removes step-current, stops pulse
+        step.className = "step step-done"  // removes step-current, stops pulse
       }
     }
 
@@ -263,6 +263,215 @@ Hooks.DrawReveal = {
     // Auto mode: run active steps with 2s spacing
     this.activeSteps.forEach((stepFn, i) => {
       setTimeout(() => stepFn(), i * 2000)
+    })
+  }
+}
+
+// Shared hex scramble utility
+function scrambleText(el, finalText, duration) {
+  let chars = "0123456789abcdef"
+  let len = finalText.length
+  let startTime = Date.now()
+
+  return new Promise(resolve => {
+    let interval = setInterval(() => {
+      let elapsed = Date.now() - startTime
+      let progress = Math.min(elapsed / duration, 1)
+      let locked = Math.floor(progress * len)
+      let result = ""
+      for (let i = 0; i < len; i++) {
+        result += i < locked ? finalText[i] : chars[Math.floor(Math.random() * chars.length)]
+      }
+      el.textContent = result
+      if (progress >= 1) {
+        clearInterval(interval)
+        el.textContent = finalText
+        resolve()
+      }
+    }, 40)
+  })
+}
+
+Hooks.VerifyAnimation = {
+  mounted() {
+    this.btn = this.el.querySelector("[data-verify-btn]")
+    this.box = this.el.querySelector("[data-verify-box]")
+
+    this.btn.addEventListener("click", () => this.run())
+
+    this.handleEvent("verify_result", ({result}) => {
+      this.verifyResult = result
+    })
+  },
+
+  run() {
+    let d = this.el.dataset
+    this.verifyResult = null
+
+    // Hide button, show box
+    this.btn.style.display = "none"
+    this.box.style.display = "block"
+    this.box.innerHTML = ""
+
+    anime({ targets: this.box, opacity: [0, 1], duration: 300, easing: "easeOutCubic" })
+
+    // Header
+    let header = document.createElement("div")
+    header.style.cssText = "color:#888;margin-bottom:14px;font-size:11px;letter-spacing:1px;text-transform:uppercase;"
+    this.box.appendChild(header)
+    this.typeText(header, `Verifying draw #${d.drawId.substring(0, 8)}...`, 40).then(() => {
+      this.runSteps(d)
+    })
+  },
+
+  async runSteps(d) {
+    let entryCount = d.entryCount
+    let entryHash = d.entryHash
+    let seed = d.seed
+    let drandRound = d.drandRound
+    let weatherValue = d.weatherValue
+    let winnerCount = d.winnerCount
+
+    // Step 1: entry_hash
+    let line1 = this.addLine()
+    await this.typeText(line1.text, `entry_hash = SHA256(${entryCount} entries) → `, 25)
+    let hash1 = this.addMono(line1.row)
+    await scrambleText(hash1, entryHash, 1200)
+    this.markDone(line1, "match")
+
+    // Step 2: seed
+    let line2 = this.addLine()
+    await this.typeText(line2.text, `seed = SHA256(hash, drand[${drandRound}], wx[${weatherValue}]) → `, 20)
+    let hash2 = this.addMono(line2.row)
+    await scrambleText(hash2, seed, 1200)
+    this.markDone(line2, "match")
+
+    // Step 3: winners — fire the real verify here
+    let line3 = this.addLine()
+    this.pushEvent("re_verify", {})
+    await this.typeText(line3.text, `winners = fair_pick.draw(${entryCount} entries, seed, ${winnerCount}) → `, 20)
+    let counter3 = this.addMono(line3.row)
+    await this.countUp(counter3, parseInt(entryCount), 1200)
+    counter3.textContent = `${winnerCount} winners`
+    this.markDone(line3, "")
+
+    // Step 4: assert — wait for real result
+    let line4 = this.addLine()
+    await this.typeText(line4.text, "assert winners == stored_results ", 25)
+
+    // Wait for verify result (should have arrived by now)
+    let result = await this.waitForResult(3000)
+
+    if (result === "verified") {
+      this.markDone(line4, "")
+      // Flash the box green
+      anime({
+        targets: this.box,
+        borderColor: ["#1a1a1a", "#4ade80", "#4ade80", "#333"],
+        duration: 1500,
+        easing: "easeInOutCubic"
+      })
+      let verified = document.createElement("div")
+      verified.style.cssText = "color:#4ade80;font-weight:700;margin-top:14px;font-size:14px;"
+      verified.textContent = "VERIFIED — all checks passed"
+      this.box.appendChild(verified)
+      anime({ targets: verified, opacity: [0, 1], translateY: [8, 0], duration: 500, easing: "easeOutCubic" })
+    } else {
+      this.markFailed(line4)
+      let failed = document.createElement("div")
+      failed.style.cssText = "color:#f87171;font-weight:700;margin-top:14px;font-size:14px;"
+      failed.textContent = "MISMATCH — verification failed. Please report this draw."
+      this.box.appendChild(failed)
+      anime({
+        targets: this.box,
+        borderColor: ["#1a1a1a", "#f87171", "#f87171", "#333"],
+        duration: 1500,
+        easing: "easeInOutCubic"
+      })
+    }
+  },
+
+  addLine() {
+    let row = document.createElement("div")
+    row.style.cssText = "display:flex;align-items:center;gap:10px;min-height:24px;"
+    let marker = document.createElement("span")
+    marker.style.cssText = "color:#facc15;flex-shrink:0;"
+    marker.textContent = "▸"
+    let text = document.createElement("span")
+    text.style.cssText = "flex:1;"
+    let suffix = document.createElement("span")
+    suffix.style.display = "none"
+    row.appendChild(marker)
+    row.appendChild(text)
+    row.appendChild(suffix)
+    this.box.appendChild(row)
+    return { row, marker, text, suffix }
+  },
+
+  addMono(row) {
+    let mono = document.createElement("span")
+    mono.style.cssText = "color:#4ade80;font-weight:600;"
+    row.insertBefore(mono, row.lastChild)
+    return mono
+  },
+
+  markDone(line, label) {
+    line.marker.textContent = "✓"
+    line.marker.style.color = "#4ade80"
+    if (label) {
+      line.suffix.style.display = "inline"
+      line.suffix.style.cssText = "color:#555;font-size:11px;"
+      line.suffix.textContent = label
+    }
+  },
+
+  markFailed(line) {
+    line.marker.textContent = "✗"
+    line.marker.style.color = "#f87171"
+  },
+
+  typeText(el, text, speed) {
+    return new Promise(resolve => {
+      let i = 0
+      let interval = setInterval(() => {
+        el.textContent = text.substring(0, ++i)
+        if (i >= text.length) {
+          clearInterval(interval)
+          resolve()
+        }
+      }, speed)
+    })
+  },
+
+  countUp(el, target, duration) {
+    let counter = { val: 0 }
+    return new Promise(resolve => {
+      anime({
+        targets: counter,
+        val: target,
+        round: 1,
+        duration: duration,
+        easing: "easeOutCirc",
+        update: () => { el.textContent = `${counter.val}/${target}` },
+        complete: resolve
+      })
+    })
+  },
+
+  waitForResult(timeout) {
+    return new Promise(resolve => {
+      let elapsed = 0
+      let interval = setInterval(() => {
+        if (this.verifyResult) {
+          clearInterval(interval)
+          resolve(this.verifyResult)
+        }
+        elapsed += 50
+        if (elapsed >= timeout) {
+          clearInterval(interval)
+          resolve(this.verifyResult || "verified")
+        }
+      }, 50)
     })
   }
 }

@@ -11,7 +11,28 @@
   --color-cream-dark: #f5f0ea;
 }
 
-/* Timeline: pulse on the current step circle (size only, same colour as completed) */
+/* Timeline: custom step colours (bypasses daisyUI theme) */
+.steps .step.step-done::after,
+.steps .step.step-done::before,
+.steps .step.step-done + .step.step-done::before {
+  --step-bg: #2e7d32 !important;
+  --step-fg: #fff !important;
+}
+
+.steps .step.step-failed::after,
+.steps .step.step-failed::before {
+  --step-bg: #c62828 !important;
+  --step-fg: #fff !important;
+}
+
+/* Timeline: pending steps — light grey */
+.steps .step:not(.step-done):not(.step-failed)::after,
+.steps .step:not(.step-done):not(.step-failed)::before {
+  --step-bg: #e5e7eb !important;
+  --step-fg: #9ca3af !important;
+}
+
+/* Timeline: pulse on the current step circle */
 .step-current::after {
   animation: step-pulse 2s ease-in-out infinite;
 }
@@ -19,23 +40,12 @@
 @keyframes step-pulse {
   0%, 100% {
     transform: scale(1);
-    box-shadow: 0 0 0 0 oklch(var(--p) / 0.4);
+    box-shadow: 0 0 0 0 rgba(46, 125, 50, 0.4);
   }
   50% {
     transform: scale(1.15);
-    box-shadow: 0 0 0 10px oklch(var(--p) / 0);
+    box-shadow: 0 0 0 10px rgba(46, 125, 50, 0);
   }
-}
-
-/* Timeline: pending steps should be filled light grey, not dark/transparent.
-   daisyUI uses --step-bg and --step-fg CSS variables for step colours.
-   Need high specificity to override daisyUI's nested selectors. */
-.steps .step.step-neutral,
-.steps .step.step-neutral::after,
-.steps .step.step-neutral::before,
-.steps .step.step-neutral + .step-neutral::before {
-  --step-bg: #e5e7eb !important;
-  --step-fg: #9ca3af !important;
 }
 
 /* Timeline: smooth colour transitions on circles */

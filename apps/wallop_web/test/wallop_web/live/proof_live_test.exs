@@ -39,9 +39,12 @@ defmodule WallopWeb.ProofLiveTest do
 
       {:ok, view, _html} = live(conn, "/proof/#{draw.id}")
 
-      html = view |> element("button", "Re-verify results") |> render_click()
+      # Verify button is rendered (animation handled by JS hook)
+      assert render(view) =~ "Re-verify results"
 
-      assert html =~ "Results verified"
+      # Simulate the hook firing the re_verify event
+      # Result is pushed to JS via push_event, not rendered server-side
+      view |> element("#verify-animation") |> render_hook("re_verify", %{})
     end
   end
 

@@ -15,13 +15,13 @@ defmodule WallopWeb.Components.ProofChain do
       <h3 class="text-lg font-bold">How to verify</h3>
 
       <%!-- Step 1: Entry Hash --%>
-      <div class="card bg-base-200">
-        <div class="card-body p-4">
+      <div class="bg-cream-dark border border-cream-border rounded-xl">
+        <div class="p-4">
           <div class="flex items-start gap-3">
-            <span class="badge badge-neutral font-mono">1</span>
+            <span class="inline-flex items-center justify-center w-6 h-6 bg-[#1a1a1a] text-white text-xs font-mono rounded-full">1</span>
             <div>
               <div class="font-semibold text-sm">Entry Hash</div>
-              <div class="text-xs text-base-content/60 mt-1">
+              <div class="text-xs text-[#555] mt-1">
                 SHA-256 of the canonical entry list, computed before the draw.
               </div>
               <code class="text-xs font-mono mt-1 block break-all">
@@ -33,19 +33,19 @@ defmodule WallopWeb.Components.ProofChain do
       </div>
 
       <%!-- Step 2: Entropy Sources --%>
-      <div class="card bg-base-200">
-        <div class="card-body p-4">
+      <div class="bg-cream-dark border border-cream-border rounded-xl">
+        <div class="p-4">
           <div class="flex items-start gap-3">
-            <span class="badge badge-neutral font-mono">2</span>
+            <span class="inline-flex items-center justify-center w-6 h-6 bg-[#1a1a1a] text-white text-xs font-mono rounded-full">2</span>
             <div>
               <div class="font-semibold text-sm">Entropy Sources</div>
               <div :if={@draw.drand_round} class="mt-2">
-                <span class="text-xs text-base-content/60">drand round: </span>
+                <span class="text-xs text-[#555]">drand round: </span>
                 <a
                   href={drand_url(@draw.drand_chain, @draw.drand_round)}
                   target="_blank"
                   rel="noopener"
-                  class="link link-primary text-xs"
+                  class="text-[#555] underline hover:text-[#1a1a1a] text-xs"
                 >
                   #{@draw.drand_round}
                 </a>
@@ -54,12 +54,12 @@ defmodule WallopWeb.Components.ProofChain do
                 </div>
               </div>
               <div :if={@draw.weather_value} class="mt-2">
-                <span class="text-xs text-base-content/60">Weather value: </span>
+                <span class="text-xs text-[#555]">Weather value: </span>
                 <span class="text-xs font-mono">{@draw.weather_value}</span>
-                <span :if={@draw.weather_station} class="text-xs text-base-content/60">
+                <span :if={@draw.weather_station} class="text-xs text-[#555]">
                   (station: {@draw.weather_station})
                 </span>
-                <div :if={@draw.weather_observation_time} class="text-xs text-base-content/60 mt-0.5">
+                <div :if={@draw.weather_observation_time} class="text-xs text-[#555] mt-0.5">
                   Observation from {Calendar.strftime(@draw.weather_observation_time, "%H:%M UTC %d %b %Y")}
                 </div>
               </div>
@@ -69,13 +69,13 @@ defmodule WallopWeb.Components.ProofChain do
       </div>
 
       <%!-- Step 3: Seed Computation --%>
-      <div class="card bg-base-200">
-        <div class="card-body p-4">
+      <div class="bg-cream-dark border border-cream-border rounded-xl">
+        <div class="p-4">
           <div class="flex items-start gap-3">
-            <span class="badge badge-neutral font-mono">3</span>
+            <span class="inline-flex items-center justify-center w-6 h-6 bg-[#1a1a1a] text-white text-xs font-mono rounded-full">3</span>
             <div>
               <div class="font-semibold text-sm">Seed Computation</div>
-              <div class="text-xs text-base-content/60 mt-1">
+              <div class="text-xs text-[#555] mt-1">
                 seed = SHA-256(JCS(entry_hash, drand_randomness, weather_value))
               </div>
               <code class="text-xs font-mono mt-1 block break-all">
@@ -87,19 +87,19 @@ defmodule WallopWeb.Components.ProofChain do
       </div>
 
       <%!-- Step 4: Algorithm --%>
-      <div class="card bg-base-200">
-        <div class="card-body p-4">
+      <div class="bg-cream-dark border border-cream-border rounded-xl">
+        <div class="p-4">
           <div class="flex items-start gap-3">
-            <span class="badge badge-neutral font-mono">4</span>
+            <span class="inline-flex items-center justify-center w-6 h-6 bg-[#1a1a1a] text-white text-xs font-mono rounded-full">4</span>
             <div>
               <div class="font-semibold text-sm">Algorithm</div>
-              <div class="text-xs text-base-content/60 mt-1">
+              <div class="text-xs text-[#555] mt-1">
                 Deterministic Fisher-Yates shuffle via
                 <a
                   href="https://github.com/electric-lump-software/fair_pick"
                   target="_blank"
                   rel="noopener"
-                  class="link link-primary"
+                  class="text-[#555] underline hover:text-[#1a1a1a]"
                 >
                   fair_pick
                 </a>
