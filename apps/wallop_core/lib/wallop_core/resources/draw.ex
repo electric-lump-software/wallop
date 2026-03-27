@@ -226,9 +226,14 @@ defmodule WallopCore.Resources.Draw do
 
     attribute :entries, {:array, :map} do
       description(
-        "List of entries in the draw. Each entry must have an `id` field (opaque string — " <>
-          "do not use PII such as email addresses) and optionally a `weight` integer for " <>
-          "weighted draws. Entries may only be modified while status is `open`."
+        "List of entries in the draw. Each entry must have an `id` field and optionally a " <>
+          "`weight` integer for weighted draws. Entries may only be modified while status is `open`.\n\n" <>
+          "**Important — do not submit PII as entry IDs.** The entry list is hashed into a " <>
+          "permanent, public proof record that cannot be deleted. If you use email addresses, " <>
+          "names, or other personal data as IDs, you will be unable to honour a GDPR removal " <>
+          "request without breaking the proof. Use opaque identifiers instead (e.g. a UUID or " <>
+          "numeric ID from your own system) and keep the mapping from ID to person in your " <>
+          "own database, where it can be deleted independently."
       )
 
       allow_nil?(true)
