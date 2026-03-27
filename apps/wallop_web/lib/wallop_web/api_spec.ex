@@ -37,7 +37,8 @@ defmodule WallopWeb.ApiSpec do
     bearer_scheme = %OpenApiSpex.SecurityScheme{
       type: "http",
       scheme: "bearer",
-      description: "API key issued by Wallop!. Pass as a Bearer token in the Authorization header."
+      description:
+        "API key issued by Wallop!. Pass as a Bearer token in the Authorization header."
     }
 
     spec
