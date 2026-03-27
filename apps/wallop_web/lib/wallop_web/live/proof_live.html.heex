@@ -11,22 +11,22 @@
   <div class="flex items-center gap-3">
     <span
       :if={@reveal_to == 5}
-      class="badge badge-info badge-lg gap-1"
+      class="inline-flex items-center gap-1.5 bg-blue-100 text-blue-800 text-xs font-semibold px-3 py-1 rounded-full"
       data-reveal-badge
     >
       Verifying...
     </span>
-    <span :if={@reveal_to == 3} class="badge badge-info badge-lg gap-1">
+    <span :if={@reveal_to == 3} class="inline-flex items-center gap-1.5 bg-blue-100 text-blue-800 text-xs font-semibold px-3 py-1 rounded-full">
       Locking Draw...
     </span>
   </div>
 
-  <div class="text-sm text-base-content/60">
+  <div class="text-sm text-[#555]">
     <div>Draw ID: <span class="font-mono">{@draw.id}</span></div>
   </div>
 
-  <div class="card bg-base-100 shadow">
-    <div class="card-body">
+  <div class="bg-white border border-cream-border rounded-xl">
+    <div class="p-5">
       <.draw_timeline draw={@draw} />
     </div>
   </div>
@@ -35,52 +35,61 @@
 <%!-- Completed draw: verification-first view --%>
 <div :if={@draw.status == :completed and not @revealing} class="space-y-6">
   <div class="flex items-center gap-3">
-    <span class="badge badge-success badge-lg gap-1">
-      Verified by Wallop
+    <span class="inline-flex items-center gap-1.5 bg-green-100 text-green-800 text-xs font-semibold px-3 py-1 rounded-full">
+      ✦ Verified by Wallop
     </span>
   </div>
 
-  <div class="text-sm text-base-content/60">
+  <div class="text-sm text-[#555]">
     <div>Draw ID: <span class="font-mono">{@draw.id}</span></div>
     <div :if={@draw.executed_at}>
       Completed: {Calendar.strftime(@draw.executed_at, "%Y-%m-%d %H:%M:%S UTC")}
     </div>
   </div>
 
-  <div class="card bg-base-100 shadow">
-    <div class="card-body">
+  <div class="bg-white border border-cream-border rounded-xl">
+    <div class="p-5">
       <.winner_list results={@draw.results || []} />
     </div>
   </div>
 
-  <div class="card bg-base-100 shadow">
-    <div class="card-body">
+  <div class="bg-white border border-cream-border rounded-xl">
+    <div class="p-5">
       <.proof_chain draw={@draw} />
     </div>
   </div>
 
-  <div class="card bg-base-100 shadow">
-    <div class="card-body space-y-4">
-      <div>
-        <button phx-click="re_verify" class="btn btn-outline btn-primary btn-sm">
+  <div class="bg-white border border-cream-border rounded-xl">
+    <div class="p-5 space-y-4">
+      <div
+        id="verify-animation"
+        phx-hook="VerifyAnimation"
+        data-draw-id={@draw.id}
+        data-entry-count={length(@draw.entries || [])}
+        data-entry-hash={@draw.entry_hash && String.slice(@draw.entry_hash, 0, 8)}
+        data-seed={@draw.seed && String.slice(@draw.seed, 0, 8)}
+        data-drand-round={@draw.drand_round}
+        data-weather-value={@draw.weather_value}
+        data-winner-count={length(@draw.results || [])}
+      >
+        <button data-verify-btn class="btn btn-neutral btn-sm rounded-lg">
           Re-verify results
         </button>
-        <div :if={@verify_result == {:ok, :verified}} class="alert alert-success text-sm mt-2">
-          Results verified — algorithm output matches stored results.
-        </div>
-        <div :if={@verify_result == {:error, :mismatch}} class="alert alert-error text-sm mt-2">
-          Verification failed — please report this draw ID.
+        <div
+          data-verify-box
+          style="display:none;background:#1a1a1a;color:#e4e4e4;padding:20px 24px;border-radius:12px;font-family:'SF Mono',Monaco,Consolas,monospace;font-size:13px;line-height:2.2;border:2px solid #1a1a1a;margin-top:8px;"
+        >
         </div>
       </div>
 
       <.entry_check check_result={@check_result} draw_status={@draw.status} />
 
-      <div class="text-xs text-base-content/60">
+      <div class="text-xs text-[#555]">
         <a
           href="https://github.com/electric-lump-software/fair_pick"
           target="_blank"
           rel="noopener"
-          class="link link-primary"
+          class="text-[#555] underline hover:text-[#1a1a1a]"
         >
           Verify locally with fair_pick
         </a>
@@ -88,9 +97,9 @@
     </div>
   </div>
 
-  <details class="collapse collapse-arrow bg-base-100 shadow">
-    <summary class="collapse-title text-sm font-semibold">View draw timeline</summary>
-    <div class="collapse-content">
+  <details class="bg-white border border-cream-border rounded-xl">
+    <summary class="cursor-pointer p-5 text-sm font-semibold">View draw timeline</summary>
+    <div class="px-5 pb-5">
       <.draw_timeline draw={@draw} />
     </div>
   </details>
@@ -99,25 +108,25 @@
 <%!-- Open draw (accepting entries) --%>
 <div :if={@draw.status == :open and not @revealing} class="space-y-6">
   <div class="flex items-center gap-3">
-    <span class="badge badge-info badge-lg gap-1">
+    <span class="inline-flex items-center gap-1.5 bg-blue-100 text-blue-800 text-xs font-semibold px-3 py-1 rounded-full">
       Draw Open
     </span>
   </div>
 
-  <div class="text-sm text-base-content/60">
+  <div class="text-sm text-[#555]">
     <div>Draw ID: <span class="font-mono">{@draw.id}</span></div>
     <div>Drawing {@draw.winner_count} winner(s)</div>
     <div>{length(@draw.entries || [])} entries so far</div>
   </div>
 
-  <div class="card bg-base-100 shadow">
-    <div class="card-body">
+  <div class="bg-white border border-cream-border rounded-xl">
+    <div class="p-5">
       <.draw_timeline draw={@draw} />
     </div>
   </div>
 
-  <div class="card bg-base-100 shadow">
-    <div class="card-body">
+  <div class="bg-white border border-cream-border rounded-xl">
+    <div class="p-5">
       <.entry_check check_result={@check_result} draw_status={@draw.status} />
     </div>
   </div>
@@ -126,12 +135,12 @@
 <%!-- Expired draw --%>
 <div :if={@draw.status == :expired} class="space-y-6">
   <div class="flex items-center gap-3">
-    <span class="badge badge-warning badge-lg gap-1">
+    <span class="inline-flex items-center gap-1.5 bg-yellow-100 text-yellow-800 text-xs font-semibold px-3 py-1 rounded-full">
       Draw Expired
     </span>
   </div>
 
-  <div class="text-sm text-base-content/60">
+  <div class="text-sm text-[#555]">
     <div>Draw ID: <span class="font-mono">{@draw.id}</span></div>
     <div>This draw was not completed.</div>
   </div>
@@ -140,24 +149,24 @@
 <%!-- Failed draw --%>
 <div :if={@draw.status == :failed} class="space-y-6">
   <div class="flex items-center gap-3">
-    <span class="badge badge-error badge-lg gap-1">
+    <span class="inline-flex items-center gap-1.5 bg-red-100 text-red-800 text-xs font-semibold px-3 py-1 rounded-full">
       Draw Failed
     </span>
   </div>
 
-  <div class="text-sm text-base-content/60">
+  <div class="text-sm text-[#555]">
     <div>Draw ID: <span class="font-mono">{@draw.id}</span></div>
     <div :if={@draw.failed_at}>
       Failed: {Calendar.strftime(@draw.failed_at, "%Y-%m-%d %H:%M:%S UTC")}
     </div>
   </div>
 
-  <div :if={@draw.failure_reason} class="alert alert-error text-sm">
+  <div :if={@draw.failure_reason} class="bg-red-50 border border-red-200 text-red-800 rounded-lg px-4 py-3 text-sm">
     {@draw.failure_reason}
   </div>
 
-  <div class="card bg-base-100 shadow">
-    <div class="card-body">
+  <div class="bg-white border border-cream-border rounded-xl">
+    <div class="p-5">
       <.draw_timeline draw={@draw} />
     </div>
   </div>
@@ -166,17 +175,17 @@
 <%!-- Live draw (locked, awaiting_entropy, pending_entropy) --%>
 <div :if={@draw.status not in [:completed, :failed, :open, :expired] and not @revealing} class="space-y-6">
   <div class="flex items-center gap-3">
-    <span class="badge badge-info badge-lg gap-1">
+    <span class="inline-flex items-center gap-1.5 bg-blue-100 text-blue-800 text-xs font-semibold px-3 py-1 rounded-full">
       Draw in Progress
     </span>
   </div>
 
-  <div class="text-sm text-base-content/60">
+  <div class="text-sm text-[#555]">
     <div>Draw ID: <span class="font-mono">{@draw.id}</span></div>
   </div>
 
-  <div class="card bg-base-100 shadow">
-    <div class="card-body">
+  <div class="bg-white border border-cream-border rounded-xl">
+    <div class="p-5">
       <.draw_timeline draw={@draw} />
     </div>
   </div>

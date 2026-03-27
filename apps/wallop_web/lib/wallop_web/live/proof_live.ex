@@ -71,7 +71,14 @@ defmodule WallopWeb.ProofLive do
 
   def handle_event("re_verify", _params, socket) do
     result = Proof.verify(socket.assigns.draw)
-    {:noreply, assign(socket, :verify_result, result)}
+
+    status =
+      case result do
+        {:ok, :verified} -> "verified"
+        {:error, :mismatch} -> "mismatch"
+      end
+
+    {:noreply, push_event(socket, "verify_result", %{result: status})}
   end
 
   def handle_event("reveal_complete", _params, socket) do
