@@ -31,7 +31,7 @@ defmodule WallopCore.MixProject do
       {:ash_json_api, "~> 1.0"},
       {:ash_postgres, "~> 2.0"},
       {:bcrypt_elixir, "~> 3.0"},
-      {:fair_pick, git: "https://github.com/electric-lump-software/fair_pick.git", tag: "v0.1.0"},
+      {:fair_pick, "~> 0.2"},
       {:jcs, "~> 0.2.0"},
       {:jason, "~> 1.4"},
       {:oban, "~> 2.18"},

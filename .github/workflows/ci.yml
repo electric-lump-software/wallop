@@ -33,12 +33,6 @@ jobs:
         with:
           path: wallop
 
-      - name: Checkout fair_pick
-        uses: actions/checkout@v4
-        with:
-          repository: electric-lump-software/fair_pick
-          path: fair_pick
-
       - uses: erlef/setup-beam@v1
         id: beam
         with:
