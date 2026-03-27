@@ -101,3 +101,8 @@ jobs:
 
       - name: Run tests
         run: mix test
+
+      - name: Check OpenAPI spec is up to date
+        run: |
+          mix wallop.gen.openapi
+          git diff --exit-code priv/openapi.json || (echo "OpenAPI spec is out of date. Run 'mix wallop.gen.openapi' and commit the result." && exit 1)
