@@ -22,6 +22,19 @@ defmodule WallopWeb.ApiSpecController do
 
   @doc false
   def modify_spec(spec, _conn, _opts) do
-    put_in(spec.info.description, @description)
+    bearer_scheme = %OpenApiSpex.SecurityScheme{
+      type: "http",
+      scheme: "bearer",
+      description:
+        "API key issued by Wallop!. Pass as a Bearer token in the Authorization header."
+    }
+
+    spec
+    |> put_in([Access.key(:info), Access.key(:description)], @description)
+    |> put_in(
+      [Access.key(:components), Access.key(:security_schemes)],
+      %{"bearerAuth" => bearer_scheme}
+    )
+    |> Map.put(:security, [%{"bearerAuth" => []}])
   end
 end
