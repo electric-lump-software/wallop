@@ -42,6 +42,7 @@ jobs:
             exit 1
           fi
 
+
       - uses: erlef/setup-beam@v1
         id: beam
         with:
