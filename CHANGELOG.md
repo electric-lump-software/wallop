@@ -7,8 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-03-27
+
 ### Added
 
+- Optional `name` field on draws (max 255 chars). May be set at creation or updated while the draw is `open`; locked once the draw is locked.
+- OpenAPI spec served at `GET /api/open_api` (JSON) and Redoc docs UI at `GET /api/docs`
+- Static `priv/openapi.json` committed to the repo; CI verifies it stays in sync via `mix wallop.gen.openapi`
+- `mix wallop.gen.openapi` task to regenerate the spec
+- Attribute descriptions and GDPR/PII warning in the OpenAPI spec
+- Bearer auth security scheme in the OpenAPI spec
 - Staged reveal animation on proof page when draw completes (~10 second sequence)
 - Dev-only reveal demo page at `/dev/reveal-demo` for visual testing
 
