@@ -34,6 +34,41 @@ defmodule WallopCore.Resources.DrawOpenTest do
       assert draw.stage_timestamps["opened_at"] != nil
     end
 
+    test "accepts a name" do
+      api_key = create_api_key()
+
+      draw =
+        WallopCore.Resources.Draw
+        |> Ash.Changeset.for_create(:create, %{winner_count: 1, name: "Spring Raffle"},
+          actor: api_key
+        )
+        |> Ash.create!()
+
+      assert draw.name == "Spring Raffle"
+    end
+
+    test "name defaults to nil" do
+      api_key = create_api_key()
+
+      draw =
+        WallopCore.Resources.Draw
+        |> Ash.Changeset.for_create(:create, %{winner_count: 1}, actor: api_key)
+        |> Ash.create!()
+
+      assert draw.name == nil
+    end
+
+    test "rejects name longer than 255 characters" do
+      api_key = create_api_key()
+      long_name = String.duplicate("a", 256)
+
+      assert_raise Ash.Error.Invalid, fn ->
+        WallopCore.Resources.Draw
+        |> Ash.Changeset.for_create(:create, %{winner_count: 1, name: long_name}, actor: api_key)
+        |> Ash.create!()
+      end
+    end
+
     test "accepts metadata and callback_url" do
       api_key = create_api_key()
 
@@ -250,6 +285,37 @@ defmodule WallopCore.Resources.DrawOpenTest do
       assert_raise Ash.Error.Forbidden, fn ->
         draw
         |> Ash.Changeset.for_update(:remove_entry, %{entry_id: "ticket-47"}, actor: api_key)
+        |> Ash.update!()
+      end
+    end
+  end
+
+  describe "update_name" do
+    test "can rename an open draw" do
+      api_key = create_api_key()
+
+      draw =
+        WallopCore.Resources.Draw
+        |> Ash.Changeset.for_create(:create, %{winner_count: 1, name: "Old Name"}, actor: api_key)
+        |> Ash.create!()
+
+      updated =
+        draw
+        |> Ash.Changeset.for_update(:update_name, %{name: "New Name"}, actor: api_key)
+        |> Ash.update!()
+
+      assert updated.name == "New Name"
+    end
+
+    test "cannot rename after locking" do
+      api_key = create_api_key()
+      draw = create_draw(api_key, %{entropy: true})
+
+      assert draw.status == :awaiting_entropy
+
+      assert_raise Ash.Error.Forbidden, fn ->
+        draw
+        |> Ash.Changeset.for_update(:update_name, %{name: "Too Late"}, actor: api_key)
         |> Ash.update!()
       end
     end

@@ -31,7 +31,7 @@ defmodule WallopCore.Resources.Draw do
     defaults([:read])
 
     create :create do
-      accept([:winner_count, :metadata, :callback_url])
+      accept([:name, :winner_count, :metadata, :callback_url])
 
       change(set_attribute(:api_key_id, actor(:id)))
       change(set_attribute(:status, :open))
@@ -41,7 +41,7 @@ defmodule WallopCore.Resources.Draw do
 
     create :create_manual do
       @doc "Internal only: creates a draw without entropy for testing and fallback use."
-      accept([:entries, :winner_count, :metadata, :callback_url])
+      accept([:name, :entries, :winner_count, :metadata, :callback_url])
 
       validate attribute_does_not_equal(:entries, []) do
         message("must not be empty")
@@ -74,6 +74,13 @@ defmodule WallopCore.Resources.Draw do
       end
 
       change({WallopCore.Resources.Draw.Changes.RemoveEntry, []})
+    end
+
+    update :update_name do
+      require_atomic?(true)
+      filter(expr(status == :open))
+
+      accept([:name])
     end
 
     update :lock do
@@ -174,6 +181,11 @@ defmodule WallopCore.Resources.Draw do
       authorize_if(expr(api_key_id == ^actor(:id) and status == :open))
     end
 
+    policy action(:update_name) do
+      forbid_unless(actor_present())
+      authorize_if(expr(api_key_id == ^actor(:id) and status == :open))
+    end
+
     policy action(:lock) do
       forbid_unless(actor_present())
       authorize_if(expr(api_key_id == ^actor(:id) and status == :open))
@@ -222,6 +234,16 @@ defmodule WallopCore.Resources.Draw do
       default(:open)
       allow_nil?(false)
       public?(true)
+    end
+
+    attribute :name, :string do
+      description(
+        "Optional human-readable label for the draw. May only be set or changed while the draw is open."
+      )
+
+      allow_nil?(true)
+      public?(true)
+      constraints(max_length: 255)
     end
 
     attribute :entries, {:array, :map} do
