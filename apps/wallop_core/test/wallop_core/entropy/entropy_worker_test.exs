@@ -199,6 +199,66 @@ defmodule WallopCore.Entropy.EntropyWorkerTest do
       assert failed.failed_at != nil
       assert failed.failure_reason =~ "timed out"
     end
+
+    test "enqueues webhook on failure timeout when callback_url set" do
+      api_key = create_api_key()
+
+      draw =
+        create_draw(api_key, %{
+          entropy: true,
+          callback_url: "https://example.com/hook"
+        })
+
+      old_inserted_at = DateTime.add(DateTime.utc_now(), -25 * 3600, :second)
+      job = fake_job(draw, inserted_at: old_inserted_at)
+
+      assert :ok = EntropyWorker.perform(job)
+
+      failed = reload_draw(draw, api_key)
+      assert failed.status == :failed
+
+      assert [webhook_job] = all_enqueued(worker: WallopCore.Entropy.WebhookWorker)
+      assert webhook_job.args["draw_id"] == draw.id
+      assert webhook_job.args["api_key_id"] == draw.api_key_id
+    end
+  end
+
+  describe "both entropy sources fail" do
+    test "snoozes when both drand and weather return errors" do
+      stub_drand_error()
+      stub_weather_error()
+
+      api_key = create_api_key()
+      draw = create_draw(api_key, %{entropy: true})
+
+      job = fake_job(draw)
+      assert {:snooze, seconds} = EntropyWorker.perform(job)
+      assert is_integer(seconds) and seconds > 0
+
+      reloaded = reload_draw(draw, api_key)
+      assert reloaded.status == :pending_entropy
+    end
+  end
+
+  describe "already pending_entropy" do
+    test "draw already in pending_entropy skips transition and still completes" do
+      api_key = create_api_key()
+      draw = create_draw(api_key, %{entropy: true})
+
+      # Manually transition to pending_entropy before the worker runs
+      {:ok, pending_draw} =
+        draw
+        |> Ash.Changeset.for_update(:transition_to_pending, %{})
+        |> Ash.update(domain: WallopCore.Domain, authorize?: false)
+
+      assert pending_draw.status == :pending_entropy
+
+      job = fake_job(pending_draw)
+      assert :ok = EntropyWorker.perform(job)
+
+      completed = reload_draw(pending_draw, api_key)
+      assert completed.status == :completed
+    end
   end
 
   # -- Helpers --
