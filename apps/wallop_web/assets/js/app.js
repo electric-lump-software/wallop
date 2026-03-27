@@ -276,3 +276,26 @@ let liveSocket = new LiveSocket("/live", Socket, {
 liveSocket.connect()
 
 window.liveSocket = liveSocket
+
+// Smooth-scroll anchor links with anime.js easing
+document.addEventListener("click", (e) => {
+  let anchor = e.target.closest('a[href^="#"]')
+  if (!anchor) return
+
+  let target = document.querySelector(anchor.getAttribute("href"))
+  if (!target) return
+
+  e.preventDefault()
+
+  let start = window.scrollY
+  let end = target.getBoundingClientRect().top + window.scrollY - 80 // offset for sticky nav
+  let scroll = { y: start }
+
+  anime({
+    targets: scroll,
+    y: end,
+    duration: 800,
+    easing: "easeInOutCubic",
+    update: () => window.scrollTo(0, scroll.y)
+  })
+})
