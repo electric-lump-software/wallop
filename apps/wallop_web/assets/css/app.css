@@ -4,6 +4,13 @@
   themes: cmyk --default;
 }
 
+/* Marketing site colour palette */
+@theme {
+  --color-cream: #fffbf5;
+  --color-cream-border: #e8e0d5;
+  --color-cream-dark: #f5f0ea;
+}
+
 /* Timeline: pulse on the current step circle (size only, same colour as completed) */
 .step-current::after {
   animation: step-pulse 2s ease-in-out infinite;

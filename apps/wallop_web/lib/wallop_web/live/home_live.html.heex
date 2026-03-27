@@ -1,0 +1,477 @@
+<div class="min-h-screen bg-cream font-sans text-[#1a1a1a]">
+
+  <%!-- NAV --%>
+  <nav class="sticky top-0 z-50 relative flex items-center justify-between px-6 md:px-12 py-3.5 border-b border-cream-border bg-cream">
+    <a href={~p"/"} class="absolute bottom-0 left-6 md:left-12 translate-y-[35%] z-20">
+      <img src={~p"/images/logo.png"} alt="Wallop!" class="h-32" />
+    </a>
+    <div class="w-36"></div>
+    <%!-- Desktop links --%>
+    <div class="hidden md:flex items-center gap-7">
+      <a href="#how-it-works" class="text-sm text-[#555] hover:text-[#1a1a1a]">How it works</a>
+      <span class="text-sm text-[#ccc] cursor-default">Pricing</span>
+      <a href="https://github.com/electric-lump-software/wallop" target="_blank" rel="noopener" class="text-sm text-[#555] hover:text-[#1a1a1a]">GitHub</a>
+      <a href="#waitlist" class="btn btn-neutral btn-sm rounded-lg text-xs font-semibold">Join waitlist</a>
+    </div>
+    <%!-- Hamburger button --%>
+    <button phx-click="toggle_menu" class="md:hidden p-2 -mr-2 text-[#555]" aria-label="Toggle menu">
+      <svg xmlns="http://www.w3.org/2000/svg" class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+        <%= if @menu_open do %>
+          <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+        <% else %>
+          <path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h16" />
+        <% end %>
+      </svg>
+    </button>
+  </nav>
+  <%!-- Mobile menu --%>
+  <div :if={@menu_open} class="md:hidden sticky top-[53px] z-40 flex flex-col items-end gap-4 px-6 py-5 bg-cream border-b border-cream-border">
+    <a href="#how-it-works" phx-click="close_menu" class="text-sm text-[#555]">How it works</a>
+    <span class="text-sm text-[#ccc] cursor-default">Pricing</span>
+    <a href="https://github.com/electric-lump-software/wallop" target="_blank" rel="noopener" class="text-sm text-[#555]">GitHub</a>
+    <a href="#waitlist" phx-click="close_menu" class="btn btn-neutral btn-sm rounded-lg text-xs font-semibold">Join waitlist</a>
+  </div>
+
+  <%!-- HERO --%>
+  <div class="mx-auto max-w-[860px] px-12 pt-20 pb-18">
+    <span class="inline-flex items-center gap-1.5 bg-green-100 text-green-800 text-xs font-semibold px-3 py-1 rounded-full mb-7">
+      ✦ Open source
+    </span>
+
+    <h1 class="text-5xl font-extrabold leading-[1.1] tracking-tight mb-5">
+      Run a draw nobody<br />can question.
+    </h1>
+
+    <p class="text-lg text-[#555] leading-relaxed max-w-[560px] mb-9">
+      Wallop! uses public entropy and open-source algorithms to make every
+      result provably fair — and permanently verifiable.<br />The draw no one can rig. Not even us.
+    </p>
+
+    <div class="flex items-center gap-4 flex-wrap">
+      <a href="#waitlist" class="btn btn-neutral rounded-lg font-semibold">Join the waitlist</a>
+      <a href="https://github.com/electric-lump-software/wallop" target="_blank" rel="noopener" class="text-sm text-[#777] hover:text-[#1a1a1a]">
+        View on GitHub →
+      </a>
+    </div>
+
+    <%!-- FAKE LIVE TICKER — commented out, bring back when wired to real data
+    <div class="mt-12 flex items-start gap-3 p-4 bg-white border border-cream-border rounded-xl">
+      <span class="mt-1 w-2 h-2 rounded-full bg-green-500 shrink-0 animate-pulse"></span>
+      <div>
+        <p class="text-xs font-semibold mb-1">Live draws</p>
+        <div class="flex flex-wrap gap-2">
+          <span class="text-xs bg-cream-dark text-[#555] px-3 py-0.5 rounded-full">St Mary&#39;s PTA raffle · 2 min ago</span>
+          <span class="text-xs bg-cream-dark text-[#555] px-3 py-0.5 rounded-full">Acme Corp Q1 prize draw · 11 min ago</span>
+          <span class="text-xs bg-cream-dark text-[#555] px-3 py-0.5 rounded-full">Riverside FC kit giveaway · 34 min ago</span>
+        </div>
+      </div>
+    </div>
+    --%>
+  </div>
+
+  <%!-- WHY PROVABLE --%>
+  <section class="bg-white py-18 px-12">
+    <div class="mx-auto max-w-[860px]">
+      <p class="text-xs font-bold tracking-[3px] uppercase text-[#aaa] mb-4">Why it matters</p>
+      <h2 class="text-3xl font-extrabold tracking-tight leading-snug mb-4">
+        Random isn&#39;t the same<br />as provably fair.
+      </h2>
+      <p class="text-base text-[#555] leading-relaxed max-w-[580px]">
+        Any computer can generate a random number. But can you prove, after the fact,
+        that it wasn&#39;t chosen to favour someone?
+      </p>
+
+      <div class="grid grid-cols-2 gap-6 mt-10">
+        <div class="p-6 rounded-xl border border-red-200 bg-red-50">
+          <p class="text-[10px] font-bold tracking-[2px] uppercase text-red-800 mb-3">Ordinary random draw</p>
+          <h3 class="text-lg font-bold mb-2">You have to trust us</h3>
+          <p class="text-sm text-[#555] leading-relaxed">
+            The result is random — probably. But you&#39;re taking the organiser&#39;s word for it.
+            There&#39;s no way to verify the draw wasn&#39;t rerun until someone convenient won.
+          </p>
+        </div>
+        <div class="p-6 rounded-xl border border-green-200 bg-green-50">
+          <p class="text-[10px] font-bold tracking-[2px] uppercase text-green-800 mb-3">Wallop!</p>
+          <h3 class="text-lg font-bold mb-2">The proof is permanent</h3>
+          <p class="text-sm text-[#555] leading-relaxed">
+            Every draw is cryptographically committed before the entropy is known. Anyone —
+            including you, the winners, or a journalist — can replay the draw and get the same result.
+          </p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <%!-- FOR ORGANISERS + DEVELOPERS --%>
+  <section class="bg-cream py-18 px-12">
+    <div class="mx-auto max-w-[860px]">
+      <p class="text-xs font-bold tracking-[3px] uppercase text-[#aaa] mb-4">Who it&#39;s for</p>
+      <h2 class="text-3xl font-extrabold tracking-tight leading-snug mb-4">
+        For organisers and<br />developers alike.
+      </h2>
+
+      <div class="grid grid-cols-2 gap-8 mt-10">
+        <div class="p-8 rounded-xl border border-cream-border bg-white">
+          <h3 class="text-xl font-bold mb-3">For organisers</h3>
+          <p class="text-sm text-[#555] leading-[1.7] mb-4">
+            Running a raffle, prize draw, or competition? Wallop! gives you a permanent,
+            public proof record for every draw — so nobody can accuse you of picking a favourite.
+          </p>
+          <ul class="space-y-2">
+            <li class="text-sm text-[#444] flex gap-2 items-start border-b border-[#f0ebe4] pb-2">
+              <span class="text-[#999] shrink-0">→</span> No technical knowledge needed
+            </li>
+            <li class="text-sm text-[#444] flex gap-2 items-start border-b border-[#f0ebe4] pb-2">
+              <span class="text-[#999] shrink-0">→</span> Public proof page for every draw
+            </li>
+            <li class="text-sm text-[#444] flex gap-2 items-start border-b border-[#f0ebe4] pb-2">
+              <span class="text-[#999] shrink-0">→</span> Winners can verify their own result
+            </li>
+            <li class="text-sm text-[#444] flex gap-2 items-start">
+              <span class="text-[#999] shrink-0">→</span> PTAs, charities, events, sports clubs
+            </li>
+          </ul>
+        </div>
+
+        <div class="p-8 rounded-xl border border-cream-border bg-white">
+          <h3 class="text-xl font-bold mb-3">For developers</h3>
+          <p class="text-sm text-[#555] leading-[1.7] mb-4">
+            A clean JSON API with an OpenAPI spec, built on commit-reveal cryptography.
+            The <code class="font-mono text-xs bg-cream-dark px-1 rounded">fair_pick</code>
+            algorithm is open source and published on Hex.pm.
+          </p>
+          <pre class="bg-[#1a1a1a] text-[#e2e8f0] p-4 rounded-lg font-mono text-[11px] leading-[1.8]">{Phoenix.HTML.raw(~s(# POST /api/v1/draws\n{\n  &quot;name&quot;: &quot;Q1 Prize Draw&quot;,\n  &quot;winner_count&quot;: 3\n}\n\n# Returns draw_id + proof_url))}</pre>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <%!-- HOW IT WORKS --%>
+  <section id="how-it-works" class="bg-white py-18 px-12">
+    <div class="mx-auto max-w-[860px]">
+      <p class="text-xs font-bold tracking-[3px] uppercase text-[#aaa] mb-4">The protocol</p>
+      <h2 class="text-3xl font-extrabold tracking-tight leading-snug mb-4">
+        How a Wallop! draw works.
+      </h2>
+      <p class="text-base text-[#555] leading-relaxed max-w-[580px]">
+        Five steps from entry list to verified result. Toggle between plain English
+        and the cryptographic detail.
+      </p>
+
+      <%!-- TABS --%>
+      <div class="flex gap-0 mt-10 border-b-2 border-cream-border">
+        <button
+          phx-click="switch_tab"
+          phx-value-tab="plain"
+          class={[
+            "px-6 py-2.5 text-sm font-semibold border-b-2 -mb-0.5 transition-all cursor-pointer",
+            @active_tab == "plain" && "border-[#1a1a1a] text-[#1a1a1a]",
+            @active_tab != "plain" && "border-transparent text-[#999] hover:text-[#555]"
+          ]}
+        >
+          Plain English
+        </button>
+        <button
+          phx-click="switch_tab"
+          phx-value-tab="crypto"
+          class={[
+            "px-6 py-2.5 text-sm font-semibold border-b-2 -mb-0.5 transition-all cursor-pointer",
+            @active_tab == "crypto" && "border-[#1a1a1a] text-[#1a1a1a]",
+            @active_tab != "crypto" && "border-transparent text-[#999] hover:text-[#555]"
+          ]}
+        >
+          Cryptographic detail
+        </button>
+      </div>
+
+      <%!-- PLAIN ENGLISH TAB --%>
+      <div :if={@active_tab == "plain"} class="mt-0">
+        <div class="flex gap-6 py-6 border-b border-[#f0ebe4]">
+          <div class="w-9 h-9 rounded-full bg-[#1a1a1a] text-white flex items-center justify-center text-sm font-bold shrink-0">1</div>
+          <div>
+            <h4 class="text-[15px] font-bold mb-1.5">Lock the entry list</h4>
+            <p class="text-sm text-[#555] leading-relaxed">You tell Wallop! who&#39;s entering. From that moment, the list is sealed — nobody can add names, remove names, or change anything. Think of it like putting your raffle tickets in a locked box in front of everyone.</p>
+          </div>
+        </div>
+        <div class="flex gap-6 py-6 border-b border-[#f0ebe4]">
+          <div class="w-9 h-9 rounded-full bg-[#1a1a1a] text-white flex items-center justify-center text-sm font-bold shrink-0">2</div>
+          <div>
+            <h4 class="text-[15px] font-bold mb-1.5">Promise which coin flip you&#39;ll use</h4>
+            <p class="text-sm text-[#555] leading-relaxed">Wallop! publicly declares: &#34;we will use the randomness published at this exact moment in the future, from these two independent sources.&#34; It&#39;s like saying &#34;we&#39;ll use the closing price of the FTSE on Thursday&#34; — before Thursday.</p>
+          </div>
+        </div>
+        <div class="flex gap-6 py-6 border-b border-[#f0ebe4]">
+          <div class="w-9 h-9 rounded-full bg-[#1a1a1a] text-white flex items-center justify-center text-sm font-bold shrink-0">3</div>
+          <div>
+            <h4 class="text-[15px] font-bold mb-1.5">Wait for the randomness</h4>
+            <p class="text-sm text-[#555] leading-relaxed">At the declared time, Wallop! fetches two completely independent bits of randomness: a value from a global public beacon, and a live weather observation from Middle Wallop, Hampshire — courtesy of the Met Office. Neither is predictable, and neither is controlled by anyone. Provably fair, and provably British.</p>
+          </div>
+        </div>
+        <div class="flex gap-6 py-6 border-b border-[#f0ebe4]">
+          <div class="w-9 h-9 rounded-full bg-[#1a1a1a] text-white flex items-center justify-center text-sm font-bold shrink-0">4</div>
+          <div>
+            <h4 class="text-[15px] font-bold mb-1.5">Run the draw</h4>
+            <p class="text-sm text-[#555] leading-relaxed">The two random values are combined with the entry list to produce a seed. That seed is fed into our open-source algorithm, which shuffles the entries and picks the winners. The same inputs always give the same winners — that&#39;s what makes it verifiable.</p>
+          </div>
+        </div>
+        <div class="flex gap-6 py-6">
+          <div class="w-9 h-9 rounded-full bg-[#1a1a1a] text-white flex items-center justify-center text-sm font-bold shrink-0">5</div>
+          <div>
+            <h4 class="text-[15px] font-bold mb-1.5">Publish the permanent proof</h4>
+            <p class="text-sm text-[#555] leading-relaxed">Every draw gets a public proof page showing every input, every step, and every winner. Share it with your entrants. Anyone who doubts the result can replay it themselves and see it&#39;s correct.</p>
+          </div>
+        </div>
+      </div>
+
+      <%!-- CRYPTO TAB --%>
+      <div :if={@active_tab == "crypto"} class="mt-0">
+        <div class="flex gap-6 py-6 border-b border-[#f0ebe4]">
+          <div class="w-9 h-9 rounded-full bg-[#1a1a1a] text-white flex items-center justify-center text-sm font-bold shrink-0">1</div>
+          <div>
+            <h4 class="text-[15px] font-bold mb-1.5">Commit to the entry set</h4>
+            <p class="text-sm text-[#555] leading-relaxed">Entries are sorted lexicographically by ID, serialised as JCS (JSON Canonicalization Scheme), and hashed with SHA-256. The resulting entry_hash is published. Any modification to the entry set produces a different hash — the commitment is binding.</p>
+            <code class="mt-2 inline-block font-mono text-[11px] text-[#999] bg-cream-dark px-2.5 py-1.5 rounded">entry_hash = SHA256(JCS(sorted entries))</code>
+          </div>
+        </div>
+        <div class="flex gap-6 py-6 border-b border-[#f0ebe4]">
+          <div class="w-9 h-9 rounded-full bg-[#1a1a1a] text-white flex items-center justify-center text-sm font-bold shrink-0">2</div>
+          <div>
+            <h4 class="text-[15px] font-bold mb-1.5">Declare future entropy sources</h4>
+            <p class="text-sm text-[#555] leading-relaxed">Wallop! records the specific drand quicknet chain round number and a scheduled Met Office observation timestamp. Both are in the future at time of commitment — neither value is knowable until they are published.</p>
+            <code class="mt-2 inline-block font-mono text-[11px] text-[#999] bg-cream-dark px-2.5 py-1.5 rounded">drand quicknet · 3-second rounds · chain hash: 52db9ba7...</code>
+          </div>
+        </div>
+        <div class="flex gap-6 py-6 border-b border-[#f0ebe4]">
+          <div class="w-9 h-9 rounded-full bg-[#1a1a1a] text-white flex items-center justify-center text-sm font-bold shrink-0">3</div>
+          <div>
+            <h4 class="text-[15px] font-bold mb-1.5">Fetch and verify entropy</h4>
+            <p class="text-sm text-[#555] leading-relaxed">The drand round value is fetched and its BLS threshold signature is verified against the chain&#39;s public key. The Met Office value is fetched from the declared observation. Neither source is controllable by Wallop! or by the draw operator.</p>
+            <code class="mt-2 inline-block font-mono text-[11px] text-[#999] bg-cream-dark px-2.5 py-1.5 rounded">seed_input = JCS(&#123;entry_hash, drand_randomness, weather_value&#125;)</code>
+          </div>
+        </div>
+        <div class="flex gap-6 py-6 border-b border-[#f0ebe4]">
+          <div class="w-9 h-9 rounded-full bg-[#1a1a1a] text-white flex items-center justify-center text-sm font-bold shrink-0">4</div>
+          <div>
+            <h4 class="text-[15px] font-bold mb-1.5">Derive seed and execute — Durstenfeld shuffle</h4>
+            <p class="text-sm text-[#555] leading-relaxed">The seed is SHA-256 of the JCS-canonicalised input object. This is fed into fair_pick, which implements a Durstenfeld shuffle using rejection-sampled SHA-256 blocks as a PRNG. The algorithm is fully deterministic and published on Hex.pm.</p>
+            <code class="mt-2 inline-block font-mono text-[11px] text-[#999] bg-cream-dark px-2.5 py-1.5 rounded">seed = SHA256(seed_input) → fair_pick.draw(entries, seed, count)</code>
+          </div>
+        </div>
+        <div class="flex gap-6 py-6">
+          <div class="w-9 h-9 rounded-full bg-[#1a1a1a] text-white flex items-center justify-center text-sm font-bold shrink-0">5</div>
+          <div>
+            <h4 class="text-[15px] font-bold mb-1.5">Permanent immutable proof record</h4>
+            <p class="text-sm text-[#555] leading-relaxed">The full proof record — entry hash, drand round + randomness + signature, weather value, seed, and ordered winner list — is stored permanently. No UPDATE or DELETE. The proof page publishes all values needed for independent verification.</p>
+            <code class="mt-2 inline-block font-mono text-[11px] text-[#999] bg-cream-dark px-2.5 py-1.5 rounded">wallop.run/proof/:draw_id · independently replayable</code>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <%!-- OPEN SOURCE --%>
+  <section class="bg-cream py-18 px-12">
+    <div class="mx-auto max-w-[860px]">
+      <p class="text-xs font-bold tracking-[3px] uppercase text-[#aaa] mb-4">Trust &amp; transparency</p>
+      <h2 class="text-3xl font-extrabold tracking-tight leading-snug mb-4">
+        Open source.<br />We&#39;re just the best hosts.
+      </h2>
+
+      <div class="flex gap-12 items-start flex-wrap mt-10">
+        <div class="flex-1 min-w-[280px]">
+          <p class="text-sm text-[#555] leading-[1.7] mb-4">
+            The algorithm that runs every Wallop! draw is published on GitHub. The same code.
+            The same version. You can read it, run it locally, and verify that our proof pages
+            are telling the truth.
+          </p>
+          <p class="text-sm text-[#555] leading-[1.7] mb-6">
+            We think being the official host of open-source infrastructure is a feature, not
+            a crutch. You&#39;re not locked in. You&#39;re getting the convenience of not having
+            to run it yourself.
+          </p>
+          <div class="flex flex-col gap-3">
+            <a href="https://github.com/electric-lump-software/wallop" target="_blank" rel="noopener"
+               class="flex items-center justify-between px-4 py-3.5 bg-white border border-cream-border rounded-lg text-sm font-semibold hover:border-[#1a1a1a] transition-colors">
+              electric-lump-software/wallop
+              <span class="text-[#999] font-normal text-xs">API + web app</span>
+            </a>
+            <a href="https://github.com/electric-lump-software/fair_pick" target="_blank" rel="noopener"
+               class="flex items-center justify-between px-4 py-3.5 bg-white border border-cream-border rounded-lg text-sm font-semibold hover:border-[#1a1a1a] transition-colors">
+              electric-lump-software/fair_pick
+              <span class="text-[#999] font-normal text-xs">Algorithm · Hex.pm</span>
+            </a>
+          </div>
+        </div>
+        <div class="bg-cream-dark rounded-xl p-7 min-w-[240px]">
+          <h4 class="text-sm font-bold mb-3">What&#39;s open source</h4>
+          <ul class="space-y-1">
+            <li class="text-xs text-[#555] flex gap-2"><span class="text-green-700 font-bold">✓</span> The draw algorithm (fair_pick)</li>
+            <li class="text-xs text-[#555] flex gap-2"><span class="text-green-700 font-bold">✓</span> The commit-reveal protocol</li>
+            <li class="text-xs text-[#555] flex gap-2"><span class="text-green-700 font-bold">✓</span> The API layer</li>
+            <li class="text-xs text-[#555] flex gap-2"><span class="text-green-700 font-bold">✓</span> The proof page</li>
+            <li class="text-xs text-[#555] flex gap-2"><span class="text-green-700 font-bold">✓</span> The entropy logic</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <%!-- ORIGIN STORY --%>
+  <section class="bg-white py-18 px-12">
+    <div class="mx-auto max-w-[860px]">
+      <p class="text-xs font-bold tracking-[3px] uppercase text-[#aaa] mb-4">The name</p>
+      <h2 class="text-3xl font-extrabold tracking-tight leading-snug mb-4">Why Wallop!?</h2>
+
+      <div class="flex gap-12 items-center flex-wrap">
+        <div class="flex-1 min-w-[280px]">
+          <p class="text-sm text-[#555] leading-[1.8] mb-4">
+            Wallop is a real place. Three of them, actually — Over Wallop, Middle Wallop,
+            and Nether Wallop — a cluster of villages in Hampshire, England, nestled in
+            the Test Valley.
+          </p>
+          <p class="text-sm text-[#555] leading-[1.8] mb-4">
+            We liked the name because it does two things at once: it sounds like something
+            happening decisively (which a good draw should), and it&#39;s quietly, unexpectedly
+            British — which felt right for a service built on public accountability and a
+            certain faith that systems can be fair if you design them properly.
+          </p>
+          <p class="text-sm text-[#555] leading-[1.8] mb-4">
+            It also felt fitting that part of the randomness underpinning every draw comes
+            from a live weather observation taken right there — Middle Wallop, Hampshire.
+            We thought there was something pleasing about the idea that the British weather,
+            of all things, is woven into the proof.
+          </p>
+          <p class="text-xs text-[#aaa] italic">Also, it&#39;s just a fun word to say.</p>
+        </div>
+        <div class="w-[280px] rounded-xl overflow-hidden border border-[#d4c9b8] shadow-md shrink-0">
+          <img src={~p"/images/map.png"} alt="Middle Wallop, Hampshire" class="w-full" />
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <%!-- FAQ --%>
+  <section class="bg-cream py-18 px-12">
+    <div class="mx-auto max-w-[860px]">
+      <p class="text-xs font-bold tracking-[3px] uppercase text-[#aaa] mb-4">Questions</p>
+      <h2 class="text-3xl font-extrabold tracking-tight leading-snug mb-10">FAQ</h2>
+
+      <div class="flex flex-col gap-0.5">
+        <details class="border border-cream-border rounded-lg overflow-hidden group">
+          <summary class="px-5 py-4 text-sm font-semibold cursor-pointer list-none flex justify-between items-center bg-white hover:bg-cream-dark transition-colors">
+            Is the result actually random?
+            <span class="text-[#aaa] text-lg group-open:rotate-45 transition-transform">+</span>
+          </summary>
+          <div class="px-5 pb-4 pt-3 text-sm text-[#555] leading-[1.7] bg-white border-t border-cream-border">
+            It&#39;s deterministic given the entropy — which is the point. The entropy itself
+            (drand + Met Office weather) is genuinely unpredictable before it&#39;s published.
+            But once you have the seed, anyone can reproduce the exact result. That&#39;s what
+            makes it verifiable.
+          </div>
+        </details>
+
+        <details class="border border-cream-border rounded-lg overflow-hidden group">
+          <summary class="px-5 py-4 text-sm font-semibold cursor-pointer list-none flex justify-between items-center bg-white hover:bg-cream-dark transition-colors">
+            What&#39;s a &#34;drand beacon&#34;?
+            <span class="text-[#aaa] text-lg group-open:rotate-45 transition-transform">+</span>
+          </summary>
+          <div class="px-5 pb-4 pt-3 text-sm text-[#555] leading-[1.7] bg-white border-t border-cream-border">
+            drand is a public, distributed randomness beacon run by the League of Entropy —
+            universities, tech companies, and other organisations. Every 3 seconds it publishes
+            a new random value that nobody can predict or control in advance. Think of it like
+            a global lottery ball machine that runs constantly and publishes its results publicly.
+          </div>
+        </details>
+
+        <details class="border border-cream-border rounded-lg overflow-hidden group">
+          <summary class="px-5 py-4 text-sm font-semibold cursor-pointer list-none flex justify-between items-center bg-white hover:bg-cream-dark transition-colors">
+            Can I verify the result myself?
+            <span class="text-[#aaa] text-lg group-open:rotate-45 transition-transform">+</span>
+          </summary>
+          <div class="px-5 pb-4 pt-3 text-sm text-[#555] leading-[1.7] bg-white border-t border-cream-border">
+            Yes. Every proof page shows all the inputs — entry hash, drand round, weather value.
+            You can download fair_pick from Hex.pm or GitHub and replay the draw locally.
+            You&#39;ll get the same winners every time.
+          </div>
+        </details>
+
+        <details class="border border-cream-border rounded-lg overflow-hidden group">
+          <summary class="px-5 py-4 text-sm font-semibold cursor-pointer list-none flex justify-between items-center bg-white hover:bg-cream-dark transition-colors">
+            How is this different from just using a random number generator?
+            <span class="text-[#aaa] text-lg group-open:rotate-45 transition-transform">+</span>
+          </summary>
+          <div class="px-5 pb-4 pt-3 text-sm text-[#555] leading-[1.7] bg-white border-t border-cream-border">
+            Anyone can claim their random number generator was fair. With Wallop!, you don&#39;t
+            have to claim anything — the proof is public and permanent. If someone disputes the
+            result, you can show them exactly how it was computed, step by step.
+          </div>
+        </details>
+
+        <details class="border border-cream-border rounded-lg overflow-hidden group">
+          <summary class="px-5 py-4 text-sm font-semibold cursor-pointer list-none flex justify-between items-center bg-white hover:bg-cream-dark transition-colors">
+            What if Wallop! disappears?
+            <span class="text-[#aaa] text-lg group-open:rotate-45 transition-transform">+</span>
+          </summary>
+          <div class="px-5 pb-4 pt-3 text-sm text-[#555] leading-[1.7] bg-white border-t border-cream-border">
+            Your proof records are permanent and public. The fair_pick algorithm is published on
+            Hex.pm and won&#39;t disappear. The whole stack is open source — you could run it
+            yourself if you needed to. We&#39;ve designed this so you&#39;re never dependent on
+            us being around forever.
+          </div>
+        </details>
+
+        <details class="border border-cream-border rounded-lg overflow-hidden group">
+          <summary class="px-5 py-4 text-sm font-semibold cursor-pointer list-none flex justify-between items-center bg-white hover:bg-cream-dark transition-colors">
+            How do I integrate it into my app?
+            <span class="text-[#aaa] text-lg group-open:rotate-45 transition-transform">+</span>
+          </summary>
+          <div class="px-5 pb-4 pt-3 text-sm text-[#555] leading-[1.7] bg-white border-t border-cream-border">
+            It&#39;s a JSON API with an OpenAPI spec. Create a draw, add entries, lock it, execute.
+            Full documentation is coming — join the waitlist to be notified when it&#39;s ready.
+          </div>
+        </details>
+      </div>
+    </div>
+  </section>
+
+  <%!-- WAITLIST CTA --%>
+  <section id="waitlist" class="bg-[#1a1a1a] text-white py-18 px-12 text-center">
+    <h2 class="text-3xl font-extrabold tracking-tight mb-3">Be first to know when we launch.</h2>
+    <p class="text-[#aaa] text-base mb-8">We&#39;re onboarding early users now. Drop your email and we&#39;ll be in touch.</p>
+    <%= if @waitlist_signed_up do %>
+      <p class="text-lg font-semibold text-green-400">You're on the list.</p>
+    <% else %>
+      <form phx-submit="join_waitlist" class="flex gap-2 justify-center max-w-[440px] mx-auto">
+        <input
+          type="email"
+          name="email"
+          placeholder="your@email.com"
+          required
+          class="flex-1 px-4 py-3 rounded-lg border border-[#333] bg-[#2a2a2a] text-white text-sm placeholder:text-[#666] focus:outline-none focus:border-[#555]"
+        />
+        <button type="submit" class="bg-white text-[#1a1a1a] px-5 py-3 rounded-lg text-sm font-bold whitespace-nowrap hover:bg-[#eee] transition-colors">
+          Join waitlist
+        </button>
+      </form>
+      <%= if @waitlist_error do %>
+        <p class="text-red-400 text-sm mt-3"><%= @waitlist_error %></p>
+      <% end %>
+    <% end %>
+  </section>
+
+  <%!-- FOOTER --%>
+  <footer class="flex flex-col md:flex-row md:items-center md:justify-between gap-4 px-12 py-8 border-t border-cream-border bg-cream">
+    <div class="flex flex-wrap gap-6">
+      <a href="#how-it-works" class="text-xs text-[#999] hover:text-[#555]">How it works</a>
+      <span class="text-xs text-[#ccc] cursor-default">Pricing</span>
+      <a href="/api/docs" class="text-xs text-[#999] hover:text-[#555]">API docs</a>
+      <a href="/api/open_api" class="text-xs text-[#999] hover:text-[#555]">OpenAPI spec</a>
+      <a href="https://github.com/electric-lump-software/wallop" target="_blank" rel="noopener" class="text-xs text-[#999] hover:text-[#555]">GitHub</a>
+      <span class="text-xs text-[#ccc] cursor-default">Privacy</span>
+    </div>
+    <p class="text-xs text-[#bbb]">
+      &copy; 2026 Electric Lump Software &middot; Made in England, ♥ in Middle Wallop
+    </p>
+  </footer>
+
+</div><%!-- end root wrapper --%>
