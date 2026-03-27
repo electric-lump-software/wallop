@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Marketing site at `/` with hero, "Why provable?", organiser/developer split, tabbed protocol explainer, origin story, FAQ, and waitlist CTA
+- Waitlist signup: `WaitlistSignup` Ash resource with `citext` unique email, wired to LiveView form
+- Mobile hamburger nav with LiveView toggle
+- Anime.js smooth scroll easing for anchor links
+- `citext` Postgres extension
+
 ## [0.3.0] - 2026-03-27
 
 ### Added
