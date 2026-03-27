@@ -22,6 +22,12 @@ defmodule WallopWeb.Router do
     plug(:set_actor)
   end
 
+  scope "/api", WallopWeb do
+    pipe_through(:api)
+    get("/open_api", ApiSpecController, :index)
+    get("/docs", ApiDocsController, :index)
+  end
+
   scope "/api/v1" do
     pipe_through([:api, :api_authenticated])
 

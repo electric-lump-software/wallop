@@ -202,6 +202,11 @@ defmodule WallopCore.Resources.Draw do
     uuid_primary_key(:id)
 
     attribute :status, :atom do
+      description(
+        "Current lifecycle state of the draw. Progresses through: open → locked → " <>
+          "awaiting_entropy → pending_entropy → completed. Terminal states: failed, expired."
+      )
+
       constraints(
         one_of: [
           :open,
@@ -220,12 +225,28 @@ defmodule WallopCore.Resources.Draw do
     end
 
     attribute :entries, {:array, :map} do
+      description(
+        "List of entries in the draw. Each entry must have an `id` field and optionally a " <>
+          "`weight` integer for weighted draws. Entries may only be modified while status is `open`.\n\n" <>
+          "**Important — do not submit PII as entry IDs.** The entry list is hashed into a " <>
+          "permanent, public proof record that cannot be deleted. If you use email addresses, " <>
+          "names, or other personal data as IDs, you will be unable to honour a GDPR removal " <>
+          "request without breaking the proof. Use opaque identifiers instead (e.g. a UUID or " <>
+          "numeric ID from your own system) and keep the mapping from ID to person in your " <>
+          "own database, where it can be deleted independently."
+      )
+
       allow_nil?(true)
       public?(true)
       default([])
     end
 
     attribute :entry_hash, :string do
+      description(
+        "SHA-256 hash of the canonicalised entry list (JCS). Published at lock time as a " <>
+          "cryptographic commitment. Changing any entry would produce a different hash."
+      )
+
       allow_nil?(true)
       public?(true)
     end
@@ -236,12 +257,23 @@ defmodule WallopCore.Resources.Draw do
     end
 
     attribute :winner_count, :integer do
+      description(
+        "Number of winners to select. Must be between 1 and 10,000 and no greater than " <>
+          "the number of entries."
+      )
+
       allow_nil?(false)
       public?(true)
       constraints(min: 1, max: 10_000)
     end
 
     attribute :seed, :string do
+      description(
+        "64-character hex SHA-256 seed used to drive the draw algorithm. Derived from " <>
+          "drand + weather entropy (seed_source: entropy) or supplied by the caller for " <>
+          "manual draws (seed_source: caller)."
+      )
+
       allow_nil?(true)
       public?(true)
     end
@@ -258,6 +290,11 @@ defmodule WallopCore.Resources.Draw do
     end
 
     attribute :results, {:array, :map} do
+      description(
+        "Ordered list of winning entries, populated after draw execution. Each element " <>
+          "mirrors the entry structure submitted."
+      )
+
       allow_nil?(true)
       public?(true)
     end
@@ -268,11 +305,21 @@ defmodule WallopCore.Resources.Draw do
     end
 
     attribute :drand_round, :integer do
+      description(
+        "The drand quicknet beacon round number used as entropy. Declared at lock time " <>
+          "before the round resolves — the value is unpredictable at commitment time."
+      )
+
       allow_nil?(true)
       public?(true)
     end
 
     attribute :drand_randomness, :string do
+      description(
+        "The 64-character hex random value published by drand for the declared round. " <>
+          "Combined with weather_value to derive the draw seed."
+      )
+
       allow_nil?(true)
       public?(true)
     end
@@ -298,6 +345,12 @@ defmodule WallopCore.Resources.Draw do
     end
 
     attribute :weather_value, :string do
+      description(
+        "Temperature observation (°C) from the Middle Wallop, Hampshire Met Office station, " <>
+          "taken at the declared observation time. Combined with drand_randomness to derive " <>
+          "the draw seed."
+      )
+
       allow_nil?(true)
       public?(true)
     end
@@ -313,11 +366,21 @@ defmodule WallopCore.Resources.Draw do
     end
 
     attribute :callback_url, :string do
+      description(
+        "Optional HTTPS URL to receive a webhook POST when the draw completes or fails. " <>
+          "Must be a valid HTTPS URL."
+      )
+
       allow_nil?(true)
       public?(true)
     end
 
     attribute :metadata, :map do
+      description(
+        "Arbitrary JSON object stored with the draw. Not used in seed computation. Useful " <>
+          "for storing external references (e.g. your internal draw ID)."
+      )
+
       allow_nil?(true)
       public?(true)
     end
