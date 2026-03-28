@@ -162,7 +162,7 @@ defmodule WallopCore.Entropy.EntropyWorker do
   end
 
   defp broadcast_update(draw) do
-    Phoenix.PubSub.broadcast(WallopWeb.PubSub, "draw:#{draw.id}", {:draw_updated, draw})
+    Phoenix.PubSub.broadcast(WallopCore.PubSub, "draw:#{draw.id}", {:draw_updated, draw})
   end
 
   defp past_failure_timeout?(inserted_at) do

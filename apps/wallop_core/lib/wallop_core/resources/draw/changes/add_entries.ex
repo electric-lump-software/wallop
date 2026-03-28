@@ -22,7 +22,7 @@ defmodule WallopCore.Resources.Draw.Changes.AddEntries do
       changeset
       |> Ash.Changeset.force_change_attribute(:entries, combined)
       |> Ash.Changeset.after_action(fn _changeset, draw ->
-        Phoenix.PubSub.broadcast(WallopWeb.PubSub, "draw:#{draw.id}", {:draw_updated, draw})
+        Phoenix.PubSub.broadcast(WallopCore.PubSub, "draw:#{draw.id}", {:draw_updated, draw})
         {:ok, draw}
       end)
     else
