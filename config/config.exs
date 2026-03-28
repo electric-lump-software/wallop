@@ -9,6 +9,7 @@ config :mime, :extensions, %{
 }
 
 config :wallop_core,
+  env: config_env(),
   ecto_repos: [WallopCore.Repo],
   generators: [timestamp_type: :utc_datetime_usec],
   ash_domains: [WallopCore.Domain]

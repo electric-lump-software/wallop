@@ -14,7 +14,7 @@ defmodule WallopCore.Entropy.CallbackUrl do
     with {:ok, uri} <- parse_url(url),
          :ok <- validate_scheme(uri),
          :ok <- validate_host(uri) do
-      validate_not_private(uri)
+      if env() == :prod, do: validate_not_private(uri), else: :ok
     end
   end
 
@@ -30,15 +30,22 @@ defmodule WallopCore.Entropy.CallbackUrl do
   end
 
   defp validate_scheme(%URI{scheme: "https"}), do: :ok
+
+  defp validate_scheme(%URI{scheme: "http"}) do
+    if env() != :prod, do: :ok, else: {:error, "must be HTTPS"}
+  end
+
   defp validate_scheme(_), do: {:error, "must be HTTPS"}
 
   defp validate_host(%URI{host: host}) do
-    if host in ["localhost", "127.0.0.1", "::1", "0.0.0.0"] do
+    if host in ["localhost", "127.0.0.1", "::1", "0.0.0.0"] and env() == :prod do
       {:error, "cannot use localhost or loopback address"}
     else
       :ok
     end
   end
+
+  defp env, do: Application.get_env(:wallop_core, :env, :prod)
 
   defp validate_not_private(%URI{host: host}) do
     case resolve_ip(host) do
