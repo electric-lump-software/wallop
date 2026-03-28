@@ -5,6 +5,17 @@ defmodule WallopCore.Resources.DrawEntropyTest do
 
   import WallopCore.TestHelpers
 
+  defp with_prod_env(fun) do
+    original = Application.get_env(:wallop_core, :env)
+    Application.put_env(:wallop_core, :env, :prod)
+
+    try do
+      fun.()
+    after
+      Application.put_env(:wallop_core, :env, original)
+    end
+  end
+
   alias Ecto.Adapters.SQL
   alias WallopCore.Entropy.DrandClient
 
@@ -42,12 +53,14 @@ defmodule WallopCore.Resources.DrawEntropyTest do
       assert draw.weather_station == "middle-wallop"
     end
 
-    test "rejects invalid callback_url (HTTP)" do
+    test "rejects invalid callback_url (HTTP) in prod" do
       api_key = create_api_key()
 
-      assert_raise Ash.Error.Invalid, fn ->
-        create_draw(api_key, %{entropy: true, callback_url: "http://example.com/hook"})
-      end
+      with_prod_env(fn ->
+        assert_raise Ash.Error.Invalid, fn ->
+          create_draw(api_key, %{entropy: true, callback_url: "http://example.com/hook"})
+        end
+      end)
     end
 
     test "accepts valid HTTPS callback_url" do
