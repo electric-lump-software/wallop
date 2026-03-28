@@ -6,12 +6,22 @@ defmodule WallopCore.Entropy.WebhookWorker do
   Payload is minimal — just draw_id and status. Caller fetches
   full results via GET /api/v1/draws/:id.
 
+  Retries transient failures (5xx, timeouts) up to 5 attempts with
+  exponential backoff. Permanent failures (missing draw, 4xx) are
+  cancelled immediately.
+
   Signature format: X-Wallop-Signature: t=<unix_ts>,v1=<hmac>
   where hmac = HMAC-SHA256(webhook_secret, "<timestamp>.<payload>")
   """
-  use Oban.Worker, queue: :webhooks, max_attempts: 1
+  use Oban.Worker, queue: :webhooks, max_attempts: 5
 
   require Logger
+
+  @impl true
+  def backoff(%Oban.Job{attempt: attempt}) do
+    # Exponential backoff: ~30s, ~1m, ~2m, ~4m
+    trunc(:math.pow(2, attempt) * 15)
+  end
 
   @impl true
   def perform(%Oban.Job{args: %{"draw_id" => draw_id, "api_key_id" => api_key_id}}) do
@@ -21,13 +31,18 @@ defmodule WallopCore.Entropy.WebhookWorker do
       :ok
     else
       {:error, :no_callback_url} ->
-        # Nothing to deliver
         :ok
 
+      {:error, {:transient, reason}} ->
+        Logger.warning(
+          "Webhook delivery failed for draw #{draw_id}: #{inspect(reason)}, will retry"
+        )
+
+        {:error, reason}
+
       {:error, reason} ->
-        Logger.warning("Webhook delivery failed for draw #{draw_id}: #{inspect(reason)}")
-        # Best-effort: don't retry
-        :ok
+        Logger.warning("Webhook permanently failed for draw #{draw_id}: #{inspect(reason)}")
+        {:cancel, inspect(reason)}
     end
   end
 
@@ -76,11 +91,17 @@ defmodule WallopCore.Entropy.WebhookWorker do
       {:ok, %Req.Response{status: status}} when status in 200..299 ->
         {:ok, :delivered}
 
+      {:ok, %Req.Response{status: status}} when status >= 500 ->
+        {:error, {:transient, {:unexpected_status, status}}}
+
       {:ok, %Req.Response{status: status}} ->
         {:error, {:unexpected_status, status}}
 
+      {:error, %Req.TransportError{} = reason} ->
+        {:error, {:transient, reason}}
+
       {:error, reason} ->
-        {:error, reason}
+        {:error, {:transient, reason}}
     end
   end
 

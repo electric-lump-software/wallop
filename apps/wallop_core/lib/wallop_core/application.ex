@@ -7,6 +7,7 @@ defmodule WallopCore.Application do
     children = [
       WallopCore.Repo,
       WallopCore.Vault,
+      {Phoenix.PubSub, name: WallopCore.PubSub},
       {Oban, Application.fetch_env!(:wallop_core, Oban)}
     ]
 
