@@ -95,8 +95,7 @@ defmodule WallopWeb.HomeLiveTest do
 
     test "shows footer with origin reference", %{conn: conn} do
       {:ok, _view, html} = live(conn, "/")
-      assert html =~ "Made in England"
-      assert html =~ "Middle Wallop"
+      assert html =~ "Made in Britain"
     end
   end
 
