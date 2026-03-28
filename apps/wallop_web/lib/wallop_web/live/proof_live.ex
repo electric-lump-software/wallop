@@ -20,7 +20,7 @@ defmodule WallopWeb.ProofLive do
     case load_draw(id) do
       {:ok, draw} ->
         if connected?(socket) do
-          Phoenix.PubSub.subscribe(WallopWeb.PubSub, "draw:#{id}")
+          Phoenix.PubSub.subscribe(WallopCore.PubSub, "draw:#{id}")
           schedule_poll_if_live(draw)
         end
 

@@ -28,7 +28,7 @@ config :wallop_web, WallopWeb.Endpoint,
   url: [host: "localhost"],
   adapter: Bandit.PhoenixAdapter,
   render_errors: [formats: [json: WallopWeb.ErrorJSON]],
-  pubsub_server: WallopWeb.PubSub,
+  pubsub_server: WallopCore.PubSub,
   live_view: [signing_salt: "Fp8kXm2Q"]
 
 # Configure esbuild (the version is required)

@@ -96,7 +96,7 @@ defmodule WallopWeb.ProofLiveTest do
       completed_draw = execute_draw(draw, test_seed(), api_key)
 
       Phoenix.PubSub.broadcast(
-        WallopWeb.PubSub,
+        WallopCore.PubSub,
         "draw:#{draw.id}",
         {:draw_updated, completed_draw}
       )
@@ -124,7 +124,7 @@ defmodule WallopWeb.ProofLiveTest do
 
       # Broadcast update for draw_b while viewing draw_a — should be ignored
       Phoenix.PubSub.broadcast(
-        WallopWeb.PubSub,
+        WallopCore.PubSub,
         "draw:#{draw_a.id}",
         {:draw_updated, completed_draw_b}
       )
@@ -142,7 +142,7 @@ defmodule WallopWeb.ProofLiveTest do
 
       # Broadcast the same locked draw (same status — triggers true branch in maybe_reveal)
       Phoenix.PubSub.broadcast(
-        WallopWeb.PubSub,
+        WallopCore.PubSub,
         "draw:#{draw.id}",
         {:draw_updated, draw}
       )

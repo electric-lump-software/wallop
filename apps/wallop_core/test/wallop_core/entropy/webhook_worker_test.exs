@@ -134,7 +134,7 @@ defmodule WallopCore.Entropy.WebhookWorkerTest do
                })
     end
 
-    test "returns :ok on delivery failure (best effort)" do
+    test "retries on 5xx failure" do
       api_key = create_api_key()
       draw = create_draw(api_key, %{callback_url: "https://example.com/hook"})
       draw = execute_draw(draw, test_seed(), api_key)
@@ -143,9 +143,36 @@ defmodule WallopCore.Entropy.WebhookWorkerTest do
         Plug.Conn.send_resp(conn, 500, "Internal Server Error")
       end)
 
-      assert :ok =
+      assert {:error, {:unexpected_status, 500}} =
                WebhookWorker.perform(%Oban.Job{
                  args: %{"draw_id" => draw.id, "api_key_id" => api_key.id}
+               })
+    end
+
+    test "cancels on 4xx failure" do
+      api_key = create_api_key()
+      draw = create_draw(api_key, %{callback_url: "https://example.com/hook"})
+      draw = execute_draw(draw, test_seed(), api_key)
+
+      Req.Test.stub(WebhookWorker, fn conn ->
+        Plug.Conn.send_resp(conn, 404, "Not Found")
+      end)
+
+      assert {:cancel, _reason} =
+               WebhookWorker.perform(%Oban.Job{
+                 args: %{"draw_id" => draw.id, "api_key_id" => api_key.id}
+               })
+    end
+
+    test "cancels when draw not found" do
+      api_key = create_api_key()
+
+      assert {:cancel, _reason} =
+               WebhookWorker.perform(%Oban.Job{
+                 args: %{
+                   "draw_id" => "00000000-0000-0000-0000-000000000000",
+                   "api_key_id" => api_key.id
+                 }
                })
     end
   end
