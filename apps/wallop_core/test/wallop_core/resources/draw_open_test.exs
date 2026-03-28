@@ -3,9 +3,20 @@ defmodule WallopCore.Resources.DrawOpenTest do
   Tests for the open draw lifecycle:
   create (open) -> add_entries -> lock (awaiting_entropy)
   """
-  use WallopCore.DataCase, async: true
+  use WallopCore.DataCase, async: false
 
   import WallopCore.TestHelpers
+
+  defp with_prod_env(fun) do
+    original = Application.get_env(:wallop_core, :env)
+    Application.put_env(:wallop_core, :env, :prod)
+
+    try do
+      fun.()
+    after
+      Application.put_env(:wallop_core, :env, original)
+    end
+  end
 
   describe "create open draw" do
     test "creates a draw with status :open and no entries" do
@@ -89,18 +100,20 @@ defmodule WallopCore.Resources.DrawOpenTest do
       assert draw.callback_url == "https://example.com/hook"
     end
 
-    test "rejects invalid callback_url (HTTP)" do
+    test "rejects invalid callback_url (HTTP) in prod" do
       api_key = create_api_key()
 
-      assert_raise Ash.Error.Invalid, fn ->
-        WallopCore.Resources.Draw
-        |> Ash.Changeset.for_create(
-          :create,
-          %{winner_count: 1, callback_url: "http://example.com/hook"},
-          actor: api_key
-        )
-        |> Ash.create!()
-      end
+      with_prod_env(fn ->
+        assert_raise Ash.Error.Invalid, fn ->
+          WallopCore.Resources.Draw
+          |> Ash.Changeset.for_create(
+            :create,
+            %{winner_count: 1, callback_url: "http://example.com/hook"},
+            actor: api_key
+          )
+          |> Ash.create!()
+        end
+      end)
     end
   end
 
