@@ -1,7 +1,7 @@
 <div class="min-h-screen bg-cream font-sans text-[#1a1a1a]">
 
   <%!-- NAV --%>
-  <nav class="sticky top-0 z-50 relative flex items-center justify-between px-6 md:px-12 py-3.5 border-b border-cream-border bg-cream">
+  <nav class={["sticky top-0 z-50 relative flex items-center justify-between px-6 md:px-12 py-3.5 bg-cream border-b", if(@menu_open, do: "border-transparent", else: "border-cream-border")]}>
     <a href={~p"/"} class="absolute bottom-0 left-6 md:left-12 translate-y-[35%] z-20">
       <img src={~p"/images/logo.png"} alt="Wallop!" class="h-32" />
     </a>
@@ -15,7 +15,7 @@
     </div>
     <%!-- Hamburger button --%>
     <button phx-click="toggle_menu" class="md:hidden p-2 -mr-2 text-[#555]" aria-label="Toggle menu">
-      <svg xmlns="http://www.w3.org/2000/svg" class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+      <svg xmlns="http://www.w3.org/2000/svg" class="w-6 h-6 transition-transform duration-200" style={if(@menu_open, do: "transform: rotate(90deg)", else: "")} fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
         <%= if @menu_open do %>
           <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
         <% else %>
@@ -25,7 +25,10 @@
     </button>
   </nav>
   <%!-- Mobile menu --%>
-  <div :if={@menu_open} class="md:hidden sticky top-[53px] z-40 flex flex-col items-end gap-4 px-6 py-5 bg-cream border-b border-cream-border">
+  <div
+    :if={@menu_open}
+    class="md:hidden sticky top-[53px] z-40 flex flex-col items-end gap-4 px-6 py-5 bg-cream border-b border-cream-border animate-slide-down"
+  >
     <a href="#how-it-works" phx-click="close_menu" class="text-sm text-[#555]">How it works</a>
     <span class="text-sm text-[#ccc] cursor-default">Pricing</span>
     <a href="https://github.com/electric-lump-software/wallop" target="_blank" rel="noopener" class="text-sm text-[#555]">GitHub</a>
@@ -81,7 +84,7 @@
         that it wasn&#39;t chosen to favour someone?
       </p>
 
-      <div class="grid grid-cols-2 gap-6 mt-10">
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mt-10">
         <div class="p-6 rounded-xl border border-red-200 bg-red-50">
           <p class="text-[10px] font-bold tracking-[2px] uppercase text-red-800 mb-3">Ordinary random draw</p>
           <h3 class="text-lg font-bold mb-2">You have to trust us</h3>
@@ -110,7 +113,7 @@
         For organisers and<br />developers alike.
       </h2>
 
-      <div class="grid grid-cols-2 gap-8 mt-10">
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-8 mt-10">
         <div class="p-8 rounded-xl border border-cream-border bg-white">
           <h3 class="text-xl font-bold mb-3">For organisers</h3>
           <p class="text-sm text-[#555] leading-[1.7] mb-4">
@@ -277,7 +280,7 @@
         Open source.<br />We&#39;re just the best hosts.
       </h2>
 
-      <div class="flex gap-12 items-start flex-wrap mt-10">
+      <div class="flex flex-col md:flex-row gap-8 md:gap-12 items-start mt-10">
         <div class="flex-1 min-w-[280px]">
           <p class="text-sm text-[#555] leading-[1.7] mb-4">
             The algorithm that runs every Wallop! draw is published on GitHub. The same code.
@@ -302,15 +305,17 @@
             </a>
           </div>
         </div>
-        <div class="bg-cream-dark rounded-xl p-7 min-w-[240px]">
-          <h4 class="text-sm font-bold mb-3">What&#39;s open source</h4>
-          <ul class="space-y-1">
-            <li class="text-xs text-[#555] flex gap-2"><span class="text-green-700 font-bold">✓</span> The draw algorithm (fair_pick)</li>
-            <li class="text-xs text-[#555] flex gap-2"><span class="text-green-700 font-bold">✓</span> The commit-reveal protocol</li>
-            <li class="text-xs text-[#555] flex gap-2"><span class="text-green-700 font-bold">✓</span> The API layer</li>
-            <li class="text-xs text-[#555] flex gap-2"><span class="text-green-700 font-bold">✓</span> The proof page</li>
-            <li class="text-xs text-[#555] flex gap-2"><span class="text-green-700 font-bold">✓</span> The entropy logic</li>
-          </ul>
+        <div class="bg-cream-dark rounded-xl p-7 w-full md:w-auto md:min-w-[240px] flex justify-center md:justify-start">
+          <div>
+            <h4 class="text-sm font-bold mb-3">What&#39;s open source</h4>
+            <ul class="space-y-1">
+              <li class="text-xs text-[#555] flex gap-2"><span class="text-green-700 font-bold">✓</span> The draw algorithm (fair_pick)</li>
+              <li class="text-xs text-[#555] flex gap-2"><span class="text-green-700 font-bold">✓</span> The commit-reveal protocol</li>
+              <li class="text-xs text-[#555] flex gap-2"><span class="text-green-700 font-bold">✓</span> The API layer</li>
+              <li class="text-xs text-[#555] flex gap-2"><span class="text-green-700 font-bold">✓</span> The proof page</li>
+              <li class="text-xs text-[#555] flex gap-2"><span class="text-green-700 font-bold">✓</span> The entropy logic</li>
+            </ul>
+          </div>
         </div>
       </div>
     </div>
@@ -329,6 +334,9 @@
             and Nether Wallop — a cluster of villages in Hampshire, England, nestled in
             the Test Valley.
           </p>
+          <div class="md:hidden rounded-xl overflow-hidden border border-[#d4c9b8] shadow-md mb-4 max-h-[140px]">
+            <img src={~p"/images/map.png"} alt="Middle Wallop, Hampshire" class="w-full object-cover" style="object-position: center 40%;" />
+          </div>
           <p class="text-sm text-[#555] leading-[1.8] mb-4">
             We liked the name because it does two things at once: it sounds like something
             happening decisively (which a good draw should), and it&#39;s quietly, unexpectedly
@@ -343,7 +351,7 @@
           </p>
           <p class="text-xs text-[#aaa] italic">Also, it&#39;s just a fun word to say.</p>
         </div>
-        <div class="w-[280px] rounded-xl overflow-hidden border border-[#d4c9b8] shadow-md shrink-0">
+        <div class="hidden md:block w-[280px] rounded-xl overflow-hidden border border-[#d4c9b8] shadow-md shrink-0">
           <img src={~p"/images/map.png"} alt="Middle Wallop, Hampshire" class="w-full" />
         </div>
       </div>
@@ -460,17 +468,17 @@
   </section>
 
   <%!-- FOOTER --%>
-  <footer class="flex flex-col md:flex-row md:items-center md:justify-between gap-4 px-12 py-8 border-t border-cream-border bg-cream">
-    <div class="flex flex-wrap gap-6">
+  <footer class="flex flex-col md:flex-row md:items-center md:justify-between gap-4 px-6 md:px-12 py-8 border-t border-cream-border bg-cream">
+    <div class="flex flex-wrap gap-4 md:gap-6">
       <a href="#how-it-works" class="text-xs text-[#999] hover:text-[#555]">How it works</a>
       <span class="text-xs text-[#ccc] cursor-default">Pricing</span>
       <a href="/api/docs" class="text-xs text-[#999] hover:text-[#555]">API docs</a>
-      <a href="/api/open_api" class="text-xs text-[#999] hover:text-[#555]">OpenAPI spec</a>
+      <a href="/api/open_api" class="text-xs text-[#999] hover:text-[#555]">OpenAPI</a>
       <a href="https://github.com/electric-lump-software/wallop" target="_blank" rel="noopener" class="text-xs text-[#999] hover:text-[#555]">GitHub</a>
       <span class="text-xs text-[#ccc] cursor-default">Privacy</span>
     </div>
     <p class="text-xs text-[#bbb]">
-      &copy; 2026 Electric Lump Software &middot; Made in England, ♥ in Middle Wallop
+      &copy; 2026 Electric Lump Software &middot; Made in Britain
     </p>
   </footer>
 
