@@ -7,6 +7,7 @@ defmodule WallopWeb.Components.EntryCheck do
 
   attr(:check_result, :map, default: nil)
   attr(:draw_status, :atom, default: :completed)
+  attr(:checked_entry_id, :string, default: nil)
 
   def entry_check(assigns) do
     ~H"""
@@ -16,6 +17,7 @@ defmodule WallopWeb.Components.EntryCheck do
         <input
           type="text"
           name="entry_id"
+          value={@checked_entry_id}
           placeholder="Enter your full entry ID"
           class="flex-1 px-3 py-1.5 rounded-lg border border-cream-border bg-white text-sm focus:outline-none focus:border-[#aaa]"
           required

@@ -16,7 +16,9 @@ defmodule WallopWeb.ProofLive do
 
   @poll_interval_ms 30_000
 
-  def mount(%{"id" => id}, _session, socket) do
+  def mount(%{"id" => id} = params, _session, socket) do
+    entry_id = Map.get(params, "entry_id")
+
     case load_draw(id) do
       {:ok, draw} ->
         if connected?(socket) do
@@ -24,11 +26,14 @@ defmodule WallopWeb.ProofLive do
           schedule_poll_if_live(draw)
         end
 
+        check_result = auto_check_entry(draw, entry_id)
+
         {:ok,
          assign(socket,
            draw: draw,
            draw_id: id,
-           check_result: nil,
+           check_result: check_result,
+           checked_entry_id: entry_id,
            verify_result: nil,
            revealing: false,
            reveal_from: nil,
@@ -65,8 +70,13 @@ defmodule WallopWeb.ProofLive do
   end
 
   def handle_event("check_entry", %{"entry_id" => entry_id}, socket) do
-    {:ok, result} = Proof.check_entry(socket.assigns.draw, entry_id)
-    {:noreply, assign(socket, :check_result, result)}
+    case Proof.check_entry(socket.assigns.draw, entry_id) do
+      {:ok, result} ->
+        {:noreply, assign(socket, check_result: result, checked_entry_id: entry_id)}
+
+      _ ->
+        {:noreply, socket}
+    end
   end
 
   def handle_event("re_verify", _params, socket) do
@@ -107,6 +117,15 @@ defmodule WallopWeb.ProofLive do
 
   defp schedule_poll_if_live(_draw) do
     Process.send_after(self(), :poll_draw, @poll_interval_ms)
+  end
+
+  defp auto_check_entry(_draw, nil), do: nil
+
+  defp auto_check_entry(draw, entry_id) do
+    case Proof.check_entry(draw, entry_id) do
+      {:ok, result} -> result
+      _ -> nil
+    end
   end
 
   defp load_draw(id) do
