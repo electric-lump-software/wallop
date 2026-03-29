@@ -70,13 +70,8 @@ defmodule WallopWeb.ProofLive do
   end
 
   def handle_event("check_entry", %{"entry_id" => entry_id}, socket) do
-    case Proof.check_entry(socket.assigns.draw, entry_id) do
-      {:ok, result} ->
-        {:noreply, assign(socket, check_result: result, checked_entry_id: entry_id)}
-
-      _ ->
-        {:noreply, socket}
-    end
+    {:ok, result} = Proof.check_entry(socket.assigns.draw, entry_id)
+    {:noreply, assign(socket, check_result: result, checked_entry_id: entry_id)}
   end
 
   def handle_event("re_verify", _params, socket) do
