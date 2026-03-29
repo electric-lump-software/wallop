@@ -82,6 +82,57 @@ defmodule WallopWeb.ProofLiveTest do
     end
   end
 
+  describe "direct entry check link" do
+    test "auto-checks a winning entry via URL", %{conn: conn} do
+      api_key = create_api_key()
+      draw = create_draw(api_key, %{})
+      draw = execute_draw(draw, test_seed(), api_key)
+
+      winning_id = List.first(draw.results)["entry_id"]
+
+      {:ok, _view, html} = live(conn, "/proof/#{draw.id}/#{winning_id}")
+
+      assert html =~ "won"
+    end
+
+    test "auto-checks a non-winning entry via URL", %{conn: conn} do
+      api_key = create_api_key()
+      draw = create_draw(api_key, %{})
+      draw = execute_draw(draw, test_seed(), api_key)
+
+      # Find a non-winning entry
+      winning_ids = Enum.map(draw.results, & &1["entry_id"])
+      all_ids = Enum.map(draw.entries, & &1["id"])
+      losing_id = Enum.find(all_ids, fn id -> id not in winning_ids end)
+
+      {:ok, _view, html} = live(conn, "/proof/#{draw.id}/#{losing_id}")
+
+      assert html =~ "did not win"
+    end
+
+    test "auto-checks unknown entry via URL", %{conn: conn} do
+      api_key = create_api_key()
+      draw = create_draw(api_key, %{})
+      draw = execute_draw(draw, test_seed(), api_key)
+
+      {:ok, _view, html} = live(conn, "/proof/#{draw.id}/nonexistent-id")
+
+      assert html =~ "not found"
+    end
+
+    test "pre-fills the entry ID input", %{conn: conn} do
+      api_key = create_api_key()
+      draw = create_draw(api_key, %{})
+      draw = execute_draw(draw, test_seed(), api_key)
+
+      winning_id = List.first(draw.results)["entry_id"]
+
+      {:ok, _view, html} = live(conn, "/proof/#{draw.id}/#{winning_id}")
+
+      assert html =~ "value=\"#{winning_id}\""
+    end
+  end
+
   describe "PubSub updates" do
     test "re-renders when draw is updated via PubSub", %{conn: conn} do
       api_key = create_api_key()

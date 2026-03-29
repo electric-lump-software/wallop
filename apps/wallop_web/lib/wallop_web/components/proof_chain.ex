@@ -108,6 +108,17 @@ defmodule WallopWeb.Components.ProofChain do
           </div>
         </div>
       </div>
+
+      <div class="text-xs text-[#555]">
+        <a
+          href="https://github.com/electric-lump-software/fair_pick"
+          target="_blank"
+          rel="noopener"
+          class="text-[#555] underline hover:text-[#1a1a1a]"
+        >
+          Verify locally with fair_pick
+        </a>
+      </div>
     </div>
     """
   end
