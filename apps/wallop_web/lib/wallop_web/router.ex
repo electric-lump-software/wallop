@@ -37,6 +37,7 @@ defmodule WallopWeb.Router do
   scope "/", WallopWeb do
     pipe_through(:browser)
     live("/", HomeLive)
+    live("/proof/:id/:entry_id", ProofLive)
     live("/proof/:id", ProofLive)
   end
 
