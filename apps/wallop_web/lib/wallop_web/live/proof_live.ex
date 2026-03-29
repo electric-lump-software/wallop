@@ -117,10 +117,8 @@ defmodule WallopWeb.ProofLive do
   defp auto_check_entry(_draw, nil), do: nil
 
   defp auto_check_entry(draw, entry_id) do
-    case Proof.check_entry(draw, entry_id) do
-      {:ok, result} -> result
-      _ -> nil
-    end
+    {:ok, result} = Proof.check_entry(draw, entry_id)
+    result
   end
 
   defp load_draw(id) do
