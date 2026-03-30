@@ -259,6 +259,12 @@ defmodule WallopCore.Resources.Draw do
       default([])
     end
 
+    attribute :entry_count, :integer do
+      allow_nil?(false)
+      default(0)
+      public?(true)
+    end
+
     attribute :entry_hash, :string do
       description(
         "SHA-256 hash of the canonicalised entry list (JCS). Published at lock time as a " <>
@@ -432,6 +438,10 @@ defmodule WallopCore.Resources.Draw do
     belongs_to :api_key, WallopCore.Resources.ApiKey do
       allow_nil?(false)
       public?(false)
+    end
+
+    has_many :entry_records, WallopCore.Resources.Entry do
+      destination_attribute(:draw_id)
     end
   end
 end
