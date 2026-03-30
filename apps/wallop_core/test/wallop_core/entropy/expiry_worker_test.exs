@@ -52,17 +52,17 @@ defmodule WallopCore.Entropy.ExpiryWorkerTest do
       assert reloaded.status == :open
     end
 
-    test "does not expire locked draws" do
+    test "does not expire awaiting_entropy draws" do
       api_key = create_api_key()
       draw = create_draw(api_key)
-      assert draw.status == :locked
+      assert draw.status == :awaiting_entropy
 
       backdate_draw(draw, 91)
 
       assert :ok = ExpiryWorker.perform(%{})
 
       reloaded = reload_draw(draw)
-      assert reloaded.status == :locked
+      assert reloaded.status == :awaiting_entropy
     end
 
     test "returns :ok with no eligible draws" do

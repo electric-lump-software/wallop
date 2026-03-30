@@ -80,7 +80,7 @@ defmodule WallopWeb.Api.DrawsTest do
       assert %{"data" => data} = resp
       assert data["id"] == draw.id
       assert data["type"] == "draw"
-      assert data["attributes"]["status"] == "locked"
+      assert data["attributes"]["status"] == "awaiting_entropy"
     end
   end
 

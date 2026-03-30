@@ -290,10 +290,9 @@ defmodule WallopCore.Resources.DrawOpenTest do
 
     test "cannot remove entry from a non-open draw" do
       api_key = create_api_key()
-      # create_manual produces a locked draw
       draw = create_draw(api_key)
 
-      assert draw.status == :locked
+      assert draw.status == :awaiting_entropy
 
       assert_raise Ash.Error.Forbidden, fn ->
         draw

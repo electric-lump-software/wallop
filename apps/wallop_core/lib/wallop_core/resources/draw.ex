@@ -39,20 +39,6 @@ defmodule WallopCore.Resources.Draw do
       change({WallopCore.Resources.Draw.Changes.RecordStageTimestamp, key: "opened_at"})
     end
 
-    create :create_manual do
-      @doc "Internal only: creates a draw without entropy for testing and fallback use."
-      accept([:name, :entries, :winner_count, :metadata, :callback_url])
-
-      validate attribute_does_not_equal(:entries, []) do
-        message("must not be empty")
-      end
-
-      change(set_attribute(:api_key_id, actor(:id)))
-      change(set_attribute(:status, :locked))
-      change({WallopCore.Resources.Draw.Changes.ValidateEntries, []})
-      change({WallopCore.Resources.Draw.Changes.ComputeEntryHash, []})
-    end
-
     update :add_entries do
       require_atomic?(false)
       filter(expr(status == :open))
@@ -161,13 +147,6 @@ defmodule WallopCore.Resources.Draw do
 
   policies do
     policy action(:create) do
-      authorize_if(actor_present())
-    end
-
-    # INTERNAL ONLY: :create_manual bypasses entropy declaration.
-    # Must NEVER be exposed via JSON:API routes. Used only by tests
-    # and internal fallback integrations (produces unverified draws).
-    policy action(:create_manual) do
       authorize_if(actor_present())
     end
 
