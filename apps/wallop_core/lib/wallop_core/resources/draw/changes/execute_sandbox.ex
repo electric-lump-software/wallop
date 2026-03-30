@@ -16,7 +16,6 @@ defmodule WallopCore.Resources.Draw.Changes.ExecuteSandbox do
   # Computed: echo -n "wallop-sandbox" | shasum -a 256
   @sandbox_seed_hex "f3c5f1bc419eaaf3624e958a5aed289336ef5085260773e87f6a615cea443652"
 
-
   @doc "Returns the published sandbox seed hex string."
   @spec sandbox_seed_hex() :: String.t()
   def sandbox_seed_hex, do: @sandbox_seed_hex
