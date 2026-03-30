@@ -202,13 +202,7 @@ The proof page requires no authentication — it's public by design.
 
 ## Authentication
 
-API keys are created via mix task:
-
-```bash
-mix wallop.gen.api_key "My App"
-```
-
-Returns:
+API keys are managed through the Wallop web app. Each key provides:
 - `key` — use as Bearer token (cannot be retrieved again)
 - `key_prefix` — for identification
 - `webhook_secret` — for HMAC verification of webhooks
