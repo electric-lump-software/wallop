@@ -118,7 +118,7 @@ defmodule WallopWeb.Api.DrawsTest do
         |> json_response(200)
 
       assert resp["data"]["attributes"]["status"] == "open"
-      assert length(resp["data"]["attributes"]["entries"]) == 2
+      assert resp["data"]["attributes"]["entry_count"] == 2
     end
   end
 

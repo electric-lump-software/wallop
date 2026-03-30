@@ -28,7 +28,7 @@ defmodule WallopCore.Resources.DrawOpenTest do
         |> Ash.create!()
 
       assert draw.status == :open
-      assert draw.entries == []
+      assert draw.entry_count == 0
       assert draw.entry_hash == nil
       assert draw.entry_canonical == nil
       assert draw.winner_count == 2
@@ -135,7 +135,7 @@ defmodule WallopCore.Resources.DrawOpenTest do
         )
         |> Ash.update!()
 
-      assert length(draw.entries) == 2
+      assert draw.entry_count == 2
       assert draw.status == :open
     end
 
@@ -165,8 +165,10 @@ defmodule WallopCore.Resources.DrawOpenTest do
         )
         |> Ash.update!()
 
-      assert length(draw.entries) == 2
-      ids = Enum.map(draw.entries, & &1["id"])
+      assert draw.entry_count == 2
+
+      table_entries = WallopCore.Entries.load_for_draw(draw.id)
+      ids = Enum.map(table_entries, & &1.id)
       assert "a" in ids
       assert "b" in ids
     end
@@ -188,7 +190,7 @@ defmodule WallopCore.Resources.DrawOpenTest do
         )
         |> Ash.update!()
 
-      assert_raise Ash.Error.Invalid, ~r/duplicate entry IDs/, fn ->
+      assert_raise Ash.Error.Unknown, fn ->
         draw
         |> Ash.Changeset.for_update(
           :add_entries,
@@ -260,8 +262,11 @@ defmodule WallopCore.Resources.DrawOpenTest do
         |> Ash.Changeset.for_update(:remove_entry, %{entry_id: "a"}, actor: api_key)
         |> Ash.update!()
 
-      assert length(draw.entries) == 1
-      assert hd(draw.entries)["id"] == "b"
+      assert draw.entry_count == 1
+
+      table_entries = WallopCore.Entries.load_for_draw(draw.id)
+      assert length(table_entries) == 1
+      assert hd(table_entries).id == "b"
     end
 
     test "returns error if entry not found" do

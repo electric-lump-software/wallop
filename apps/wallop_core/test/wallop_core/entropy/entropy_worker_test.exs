@@ -59,7 +59,7 @@ defmodule WallopCore.Entropy.EntropyWorkerTest do
       assert length(completed.results) == draw.winner_count
 
       # Verify results match FairPick.draw directly
-      atom_entries = WallopCore.Entries.to_atom_keys(draw.entries)
+      atom_entries = WallopCore.Entries.load_for_draw(draw.id)
 
       {seed_bytes, _seed_json} =
         WallopCore.Protocol.compute_seed(draw.entry_hash, @drand_randomness, "101340")

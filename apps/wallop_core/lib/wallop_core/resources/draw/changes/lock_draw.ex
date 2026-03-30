@@ -1,7 +1,7 @@
 defmodule WallopCore.Resources.Draw.Changes.LockDraw do
   @moduledoc """
-  Locks an open draw: validates entries, computes entry hash, and
-  delegates to DeclareEntropy for entropy source declaration.
+  Locks an open draw: validates entry count, computes entry hash from
+  the entries table, and delegates to DeclareEntropy.
 
   Runs as before_action so all changes are applied in a single DB write.
   """
@@ -14,20 +14,20 @@ defmodule WallopCore.Resources.Draw.Changes.LockDraw do
 
   defp lock(changeset) do
     draw = changeset.data
-    entries = draw.entries || []
+    entry_count = draw.entry_count || 0
 
     cond do
-      entries == [] ->
+      entry_count == 0 ->
         Ash.Changeset.add_error(changeset, field: :entries, message: "draw has no entries")
 
-      length(entries) < draw.winner_count ->
+      entry_count < draw.winner_count ->
         Ash.Changeset.add_error(changeset,
           field: :entries,
-          message: "entries (#{length(entries)}) must be >= winner_count (#{draw.winner_count})"
+          message: "entries (#{entry_count}) must be >= winner_count (#{draw.winner_count})"
         )
 
       true ->
-        atom_entries = WallopCore.Entries.to_atom_keys(entries)
+        atom_entries = WallopCore.Entries.load_for_draw(draw.id)
         {hash, canonical} = WallopCore.Protocol.entry_hash(atom_entries)
 
         changeset
