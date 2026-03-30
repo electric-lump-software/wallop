@@ -39,20 +39,6 @@ defmodule WallopCore.Resources.Draw do
       change({WallopCore.Resources.Draw.Changes.RecordStageTimestamp, key: "opened_at"})
     end
 
-    create :create_manual do
-      @doc "Internal only: creates a draw without entropy for testing and fallback use."
-      accept([:name, :entries, :winner_count, :metadata, :callback_url])
-
-      validate attribute_does_not_equal(:entries, []) do
-        message("must not be empty")
-      end
-
-      change(set_attribute(:api_key_id, actor(:id)))
-      change(set_attribute(:status, :locked))
-      change({WallopCore.Resources.Draw.Changes.ValidateEntries, []})
-      change({WallopCore.Resources.Draw.Changes.ComputeEntryHash, []})
-    end
-
     update :add_entries do
       require_atomic?(false)
       filter(expr(status == :open))
@@ -137,6 +123,15 @@ defmodule WallopCore.Resources.Draw do
       change({WallopCore.Resources.Draw.Changes.ExecuteWithEntropy, []})
     end
 
+    update :execute_sandbox do
+      @doc "Executes a draw with the published sandbox seed. Only available in dev/test."
+      require_atomic?(false)
+      filter(expr(status == :awaiting_entropy))
+
+      change({WallopCore.Resources.Draw.Changes.ExecuteSandbox, []})
+      change({WallopCore.Resources.Draw.Changes.RecordStageTimestamp, key: "executed_at"})
+    end
+
     update :expire do
       require_atomic?(false)
       filter(expr(status == :open))
@@ -161,13 +156,6 @@ defmodule WallopCore.Resources.Draw do
 
   policies do
     policy action(:create) do
-      authorize_if(actor_present())
-    end
-
-    # INTERNAL ONLY: :create_manual bypasses entropy declaration.
-    # Must NEVER be exposed via JSON:API routes. Used only by tests
-    # and internal fallback integrations (produces unverified draws).
-    policy action(:create_manual) do
       authorize_if(actor_present())
     end
 
@@ -196,6 +184,11 @@ defmodule WallopCore.Resources.Draw do
       authorize_if(expr(api_key_id == ^actor(:id) and status == :locked))
     end
 
+    policy action(:execute_sandbox) do
+      forbid_unless(actor_present())
+      authorize_if(expr(api_key_id == ^actor(:id) and status == :awaiting_entropy))
+    end
+
     policy action(:read) do
       forbid_unless(actor_present())
       authorize_if(expr(api_key_id == ^actor(:id)))
@@ -205,8 +198,11 @@ defmodule WallopCore.Resources.Draw do
       authorize_if(always())
     end
 
+    # Internal-only actions: called by EntropyWorker with authorize?: false.
+    # Forbidden for all authorized callers to prevent external actors from
+    # racing the entropy worker with fabricated entropy values.
     policy action([:transition_to_pending, :execute_with_entropy, :mark_failed]) do
-      authorize_if(always())
+      forbid_if(always())
     end
   end
 
@@ -292,8 +288,8 @@ defmodule WallopCore.Resources.Draw do
     attribute :seed, :string do
       description(
         "64-character hex SHA-256 seed used to drive the draw algorithm. Derived from " <>
-          "drand + weather entropy (seed_source: entropy) or supplied by the caller for " <>
-          "manual draws (seed_source: caller)."
+          "drand + weather entropy (seed_source: entropy), a published constant for " <>
+          "sandbox draws (seed_source: sandbox), or supplied by the caller (seed_source: caller)."
       )
 
       allow_nil?(true)
@@ -301,7 +297,7 @@ defmodule WallopCore.Resources.Draw do
     end
 
     attribute :seed_source, :atom do
-      constraints(one_of: [:caller, :entropy])
+      constraints(one_of: [:caller, :entropy, :sandbox])
       allow_nil?(true)
       public?(true)
     end

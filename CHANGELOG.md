@@ -16,6 +16,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Anime.js smooth scroll easing for anchor links
 - `citext` Postgres extension
 
+## [0.3.2] - 2026-03-30
+
+### Added
+
+- Sandbox execution: `execute_sandbox` action with published, deterministic seed (`SHA-256("wallop-sandbox")`) for integration testing
+- `seed_source: :sandbox` enum value — honestly labels sandbox draws as non-random
+- Proof page banners: purple "Sandbox draw" banner and amber "Not a verified draw" banner for `:caller` seed source
+
+### Changed
+
+- Internal actions (`transition_to_pending`, `execute_with_entropy`, `mark_failed`) now `forbid_if(always())` — prevents external callers from racing the entropy worker with fabricated entropy values
+
+### Removed
+
+- `create_manual` action — all draws now go through the full `create → add_entries → lock` flow with entropy declaration
+
 ## [0.3.1] - 2026-03-28
 
 ### Fixed
