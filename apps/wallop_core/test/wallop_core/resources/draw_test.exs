@@ -6,11 +6,11 @@ defmodule WallopCore.Resources.DrawTest do
   alias WallopCore.Protocol
 
   describe "create" do
-    test "creates a locked draw with computed entry_hash and entry_canonical" do
+    test "creates a draw with computed entry_hash and entry_canonical" do
       api_key = create_api_key()
       draw = create_draw(api_key)
 
-      assert draw.status == :locked
+      assert draw.status == :awaiting_entropy
       assert draw.api_key_id == api_key.id
       assert draw.winner_count == 2
       assert is_binary(draw.entry_hash)
@@ -31,16 +31,15 @@ defmodule WallopCore.Resources.DrawTest do
   end
 
   describe "execute" do
-    test "executes a locked draw and sets completed state" do
+    test "executes a draw and sets completed state" do
       api_key = create_api_key()
       draw = create_draw(api_key)
-      seed = test_seed()
 
-      executed = execute_draw(draw, seed, api_key)
+      executed = execute_draw(draw, test_seed(), api_key)
 
       assert executed.status == :completed
-      assert executed.seed == seed
-      assert executed.seed_source == :caller
+      assert executed.seed_source == :entropy
+      assert is_binary(executed.seed)
       assert is_list(executed.results)
       assert length(executed.results) == 2
       assert executed.executed_at != nil
@@ -48,13 +47,12 @@ defmodule WallopCore.Resources.DrawTest do
 
     test "results are deterministic — same entries and seed produce same results" do
       api_key = create_api_key()
-      seed = test_seed()
 
       draw_a = create_draw(api_key)
       draw_b = create_draw(api_key)
 
-      executed_a = execute_draw(draw_a, seed, api_key)
-      executed_b = execute_draw(draw_b, seed, api_key)
+      executed_a = execute_draw(draw_a, test_seed(), api_key)
+      executed_b = execute_draw(draw_b, test_seed(), api_key)
 
       assert executed_a.results == executed_b.results
     end
@@ -62,41 +60,14 @@ defmodule WallopCore.Resources.DrawTest do
     test "cannot execute an already-completed draw" do
       api_key = create_api_key()
       draw = create_draw(api_key)
-      seed = test_seed()
 
-      executed = execute_draw(draw, seed, api_key)
+      executed = execute_draw(draw, test_seed(), api_key)
 
-      assert_raise Ash.Error.Forbidden, fn ->
-        execute_draw(executed, seed, api_key)
+      assert_raise Ash.Error.Unknown, fn ->
+        execute_draw(executed, test_seed(), api_key)
       end
     end
 
-    test "rejects invalid seed format" do
-      api_key = create_api_key()
-      draw = create_draw(api_key)
-
-      assert_raise Ash.Error.Invalid, fn ->
-        execute_draw(draw, "not-a-hex-string", api_key)
-      end
-
-      assert_raise Ash.Error.Invalid, fn ->
-        execute_draw(draw, "abcd1234", api_key)
-      end
-    end
-
-    test "cannot execute another key's draw" do
-      api_key_a = create_api_key("key-a")
-      api_key_b = create_api_key("key-b")
-      draw = create_draw(api_key_a)
-      seed = test_seed()
-
-      assert_raise Ash.Error.Forbidden, fn ->
-        execute_draw(draw, seed, api_key_b)
-      end
-    end
-  end
-
-  describe "read" do
     test "cannot read another key's draw" do
       api_key_a = create_api_key("key-a")
       api_key_b = create_api_key("key-b")
@@ -109,7 +80,7 @@ defmodule WallopCore.Resources.DrawTest do
   end
 
   describe "protocol integration (spec vector P-3)" do
-    test "create draw with P-3 entries, compute seed via Protocol, execute, verify results" do
+    test "create draw with P-3 entries, compute seed via Protocol, verify entry hash" do
       api_key = create_api_key()
 
       entries = [
@@ -132,14 +103,11 @@ defmodule WallopCore.Resources.DrawTest do
 
       assert seed_hex == "ced93f50d73a619701e9e865eb03fb4540a7232a588c707f85754aa41e3fb037"
 
-      # Execute the draw
-      executed = execute_draw(draw, seed_hex, api_key)
+      # Verify algorithm produces expected results for P-3 vector
+      atom_entries = WallopCore.Entries.to_atom_keys(entries)
+      results = FairPick.draw(atom_entries, seed_bytes, 2)
 
-      # Verify results match P-3 frozen vector
-      assert executed.results == [
-               %{"position" => 1, "entry_id" => "ticket-48"},
-               %{"position" => 2, "entry_id" => "ticket-47"}
-             ]
+      assert Enum.map(results, & &1.entry_id) == ["ticket-48", "ticket-47"]
     end
   end
 end

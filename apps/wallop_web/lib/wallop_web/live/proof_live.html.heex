@@ -32,11 +32,45 @@
   </div>
 </div>
 
+<%!-- Hide logo on sandbox draws — the logo implies official verification --%>
+<style :if={@draw.seed_source == :sandbox}>
+  [data-wallop-logo] { display: none !important; }
+</style>
+
 <%!-- Completed draw: verification-first view --%>
 <div :if={@draw.status == :completed and not @revealing} class="space-y-6">
+  <div :if={@draw.seed_source == :sandbox} class="bg-purple-50 border-2 border-purple-300 rounded-xl px-5 py-4">
+    <div class="flex items-center gap-2 text-purple-800 font-semibold text-sm">
+      Sandbox draw
+    </div>
+    <p class="text-purple-700 text-xs mt-1">
+      This draw used a published, predetermined seed. Results are not random and are unsuitable for real use.
+      <br /><br />
+      For integration testing only.
+    </p>
+  </div>
+
+  <div :if={@draw.seed_source == :caller} class="bg-amber-50 border-2 border-amber-300 rounded-xl px-5 py-4">
+    <div class="flex items-center gap-2 text-amber-800 font-semibold text-sm">
+      <span class="text-lg">⚠</span> Not a verified draw
+    </div>
+    <p class="text-amber-700 text-xs mt-1">
+      This draw used a caller-provided seed. The results were not generated from independent public entropy and cannot be independently verified as random.
+    </p>
+  </div>
+
   <div class="flex items-center gap-3">
-    <span class="inline-flex items-center gap-1.5 bg-green-100 text-green-800 text-xs font-semibold px-3 py-1 rounded-full">
+    <span
+      :if={@draw.seed_source == :entropy}
+      class="inline-flex items-center gap-1.5 bg-green-100 text-green-800 text-xs font-semibold px-3 py-1 rounded-full"
+    >
       ✦ Verified by Wallop
+    </span>
+    <span
+      :if={@draw.seed_source == :caller}
+      class="inline-flex items-center gap-1.5 bg-amber-100 text-amber-800 text-xs font-semibold px-3 py-1 rounded-full"
+    >
+      Unverified draw
     </span>
   </div>
 

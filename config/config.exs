@@ -12,7 +12,8 @@ config :wallop_core,
   env: config_env(),
   ecto_repos: [WallopCore.Repo],
   generators: [timestamp_type: :utc_datetime_usec],
-  ash_domains: [WallopCore.Domain]
+  ash_domains: [WallopCore.Domain],
+  allow_sandbox_execution: config_env() != :prod
 
 config :wallop_core, Oban,
   repo: WallopCore.Repo,
