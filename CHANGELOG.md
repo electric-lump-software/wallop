@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Entries moved from JSONB column to dedicated `entries` table for scalability to millions of entries
+- Draw responses include `entry_count` instead of full entries array
+- `Proof.check_entry` uses indexed lookup instead of linear scan
+- Entries table has immutability trigger (entries locked when draw leaves `open` status)
+
 ### Added
 
 - Direct entry check link: `/proof/:draw_id/:entry_id` auto-checks and pre-fills the entry on page load
