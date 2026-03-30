@@ -16,7 +16,6 @@ defmodule WallopCore.Resources.Draw.Changes.ExecuteSandbox do
   # Computed: echo -n "wallop-sandbox" | shasum -a 256
   @sandbox_seed_hex "f3c5f1bc419eaaf3624e958a5aed289336ef5085260773e87f6a615cea443652"
 
-  @sandbox_allowed Application.compile_env(:wallop_core, :allow_sandbox_execution, false)
 
   @doc "Returns the published sandbox seed hex string."
   @spec sandbox_seed_hex() :: String.t()
@@ -70,5 +69,7 @@ defmodule WallopCore.Resources.Draw.Changes.ExecuteSandbox do
   end
 
   @spec sandbox_allowed?() :: boolean()
-  defp sandbox_allowed?, do: @sandbox_allowed
+  defp sandbox_allowed? do
+    Application.get_env(:wallop_core, :allow_sandbox_execution, false)
+  end
 end
