@@ -15,6 +15,10 @@ if config_env() == :prod do
 
   config :wallop_core, :met_office_api_key, met_office_api_key
 
+  if redis_url = System.get_env("REDIS_URL") do
+    config :wallop_core, :redis_url, redis_url
+  end
+
   cloak_key =
     System.get_env("CLOAK_KEY") ||
       raise "CLOAK_KEY environment variable is not set"
