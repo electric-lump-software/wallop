@@ -14,6 +14,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Mobile hamburger nav with LiveView toggle
 - Anime.js smooth scroll easing for anchor links
 
+## [0.5.1] - 2026-03-31
+
+### Fixed
+
+- PubSub broadcasts for all draw state changes: declare_entropy, execute_draw, execute_sandbox, expire, and update_name now push live updates to proof pages and dashboards
+
 ## [0.5.0] - 2026-03-31
 
 ### Added
