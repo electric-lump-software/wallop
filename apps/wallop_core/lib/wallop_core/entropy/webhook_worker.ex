@@ -16,6 +16,7 @@ defmodule WallopCore.Entropy.WebhookWorker do
   use Oban.Worker, queue: :webhooks, max_attempts: 5
 
   require Logger
+  require OpenTelemetry.Tracer, as: Tracer
 
   @impl true
   def backoff(%Oban.Job{attempt: attempt}) do
@@ -25,24 +26,40 @@ defmodule WallopCore.Entropy.WebhookWorker do
 
   @impl true
   def perform(%Oban.Job{args: %{"draw_id" => draw_id, "api_key_id" => api_key_id}}) do
-    with {:ok, draw} <- load_draw(draw_id),
-         {:ok, api_key} <- load_api_key(api_key_id),
-         {:ok, _response} <- deliver(draw, api_key) do
-      :ok
-    else
-      {:error, :no_callback_url} ->
+    Tracer.with_span "webhook_worker.deliver", attributes: %{"draw.id" => draw_id} do
+      with {:ok, draw} <- load_draw(draw_id),
+           {:ok, api_key} <- load_api_key(api_key_id),
+           {:ok, _response} <- deliver(draw, api_key) do
+        Tracer.set_attributes(%{"webhook.status" => "delivered"})
         :ok
+      else
+        {:error, :no_callback_url} ->
+          Tracer.set_attributes(%{"webhook.status" => "skipped"})
+          :ok
 
-      {:error, {:transient, reason}} ->
-        Logger.warning(
-          "Webhook delivery failed for draw #{draw_id}: #{inspect(reason)}, will retry"
-        )
+        {:error, {:transient, reason}} ->
+          Tracer.set_attributes(%{
+            "error" => true,
+            "webhook.status" => "transient_failure",
+            "error.message" => inspect(reason)
+          })
 
-        {:error, reason}
+          Logger.warning(
+            "Webhook delivery failed for draw #{draw_id}: #{inspect(reason)}, will retry"
+          )
 
-      {:error, reason} ->
-        Logger.warning("Webhook permanently failed for draw #{draw_id}: #{inspect(reason)}")
-        {:cancel, inspect(reason)}
+          {:error, reason}
+
+        {:error, reason} ->
+          Tracer.set_attributes(%{
+            "error" => true,
+            "webhook.status" => "permanent_failure",
+            "error.message" => inspect(reason)
+          })
+
+          Logger.warning("Webhook permanently failed for draw #{draw_id}: #{inspect(reason)}")
+          {:cancel, inspect(reason)}
+      end
     end
   end
 
