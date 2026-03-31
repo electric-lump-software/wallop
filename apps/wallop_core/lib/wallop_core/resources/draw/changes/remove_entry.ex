@@ -4,43 +4,36 @@ defmodule WallopCore.Resources.Draw.Changes.RemoveEntry do
   """
   use Ash.Resource.Change
 
-  import Ecto.Query
+  require Ash.Query
+
+  alias WallopCore.Resources.Entry
 
   @impl true
   def change(changeset, _opts, _context) do
     draw = changeset.data
     entry_id = Ash.Changeset.get_argument(changeset, :entry_id)
 
-    # Check existence first (before the action filter runs)
-    if entry_exists?(draw.id, entry_id) do
-      new_count = max((draw.entry_count || 0) - 1, 0)
+    case find_entry(draw.id, entry_id) do
+      nil ->
+        Ash.Changeset.add_error(changeset, field: :entry_id, message: "entry not found")
 
-      changeset
-      |> Ash.Changeset.force_change_attribute(:entry_count, new_count)
-      |> Ash.Changeset.after_action(fn _changeset, draw ->
-        delete_entry(draw.id, entry_id)
-        Phoenix.PubSub.broadcast(WallopCore.PubSub, "draw:#{draw.id}", {:draw_updated, draw})
-        {:ok, draw}
-      end)
-    else
-      Ash.Changeset.add_error(changeset, field: :entry_id, message: "entry not found")
+      entry ->
+        new_count = max((draw.entry_count || 0) - 1, 0)
+
+        changeset
+        |> Ash.Changeset.force_change_attribute(:entry_count, new_count)
+        |> Ash.Changeset.after_action(fn _changeset, draw ->
+          Ash.destroy!(entry, authorize?: false)
+          Phoenix.PubSub.broadcast(WallopCore.PubSub, "draw:#{draw.id}", {:draw_updated, draw})
+          {:ok, draw}
+        end)
     end
   end
 
-  @spec entry_exists?(String.t(), String.t()) :: boolean()
-  defp entry_exists?(draw_id, entry_id) do
-    from(e in "entries",
-      where: e.draw_id == type(^draw_id, :binary_id) and e.entry_id == ^entry_id,
-      select: true
-    )
-    |> WallopCore.Repo.exists?()
-  end
-
-  @spec delete_entry(String.t(), String.t()) :: {non_neg_integer(), nil}
-  defp delete_entry(draw_id, entry_id) do
-    from(e in "entries",
-      where: e.draw_id == type(^draw_id, :binary_id) and e.entry_id == ^entry_id
-    )
-    |> WallopCore.Repo.delete_all()
+  @spec find_entry(String.t(), String.t()) :: Entry.t() | nil
+  defp find_entry(draw_id, entry_id) do
+    Entry
+    |> Ash.Query.filter(draw_id == ^draw_id and entry_id == ^entry_id)
+    |> Ash.read_one!(authorize?: false)
   end
 end
