@@ -5,12 +5,14 @@ defmodule WallopCore.Entropy.EntropyWorker do
   Scheduled to run at the draw's weather_time. Fetches drand randomness
   and weather data, computes the seed, and executes the draw.
 
-  Retries with exponential backoff up to 20 attempts. If entropy cannot be
-  collected within 24 hours of job creation, the draw is marked as failed.
+  Uses Oban's built-in attempt tracking with exponential backoff.
+  Fails fast on permanent errors (auth failures, invalid responses).
+  If entropy cannot be collected within 2 hours of job creation, the
+  draw is marked as failed.
   """
   use Oban.Worker,
     queue: :entropy,
-    max_attempts: 20,
+    max_attempts: 10,
     unique: [period: :infinity, keys: [:draw_id]]
 
   require Logger
@@ -18,11 +20,17 @@ defmodule WallopCore.Entropy.EntropyWorker do
 
   alias WallopCore.Entropy.{DrandClient, WeatherClient, WebhookWorker}
 
-  @failure_timeout_hours 24
+  @failure_timeout_hours 2
 
   # Middle Wallop coordinates
   @latitude 51.1486
   @longitude -1.5714
+
+  @impl true
+  def backoff(%Oban.Job{attempt: attempt}) do
+    # Exponential backoff: ~30s, ~60s, ~2m, ~4m, ~8m, capped at 15m
+    min(trunc(:math.pow(2, attempt) * 15), 900)
+  end
 
   @impl true
   def perform(%Oban.Job{args: %{"draw_id" => draw_id}, inserted_at: inserted_at}) do
@@ -68,53 +76,90 @@ defmodule WallopCore.Entropy.EntropyWorker do
         Task.async(fn ->
           Tracer.with_span "entropy.fetch_weather",
             attributes: %{"weather.lat" => @latitude, "weather.lon" => @longitude} do
-            WeatherClient.fetch(@latitude, @longitude)
+            WeatherClient.fetch(@latitude, @longitude, draw.weather_time)
           end
         end)
 
       drand_result = Task.await(drand_task, 30_000)
       weather_result = Task.await(weather_task, 30_000)
 
-      case {drand_result, weather_result} do
-        {{:ok, drand}, {:ok, weather}} ->
-          execute_draw(draw, drand, weather)
+      handle_results(draw, drand_result, weather_result)
+    end
+  end
 
-        {{:error, drand_err}, {:error, weather_err}} ->
-          Tracer.set_attributes(%{
-            "error" => true,
-            "entropy.drand_error" => inspect(drand_err),
-            "entropy.weather_error" => inspect(weather_err)
-          })
+  defp handle_results(draw, {:ok, drand}, {:ok, weather}) do
+    execute_draw(draw, drand, weather)
+  end
 
-          Logger.warning(
-            "EntropyWorker: both sources failed for draw #{draw.id}. " <>
-              "drand=#{inspect(drand_err)}, weather=#{inspect(weather_err)}"
-          )
+  defp handle_results(draw, drand_result, weather_result) do
+    drand_err = error_from(drand_result)
+    weather_err = error_from(weather_result)
 
-          {:snooze, compute_backoff(draw)}
+    # Check for permanent errors — fail immediately, don't retry
+    permanent = find_permanent_error(drand_err, weather_err)
 
-        {{:error, drand_err}, _} ->
-          Tracer.set_attributes(%{
-            "error" => true,
-            "entropy.drand_error" => inspect(drand_err)
-          })
+    if permanent do
+      Tracer.set_attributes(%{
+        "error" => true,
+        "error.type" => "permanent",
+        "error.message" => permanent
+      })
 
-          Logger.warning("EntropyWorker: drand failed for draw #{draw.id}: #{inspect(drand_err)}")
+      fail_draw_with_reason(draw, permanent)
+    else
+      log_transient_errors(draw, drand_err, weather_err)
 
-          {:snooze, compute_backoff(draw)}
+      Tracer.set_attributes(%{
+        "error" => true,
+        "error.type" => "transient",
+        "entropy.drand_error" => inspect(drand_err),
+        "entropy.weather_error" => inspect(weather_err)
+      })
 
-        {_, {:error, weather_err}} ->
-          Tracer.set_attributes(%{
-            "error" => true,
-            "entropy.weather_error" => inspect(weather_err)
-          })
+      {:error, "entropy sources unavailable, will retry"}
+    end
+  end
 
-          Logger.warning(
-            "EntropyWorker: weather failed for draw #{draw.id}: #{inspect(weather_err)}"
-          )
+  defp error_from({:ok, _}), do: nil
+  defp error_from({:error, reason}), do: reason
 
-          {:snooze, compute_backoff(draw)}
-      end
+  defp find_permanent_error(drand_err, weather_err) do
+    cond do
+      permanent_error?(drand_err) ->
+        "drand: #{format_permanent(drand_err)}"
+
+      permanent_error?(weather_err) ->
+        "weather: #{format_permanent(weather_err)}"
+
+      true ->
+        nil
+    end
+  end
+
+  defp permanent_error?({:unexpected_status, status}) when status in [401, 403], do: true
+  defp permanent_error?(:invalid_response), do: true
+  defp permanent_error?(_), do: false
+
+  defp format_permanent({:unexpected_status, status}), do: "HTTP #{status} — check credentials"
+  defp format_permanent(:invalid_response), do: "invalid response from API"
+  defp format_permanent(other), do: inspect(other)
+
+  defp log_transient_errors(draw, drand_err, weather_err) do
+    case {drand_err, weather_err} do
+      {err, nil} when err != nil ->
+        Logger.warning("EntropyWorker: drand failed for draw #{draw.id}: #{inspect(err)}")
+
+      {nil, err} when err != nil ->
+        Logger.warning("EntropyWorker: weather failed for draw #{draw.id}: #{inspect(err)}")
+
+      {d_err, w_err} when d_err != nil and w_err != nil ->
+        Logger.warning(
+          "EntropyWorker: both sources failed for draw #{draw.id}. " <>
+            "drand=#{inspect(d_err)}, weather=#{inspect(w_err)}"
+        )
+
+      _ ->
+        :ok
     end
   end
 
@@ -175,12 +220,17 @@ defmodule WallopCore.Entropy.EntropyWorker do
   defp maybe_transition_to_pending(draw), do: draw
 
   defp fail_draw(draw) do
+    fail_draw_with_reason(
+      draw,
+      "entropy collection timed out after #{@failure_timeout_hours} hours"
+    )
+  end
+
+  defp fail_draw_with_reason(draw, reason) do
     draw = maybe_transition_to_pending(draw)
 
     draw
-    |> Ash.Changeset.for_update(:mark_failed, %{
-      failure_reason: "entropy collection timed out after #{@failure_timeout_hours} hours"
-    })
+    |> Ash.Changeset.for_update(:mark_failed, %{failure_reason: reason})
     |> Ash.update(domain: WallopCore.Domain, authorize?: false)
     |> case do
       {:ok, failed_draw} ->
@@ -200,23 +250,6 @@ defmodule WallopCore.Entropy.EntropyWorker do
   defp past_failure_timeout?(inserted_at) do
     cutoff = DateTime.add(inserted_at, @failure_timeout_hours * 3600, :second)
     DateTime.compare(DateTime.utc_now(), cutoff) != :lt
-  end
-
-  defp compute_backoff(draw) do
-    # Exponential backoff based on how long since the draw was created.
-    # Start at 30s, double each time, cap at 15 minutes.
-    elapsed = DateTime.diff(DateTime.utc_now(), draw.inserted_at, :second)
-
-    interval =
-      cond do
-        elapsed < 120 -> 30
-        elapsed < 600 -> 60
-        elapsed < 1800 -> 120
-        elapsed < 3600 -> 300
-        true -> 900
-      end
-
-    interval
   end
 
   defp maybe_enqueue_webhook(%{callback_url: nil}), do: :ok

@@ -13,18 +13,20 @@ defmodule WallopCore.Entropy.WeatherClient do
   @receive_timeout 10_000
 
   @doc """
-  Fetch the latest MSL pressure reading for a location.
+  Fetch the MSL pressure reading for a location at a specific target time.
 
-  `latitude` and `longitude` identify the location.
+  `latitude` and `longitude` identify the location. `target_time` is the
+  declared weather observation time from the draw — the reading closest to
+  (but not after) this time is selected. This pins the observation to the
+  declared hour, preventing drift across retries.
 
   Returns `{:ok, %{value: "102340", observation_time: ~U[...], raw: response_text}}`
   or `{:error, reason}`.
 
   The value is the raw mslp integer from the Met Office API (Pascals),
-  returned as a string. The `observation_time` reflects the timestamp of
-  the most recent entry in the time series.
+  returned as a string.
   """
-  def fetch(latitude, longitude) do
+  def fetch(latitude, longitude, target_time \\ nil) do
     api_key = Application.get_env(:wallop_core, :met_office_api_key)
 
     params = [
@@ -41,7 +43,7 @@ defmodule WallopCore.Entropy.WeatherClient do
 
     case Req.get(base_url(), req_options(params: params, headers: headers)) do
       {:ok, %Req.Response{status: 200, body: body}} ->
-        parse_latest_pressure(body)
+        parse_pressure(body, target_time)
 
       {:ok, %Req.Response{status: status}} ->
         {:error, {:unexpected_status, status}}
@@ -54,7 +56,7 @@ defmodule WallopCore.Entropy.WeatherClient do
   defp pressure_to_string(value) when is_integer(value), do: Integer.to_string(value)
   defp pressure_to_string(value) when is_float(value), do: value |> round() |> Integer.to_string()
 
-  defp parse_latest_pressure(body) do
+  defp parse_pressure(body, target_time) do
     raw = Jason.encode!(body)
 
     # Met Office response structure: features[0].properties.timeSeries[]
@@ -63,7 +65,7 @@ defmodule WallopCore.Entropy.WeatherClient do
          [feature | _] <- features,
          {:ok, properties} <- Map.fetch(feature, "properties"),
          {:ok, time_series} <- Map.fetch(properties, "timeSeries") do
-      case find_latest_reading(time_series) do
+      case find_reading(time_series, target_time) do
         {:ok, pressure, observation_time} ->
           {:ok,
            %{value: pressure_to_string(pressure), observation_time: observation_time, raw: raw}}
@@ -73,6 +75,34 @@ defmodule WallopCore.Entropy.WeatherClient do
       end
     else
       _ -> {:error, :invalid_response}
+    end
+  end
+
+  defp find_reading(time_series, nil) do
+    # No target time — use latest reading (backwards compat for tests)
+    find_latest_reading(time_series)
+  end
+
+  defp find_reading(time_series, %DateTime{} = target_time) do
+    # Find the reading closest to target_time (at or before it, within 1 hour)
+    time_series
+    |> Enum.filter(&Map.has_key?(&1, "mslp"))
+    |> Enum.flat_map(&parse_entry_time/1)
+    |> Enum.filter(fn {dt, _} -> DateTime.compare(dt, target_time) != :gt end)
+    |> Enum.max_by(fn {dt, _} -> DateTime.to_unix(dt) end, fn -> nil end)
+    |> case do
+      nil ->
+        :error
+
+      {observation_time, entry} ->
+        # Reject if more than 1 hour before target
+        diff = DateTime.diff(target_time, observation_time, :second)
+
+        if diff <= 3600 do
+          {:ok, entry["mslp"], observation_time}
+        else
+          :error
+        end
     end
   end
 
