@@ -102,33 +102,72 @@ defmodule WallopCore.Entropy.EntropyWorkerTest do
     end
   end
 
-  describe "drand unavailable" do
-    test "snoozes when drand returns error" do
-      stub_drand_error()
+  describe "transient errors" do
+    test "returns error when drand unavailable (triggers Oban retry)" do
+      stub_drand_error(:not_found)
 
       api_key = create_api_key()
       draw = create_draw(api_key, %{entropy: true})
 
       job = fake_job(draw)
-      assert {:snooze, seconds} = EntropyWorker.perform(job)
-      assert is_integer(seconds) and seconds > 0
+      assert {:error, _} = EntropyWorker.perform(job)
 
       reloaded = reload_draw(draw, api_key)
-      # Should be pending_entropy (transitioned) but not completed
+      assert reloaded.status == :pending_entropy
+    end
+
+    test "returns error when weather unavailable" do
+      stub_weather_error(500)
+
+      api_key = create_api_key()
+      draw = create_draw(api_key, %{entropy: true})
+
+      job = fake_job(draw)
+      assert {:error, _} = EntropyWorker.perform(job)
+    end
+
+    test "returns error when both sources fail" do
+      stub_drand_error(:not_found)
+      stub_weather_error(500)
+
+      api_key = create_api_key()
+      draw = create_draw(api_key, %{entropy: true})
+
+      job = fake_job(draw)
+      assert {:error, _} = EntropyWorker.perform(job)
+
+      reloaded = reload_draw(draw, api_key)
       assert reloaded.status == :pending_entropy
     end
   end
 
-  describe "weather unavailable" do
-    test "snoozes when weather returns error" do
-      stub_weather_error()
+  describe "permanent errors" do
+    test "fails draw immediately on weather 401" do
+      stub_weather_error(401)
 
       api_key = create_api_key()
       draw = create_draw(api_key, %{entropy: true})
 
       job = fake_job(draw)
-      assert {:snooze, seconds} = EntropyWorker.perform(job)
-      assert is_integer(seconds) and seconds > 0
+      assert :ok = EntropyWorker.perform(job)
+
+      failed = reload_draw(draw, api_key)
+      assert failed.status == :failed
+      assert failed.failure_reason =~ "401"
+    end
+
+    test "fails draw immediately on weather 403" do
+      stub_weather_error(403)
+
+      api_key = create_api_key()
+      draw = create_draw(api_key, %{entropy: true})
+
+      job = fake_job(draw)
+      assert :ok = EntropyWorker.perform(job)
+
+      failed = reload_draw(draw, api_key)
+      assert failed.status == :failed
+      assert failed.failure_reason =~ "403"
     end
   end
 
@@ -184,12 +223,12 @@ defmodule WallopCore.Entropy.EntropyWorkerTest do
   end
 
   describe "failure timeout" do
-    test "marks draw as failed when job was inserted 25 hours ago" do
+    test "marks draw as failed when job was inserted over 2 hours ago" do
       api_key = create_api_key()
       draw = create_draw(api_key, %{entropy: true})
 
-      # Build a job that appears to have been inserted 25 hours ago
-      old_inserted_at = DateTime.add(DateTime.utc_now(), -25 * 3600, :second)
+      # Build a job that appears to have been inserted 3 hours ago
+      old_inserted_at = DateTime.add(DateTime.utc_now(), -3 * 3600, :second)
       job = fake_job(draw, inserted_at: old_inserted_at)
 
       assert :ok = EntropyWorker.perform(job)
@@ -198,6 +237,21 @@ defmodule WallopCore.Entropy.EntropyWorkerTest do
       assert failed.status == :failed
       assert failed.failed_at != nil
       assert failed.failure_reason =~ "timed out"
+    end
+
+    test "does not fail draw within 2 hour window" do
+      api_key = create_api_key()
+      draw = create_draw(api_key, %{entropy: true})
+
+      # Build a job that appears to have been inserted 1 hour ago
+      recent_inserted_at = DateTime.add(DateTime.utc_now(), -1 * 3600, :second)
+      job = fake_job(draw, inserted_at: recent_inserted_at)
+
+      # Should attempt execution, not timeout
+      assert :ok = EntropyWorker.perform(job)
+
+      reloaded = reload_draw(draw, api_key)
+      assert reloaded.status == :completed
     end
 
     test "enqueues webhook on failure timeout when callback_url set" do
@@ -209,7 +263,7 @@ defmodule WallopCore.Entropy.EntropyWorkerTest do
           callback_url: "https://example.com/hook"
         })
 
-      old_inserted_at = DateTime.add(DateTime.utc_now(), -25 * 3600, :second)
+      old_inserted_at = DateTime.add(DateTime.utc_now(), -3 * 3600, :second)
       job = fake_job(draw, inserted_at: old_inserted_at)
 
       assert :ok = EntropyWorker.perform(job)
@@ -220,23 +274,6 @@ defmodule WallopCore.Entropy.EntropyWorkerTest do
       assert [webhook_job] = all_enqueued(worker: WallopCore.Entropy.WebhookWorker)
       assert webhook_job.args["draw_id"] == draw.id
       assert webhook_job.args["api_key_id"] == draw.api_key_id
-    end
-  end
-
-  describe "both entropy sources fail" do
-    test "snoozes when both drand and weather return errors" do
-      stub_drand_error()
-      stub_weather_error()
-
-      api_key = create_api_key()
-      draw = create_draw(api_key, %{entropy: true})
-
-      job = fake_job(draw)
-      assert {:snooze, seconds} = EntropyWorker.perform(job)
-      assert is_integer(seconds) and seconds > 0
-
-      reloaded = reload_draw(draw, api_key)
-      assert reloaded.status == :pending_entropy
     end
   end
 
@@ -268,7 +305,9 @@ defmodule WallopCore.Entropy.EntropyWorkerTest do
 
     %Oban.Job{
       args: %{"draw_id" => draw.id},
-      inserted_at: inserted_at
+      inserted_at: inserted_at,
+      attempt: 1,
+      max_attempts: 10
     }
   end
 
@@ -299,7 +338,7 @@ defmodule WallopCore.Entropy.EntropyWorkerTest do
     end)
   end
 
-  defp stub_drand_error do
+  defp stub_drand_error(:not_found) do
     Req.Test.stub(DrandClient, fn conn ->
       Plug.Conn.send_resp(conn, 404, "not found")
     end)
@@ -307,6 +346,17 @@ defmodule WallopCore.Entropy.EntropyWorkerTest do
 
   defp stub_weather_success do
     Req.Test.stub(WeatherClient, fn conn ->
+      now = DateTime.utc_now()
+
+      # Generate entries every 5 minutes from now-5min to now+20min.
+      # This ensures an entry exists after draw.inserted_at and within
+      # 1 hour of weather_time (~10 min from draw creation).
+      times =
+        for offset <- -1..4 do
+          time = DateTime.add(now, offset * 300, :second)
+          %{"time" => Calendar.strftime(time, "%Y-%m-%dT%H:%MZ"), "mslp" => @weather_pressure}
+        end
+
       body = %{
         "type" => "FeatureCollection",
         "features" => [
@@ -316,15 +366,7 @@ defmodule WallopCore.Entropy.EntropyWorkerTest do
             "properties" => %{
               "requestPointDistance" => 0.0,
               "modelRunDate" => "2025-01-15T12:00Z",
-              "timeSeries" =>
-                Enum.map(0..23, fn hour ->
-                  %{
-                    "time" =>
-                      "2025-01-15T#{String.pad_leading(Integer.to_string(hour), 2, "0")}:00Z",
-                    "mslp" => @weather_pressure
-                  }
-                end) ++
-                  generate_future_hours()
+              "timeSeries" => times
             }
           }
         ]
@@ -336,30 +378,9 @@ defmodule WallopCore.Entropy.EntropyWorkerTest do
     end)
   end
 
-  defp stub_weather_error do
+  defp stub_weather_error(status) do
     Req.Test.stub(WeatherClient, fn conn ->
-      Plug.Conn.send_resp(conn, 500, "internal error")
+      Plug.Conn.send_resp(conn, status, "error")
     end)
-  end
-
-  # Generate weather data for many future hours to cover any weather_time
-  defp generate_future_hours do
-    now = DateTime.utc_now()
-    base_date = Date.utc_today()
-
-    for day_offset <- 0..3,
-        hour <- 0..23,
-        dt = build_utc_datetime(Date.add(base_date, day_offset), hour),
-        DateTime.compare(dt, now) == :gt do
-      %{
-        "time" => Calendar.strftime(dt, "%Y-%m-%dT%H:00Z"),
-        "mslp" => @weather_pressure
-      }
-    end
-  end
-
-  defp build_utc_datetime(date, hour) do
-    {:ok, dt} = DateTime.new(date, Time.new!(hour, 0, 0), "Etc/UTC")
-    dt
   end
 end
