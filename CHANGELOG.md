@@ -14,6 +14,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Mobile hamburger nav with LiveView toggle
 - Anime.js smooth scroll easing for anchor links
 
+## [0.5.0] - 2026-03-31
+
+### Added
+
+- OpenTelemetry instrumentation: Oban job tracing, Ash action tracing, Ecto query spans, Phoenix/Bandit HTTP request spans
+- OTLP export to Honeycomb via `HONEYCOMB_API_KEY` env var (auto-creates `wallop` dataset)
+- Oban plugin tracing disabled to avoid polling noise — only job lifecycle events are traced
+
 ## [0.4.2] - 2026-03-31
 
 ### Fixed
