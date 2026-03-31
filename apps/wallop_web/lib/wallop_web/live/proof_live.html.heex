@@ -37,18 +37,20 @@
   [data-wallop-logo] { display: none !important; }
 </style>
 
+<%!-- Sandbox banner — shown at all stages, not just completed --%>
+<div :if={@draw.seed_source == :sandbox and not @revealing} class="rounded-xl px-5 py-4 border-2 mb-6" style="background-color: #f3e8ff; border-color: #c084fc;">
+  <div class="font-semibold text-sm" style="color: #6b21a8;">
+    Sandbox draw
+  </div>
+  <p class="text-xs mt-1" style="color: #7e22ce;">
+    This draw used a published, predetermined seed. Results are not random and are unsuitable for real use.
+    <br /><br />
+    For integration testing only.
+  </p>
+</div>
+
 <%!-- Completed draw: verification-first view --%>
 <div :if={@draw.status == :completed and not @revealing} class="space-y-6">
-  <div :if={@draw.seed_source == :sandbox} class="rounded-xl px-5 py-4 border-2" style="background-color: #f3e8ff; border-color: #c084fc;">
-    <div class="font-semibold text-sm" style="color: #6b21a8;">
-      Sandbox draw
-    </div>
-    <p class="text-xs mt-1" style="color: #7e22ce;">
-      This draw used a published, predetermined seed. Results are not random and are unsuitable for real use.
-      <br /><br />
-      For integration testing only.
-    </p>
-  </div>
 
   <div :if={@draw.seed_source == :caller} class="bg-amber-50 border-2 border-amber-300 rounded-xl px-5 py-4">
     <div class="flex items-center gap-2 text-amber-800 font-semibold text-sm">
