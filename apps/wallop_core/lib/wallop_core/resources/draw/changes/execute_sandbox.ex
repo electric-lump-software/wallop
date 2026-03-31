@@ -24,7 +24,12 @@ defmodule WallopCore.Resources.Draw.Changes.ExecuteSandbox do
   @spec change(Ash.Changeset.t(), keyword(), Ash.Resource.Change.context()) :: Ash.Changeset.t()
   def change(changeset, _opts, _context) do
     if sandbox_allowed?() do
-      Ash.Changeset.before_action(changeset, &run_sandbox_draw/1)
+      changeset
+      |> Ash.Changeset.before_action(&run_sandbox_draw/1)
+      |> Ash.Changeset.after_action(fn _changeset, draw ->
+        Phoenix.PubSub.broadcast(WallopCore.PubSub, "draw:#{draw.id}", {:draw_updated, draw})
+        {:ok, draw}
+      end)
     else
       Ash.Changeset.add_error(changeset,
         field: :status,
