@@ -102,7 +102,7 @@ defmodule WallopWeb.ProofLiveTest do
 
       # Find a non-winning entry
       winning_ids = Enum.map(draw.results, & &1["entry_id"])
-      all_ids = Enum.map(draw.entries, & &1["id"])
+      all_ids = Enum.map(WallopCore.Entries.load_for_draw(draw.id), & &1.id)
       losing_id = Enum.find(all_ids, fn id -> id not in winning_ids end)
 
       {:ok, _view, html} = live(conn, "/proof/#{draw.id}/#{losing_id}")

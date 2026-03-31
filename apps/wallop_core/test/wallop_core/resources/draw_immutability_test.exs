@@ -51,6 +51,35 @@ defmodule WallopCore.Resources.DrawImmutabilityTest do
       end
     end
 
+    test "cannot insert entries into a locked draw via raw SQL", %{draw: draw} do
+      assert_raise Postgrex.Error, ~r/Cannot modify entries on a/, fn ->
+        SQL.query!(
+          WallopCore.Repo,
+          "INSERT INTO entries (id, draw_id, entry_id, weight) VALUES (gen_random_uuid(), $1, 'sneaky', 1)",
+          [Ecto.UUID.dump!(draw.id)]
+        )
+      end
+    end
+
+    test "cannot delete entries from a locked draw via raw SQL", %{draw: draw} do
+      {:ok, result} =
+        SQL.query(
+          WallopCore.Repo,
+          "SELECT entry_id FROM entries WHERE draw_id = $1 LIMIT 1",
+          [Ecto.UUID.dump!(draw.id)]
+        )
+
+      [[entry_id]] = result.rows
+
+      assert_raise Postgrex.Error, ~r/Cannot modify entries on a/, fn ->
+        SQL.query!(
+          WallopCore.Repo,
+          "DELETE FROM entries WHERE draw_id = $1 AND entry_id = $2",
+          [Ecto.UUID.dump!(draw.id), entry_id]
+        )
+      end
+    end
+
     test "can DELETE a locked draw (cancellation)", %{draw: draw} do
       result =
         SQL.query!(

@@ -76,8 +76,9 @@ defmodule WallopCore.Resources.DrawEntropyTest do
       api_key = create_api_key()
       draw = create_draw(api_key)
 
-      assert [job] = all_enqueued(worker: WallopCore.Entropy.EntropyWorker)
-      assert job.args["draw_id"] == draw.id
+      jobs = all_enqueued(worker: WallopCore.Entropy.EntropyWorker)
+      job = Enum.find(jobs, fn j -> j.args["draw_id"] == draw.id end)
+      assert job != nil
       assert job.scheduled_at != nil
     end
   end

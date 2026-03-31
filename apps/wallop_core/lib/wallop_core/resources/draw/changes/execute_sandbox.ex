@@ -36,7 +36,7 @@ defmodule WallopCore.Resources.Draw.Changes.ExecuteSandbox do
   @spec run_sandbox_draw(Ash.Changeset.t()) :: Ash.Changeset.t()
   defp run_sandbox_draw(changeset) do
     draw = changeset.data
-    atom_entries = WallopCore.Entries.to_atom_keys(draw.entries)
+    atom_entries = WallopCore.Entries.load_for_draw(draw.id)
 
     # Integrity check: recompute entry hash and verify it matches
     {recomputed_hash, _canonical} = WallopCore.Protocol.entry_hash(atom_entries)
