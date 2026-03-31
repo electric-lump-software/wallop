@@ -14,6 +14,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Mobile hamburger nav with LiveView toggle
 - Anime.js smooth scroll easing for anchor links
 
+## [0.5.2] - 2026-03-31
+
+### Added
+
+- Custom OTel spans in Oban workers: entropy collection (drand/weather fetches with source attributes), draw execution, webhook delivery status, expiry candidate counts
+- Timestamps on completed proof page timeline stages (full datetime, with fallback to `inserted_at`/`executed_at` for older draws)
+
+### Changed
+
+- Proof page pulse animation: circles now pulse outward repeatedly instead of breathing in and out
+- Ecto telemetry handler filters out Oban internal polling queries (`oban_jobs`, `oban_peers`, `oban_producers`)
+
 ## [0.5.1] - 2026-03-31
 
 ### Fixed
