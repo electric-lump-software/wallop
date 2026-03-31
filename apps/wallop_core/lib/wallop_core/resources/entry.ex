@@ -31,11 +31,25 @@ defmodule WallopCore.Resources.Entry do
     end
 
     attribute :entry_id, :string do
+      description(
+        "Opaque identifier for this entry, provided by the API consumer. " <>
+          "Must be unique within the draw.\n\n" <>
+          "**Do not use PII as entry IDs.** The entry list is hashed into a " <>
+          "permanent, public proof record that cannot be deleted. Use opaque " <>
+          "identifiers (e.g. a UUID from your own system) and keep the mapping " <>
+          "from ID to person in your own database."
+      )
+
       allow_nil?(false)
       public?(true)
     end
 
     attribute :weight, :integer do
+      description(
+        "Weighting for this entry. Higher weight increases the probability of " <>
+          "being selected. Must be between 1 and 1,000. Default is 1 (equal chance)."
+      )
+
       allow_nil?(false)
       default(1)
       public?(true)

@@ -1,11 +1,13 @@
 defmodule WallopCore.Resources.Draw.Changes.AddEntries do
   @moduledoc """
-  Appends entries to an open draw by inserting into the entries table.
+  Appends entries to an open draw by creating Entry records.
 
   Validates no duplicate IDs and enforces the 10K total limit.
   Structural validation of individual entries is handled by ValidateEntries.
   """
   use Ash.Resource.Change
+
+  alias WallopCore.Resources.Entry
 
   @max_entries 10_000
 
@@ -34,25 +36,19 @@ defmodule WallopCore.Resources.Draw.Changes.AddEntries do
     end
   end
 
-  @spec insert_entries(map(), [map()]) :: {non_neg_integer(), nil}
+  @spec insert_entries(map(), [map()]) :: :ok
   defp insert_entries(draw, entries) do
-    now = DateTime.utc_now()
-    draw_id_binary = Ecto.UUID.dump!(draw.id)
-
-    rows =
+    inputs =
       Enum.map(entries, fn entry ->
-        id = entry["id"] || entry[:id]
-        weight = entry["weight"] || entry[:weight]
-
         %{
-          id: Ecto.UUID.dump!(Ecto.UUID.generate()),
-          draw_id: draw_id_binary,
-          entry_id: id,
-          weight: weight,
-          inserted_at: now
+          draw_id: draw.id,
+          entry_id: entry["id"] || entry[:id],
+          weight: entry["weight"] || entry[:weight]
         }
       end)
 
-    WallopCore.Repo.insert_all("entries", rows)
+    Ash.bulk_create!(inputs, Entry, :create, authorize?: false)
+
+    :ok
   end
 end

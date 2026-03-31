@@ -106,7 +106,7 @@
                 "description": "Field included by default."
               },
               "entry_count": {
-                "description": "Field included by default.",
+                "description": "Number of entries in this draw. Updated atomically when entries are added or removed. Field included by default.",
                 "type": "integer"
               },
               "entry_hash": {
@@ -776,6 +776,7 @@
       },
       "draw-filter-entry_count": {
         "additionalProperties": false,
+        "description": "Number of entries in this draw. Updated atomically when entries are added or removed.",
         "properties": {
           "eq": {
             "type": "integer"

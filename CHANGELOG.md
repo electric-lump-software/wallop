@@ -13,6 +13,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Waitlist signup: `WaitlistSignup` Ash resource with `citext` unique email, wired to LiveView form
 - Mobile hamburger nav with LiveView toggle
 - Anime.js smooth scroll easing for anchor links
+
+## [0.4.1] - 2026-03-31
+
+### Changed
+
+- Entry operations use Ash API instead of raw Ecto queries (AddEntries, RemoveEntry, Proof, Entries)
+- Duplicate entry detection now returns `Ash.Error.Invalid` instead of `Ash.Error.Unknown`
+
+### Added
+
+- API documentation for Entry resource attributes (entry_id PII warning, weight range)
+- Description for `entry_count` on Draw
 - `citext` Postgres extension
 
 ## [0.4.0] - 2026-03-31

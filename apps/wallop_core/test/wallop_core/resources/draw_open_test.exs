@@ -190,7 +190,7 @@ defmodule WallopCore.Resources.DrawOpenTest do
         )
         |> Ash.update!()
 
-      assert_raise Ash.Error.Unknown, fn ->
+      assert_raise Ash.Error.Invalid, fn ->
         draw
         |> Ash.Changeset.for_update(
           :add_entries,

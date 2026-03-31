@@ -3,7 +3,9 @@ defmodule WallopCore.Proof do
   Proof verification and anonymisation logic for public proof pages.
   """
 
-  import Ecto.Query
+  require Ash.Query
+
+  alias WallopCore.Resources.Entry
 
   @mask_char "*"
   @mask_length 6
@@ -68,11 +70,9 @@ defmodule WallopCore.Proof do
           {:ok, %{found: boolean(), winner: boolean(), position: non_neg_integer() | nil}}
   def check_entry(draw, entry_id) when is_binary(entry_id) do
     in_entries? =
-      from(e in "entries",
-        where: e.draw_id == type(^draw.id, :binary_id) and e.entry_id == ^entry_id,
-        select: true
-      )
-      |> WallopCore.Repo.exists?()
+      Entry
+      |> Ash.Query.filter(draw_id == ^draw.id and entry_id == ^entry_id)
+      |> Ash.exists?(authorize?: false)
 
     if in_entries? do
       winner =
