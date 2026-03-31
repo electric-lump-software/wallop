@@ -243,6 +243,10 @@ defmodule WallopCore.Resources.Draw do
     end
 
     attribute :entry_count, :integer do
+      description(
+        "Number of entries in this draw. Updated atomically when entries are added or removed."
+      )
+
       allow_nil?(false)
       default(0)
       public?(true)

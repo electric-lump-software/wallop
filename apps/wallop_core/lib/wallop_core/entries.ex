@@ -6,7 +6,9 @@ defmodule WallopCore.Entries do
   atom-keyed maps for the protocol and algorithm layers.
   """
 
-  import Ecto.Query
+  require Ash.Query
+
+  alias WallopCore.Resources.Entry
 
   @doc """
   Convert a list of entries from string-keyed or atom-keyed maps to atom-keyed maps.
@@ -26,10 +28,9 @@ defmodule WallopCore.Entries do
   """
   @spec load_for_draw(String.t()) :: [%{id: String.t(), weight: pos_integer()}]
   def load_for_draw(draw_id) do
-    from(e in "entries",
-      where: e.draw_id == type(^draw_id, :binary_id),
-      select: %{id: e.entry_id, weight: e.weight}
-    )
-    |> WallopCore.Repo.all()
+    Entry
+    |> Ash.Query.filter(draw_id == ^draw_id)
+    |> Ash.read!(authorize?: false)
+    |> Enum.map(fn e -> %{id: e.entry_id, weight: e.weight} end)
   end
 end
