@@ -14,6 +14,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Mobile hamburger nav with LiveView toggle
 - Anime.js smooth scroll easing for anchor links
 
+## [0.4.2] - 2026-03-31
+
+### Fixed
+
+- PubSub config: consuming apps (e.g. wallop-app) can provide full PubSub config via `config :wallop_core, :pubsub` for Redis adapter support
+
+### Added
+
+- Redis PubSub adapter for cross-node live draw updates (`REDIS_URL` or `:pubsub` config)
+
 ## [0.4.1] - 2026-03-31
 
 ### Changed
