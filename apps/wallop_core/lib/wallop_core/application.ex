@@ -7,11 +7,21 @@ defmodule WallopCore.Application do
     children = [
       WallopCore.Repo,
       WallopCore.Vault,
-      {Phoenix.PubSub, name: WallopCore.PubSub},
+      pubsub_child_spec(),
       {Oban, Application.fetch_env!(:wallop_core, Oban)}
     ]
 
     opts = [strategy: :one_for_one, name: WallopCore.Supervisor]
     Supervisor.start_link(children, opts)
+  end
+
+  defp pubsub_child_spec do
+    case Application.get_env(:wallop_core, :redis_url) do
+      url when is_binary(url) and url != "" ->
+        {Phoenix.PubSub, name: WallopCore.PubSub, adapter: Phoenix.PubSub.Redis, url: url}
+
+      _ ->
+        {Phoenix.PubSub, name: WallopCore.PubSub}
+    end
   end
 end
