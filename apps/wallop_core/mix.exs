@@ -41,7 +41,12 @@ defmodule WallopCore.MixProject do
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
       {:dialyxir, "~> 1.4", only: [:dev, :test], runtime: false},
       {:simple_sat, "~> 0.1"},
-      {:phoenix_pubsub_redis, "~> 3.0"}
+      {:phoenix_pubsub_redis, "~> 3.0"},
+      {:opentelemetry, "~> 1.4"},
+      {:opentelemetry_exporter, "~> 1.7"},
+      {:opentelemetry_ash, "~> 0.1"},
+      {:opentelemetry_oban, "~> 1.2"},
+      {:opentelemetry_ecto, "~> 1.2"}
     ]
   end
 end

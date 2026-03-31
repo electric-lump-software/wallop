@@ -4,6 +4,9 @@ defmodule WallopCore.Application do
 
   @impl true
   def start(_type, _args) do
+    OpentelemetryOban.setup(plugin: :disabled)
+    OpentelemetryEcto.setup([:wallop_core, :repo])
+
     children = [
       WallopCore.Repo,
       WallopCore.Vault,
