@@ -21,7 +21,14 @@ defmodule WallopCore.Application do
         {Phoenix.PubSub, name: WallopCore.PubSub, adapter: Phoenix.PubSub.Redis, url: url}
 
       _ ->
-        {Phoenix.PubSub, name: WallopCore.PubSub}
+        # Allow consumers (e.g. wallop-app) to provide full PubSub config
+        case Application.get_env(:wallop_core, :pubsub) do
+          opts when is_list(opts) ->
+            {Phoenix.PubSub, Keyword.put_new(opts, :name, WallopCore.PubSub)}
+
+          _ ->
+            {Phoenix.PubSub, name: WallopCore.PubSub}
+        end
     end
   end
 end
