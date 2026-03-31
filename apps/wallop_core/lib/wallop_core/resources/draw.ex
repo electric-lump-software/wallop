@@ -63,10 +63,11 @@ defmodule WallopCore.Resources.Draw do
     end
 
     update :update_name do
-      require_atomic?(true)
+      require_atomic?(false)
       filter(expr(status == :open))
 
       accept([:name])
+      change({WallopCore.Resources.Draw.Changes.BroadcastUpdate, []})
     end
 
     update :lock do
@@ -136,6 +137,7 @@ defmodule WallopCore.Resources.Draw do
       require_atomic?(false)
       filter(expr(status == :open))
       change(set_attribute(:status, :expired))
+      change({WallopCore.Resources.Draw.Changes.BroadcastUpdate, []})
     end
 
     update :mark_failed do
