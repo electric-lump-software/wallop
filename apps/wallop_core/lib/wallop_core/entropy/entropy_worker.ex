@@ -14,6 +14,7 @@ defmodule WallopCore.Entropy.EntropyWorker do
     unique: [period: :infinity, keys: [:draw_id]]
 
   require Logger
+  require OpenTelemetry.Tracer, as: Tracer
 
   alias WallopCore.Entropy.{DrandClient, WeatherClient, WebhookWorker}
 
@@ -52,67 +53,98 @@ defmodule WallopCore.Entropy.EntropyWorker do
   end
 
   defp attempt_execution(draw) do
-    draw = maybe_transition_to_pending(draw)
+    Tracer.with_span "entropy_worker.attempt", attributes: %{"draw.id" => draw.id} do
+      draw = maybe_transition_to_pending(draw)
 
-    drand_task =
-      Task.async(fn ->
-        DrandClient.fetch(draw.drand_chain, draw.drand_round)
-      end)
+      drand_task =
+        Task.async(fn ->
+          Tracer.with_span "entropy.fetch_drand",
+            attributes: %{"drand.chain" => draw.drand_chain, "drand.round" => draw.drand_round} do
+            DrandClient.fetch(draw.drand_chain, draw.drand_round)
+          end
+        end)
 
-    weather_task =
-      Task.async(fn ->
-        WeatherClient.fetch(@latitude, @longitude)
-      end)
+      weather_task =
+        Task.async(fn ->
+          Tracer.with_span "entropy.fetch_weather",
+            attributes: %{"weather.lat" => @latitude, "weather.lon" => @longitude} do
+            WeatherClient.fetch(@latitude, @longitude)
+          end
+        end)
 
-    drand_result = Task.await(drand_task, 30_000)
-    weather_result = Task.await(weather_task, 30_000)
+      drand_result = Task.await(drand_task, 30_000)
+      weather_result = Task.await(weather_task, 30_000)
 
-    case {drand_result, weather_result} do
-      {{:ok, drand}, {:ok, weather}} ->
-        execute_draw(draw, drand, weather)
+      case {drand_result, weather_result} do
+        {{:ok, drand}, {:ok, weather}} ->
+          execute_draw(draw, drand, weather)
 
-      {{:error, drand_err}, {:error, weather_err}} ->
-        Logger.warning(
-          "EntropyWorker: both sources failed for draw #{draw.id}. " <>
-            "drand=#{inspect(drand_err)}, weather=#{inspect(weather_err)}"
-        )
+        {{:error, drand_err}, {:error, weather_err}} ->
+          Tracer.set_attributes(%{
+            "error" => true,
+            "entropy.drand_error" => inspect(drand_err),
+            "entropy.weather_error" => inspect(weather_err)
+          })
 
-        {:snooze, compute_backoff(draw)}
+          Logger.warning(
+            "EntropyWorker: both sources failed for draw #{draw.id}. " <>
+              "drand=#{inspect(drand_err)}, weather=#{inspect(weather_err)}"
+          )
 
-      {{:error, drand_err}, _} ->
-        Logger.warning("EntropyWorker: drand failed for draw #{draw.id}: #{inspect(drand_err)}")
+          {:snooze, compute_backoff(draw)}
 
-        {:snooze, compute_backoff(draw)}
+        {{:error, drand_err}, _} ->
+          Tracer.set_attributes(%{
+            "error" => true,
+            "entropy.drand_error" => inspect(drand_err)
+          })
 
-      {_, {:error, weather_err}} ->
-        Logger.warning(
-          "EntropyWorker: weather failed for draw #{draw.id}: #{inspect(weather_err)}"
-        )
+          Logger.warning("EntropyWorker: drand failed for draw #{draw.id}: #{inspect(drand_err)}")
 
-        {:snooze, compute_backoff(draw)}
+          {:snooze, compute_backoff(draw)}
+
+        {_, {:error, weather_err}} ->
+          Tracer.set_attributes(%{
+            "error" => true,
+            "entropy.weather_error" => inspect(weather_err)
+          })
+
+          Logger.warning(
+            "EntropyWorker: weather failed for draw #{draw.id}: #{inspect(weather_err)}"
+          )
+
+          {:snooze, compute_backoff(draw)}
+      end
     end
   end
 
   defp execute_draw(draw, drand, weather) do
-    draw
-    |> Ash.Changeset.for_update(:execute_with_entropy, %{
-      drand_randomness: drand.randomness,
-      drand_signature: drand.signature,
-      drand_response: drand.response,
-      weather_value: weather.value,
-      weather_raw: weather.raw,
-      weather_observation_time: weather.observation_time
-    })
-    |> Ash.update(domain: WallopCore.Domain, authorize?: false)
-    |> case do
-      {:ok, completed_draw} ->
-        broadcast_update(completed_draw)
-        maybe_enqueue_webhook(completed_draw)
-        :ok
+    Tracer.with_span "entropy_worker.execute_draw", attributes: %{"draw.id" => draw.id} do
+      draw
+      |> Ash.Changeset.for_update(:execute_with_entropy, %{
+        drand_randomness: drand.randomness,
+        drand_signature: drand.signature,
+        drand_response: drand.response,
+        weather_value: weather.value,
+        weather_raw: weather.raw,
+        weather_observation_time: weather.observation_time
+      })
+      |> Ash.update(domain: WallopCore.Domain, authorize?: false)
+      |> case do
+        {:ok, completed_draw} ->
+          broadcast_update(completed_draw)
+          maybe_enqueue_webhook(completed_draw)
+          :ok
 
-      {:error, reason} ->
-        Logger.warning("EntropyWorker: execution failed for draw #{draw.id}: #{inspect(reason)}")
-        {:error, reason}
+        {:error, reason} ->
+          Tracer.set_attributes(%{"error" => true, "error.message" => inspect(reason)})
+
+          Logger.warning(
+            "EntropyWorker: execution failed for draw #{draw.id}: #{inspect(reason)}"
+          )
+
+          {:error, reason}
+      end
     end
   end
 
