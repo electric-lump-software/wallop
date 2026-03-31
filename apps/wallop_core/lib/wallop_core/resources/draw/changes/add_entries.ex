@@ -1,8 +1,8 @@
 defmodule WallopCore.Resources.Draw.Changes.AddEntries do
   @moduledoc """
-  Appends entries to an open draw.
+  Appends entries to an open draw by inserting into the entries table.
 
-  Validates no duplicate IDs against existing entries and enforces the 10K total limit.
+  Validates no duplicate IDs and enforces the 10K total limit.
   Structural validation of individual entries is handled by ValidateEntries.
   """
   use Ash.Resource.Change
@@ -14,48 +14,45 @@ defmodule WallopCore.Resources.Draw.Changes.AddEntries do
     draw = changeset.data
     new_entries = Ash.Changeset.get_argument(changeset, :entries)
 
-    existing = draw.entries || []
-    combined = existing ++ new_entries
+    current_count = draw.entry_count || 0
+    new_count = current_count + length(new_entries)
 
-    with :ok <- validate_limit(combined),
-         :ok <- validate_no_duplicates(existing, new_entries) do
+    if new_count > @max_entries do
+      Ash.Changeset.add_error(changeset,
+        field: :entries,
+        message: "total entries must not exceed #{@max_entries}"
+      )
+    else
       changeset
-      |> Ash.Changeset.force_change_attribute(:entries, combined)
+      |> Ash.Changeset.force_change_attribute(:entry_count, new_count)
       |> Ash.Changeset.after_action(fn _changeset, draw ->
+        insert_entries(draw, new_entries)
+
         Phoenix.PubSub.broadcast(WallopCore.PubSub, "draw:#{draw.id}", {:draw_updated, draw})
         {:ok, draw}
       end)
-    else
-      {:error, message} ->
-        Ash.Changeset.add_error(changeset, field: :entries, message: message)
     end
   end
 
-  defp validate_limit(combined) do
-    if length(combined) > @max_entries do
-      {:error, "total entries must not exceed #{@max_entries}"}
-    else
-      :ok
-    end
-  end
+  @spec insert_entries(map(), [map()]) :: {non_neg_integer(), nil}
+  defp insert_entries(draw, entries) do
+    now = DateTime.utc_now()
+    draw_id_binary = Ecto.UUID.dump!(draw.id)
 
-  defp validate_no_duplicates(existing, new_entries) do
-    existing_ids = MapSet.new(existing, fn e -> e["id"] || e[:id] end)
-    new_ids = Enum.map(new_entries, fn e -> e["id"] || e[:id] end)
+    rows =
+      Enum.map(entries, fn entry ->
+        id = entry["id"] || entry[:id]
+        weight = entry["weight"] || entry[:weight]
 
-    dupes_against_existing = Enum.filter(new_ids, &MapSet.member?(existing_ids, &1))
-    dupes_within_new = new_ids -- Enum.uniq(new_ids)
+        %{
+          id: Ecto.UUID.dump!(Ecto.UUID.generate()),
+          draw_id: draw_id_binary,
+          entry_id: id,
+          weight: weight,
+          inserted_at: now
+        }
+      end)
 
-    cond do
-      dupes_against_existing != [] ->
-        {:error, "duplicate entry IDs: #{Enum.join(dupes_against_existing, ", ")}"}
-
-      dupes_within_new != [] ->
-        {:error,
-         "duplicate entry IDs within batch: #{Enum.join(Enum.uniq(dupes_within_new), ", ")}"}
-
-      true ->
-        :ok
-    end
+    WallopCore.Repo.insert_all("entries", rows)
   end
 end

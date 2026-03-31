@@ -1,12 +1,14 @@
 defmodule WallopCore.Resources.Draw.Changes.ValidateEntries do
   @moduledoc """
-  Validates entry structure on draw creation.
+  Validates a batch of entries being added to a draw.
 
-  Ensures entries conform to the protocol spec: each entry has a non-empty
-  string `id` and a positive integer `weight`, with no duplicate IDs. Also
-  enforces bounds to prevent resource exhaustion.
+  Checks structure, weight limits, and uniqueness within the batch.
+  Total count and cross-batch duplicate detection are handled by
+  AddEntries (count) and the unique index on entries (duplicates).
   """
   use Ash.Resource.Change
+
+  import Ecto.Query
 
   @max_entries 10_000
   @max_weight 1_000
@@ -25,23 +27,17 @@ defmodule WallopCore.Resources.Draw.Changes.ValidateEntries do
   end
 
   defp validate(changeset, entries) do
-    with :ok <- validate_count(entries),
-         :ok <- validate_structure(entries),
-         :ok <- validate_unique_ids(entries),
+    draw = changeset.data
+
+    with :ok <- validate_structure(entries),
          :ok <- validate_weights(entries),
-         :ok <- validate_total_weight(entries) do
+         :ok <- validate_batch_unique_ids(entries),
+         :ok <- validate_total_count(draw, entries),
+         :ok <- validate_total_weight(draw, entries) do
       changeset
     else
       {:error, message} ->
         Ash.Changeset.add_error(changeset, field: :entries, message: message)
-    end
-  end
-
-  defp validate_count(entries) do
-    if length(entries) > @max_entries do
-      {:error, "must not exceed #{@max_entries} entries"}
-    else
-      :ok
     end
   end
 
@@ -59,16 +55,6 @@ defmodule WallopCore.Resources.Draw.Changes.ValidateEntries do
       else: {:error, "each entry must have a non-empty string id and a positive integer weight"}
   end
 
-  defp validate_unique_ids(entries) do
-    ids = Enum.map(entries, fn e -> e["id"] || e[:id] end)
-
-    if length(ids) == length(Enum.uniq(ids)) do
-      :ok
-    else
-      {:error, "must not contain duplicate entry IDs"}
-    end
-  end
-
   defp validate_weights(entries) do
     valid? =
       Enum.all?(entries, fn e ->
@@ -79,10 +65,38 @@ defmodule WallopCore.Resources.Draw.Changes.ValidateEntries do
     if valid?, do: :ok, else: {:error, "entry weight must not exceed #{@max_weight}"}
   end
 
-  defp validate_total_weight(entries) do
-    total = Enum.reduce(entries, 0, fn e, acc -> acc + (e["weight"] || e[:weight]) end)
+  defp validate_batch_unique_ids(entries) do
+    ids = Enum.map(entries, fn e -> e["id"] || e[:id] end)
 
-    if total <= @max_total_weight do
+    if length(ids) == length(Enum.uniq(ids)) do
+      :ok
+    else
+      {:error, "must not contain duplicate entry IDs within batch"}
+    end
+  end
+
+  defp validate_total_count(draw, entries) do
+    current = draw.entry_count || 0
+    total = current + length(entries)
+
+    if total <= @max_entries do
+      :ok
+    else
+      {:error, "total entries must not exceed #{@max_entries}"}
+    end
+  end
+
+  defp validate_total_weight(draw, entries) do
+    existing_weight =
+      from(e in "entries",
+        where: e.draw_id == type(^draw.id, :binary_id),
+        select: coalesce(sum(e.weight), 0)
+      )
+      |> WallopCore.Repo.one!()
+
+    new_weight = Enum.reduce(entries, 0, fn e, acc -> acc + (e["weight"] || e[:weight]) end)
+
+    if existing_weight + new_weight <= @max_total_weight do
       :ok
     else
       {:error, "total weight must not exceed #{@max_total_weight}"}

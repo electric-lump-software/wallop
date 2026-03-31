@@ -53,7 +53,7 @@ defmodule WallopWeb.Components.DrawTimeline do
   end
 
   defp entries_open_stage(draw, status) do
-    count = length(draw.entries || [])
+    count = draw.entry_count || 0
 
     case status do
       :open ->
@@ -76,7 +76,7 @@ defmodule WallopWeb.Components.DrawTimeline do
     if status == :open do
       %{label: "Entries Locked", detail: nil, state: :pending}
     else
-      count = length(draw.entries || [])
+      count = draw.entry_count || 0
       hash = truncate_hash(draw.entry_hash)
 
       %{

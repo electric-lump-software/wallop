@@ -122,7 +122,7 @@ defmodule WallopCore.Entropy.IntegrationTest do
       assert length(completed.results) == 2
 
       # Verify results match FairPick.draw/3 directly
-      atom_entries = WallopCore.Entries.to_atom_keys(completed.entries)
+      atom_entries = WallopCore.Entries.load_for_draw(completed.id)
       seed_bytes = Base.decode16!(completed.seed, case: :mixed)
       expected_results = FairPick.draw(atom_entries, seed_bytes, completed.winner_count)
 

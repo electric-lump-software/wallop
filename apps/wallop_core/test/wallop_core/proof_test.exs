@@ -87,7 +87,7 @@ defmodule WallopCore.ProofTest do
       draw: draw,
       winner_ids: winner_ids
     } do
-      all_ids = Enum.map(draw.entries, & &1["id"])
+      all_ids = Enum.map(WallopCore.Entries.load_for_draw(draw.id), & &1.id)
       loser_id = Enum.find(all_ids, fn id -> id not in winner_ids end)
 
       assert {:ok, %{found: true, winner: false}} = Proof.check_entry(draw, loser_id)
