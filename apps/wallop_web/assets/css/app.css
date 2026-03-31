@@ -1,7 +1,15 @@
 @import "tailwindcss";
 @source "../../lib/wallop_web";
 @plugin "daisyui" {
-  themes: cmyk --default;
+  themes: silk --default;
+}
+@plugin "daisyui/theme" {
+  name: "silk";
+  default: true;
+  color-scheme: light;
+  --color-base-100: oklch(98.8% 0.01 75);
+  --color-base-200: oklch(96% 0.01 75);
+  --color-base-300: oklch(93% 0.015 60);
 }
 
 /* Marketing site colour palette */

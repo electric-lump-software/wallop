@@ -18,7 +18,7 @@ defmodule WallopWeb.Components.ProofChain do
       <div class="bg-cream-dark border border-cream-border rounded-xl">
         <div class="p-4">
           <div class="flex items-start gap-3">
-            <span class="inline-flex items-center justify-center w-6 h-6 bg-[#1a1a1a] text-white text-xs font-mono rounded-full">1</span>
+            <span class="inline-flex items-center justify-center w-6 h-6 min-w-6 min-h-6 shrink-0 bg-[#1a1a1a] text-white text-xs font-mono rounded-full">1</span>
             <div>
               <div class="font-semibold text-sm">Entry Hash</div>
               <div class="text-xs text-[#555] mt-1">
@@ -36,7 +36,7 @@ defmodule WallopWeb.Components.ProofChain do
       <div class="bg-cream-dark border border-cream-border rounded-xl">
         <div class="p-4">
           <div class="flex items-start gap-3">
-            <span class="inline-flex items-center justify-center w-6 h-6 bg-[#1a1a1a] text-white text-xs font-mono rounded-full">2</span>
+            <span class="inline-flex items-center justify-center w-6 h-6 min-w-6 min-h-6 shrink-0 bg-[#1a1a1a] text-white text-xs font-mono rounded-full">2</span>
             <div>
               <div class="font-semibold text-sm">Entropy Sources</div>
               <div :if={@draw.drand_round} class="mt-2">
@@ -72,7 +72,7 @@ defmodule WallopWeb.Components.ProofChain do
       <div class="bg-cream-dark border border-cream-border rounded-xl">
         <div class="p-4">
           <div class="flex items-start gap-3">
-            <span class="inline-flex items-center justify-center w-6 h-6 bg-[#1a1a1a] text-white text-xs font-mono rounded-full">3</span>
+            <span class="inline-flex items-center justify-center w-6 h-6 min-w-6 min-h-6 shrink-0 bg-[#1a1a1a] text-white text-xs font-mono rounded-full">3</span>
             <div>
               <div class="font-semibold text-sm">Seed Computation</div>
               <div class="text-xs text-[#555] mt-1">
@@ -90,7 +90,7 @@ defmodule WallopWeb.Components.ProofChain do
       <div class="bg-cream-dark border border-cream-border rounded-xl">
         <div class="p-4">
           <div class="flex items-start gap-3">
-            <span class="inline-flex items-center justify-center w-6 h-6 bg-[#1a1a1a] text-white text-xs font-mono rounded-full">4</span>
+            <span class="inline-flex items-center justify-center w-6 h-6 min-w-6 min-h-6 shrink-0 bg-[#1a1a1a] text-white text-xs font-mono rounded-full">4</span>
             <div>
               <div class="font-semibold text-sm">Algorithm</div>
               <div class="text-xs text-[#555] mt-1">
