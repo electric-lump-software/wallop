@@ -27,4 +27,7 @@ config :wallop_core, WallopCore.Vault,
 
 config :wallop_core, :met_office_api_key, "test-placeholder"
 
+config :opentelemetry,
+  traces_exporter: :none
+
 config :logger, level: :warning
