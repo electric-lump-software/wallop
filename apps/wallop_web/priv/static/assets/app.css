@@ -30,6 +30,7 @@
     --color-green-800: oklch(44.8% 0.119 151.328);
     --color-blue-100: oklch(93.2% 0.032 255.585);
     --color-blue-800: oklch(42.4% 0.199 265.638);
+    --color-gray-400: oklch(70.7% 0.022 261.325);
     --color-black: #000;
     --color-white: #fff;
     --spacing: 0.25rem;
@@ -1665,6 +1666,9 @@
   .mb-10 {
     margin-bottom: calc(var(--spacing) * 10);
   }
+  .ml-1\.5 {
+    margin-left: calc(var(--spacing) * 1.5);
+  }
   .status {
     @layer daisyui.l1.l2.l3 {
       display: inline-block;
@@ -2332,6 +2336,9 @@
   .text-blue-800 {
     color: var(--color-blue-800);
   }
+  .text-gray-400 {
+    color: var(--color-gray-400);
+  }
   .text-green-400 {
     color: var(--color-green-400);
   }
@@ -2609,13 +2616,17 @@
   animation: step-pulse 2s ease-in-out infinite;
 }
 @keyframes step-pulse {
-  0%, 100% {
+  0% {
     transform: scale(1);
     box-shadow: 0 0 0 0 rgba(46, 125, 50, 0.4);
   }
-  50% {
+  70% {
     transform: scale(1.15);
     box-shadow: 0 0 0 10px rgba(46, 125, 50, 0);
+  }
+  100% {
+    transform: scale(1);
+    box-shadow: 0 0 0 0 rgba(46, 125, 50, 0);
   }
 }
 .step::after {
