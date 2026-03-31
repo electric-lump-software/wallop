@@ -40,7 +40,8 @@ defmodule WallopCore.MixProject do
       {:cloak_ecto, "~> 1.3"},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
       {:dialyxir, "~> 1.4", only: [:dev, :test], runtime: false},
-      {:simple_sat, "~> 0.1"}
+      {:simple_sat, "~> 0.1"},
+      {:phoenix_pubsub_redis, "~> 3.0"}
     ]
   end
 end
