@@ -14,6 +14,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Mobile hamburger nav with LiveView toggle
 - Anime.js smooth scroll easing for anchor links
 
+## [0.6.0] - 2026-03-31
+
+### Fixed
+
+- **Weather observation pinned to declared time** — WeatherClient now accepts a `target_time` parameter and selects the reading closest to (but not after) the draw's declared `weather_time`, within a 1-hour window. Previously, retries could silently use a different hour's observation, breaking independent verifiability.
+- **ExecuteWithEntropy validates observation proximity** — rejects weather observations more than 1 hour from the declared `weather_time`
+
+### Changed
+
+- **Failure timeout reduced from 24h to 2h** — drand resolves in seconds and weather within an hour; 24h was excessive
+- **Permanent errors fail immediately** — 401/403 from entropy APIs and invalid responses now fail the draw instantly instead of retrying for hours
+- **Oban attempt tracking works correctly** — switched from `{:snooze, _}` (which bypassed attempt counting) to `{:error, _}` with Oban's built-in exponential backoff. `max_attempts` reduced from 20 to 10.
+- **Backoff uses Oban's built-in mechanism** — exponential backoff (~30s, ~60s, ~2m, ~4m, ~8m, capped at 15m) instead of custom `compute_backoff` using draw creation time
+
 ## [0.5.2] - 2026-03-31
 
 ### Added

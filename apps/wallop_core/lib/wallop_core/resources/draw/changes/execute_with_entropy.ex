@@ -33,6 +33,13 @@ defmodule WallopCore.Resources.Draw.Changes.ExecuteWithEntropy do
           message: "observation must be after draw creation"
         )
 
+      draw.weather_time != nil and
+          abs(DateTime.diff(weather_observation_time, draw.weather_time, :second)) > 3600 ->
+        Ash.Changeset.add_error(changeset,
+          field: :weather_observation_time,
+          message: "observation must be within 1 hour of declared weather_time"
+        )
+
       true ->
         apply_results(changeset, draw, atom_entries)
     end

@@ -32,23 +32,19 @@ defmodule WallopCore.Entropy.IntegrationTest do
       req_options: [plug: {Req.Test, DrandClient}, retry: false]
     )
 
-    # Stub weather to return a known pressure for whatever hour is requested.
-    # The draw's weather_time is computed dynamically, so we match any time.
+    # Stub weather to return a known pressure. Includes entries at 5-minute
+    # intervals around now so the target_time filter always finds a match
+    # that's after draw.inserted_at (required by the timing validation).
     Req.Test.stub(WeatherClient, fn conn ->
-      # Generate a timeSeries covering several hours so the target is always found
+      now = DateTime.utc_now()
+
+      # Generate entries every 5 minutes from now-5min to now+20min
+      # This ensures there's always an entry after draw creation and
+      # within 1 hour of weather_time (~10 min from draw creation)
       times =
-        for h <- 0..23 do
-          time = DateTime.new!(Date.utc_today(), Time.new!(h, 0, 0), "Etc/UTC")
-          %{"time" => Calendar.strftime(time, "%Y-%m-%dT%H:00Z"), "mslp" => @weather_pressure}
-        end
-
-      # Also cover tomorrow in case next whole hour crosses midnight
-      tomorrow = Date.add(Date.utc_today(), 1)
-
-      tomorrow_times =
-        for h <- 0..23 do
-          time = DateTime.new!(tomorrow, Time.new!(h, 0, 0), "Etc/UTC")
-          %{"time" => Calendar.strftime(time, "%Y-%m-%dT%H:00Z"), "mslp" => @weather_pressure}
+        for offset <- -1..4 do
+          time = DateTime.add(now, offset * 300, :second)
+          %{"time" => Calendar.strftime(time, "%Y-%m-%dT%H:%MZ"), "mslp" => @weather_pressure}
         end
 
       Req.Test.json(conn, %{
@@ -56,7 +52,7 @@ defmodule WallopCore.Entropy.IntegrationTest do
         "features" => [
           %{
             "properties" => %{
-              "timeSeries" => times ++ tomorrow_times
+              "timeSeries" => times
             }
           }
         ]
