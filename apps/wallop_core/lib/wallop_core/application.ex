@@ -2,10 +2,12 @@ defmodule WallopCore.Application do
   @moduledoc false
   use Application
 
+  alias WallopCore.Telemetry.EctoHandler
+
   @impl true
   def start(_type, _args) do
     OpentelemetryOban.setup(plugin: :disabled)
-    OpentelemetryEcto.setup([:wallop_core, :repo])
+    EctoHandler.setup([:wallop_core, :repo])
 
     children = [
       WallopCore.Repo,

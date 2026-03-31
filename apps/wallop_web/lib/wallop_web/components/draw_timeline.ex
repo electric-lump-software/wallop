@@ -16,7 +16,10 @@ defmodule WallopWeb.Components.DrawTimeline do
     <ul class="steps steps-vertical w-full">
       <li :for={{stage, idx} <- Enum.with_index(@stages)} class={step_class(stage.state)} data-content={idx} data-reveal-step={idx}>
         <div class="text-left py-2">
-          <div class="font-semibold text-sm">{stage.label}</div>
+          <div class="font-semibold text-sm">
+            {stage.label}
+            <span :if={stage[:timestamp]} class="font-normal text-xs text-gray-400 ml-1.5">{stage.timestamp}</span>
+          </div>
           <div :if={stage[:countdown_target]} class="text-xs text-[#555] mt-1">
             <div>Entropy available in</div>
             <span
@@ -54,6 +57,7 @@ defmodule WallopWeb.Components.DrawTimeline do
 
   defp entries_open_stage(draw, status) do
     count = draw.entry_count || 0
+    ts = draw.stage_timestamps || %{}
 
     case status do
       :open ->
@@ -67,12 +71,15 @@ defmodule WallopWeb.Components.DrawTimeline do
         %{
           label: "Entries Open",
           detail: "#{count} entries (closed)",
-          state: :done
+          state: :done,
+          timestamp: format_timestamp(ts["opened_at"], draw.inserted_at)
         }
     end
   end
 
   defp entries_locked_stage(draw, status) do
+    ts = draw.stage_timestamps || %{}
+
     if status == :open do
       %{label: "Entries Locked", detail: nil, state: :pending}
     else
@@ -82,12 +89,15 @@ defmodule WallopWeb.Components.DrawTimeline do
       %{
         label: "Entries Locked",
         detail: "#{count} entries committed, hash: #{hash}",
-        state: :done
+        state: :done,
+        timestamp: format_timestamp(ts["locked_at"])
       }
     end
   end
 
   defp entropy_declared_stage(draw, status) do
+    ts = draw.stage_timestamps || %{}
+
     if status in [:open, :locked] do
       %{label: "Entropy Declared", detail: nil, state: :pending}
     else
@@ -103,7 +113,8 @@ defmodule WallopWeb.Components.DrawTimeline do
       %{
         label: "Entropy Declared",
         detail: if(detail != "", do: detail, else: "sources declared"),
-        state: :done
+        state: :done,
+        timestamp: format_timestamp(ts["entropy_declared_at"])
       }
     end
   end
@@ -129,7 +140,14 @@ defmodule WallopWeb.Components.DrawTimeline do
         }
 
       :completed ->
-        %{label: "Fetching Entropy", detail: entropy_detail(draw), state: :done}
+        ts = draw.stage_timestamps || %{}
+
+        %{
+          label: "Fetching Entropy",
+          detail: entropy_detail(draw),
+          state: :done,
+          timestamp: format_timestamp(ts["executed_at"], draw.executed_at)
+        }
 
       :failed ->
         %{
@@ -141,12 +159,15 @@ defmodule WallopWeb.Components.DrawTimeline do
   end
 
   defp computing_seed_stage(draw, status) do
+    ts = draw.stage_timestamps || %{}
+
     case status do
       :completed ->
         %{
           label: "Computing Seed",
           detail: "seed: #{truncate_hash(draw.seed)}",
-          state: :done
+          state: :done,
+          timestamp: format_timestamp(ts["executed_at"], draw.executed_at)
         }
 
       :failed ->
@@ -158,10 +179,18 @@ defmodule WallopWeb.Components.DrawTimeline do
   end
 
   defp winners_selected_stage(draw, status) do
+    ts = draw.stage_timestamps || %{}
+
     case status do
       :completed ->
         count = length(draw.results || [])
-        %{label: "Winners Selected", detail: "#{count} winner(s)", state: :done}
+
+        %{
+          label: "Winners Selected",
+          detail: "#{count} winner(s)",
+          state: :done,
+          timestamp: format_timestamp(ts["executed_at"], draw.executed_at)
+        }
 
       :failed ->
         %{
@@ -191,6 +220,27 @@ defmodule WallopWeb.Components.DrawTimeline do
   defp step_class(:current), do: "step step-done step-current"
   defp step_class(:failed), do: "step step-failed"
   defp step_class(:pending), do: "step"
+
+  defp format_timestamp(nil, nil), do: nil
+  defp format_timestamp(nil, %DateTime{} = fallback), do: format_dt(fallback)
+
+  defp format_timestamp(iso_string, _fallback) when is_binary(iso_string) do
+    case DateTime.from_iso8601(iso_string) do
+      {:ok, dt, _} -> format_dt(dt)
+      _ -> nil
+    end
+  end
+
+  defp format_timestamp(nil), do: nil
+
+  defp format_timestamp(iso_string) when is_binary(iso_string) do
+    case DateTime.from_iso8601(iso_string) do
+      {:ok, dt, _} -> format_dt(dt)
+      _ -> nil
+    end
+  end
+
+  defp format_dt(dt), do: Calendar.strftime(dt, "%Y-%m-%d %H:%M:%S UTC")
 
   defp truncate_hash(nil), do: "..."
   defp truncate_hash(hash) when byte_size(hash) > 12, do: String.slice(hash, 0, 12) <> "..."
