@@ -42,7 +42,9 @@ defmodule WallopWeb.MixProject do
       {:tailwind, "~> 0.3", runtime: Mix.env() == :dev},
       {:esbuild, "~> 0.9", runtime: Mix.env() == :dev},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
-      {:lazy_html, ">= 0.1.0", only: :test}
+      {:lazy_html, ">= 0.1.0", only: :test},
+      {:opentelemetry_phoenix, "~> 2.0"},
+      {:opentelemetry_bandit, "~> 0.2"}
     ]
   end
 end

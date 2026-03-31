@@ -53,6 +53,18 @@ config :tailwind,
     cd: Path.expand("../apps/wallop_web/assets", __DIR__)
   ]
 
+config :ash, :tracer, [OpentelemetryAsh]
+
+config :opentelemetry_ash,
+  trace_types: [:custom, :action, :flow]
+
+config :opentelemetry,
+  span_processor: :batch,
+  traces_exporter: :otlp
+
+config :opentelemetry_exporter,
+  otlp_protocol: :http_protobuf
+
 config :logger, :console,
   format: "$time $metadata[$level] $message\n",
   metadata: [:request_id]

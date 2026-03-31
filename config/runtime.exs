@@ -8,6 +8,16 @@ if config_env() in [:dev, :test] do
   end
 end
 
+if honeycomb_api_key = System.get_env("HONEYCOMB_API_KEY") do
+  config :opentelemetry,
+    resource: [service: [name: "wallop"]]
+
+  config :opentelemetry_exporter,
+    otlp_endpoint: "https://api.honeycomb.io",
+    otlp_headers: [{"x-honeycomb-team", honeycomb_api_key}],
+    otlp_protocol: :http_protobuf
+end
+
 if config_env() == :prod do
   met_office_api_key =
     System.get_env("MET_OFFICE_API_KEY") ||
