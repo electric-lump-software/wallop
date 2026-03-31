@@ -7,21 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Changed
-
-- Entries moved from JSONB column to dedicated `entries` table for scalability to millions of entries
-- Draw responses include `entry_count` instead of full entries array
-- `Proof.check_entry` uses indexed lookup instead of linear scan
-- Entries table has immutability trigger (entries locked when draw leaves `open` status)
-
 ### Added
 
-- Direct entry check link: `/proof/:draw_id/:entry_id` auto-checks and pre-fills the entry on page load
 - Marketing site at `/` with hero, "Why provable?", organiser/developer split, tabbed protocol explainer, origin story, FAQ, and waitlist CTA
 - Waitlist signup: `WaitlistSignup` Ash resource with `citext` unique email, wired to LiveView form
 - Mobile hamburger nav with LiveView toggle
 - Anime.js smooth scroll easing for anchor links
 - `citext` Postgres extension
+
+## [0.4.0] - 2026-03-31
+
+### Changed
+
+- **Breaking:** Entries moved from JSONB column to dedicated `entries` table — `entries` attribute removed from Draw, replaced by `entry_count`
+- Draw responses include `entry_count` instead of full entries array
+- `Proof.check_entry` uses indexed lookup instead of linear scan
+
+### Added
+
+- Direct entry check link: `/proof/:draw_id/:entry_id` auto-checks and pre-fills the entry on page load
+- Entries table with immutability trigger (entries locked when draw leaves `open` status)
 
 ## [0.3.2] - 2026-03-30
 
