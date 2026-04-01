@@ -61,11 +61,23 @@ defmodule WallopCore.Entropy.EntropyWorker do
   end
 
   defp attempt_execution(draw) do
-    Tracer.with_span "entropy_worker.attempt", attributes: %{"draw.id" => draw.id} do
+    Tracer.with_span "entropy_worker.attempt",
+      attributes: %{
+        "draw.id" => draw.id,
+        "draw.status" => to_string(draw.status),
+        "draw.weather_time" => DateTime.to_iso8601(draw.weather_time),
+        "draw.drand_round" => draw.drand_round
+      } do
       draw = maybe_transition_to_pending(draw)
+
+      # Capture the current OTel context so child tasks appear as children
+      # in the trace, not orphaned spans
+      ctx = OpenTelemetry.Ctx.get_current()
 
       drand_task =
         Task.async(fn ->
+          OpenTelemetry.Ctx.attach(ctx)
+
           Tracer.with_span "entropy.fetch_drand",
             attributes: %{"drand.chain" => draw.drand_chain, "drand.round" => draw.drand_round} do
             DrandClient.fetch(draw.drand_chain, draw.drand_round)
@@ -74,6 +86,8 @@ defmodule WallopCore.Entropy.EntropyWorker do
 
       weather_task =
         Task.async(fn ->
+          OpenTelemetry.Ctx.attach(ctx)
+
           Tracer.with_span "entropy.fetch_weather",
             attributes: %{"weather.lat" => @latitude, "weather.lon" => @longitude} do
             WeatherClient.fetch(@latitude, @longitude, draw.weather_time)
@@ -88,6 +102,12 @@ defmodule WallopCore.Entropy.EntropyWorker do
   end
 
   defp handle_results(draw, {:ok, drand}, {:ok, weather}) do
+    Tracer.set_attributes(%{
+      "entropy.drand_round" => drand.round,
+      "entropy.weather_value" => weather.value,
+      "entropy.weather_observation_time" => DateTime.to_iso8601(weather.observation_time)
+    })
+
     execute_draw(draw, drand, weather)
   end
 

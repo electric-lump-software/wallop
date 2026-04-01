@@ -27,12 +27,6 @@ defmodule WallopCore.Resources.Draw.Changes.ExecuteWithEntropy do
       recomputed_hash != draw.entry_hash ->
         Ash.Changeset.add_error(changeset, field: :entries, message: "entry hash mismatch")
 
-      DateTime.compare(weather_observation_time, draw.inserted_at) != :gt ->
-        Ash.Changeset.add_error(changeset,
-          field: :weather_observation_time,
-          message: "observation must be after draw creation"
-        )
-
       draw.weather_time != nil and
           abs(DateTime.diff(weather_observation_time, draw.weather_time, :second)) > 3600 ->
         Ash.Changeset.add_error(changeset,

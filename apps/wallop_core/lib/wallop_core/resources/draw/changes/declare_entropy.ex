@@ -37,7 +37,7 @@ defmodule WallopCore.Resources.Draw.Changes.DeclareEntropy do
       changeset
     else
       future_round = compute_future_drand_round()
-      weather_time = ten_minutes_from_now()
+      weather_time = jittered_weather_time()
 
       changeset
       |> Ash.Changeset.force_change_attribute(:drand_chain, DrandClient.quicknet_chain_hash())
@@ -69,9 +69,12 @@ defmodule WallopCore.Resources.Draw.Changes.DeclareEntropy do
     current_round + @round_buffer
   end
 
-  defp ten_minutes_from_now do
+  defp jittered_weather_time do
+    # 3-5 minutes from now (jittered to avoid thundering herd)
+    delay = Enum.random(180..300)
+
     DateTime.utc_now()
-    |> DateTime.add(600, :second)
+    |> DateTime.add(delay, :second)
     |> DateTime.truncate(:second)
   end
 end
