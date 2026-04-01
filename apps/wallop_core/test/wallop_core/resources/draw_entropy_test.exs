@@ -36,14 +36,14 @@ defmodule WallopCore.Resources.DrawEntropyTest do
       assert draw.drand_chain == DrandClient.quicknet_chain_hash()
     end
 
-    test "declares weather_time as ~10 minutes from now" do
+    test "declares weather_time as ~3-5 minutes from now" do
       api_key = create_api_key()
       draw = create_draw(api_key)
 
       assert draw.weather_time != nil
-      # weather_time should be ~10 minutes from now, not next whole hour
+      # weather_time should be 3-5 minutes from now (jittered)
       diff = DateTime.diff(draw.weather_time, DateTime.utc_now(), :second)
-      assert diff > 500 and diff < 700, "Expected weather_time ~10min from now, got #{diff}s"
+      assert diff >= 170 and diff <= 310, "Expected weather_time 3-5min from now, got #{diff}s"
     end
 
     test "declares weather_station as middle-wallop" do

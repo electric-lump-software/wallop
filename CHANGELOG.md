@@ -10,6 +10,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - Marketing site at `/` with hero, "Why provable?", organiser/developer split, tabbed protocol explainer, origin story, FAQ, and waitlist CTA
+
+## [0.6.1] - 2026-04-01
+
+### Fixed
+
+- Draws no longer wait up to 70 minutes for weather observation — removed redundant "observation must be after draw creation" check that rejected valid pre-lock observations. The "within 1 hour of declared weather_time" check is sufficient.
+
+### Changed
+
+- Weather delay reduced from 10 minutes to jittered 3-5 minutes — drand only needs ~30 seconds, no reason to wait longer
+- Entropy worker spans now include `draw.weather_time`, `draw.status`, `entropy.weather_observation_time` attributes for debugging
+- OTel context propagated into Task.async calls so drand/weather fetch spans appear as children in traces, not orphaned
 - Waitlist signup: `WaitlistSignup` Ash resource with `citext` unique email, wired to LiveView form
 - Mobile hamburger nav with LiveView toggle
 - Anime.js smooth scroll easing for anchor links
