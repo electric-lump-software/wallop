@@ -18,8 +18,9 @@ defmodule WallopWeb.Components.DrawTimeline do
         <div class="text-left py-2">
           <div class="font-semibold text-sm">
             {stage.label}
-            <span :if={stage[:timestamp]} class="font-normal text-xs text-gray-400 ml-1.5">{stage.timestamp}</span>
+            <span :if={stage[:timestamp]} class="hidden sm:inline font-normal text-xs text-gray-400 ml-1.5">{stage.timestamp}</span>
           </div>
+          <div :if={stage[:timestamp]} class="sm:hidden text-[10px] text-gray-400 leading-tight">{stage.timestamp}</div>
           <div :if={stage[:countdown_target]} class="text-xs text-[#555] mt-1">
             <div>Entropy available in</div>
             <span
