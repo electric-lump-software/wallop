@@ -26,18 +26,18 @@ Entries are locked before the draw. The seed is computed from public, unpredicta
 
 ## Using wallop_core as a dependency
 
-If your app includes `wallop_core` as a dependency and shares the same database, you **must** configure Oban with a separate prefix to prevent your app competing with the wallop service for entropy and webhook jobs.
+If your app includes `wallop_core` as a dependency and shares the same database, you **must** configure Oban with a separate prefix. Each service processes its own draws independently — the code is identical (wallop_core), the algorithm is deterministic, and the proof is independently verifiable regardless of which service executed the draw.
 
 ```elixir
 # In your app's config.exs — use a different Oban prefix
 config :wallop_core, Oban,
   repo: WallopCore.Repo,
   prefix: "oban_app",
-  queues: [my_queue: 5],
+  queues: [entropy: 10, webhooks: 5, default: 5],
   plugins: []
 ```
 
-The wallop service uses the default `public` prefix. Your app uses `oban_app` (or any other name). Both share the database but never touch each other's jobs.
+The wallop service uses the default `public` prefix. Your app uses `oban_app` (or any other name). Both share the database but process their own jobs independently.
 
 You will need to run `Oban.Migrations` for your prefix:
 
@@ -49,6 +49,16 @@ defmodule MyApp.Repo.Migrations.AddObanAppJobs do
   def down, do: Oban.Migration.down(prefix: "oban_app")
 end
 ```
+
+Your app also needs `MET_OFFICE_API_KEY` and `HONEYCOMB_API_KEY` environment variables set, since the EntropyWorker and OTel exporter run in your process. Set a distinct OTel service name so traces are separated in Honeycomb:
+
+```elixir
+# In your app's runtime.exs
+config :opentelemetry,
+  resource: [service: [name: "wallop-app"]]
+```
+
+PubSub works across services automatically via Redis — draw updates broadcast from either service are received by both.
 
 ## Tech stack
 
