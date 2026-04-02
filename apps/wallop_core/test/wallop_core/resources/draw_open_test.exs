@@ -239,6 +239,91 @@ defmodule WallopCore.Resources.DrawOpenTest do
     end
   end
 
+  describe "entry ID format validation" do
+    test "accepts valid entry IDs (alphanumeric, hyphens, underscores, dots, colons)" do
+      api_key = create_api_key()
+
+      draw =
+        WallopCore.Resources.Draw
+        |> Ash.Changeset.for_create(:create, %{winner_count: 1}, actor: api_key)
+        |> Ash.create!()
+
+      entries = [
+        %{"id" => "abc123", "weight" => 1},
+        %{"id" => "550e8400-e29b-41d4-a716-446655440000", "weight" => 1},
+        %{"id" => "user_42", "weight" => 1},
+        %{"id" => "entry-7", "weight" => 1},
+        %{"id" => "ns:value", "weight" => 1},
+        %{"id" => "v1.2.3", "weight" => 1},
+        %{"id" => "dGVzdA==", "weight" => 1}
+      ]
+
+      draw =
+        draw
+        |> Ash.Changeset.for_update(:add_entries, %{entries: entries}, actor: api_key)
+        |> Ash.update!()
+
+      assert draw.entry_count == 7
+    end
+
+    test "rejects email addresses as entry IDs" do
+      api_key = create_api_key()
+
+      draw =
+        WallopCore.Resources.Draw
+        |> Ash.Changeset.for_create(:create, %{winner_count: 1}, actor: api_key)
+        |> Ash.create!()
+
+      assert_raise Ash.Error.Invalid, ~r/invalid characters/, fn ->
+        draw
+        |> Ash.Changeset.for_update(
+          :add_entries,
+          %{entries: [%{"id" => "user@example.com", "weight" => 1}]},
+          actor: api_key
+        )
+        |> Ash.update!()
+      end
+    end
+
+    test "rejects entry IDs with spaces" do
+      api_key = create_api_key()
+
+      draw =
+        WallopCore.Resources.Draw
+        |> Ash.Changeset.for_create(:create, %{winner_count: 1}, actor: api_key)
+        |> Ash.create!()
+
+      assert_raise Ash.Error.Invalid, ~r/invalid characters/, fn ->
+        draw
+        |> Ash.Changeset.for_update(
+          :add_entries,
+          %{entries: [%{"id" => "John Smith", "weight" => 1}]},
+          actor: api_key
+        )
+        |> Ash.update!()
+      end
+    end
+
+    test "rejects entry IDs with special characters" do
+      api_key = create_api_key()
+
+      draw =
+        WallopCore.Resources.Draw
+        |> Ash.Changeset.for_create(:create, %{winner_count: 1}, actor: api_key)
+        |> Ash.create!()
+
+      assert_raise Ash.Error.Invalid, ~r/invalid characters/, fn ->
+        draw
+        |> Ash.Changeset.for_update(
+          :add_entries,
+          %{entries: [%{"id" => "+44 7911 123456", "weight" => 1}]},
+          actor: api_key
+        )
+        |> Ash.update!()
+      end
+    end
+  end
+
   describe "remove_entry" do
     test "removes an entry by ID" do
       api_key = create_api_key()
