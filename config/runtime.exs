@@ -10,7 +10,7 @@ end
 
 if honeycomb_api_key = System.get_env("HONEYCOMB_API_KEY") do
   config :opentelemetry,
-    resource: [service: [name: "wallop"]]
+    resource: [service: [name: "wallop-core"]]
 
   config :opentelemetry_exporter,
     otlp_endpoint: "https://api.honeycomb.io",
