@@ -60,6 +60,19 @@ config :opentelemetry,
 
 PubSub works across services automatically via Redis — draw updates broadcast from either service are received by both.
 
+## Entry IDs and GDPR
+
+Wallop never stores personally identifiable information. Entry IDs must be **opaque identifiers** — UUIDs, numeric IDs, or similar. Email addresses, phone numbers, and names are rejected by the API.
+
+The recommended integration pattern:
+
+1. Your app holds the mapping from person to opaque ID (e.g. `user_id → "a1b2c3"`)
+2. Your app sends only the opaque ID to Wallop as the entry ID
+3. Wallop hashes the entry list into a permanent, immutable proof record
+4. On a GDPR deletion request, your app deletes the person's record and the ID mapping — the Wallop proof record remains intact because it contains no PII
+
+Entry IDs are restricted to `^[a-zA-Z0-9_\-:.]+$` (alphanumeric, hyphens, underscores, dots, colons). This blocks common PII patterns at the API level.
+
 ## Tech stack
 
 - **Language:** Elixir
