@@ -33,11 +33,15 @@ defmodule WallopCore.Resources.Entry do
     attribute :entry_id, :string do
       description(
         "Opaque identifier for this entry, provided by the API consumer. " <>
-          "Must be unique within the draw.\n\n" <>
-          "**Do not use PII as entry IDs.** The entry list is hashed into a " <>
-          "permanent, public proof record that cannot be deleted. Use opaque " <>
-          "identifiers (e.g. a UUID from your own system) and keep the mapping " <>
-          "from ID to person in your own database."
+          "Must be unique within the draw. " <>
+          "Only alphanumeric characters, hyphens, underscores, dots, colons, and equals signs are allowed " <>
+          "(regex: `^[a-zA-Z0-9_\\-:.=]+$`).\n\n" <>
+          "**Do not use PII as entry IDs.** Entry IDs are hashed into a " <>
+          "permanent, public proof record that cannot be deleted. Email addresses, " <>
+          "phone numbers, and names will be rejected. Use opaque identifiers " <>
+          "(e.g. a UUID or numeric ID from your own system) and keep the " <>
+          "ID-to-person mapping in your own database, where it can be deleted " <>
+          "on a GDPR removal request without affecting the proof record."
       )
 
       allow_nil?(false)

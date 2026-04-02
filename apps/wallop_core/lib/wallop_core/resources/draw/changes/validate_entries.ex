@@ -14,6 +14,10 @@ defmodule WallopCore.Resources.Draw.Changes.ValidateEntries do
   @max_weight 1_000
   @max_total_weight 100_000
 
+  # Alphanumeric, hyphens, underscores, dots, colons, equals (for base64).
+  # No @, no spaces, no slashes — blocks emails, phone numbers, and most PII patterns.
+  @valid_entry_id_pattern ~r/^[a-zA-Z0-9_\-:.=]+$/
+
   @impl true
   def change(changeset, _opts, _context) do
     entries =
@@ -30,6 +34,7 @@ defmodule WallopCore.Resources.Draw.Changes.ValidateEntries do
     draw = changeset.data
 
     with :ok <- validate_structure(entries),
+         :ok <- validate_entry_id_format(entries),
          :ok <- validate_weights(entries),
          :ok <- validate_batch_unique_ids(entries),
          :ok <- validate_total_count(draw, entries),
@@ -53,6 +58,24 @@ defmodule WallopCore.Resources.Draw.Changes.ValidateEntries do
     if valid?,
       do: :ok,
       else: {:error, "each entry must have a non-empty string id and a positive integer weight"}
+  end
+
+  defp validate_entry_id_format(entries) do
+    invalid =
+      entries
+      |> Enum.map(fn e -> e["id"] || e[:id] end)
+      |> Enum.reject(&Regex.match?(@valid_entry_id_pattern, &1))
+
+    case invalid do
+      [] ->
+        :ok
+
+      [first | _] ->
+        {:error,
+         "entry ID #{inspect(first)} contains invalid characters — " <>
+           "use only alphanumeric characters, hyphens, underscores, dots, colons, and equals signs. " <>
+           "Do not use email addresses, phone numbers, or other personally identifiable information"}
+    end
   end
 
   defp validate_weights(entries) do
