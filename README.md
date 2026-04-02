@@ -71,7 +71,7 @@ The recommended integration pattern:
 3. Wallop hashes the entry list into a permanent, immutable proof record
 4. On a GDPR deletion request, your app deletes the person's record and the ID mapping — the Wallop proof record remains intact because it contains no PII
 
-Entry IDs are restricted to `^[a-zA-Z0-9_\-:.]+$` (alphanumeric, hyphens, underscores, dots, colons). This blocks common PII patterns at the API level.
+Entry IDs are restricted to `^[a-zA-Z0-9_\-:.=]+$` (alphanumeric, hyphens, underscores, dots, colons, equals). This blocks common PII patterns at the API level while allowing UUIDs, numeric IDs, and base64-encoded values.
 
 ## Tech stack
 

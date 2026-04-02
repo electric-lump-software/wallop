@@ -14,9 +14,9 @@ defmodule WallopCore.Resources.Draw.Changes.ValidateEntries do
   @max_weight 1_000
   @max_total_weight 100_000
 
-  # Alphanumeric, hyphens, underscores, dots, colons. No @, no spaces,
-  # no slashes — blocks emails, phone numbers, and most PII patterns.
-  @valid_entry_id_pattern ~r/^[a-zA-Z0-9_\-:.]+$/
+  # Alphanumeric, hyphens, underscores, dots, colons, equals (for base64).
+  # No @, no spaces, no slashes — blocks emails, phone numbers, and most PII patterns.
+  @valid_entry_id_pattern ~r/^[a-zA-Z0-9_\-:.=]+$/
 
   @impl true
   def change(changeset, _opts, _context) do
@@ -73,7 +73,7 @@ defmodule WallopCore.Resources.Draw.Changes.ValidateEntries do
       [first | _] ->
         {:error,
          "entry ID #{inspect(first)} contains invalid characters — " <>
-           "use only alphanumeric characters, hyphens, underscores, dots, and colons. " <>
+           "use only alphanumeric characters, hyphens, underscores, dots, colons, and equals signs. " <>
            "Do not use email addresses, phone numbers, or other personally identifiable information"}
     end
   end

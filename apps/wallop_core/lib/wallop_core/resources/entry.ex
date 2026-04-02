@@ -34,8 +34,8 @@ defmodule WallopCore.Resources.Entry do
       description(
         "Opaque identifier for this entry, provided by the API consumer. " <>
           "Must be unique within the draw. " <>
-          "Only alphanumeric characters, hyphens, underscores, dots, and colons are allowed " <>
-          "(regex: `^[a-zA-Z0-9_\\-:.]+$`).\n\n" <>
+          "Only alphanumeric characters, hyphens, underscores, dots, colons, and equals signs are allowed " <>
+          "(regex: `^[a-zA-Z0-9_\\-:.=]+$`).\n\n" <>
           "**Do not use PII as entry IDs.** Entry IDs are hashed into a " <>
           "permanent, public proof record that cannot be deleted. Email addresses, " <>
           "phone numbers, and names will be rejected. Use opaque identifiers " <>

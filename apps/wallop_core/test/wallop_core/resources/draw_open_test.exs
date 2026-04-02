@@ -254,7 +254,8 @@ defmodule WallopCore.Resources.DrawOpenTest do
         %{"id" => "user_42", "weight" => 1},
         %{"id" => "entry-7", "weight" => 1},
         %{"id" => "ns:value", "weight" => 1},
-        %{"id" => "v1.2.3", "weight" => 1}
+        %{"id" => "v1.2.3", "weight" => 1},
+        %{"id" => "dGVzdA==", "weight" => 1}
       ]
 
       draw =
@@ -262,7 +263,7 @@ defmodule WallopCore.Resources.DrawOpenTest do
         |> Ash.Changeset.for_update(:add_entries, %{entries: entries}, actor: api_key)
         |> Ash.update!()
 
-      assert draw.entry_count == 6
+      assert draw.entry_count == 7
     end
 
     test "rejects email addresses as entry IDs" do
