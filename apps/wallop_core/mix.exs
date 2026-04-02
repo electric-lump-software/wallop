@@ -4,7 +4,7 @@ defmodule WallopCore.MixProject do
   def project do
     [
       app: :wallop_core,
-      version: "0.6.1",
+      version: "0.6.2",
       build_path: "../../_build",
       deps_path: "../../deps",
       lockfile: "../../mix.lock",
@@ -18,7 +18,7 @@ defmodule WallopCore.MixProject do
   def application do
     [
       mod: {WallopCore.Application, []},
-      extra_applications: [:logger]
+      extra_applications: [:logger, :inets]
     ]
   end
 
