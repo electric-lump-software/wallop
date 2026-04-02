@@ -11,6 +11,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Marketing site at `/` with hero, "Why provable?", organiser/developer split, tabbed protocol explainer, origin story, FAQ, and waitlist CTA
 
+## [0.6.2] - 2026-04-02
+
+### Fixed
+
+- Add `:inets` to `extra_applications` — fixes OTel exporter startup warning in releases
+
+### Changed
+
+- Document Oban prefix separation for consuming apps — apps sharing the database must use a different Oban prefix to avoid competing for draw jobs (see README)
+
 ## [0.6.1] - 2026-04-01
 
 ### Fixed

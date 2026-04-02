@@ -24,6 +24,32 @@ Entries are locked before the draw. The seed is computed from public, unpredicta
 | **Protocol** | `wallop_core` (this repo) | Commit-reveal protocol, entropy fetching, seed computation |
 | **Web** | `wallop_web` (this repo) | Proof pages, API endpoints, live draws |
 
+## Using wallop_core as a dependency
+
+If your app includes `wallop_core` as a dependency and shares the same database, you **must** configure Oban with a separate prefix to prevent your app competing with the wallop service for entropy and webhook jobs.
+
+```elixir
+# In your app's config.exs — use a different Oban prefix
+config :wallop_core, Oban,
+  repo: WallopCore.Repo,
+  prefix: "oban_app",
+  queues: [my_queue: 5],
+  plugins: []
+```
+
+The wallop service uses the default `public` prefix. Your app uses `oban_app` (or any other name). Both share the database but never touch each other's jobs.
+
+You will need to run `Oban.Migrations` for your prefix:
+
+```elixir
+defmodule MyApp.Repo.Migrations.AddObanAppJobs do
+  use Ecto.Migration
+
+  def up, do: Oban.Migration.up(prefix: "oban_app")
+  def down, do: Oban.Migration.down(prefix: "oban_app")
+end
+```
+
 ## Tech stack
 
 - **Language:** Elixir

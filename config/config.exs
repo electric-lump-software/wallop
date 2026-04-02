@@ -15,9 +15,11 @@ config :wallop_core,
   ash_domains: [WallopCore.Domain],
   allow_sandbox_execution: config_env() != :prod
 
+# Oban config for the wallop service (processes draw jobs).
+# Consuming apps MUST override this with a different prefix — see README.
 config :wallop_core, Oban,
   repo: WallopCore.Repo,
-  queues: [entropy: 10, webhooks: 5],
+  queues: [entropy: 10, webhooks: 5, default: 5],
   plugins: [
     {Oban.Plugins.Cron,
      crontab: [
