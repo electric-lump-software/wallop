@@ -11,6 +11,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Marketing site at `/` with hero, "Why provable?", organiser/developer split, tabbed protocol explainer, origin story, FAQ, and waitlist CTA
 
+## [0.6.3] - 2026-04-02
+
+### Added
+
+- Startup warning if a consuming app uses the default Oban prefix — catches the "forgot to set prefix" misconfiguration that causes job queue conflicts
+- Boundary test enforcing wallop_core has zero references to WallopWeb or WallopApp modules — prevents accidental coupling in future PRs
+- Domain boundary rules in CLAUDE.md
+
 ## [0.6.2] - 2026-04-02
 
 ### Fixed
