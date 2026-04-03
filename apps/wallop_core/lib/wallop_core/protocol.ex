@@ -30,22 +30,23 @@ defmodule WallopCore.Protocol do
   @doc """
   Compute the draw seed from entropy sources.
 
+  With 3 arguments (entry_hash, drand_randomness, weather_value): uses both
+  drand and weather entropy.
+
+  With 2 arguments (entry_hash, drand_randomness): drand-only fallback. The
+  weather_value key is omitted entirely from the JCS JSON, providing implicit
+  domain separation (the two arities can never produce the same seed).
+
   Returns `{seed_bytes, jcs_string}` where:
   - `seed_bytes` is the raw 32-byte SHA256 (passed directly to FairPick.draw/3)
   - `jcs_string` is the canonical JSON for the proof record
   """
-  @doc """
-  Compute the draw seed from drand only (weather unavailable).
-
-  Returns `{seed_bytes, jcs_string}`. The weather_value key is omitted
-  entirely — JCS produces different canonical JSON from the 3-arity
-  version, providing implicit domain separation.
-  """
-  @spec compute_seed(String.t(), String.t()) :: {<<_::256>>, String.t()}
-  def compute_seed(entry_hash, drand_randomness) do
+  @spec compute_seed(String.t(), String.t(), String.t()) :: {<<_::256>>, String.t()}
+  def compute_seed(entry_hash, drand_randomness, weather_value) do
     json_data = %{
       "drand_randomness" => drand_randomness,
-      "entry_hash" => entry_hash
+      "entry_hash" => entry_hash,
+      "weather_value" => weather_value
     }
 
     jcs_string = Jcs.encode(json_data)
@@ -54,12 +55,11 @@ defmodule WallopCore.Protocol do
     {seed_bytes, jcs_string}
   end
 
-  @spec compute_seed(String.t(), String.t(), String.t()) :: {<<_::256>>, String.t()}
-  def compute_seed(entry_hash, drand_randomness, weather_value) do
+  @spec compute_seed(String.t(), String.t()) :: {<<_::256>>, String.t()}
+  def compute_seed(entry_hash, drand_randomness) do
     json_data = %{
       "drand_randomness" => drand_randomness,
-      "entry_hash" => entry_hash,
-      "weather_value" => weather_value
+      "entry_hash" => entry_hash
     }
 
     jcs_string = Jcs.encode(json_data)
