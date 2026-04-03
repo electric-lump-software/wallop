@@ -56,6 +56,42 @@ defmodule WallopCore.ProtocolTest do
     end
   end
 
+  describe "compute_seed/2 (drand-only)" do
+    test "produces a seed from drand and entry hash without weather" do
+      drand_randomness = "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789"
+      entry_hash = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+
+      expected_json =
+        ~s({"drand_randomness":"abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789","entry_hash":"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"})
+
+      {seed_bytes, seed_json} = Protocol.compute_seed(entry_hash, drand_randomness)
+
+      assert seed_json == expected_json
+      assert byte_size(seed_bytes) == 32
+      assert seed_bytes == :crypto.hash(:sha256, expected_json)
+    end
+
+    test "drand-only seed differs from drand+weather seed with same inputs" do
+      drand = "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789"
+      entry_hash = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      weather = "1013"
+
+      {seed_with_weather, _} = Protocol.compute_seed(entry_hash, drand, weather)
+      {seed_drand_only, _} = Protocol.compute_seed(entry_hash, drand)
+
+      assert seed_with_weather != seed_drand_only
+    end
+
+    test "weather_value key is absent, not null" do
+      drand = "aaa"
+      entry_hash = "bbb"
+
+      {_seed, json} = Protocol.compute_seed(entry_hash, drand)
+
+      refute String.contains?(json, "weather")
+    end
+  end
+
   describe "protocol vectors (spec §3.2)" do
     test "P-1: entry hash" do
       entries = [
