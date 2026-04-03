@@ -125,62 +125,74 @@ defmodule WallopCore.Entropy.EntropyWorker do
     permanent = find_permanent_error(drand_err, weather_err)
 
     cond do
-      # Permanent error — fail immediately
       permanent != nil ->
-        Tracer.set_attributes(%{
-          "error" => true,
-          "error.type" => "permanent",
-          "error.message" => permanent
-        })
+        handle_permanent_error(draw, permanent)
 
-        fail_draw_with_reason(draw, permanent)
-
-      # Phase 2: drand OK, weather failed, past threshold — drand-only fallback
       drand_err == nil and weather_err != nil and attempt >= @weather_attempt_threshold ->
-        {:ok, drand} = drand_result
+        handle_drand_only_fallback(draw, drand_result, weather_err, attempt)
 
-        Tracer.set_attributes(%{
-          "entropy.drand_round" => drand.round,
-          "entropy.fallback" => "drand_only",
-          "entropy.weather_error" => inspect(weather_err)
-        })
-
-        Logger.info(
-          "EntropyWorker: falling back to drand-only for draw #{draw.id} " <>
-            "(weather failed after #{attempt} attempts: #{inspect(weather_err)})"
-        )
-
-        execute_drand_only(draw, drand, inspect(weather_err))
-
-      # Final attempt — fail the draw
       attempt >= max_attempts ->
-        reason =
-          cond do
-            drand_err != nil ->
-              "drand unavailable after #{attempt} attempts: #{inspect(drand_err)}"
+        handle_final_attempt_failure(draw, drand_err, weather_err, attempt)
 
-            weather_err != nil ->
-              "weather unavailable after #{attempt} attempts: #{inspect(weather_err)}"
-
-            true ->
-              "entropy sources unavailable after #{attempt} attempts"
-          end
-
-        fail_draw_with_reason(draw, reason)
-
-      # Phase 1: retry
       true ->
-        log_transient_errors(draw, drand_err, weather_err)
-
-        Tracer.set_attributes(%{
-          "error" => true,
-          "error.type" => "transient",
-          "entropy.drand_error" => inspect(drand_err),
-          "entropy.weather_error" => inspect(weather_err)
-        })
-
-        {:error, "entropy sources unavailable, will retry"}
+        handle_transient_retry(draw, drand_err, weather_err)
     end
+  end
+
+  defp handle_permanent_error(draw, permanent) do
+    Tracer.set_attributes(%{
+      "error" => true,
+      "error.type" => "permanent",
+      "error.message" => permanent
+    })
+
+    fail_draw_with_reason(draw, permanent)
+  end
+
+  defp handle_drand_only_fallback(draw, drand_result, weather_err, attempt) do
+    {:ok, drand} = drand_result
+
+    Tracer.set_attributes(%{
+      "entropy.drand_round" => drand.round,
+      "entropy.fallback" => "drand_only",
+      "entropy.weather_error" => inspect(weather_err)
+    })
+
+    Logger.info(
+      "EntropyWorker: falling back to drand-only for draw #{draw.id} " <>
+        "(weather failed after #{attempt} attempts: #{inspect(weather_err)})"
+    )
+
+    execute_drand_only(draw, drand, inspect(weather_err))
+  end
+
+  defp handle_final_attempt_failure(draw, drand_err, weather_err, attempt) do
+    reason =
+      cond do
+        drand_err != nil ->
+          "drand unavailable after #{attempt} attempts: #{inspect(drand_err)}"
+
+        weather_err != nil ->
+          "weather unavailable after #{attempt} attempts: #{inspect(weather_err)}"
+
+        true ->
+          "entropy sources unavailable after #{attempt} attempts"
+      end
+
+    fail_draw_with_reason(draw, reason)
+  end
+
+  defp handle_transient_retry(draw, drand_err, weather_err) do
+    log_transient_errors(draw, drand_err, weather_err)
+
+    Tracer.set_attributes(%{
+      "error" => true,
+      "error.type" => "transient",
+      "entropy.drand_error" => inspect(drand_err),
+      "entropy.weather_error" => inspect(weather_err)
+    })
+
+    {:error, "entropy sources unavailable, will retry"}
   end
 
   defp error_from({:ok, _}), do: nil
