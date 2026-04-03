@@ -187,7 +187,7 @@ defmodule WallopWeb.Components.DrawTimeline do
 
         %{
           label: "Winners Selected",
-          detail: "#{count} winner(s)",
+          detail: "#{count} #{if count == 1, do: "winner", else: "winners"}",
           state: :done,
           timestamp: format_timestamp(ts["executed_at"], draw.executed_at)
         }
