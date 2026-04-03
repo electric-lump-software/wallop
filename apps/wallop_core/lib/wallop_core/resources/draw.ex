@@ -125,7 +125,6 @@ defmodule WallopCore.Resources.Draw do
     end
 
     update :execute_drand_only do
-      @doc "Executes a draw with drand entropy only (weather unavailable)."
       require_atomic?(false)
       filter(expr(status == :pending_entropy))
 
