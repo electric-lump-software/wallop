@@ -13,6 +13,45 @@
       }
     },
     "schemas": {
+      "draw-filter-stage_timestamps": {
+        "additionalProperties": false,
+        "properties": {
+          "eq": {
+            "type": "object"
+          },
+          "greater_than": {
+            "type": "object"
+          },
+          "greater_than_or_equal": {
+            "type": "object"
+          },
+          "in": {
+            "items": {
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "is_distinct_from": {
+            "type": "string"
+          },
+          "is_nil": {
+            "type": "boolean"
+          },
+          "is_not_distinct_from": {
+            "type": "string"
+          },
+          "less_than": {
+            "type": "object"
+          },
+          "less_than_or_equal": {
+            "type": "object"
+          },
+          "not_eq": {
+            "type": "object"
+          }
+        },
+        "type": "object"
+      },
       "draw": {
         "additionalProperties": false,
         "description": "A \"Resource object\" representing a draw",
@@ -256,6 +295,18 @@
                 ],
                 "type": "string"
               },
+              "weather_fallback_reason": {
+                "anyOf": [
+                  {
+                    "nullable": true,
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "Why weather entropy was unavailable. Null when weather was used. Field included by default."
+              },
               "weather_observation_time": {
                 "anyOf": [
                   {},
@@ -341,159 +392,7 @@
         ],
         "type": "object"
       },
-      "draw-filter": {
-        "additionalProperties": false,
-        "description": "Filters the query to results matching the given filter object",
-        "example": "",
-        "properties": {
-          "and": {
-            "items": {
-              "$ref": "#/components/schemas/draw-filter"
-            },
-            "type": "array",
-            "uniqueItems": true
-          },
-          "callback_url": {
-            "$ref": "#/components/schemas/draw-filter-callback_url"
-          },
-          "drand_chain": {
-            "$ref": "#/components/schemas/draw-filter-drand_chain"
-          },
-          "drand_randomness": {
-            "$ref": "#/components/schemas/draw-filter-drand_randomness"
-          },
-          "drand_response": {
-            "$ref": "#/components/schemas/draw-filter-drand_response"
-          },
-          "drand_round": {
-            "$ref": "#/components/schemas/draw-filter-drand_round"
-          },
-          "drand_signature": {
-            "$ref": "#/components/schemas/draw-filter-drand_signature"
-          },
-          "entry_canonical": {
-            "$ref": "#/components/schemas/draw-filter-entry_canonical"
-          },
-          "entry_count": {
-            "$ref": "#/components/schemas/draw-filter-entry_count"
-          },
-          "entry_hash": {
-            "$ref": "#/components/schemas/draw-filter-entry_hash"
-          },
-          "executed_at": {
-            "$ref": "#/components/schemas/draw-filter-executed_at"
-          },
-          "failed_at": {
-            "$ref": "#/components/schemas/draw-filter-failed_at"
-          },
-          "failure_reason": {
-            "$ref": "#/components/schemas/draw-filter-failure_reason"
-          },
-          "id": {
-            "$ref": "#/components/schemas/draw-filter-id"
-          },
-          "metadata": {
-            "$ref": "#/components/schemas/draw-filter-metadata"
-          },
-          "name": {
-            "$ref": "#/components/schemas/draw-filter-name"
-          },
-          "not": {
-            "$ref": "#/components/schemas/draw-filter"
-          },
-          "or": {
-            "items": {
-              "$ref": "#/components/schemas/draw-filter"
-            },
-            "type": "array",
-            "uniqueItems": true
-          },
-          "seed": {
-            "$ref": "#/components/schemas/draw-filter-seed"
-          },
-          "seed_json": {
-            "$ref": "#/components/schemas/draw-filter-seed_json"
-          },
-          "seed_source": {
-            "$ref": "#/components/schemas/draw-filter-seed_source"
-          },
-          "stage_timestamps": {
-            "$ref": "#/components/schemas/draw-filter-stage_timestamps"
-          },
-          "status": {
-            "$ref": "#/components/schemas/draw-filter-status"
-          },
-          "weather_observation_time": {
-            "$ref": "#/components/schemas/draw-filter-weather_observation_time"
-          },
-          "weather_raw": {
-            "$ref": "#/components/schemas/draw-filter-weather_raw"
-          },
-          "weather_station": {
-            "$ref": "#/components/schemas/draw-filter-weather_station"
-          },
-          "weather_time": {
-            "$ref": "#/components/schemas/draw-filter-weather_time"
-          },
-          "weather_value": {
-            "$ref": "#/components/schemas/draw-filter-weather_value"
-          },
-          "winner_count": {
-            "$ref": "#/components/schemas/draw-filter-winner_count"
-          }
-        },
-        "type": "deepObject"
-      },
-      "draw-filter-callback_url": {
-        "additionalProperties": false,
-        "description": "Optional HTTPS URL to receive a webhook POST when the draw completes or fails. Must be a valid HTTPS URL.",
-        "properties": {
-          "contains": {
-            "type": "string"
-          },
-          "eq": {
-            "type": "string"
-          },
-          "greater_than": {
-            "type": "string"
-          },
-          "greater_than_or_equal": {
-            "type": "string"
-          },
-          "ilike": {
-            "type": "string"
-          },
-          "in": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array"
-          },
-          "is_distinct_from": {
-            "type": "string"
-          },
-          "is_nil": {
-            "type": "boolean"
-          },
-          "is_not_distinct_from": {
-            "type": "string"
-          },
-          "less_than": {
-            "type": "string"
-          },
-          "less_than_or_equal": {
-            "type": "string"
-          },
-          "like": {
-            "type": "string"
-          },
-          "not_eq": {
-            "type": "string"
-          }
-        },
-        "type": "object"
-      },
-      "draw-filter-drand_chain": {
+      "draw-filter-weather_raw": {
         "additionalProperties": false,
         "properties": {
           "contains": {
@@ -541,329 +440,7 @@
         },
         "type": "object"
       },
-      "draw-filter-drand_randomness": {
-        "additionalProperties": false,
-        "description": "The 64-character hex random value published by drand for the declared round. Combined with weather_value to derive the draw seed.",
-        "properties": {
-          "contains": {
-            "type": "string"
-          },
-          "eq": {
-            "type": "string"
-          },
-          "greater_than": {
-            "type": "string"
-          },
-          "greater_than_or_equal": {
-            "type": "string"
-          },
-          "ilike": {
-            "type": "string"
-          },
-          "in": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array"
-          },
-          "is_distinct_from": {
-            "type": "string"
-          },
-          "is_nil": {
-            "type": "boolean"
-          },
-          "is_not_distinct_from": {
-            "type": "string"
-          },
-          "less_than": {
-            "type": "string"
-          },
-          "less_than_or_equal": {
-            "type": "string"
-          },
-          "like": {
-            "type": "string"
-          },
-          "not_eq": {
-            "type": "string"
-          }
-        },
-        "type": "object"
-      },
-      "draw-filter-drand_response": {
-        "additionalProperties": false,
-        "properties": {
-          "contains": {
-            "type": "string"
-          },
-          "eq": {
-            "type": "string"
-          },
-          "greater_than": {
-            "type": "string"
-          },
-          "greater_than_or_equal": {
-            "type": "string"
-          },
-          "ilike": {
-            "type": "string"
-          },
-          "in": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array"
-          },
-          "is_distinct_from": {
-            "type": "string"
-          },
-          "is_nil": {
-            "type": "boolean"
-          },
-          "is_not_distinct_from": {
-            "type": "string"
-          },
-          "less_than": {
-            "type": "string"
-          },
-          "less_than_or_equal": {
-            "type": "string"
-          },
-          "like": {
-            "type": "string"
-          },
-          "not_eq": {
-            "type": "string"
-          }
-        },
-        "type": "object"
-      },
-      "draw-filter-drand_round": {
-        "additionalProperties": false,
-        "description": "The drand quicknet beacon round number used as entropy. Declared at lock time before the round resolves — the value is unpredictable at commitment time.",
-        "properties": {
-          "eq": {
-            "type": "integer"
-          },
-          "greater_than": {
-            "type": "integer"
-          },
-          "greater_than_or_equal": {
-            "type": "integer"
-          },
-          "in": {
-            "items": {
-              "type": "integer"
-            },
-            "type": "array"
-          },
-          "is_distinct_from": {
-            "type": "string"
-          },
-          "is_nil": {
-            "type": "boolean"
-          },
-          "is_not_distinct_from": {
-            "type": "string"
-          },
-          "less_than": {
-            "type": "integer"
-          },
-          "less_than_or_equal": {
-            "type": "integer"
-          },
-          "not_eq": {
-            "type": "integer"
-          }
-        },
-        "type": "object"
-      },
-      "draw-filter-drand_signature": {
-        "additionalProperties": false,
-        "properties": {
-          "contains": {
-            "type": "string"
-          },
-          "eq": {
-            "type": "string"
-          },
-          "greater_than": {
-            "type": "string"
-          },
-          "greater_than_or_equal": {
-            "type": "string"
-          },
-          "ilike": {
-            "type": "string"
-          },
-          "in": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array"
-          },
-          "is_distinct_from": {
-            "type": "string"
-          },
-          "is_nil": {
-            "type": "boolean"
-          },
-          "is_not_distinct_from": {
-            "type": "string"
-          },
-          "less_than": {
-            "type": "string"
-          },
-          "less_than_or_equal": {
-            "type": "string"
-          },
-          "like": {
-            "type": "string"
-          },
-          "not_eq": {
-            "type": "string"
-          }
-        },
-        "type": "object"
-      },
-      "draw-filter-entry_canonical": {
-        "additionalProperties": false,
-        "properties": {
-          "contains": {
-            "type": "string"
-          },
-          "eq": {
-            "type": "string"
-          },
-          "greater_than": {
-            "type": "string"
-          },
-          "greater_than_or_equal": {
-            "type": "string"
-          },
-          "ilike": {
-            "type": "string"
-          },
-          "in": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array"
-          },
-          "is_distinct_from": {
-            "type": "string"
-          },
-          "is_nil": {
-            "type": "boolean"
-          },
-          "is_not_distinct_from": {
-            "type": "string"
-          },
-          "less_than": {
-            "type": "string"
-          },
-          "less_than_or_equal": {
-            "type": "string"
-          },
-          "like": {
-            "type": "string"
-          },
-          "not_eq": {
-            "type": "string"
-          }
-        },
-        "type": "object"
-      },
-      "draw-filter-entry_count": {
-        "additionalProperties": false,
-        "description": "Number of entries in this draw. Updated atomically when entries are added or removed.",
-        "properties": {
-          "eq": {
-            "type": "integer"
-          },
-          "greater_than": {
-            "type": "integer"
-          },
-          "greater_than_or_equal": {
-            "type": "integer"
-          },
-          "in": {
-            "items": {
-              "type": "integer"
-            },
-            "type": "array"
-          },
-          "is_distinct_from": {
-            "type": "string"
-          },
-          "is_nil": {
-            "type": "boolean"
-          },
-          "is_not_distinct_from": {
-            "type": "string"
-          },
-          "less_than": {
-            "type": "integer"
-          },
-          "less_than_or_equal": {
-            "type": "integer"
-          },
-          "not_eq": {
-            "type": "integer"
-          }
-        },
-        "type": "object"
-      },
-      "draw-filter-entry_hash": {
-        "additionalProperties": false,
-        "description": "SHA-256 hash of the canonicalised entry list (JCS). Published at lock time as a cryptographic commitment. Changing any entry would produce a different hash.",
-        "properties": {
-          "contains": {
-            "type": "string"
-          },
-          "eq": {
-            "type": "string"
-          },
-          "greater_than": {
-            "type": "string"
-          },
-          "greater_than_or_equal": {
-            "type": "string"
-          },
-          "ilike": {
-            "type": "string"
-          },
-          "in": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array"
-          },
-          "is_distinct_from": {
-            "type": "string"
-          },
-          "is_nil": {
-            "type": "boolean"
-          },
-          "is_not_distinct_from": {
-            "type": "string"
-          },
-          "less_than": {
-            "type": "string"
-          },
-          "less_than_or_equal": {
-            "type": "string"
-          },
-          "like": {
-            "type": "string"
-          },
-          "not_eq": {
-            "type": "string"
-          }
-        },
-        "type": "object"
-      },
-      "draw-filter-executed_at": {
+      "draw-filter-weather_time": {
         "additionalProperties": false,
         "properties": {
           "eq": {},
@@ -885,214 +462,6 @@
           "less_than": {},
           "less_than_or_equal": {},
           "not_eq": {}
-        },
-        "type": "object"
-      },
-      "draw-filter-failed_at": {
-        "additionalProperties": false,
-        "properties": {
-          "eq": {},
-          "greater_than": {},
-          "greater_than_or_equal": {},
-          "in": {
-            "items": {},
-            "type": "array"
-          },
-          "is_distinct_from": {
-            "type": "string"
-          },
-          "is_nil": {
-            "type": "boolean"
-          },
-          "is_not_distinct_from": {
-            "type": "string"
-          },
-          "less_than": {},
-          "less_than_or_equal": {},
-          "not_eq": {}
-        },
-        "type": "object"
-      },
-      "draw-filter-failure_reason": {
-        "additionalProperties": false,
-        "properties": {
-          "contains": {
-            "type": "string"
-          },
-          "eq": {
-            "type": "string"
-          },
-          "greater_than": {
-            "type": "string"
-          },
-          "greater_than_or_equal": {
-            "type": "string"
-          },
-          "ilike": {
-            "type": "string"
-          },
-          "in": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array"
-          },
-          "is_distinct_from": {
-            "type": "string"
-          },
-          "is_nil": {
-            "type": "boolean"
-          },
-          "is_not_distinct_from": {
-            "type": "string"
-          },
-          "less_than": {
-            "type": "string"
-          },
-          "less_than_or_equal": {
-            "type": "string"
-          },
-          "like": {
-            "type": "string"
-          },
-          "not_eq": {
-            "type": "string"
-          }
-        },
-        "type": "object"
-      },
-      "draw-filter-id": {
-        "additionalProperties": false,
-        "properties": {
-          "eq": {
-            "format": "uuid",
-            "type": "string"
-          },
-          "greater_than": {
-            "format": "uuid",
-            "type": "string"
-          },
-          "greater_than_or_equal": {
-            "format": "uuid",
-            "type": "string"
-          },
-          "in": {
-            "items": {
-              "format": "uuid",
-              "type": "string"
-            },
-            "type": "array"
-          },
-          "is_distinct_from": {
-            "type": "string"
-          },
-          "is_nil": {
-            "type": "boolean"
-          },
-          "is_not_distinct_from": {
-            "type": "string"
-          },
-          "less_than": {
-            "format": "uuid",
-            "type": "string"
-          },
-          "less_than_or_equal": {
-            "format": "uuid",
-            "type": "string"
-          },
-          "not_eq": {
-            "format": "uuid",
-            "type": "string"
-          }
-        },
-        "type": "object"
-      },
-      "draw-filter-metadata": {
-        "additionalProperties": false,
-        "description": "Arbitrary JSON object stored with the draw. Not used in seed computation. Useful for storing external references (e.g. your internal draw ID).",
-        "properties": {
-          "eq": {
-            "type": "object"
-          },
-          "greater_than": {
-            "type": "object"
-          },
-          "greater_than_or_equal": {
-            "type": "object"
-          },
-          "in": {
-            "items": {
-              "type": "object"
-            },
-            "type": "array"
-          },
-          "is_distinct_from": {
-            "type": "string"
-          },
-          "is_nil": {
-            "type": "boolean"
-          },
-          "is_not_distinct_from": {
-            "type": "string"
-          },
-          "less_than": {
-            "type": "object"
-          },
-          "less_than_or_equal": {
-            "type": "object"
-          },
-          "not_eq": {
-            "type": "object"
-          }
-        },
-        "type": "object"
-      },
-      "draw-filter-name": {
-        "additionalProperties": false,
-        "description": "Optional human-readable label for the draw. May only be set or changed while the draw is open.",
-        "properties": {
-          "contains": {
-            "type": "string"
-          },
-          "eq": {
-            "type": "string"
-          },
-          "greater_than": {
-            "type": "string"
-          },
-          "greater_than_or_equal": {
-            "type": "string"
-          },
-          "ilike": {
-            "type": "string"
-          },
-          "in": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array"
-          },
-          "is_distinct_from": {
-            "type": "string"
-          },
-          "is_nil": {
-            "type": "boolean"
-          },
-          "is_not_distinct_from": {
-            "type": "string"
-          },
-          "less_than": {
-            "type": "string"
-          },
-          "less_than_or_equal": {
-            "type": "string"
-          },
-          "like": {
-            "type": "string"
-          },
-          "not_eq": {
-            "type": "string"
-          }
         },
         "type": "object"
       },
@@ -1145,7 +514,7 @@
         },
         "type": "object"
       },
-      "draw-filter-seed_json": {
+      "draw-filter-drand_chain": {
         "additionalProperties": false,
         "properties": {
           "contains": {
@@ -1262,8 +631,262 @@
         },
         "type": "object"
       },
-      "draw-filter-stage_timestamps": {
+      "links": {
+        "additionalProperties": {
+          "$ref": "#/components/schemas/link"
+        },
+        "type": "object"
+      },
+      "draw-filter-weather_station": {
         "additionalProperties": false,
+        "properties": {
+          "contains": {
+            "type": "string"
+          },
+          "eq": {
+            "type": "string"
+          },
+          "greater_than": {
+            "type": "string"
+          },
+          "greater_than_or_equal": {
+            "type": "string"
+          },
+          "ilike": {
+            "type": "string"
+          },
+          "in": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "is_distinct_from": {
+            "type": "string"
+          },
+          "is_nil": {
+            "type": "boolean"
+          },
+          "is_not_distinct_from": {
+            "type": "string"
+          },
+          "less_than": {
+            "type": "string"
+          },
+          "less_than_or_equal": {
+            "type": "string"
+          },
+          "like": {
+            "type": "string"
+          },
+          "not_eq": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "draw-filter-drand_round": {
+        "additionalProperties": false,
+        "description": "The drand quicknet beacon round number used as entropy. Declared at lock time before the round resolves — the value is unpredictable at commitment time.",
+        "properties": {
+          "eq": {
+            "type": "integer"
+          },
+          "greater_than": {
+            "type": "integer"
+          },
+          "greater_than_or_equal": {
+            "type": "integer"
+          },
+          "in": {
+            "items": {
+              "type": "integer"
+            },
+            "type": "array"
+          },
+          "is_distinct_from": {
+            "type": "string"
+          },
+          "is_nil": {
+            "type": "boolean"
+          },
+          "is_not_distinct_from": {
+            "type": "string"
+          },
+          "less_than": {
+            "type": "integer"
+          },
+          "less_than_or_equal": {
+            "type": "integer"
+          },
+          "not_eq": {
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "link": {
+        "description": "A link MUST be represented as either: a string containing the link's URL or a link object.",
+        "type": "string"
+      },
+      "draw-filter": {
+        "additionalProperties": false,
+        "description": "Filters the query to results matching the given filter object",
+        "example": "",
+        "properties": {
+          "and": {
+            "items": {
+              "$ref": "#/components/schemas/draw-filter"
+            },
+            "type": "array",
+            "uniqueItems": true
+          },
+          "callback_url": {
+            "$ref": "#/components/schemas/draw-filter-callback_url"
+          },
+          "drand_chain": {
+            "$ref": "#/components/schemas/draw-filter-drand_chain"
+          },
+          "drand_randomness": {
+            "$ref": "#/components/schemas/draw-filter-drand_randomness"
+          },
+          "drand_response": {
+            "$ref": "#/components/schemas/draw-filter-drand_response"
+          },
+          "drand_round": {
+            "$ref": "#/components/schemas/draw-filter-drand_round"
+          },
+          "drand_signature": {
+            "$ref": "#/components/schemas/draw-filter-drand_signature"
+          },
+          "entry_canonical": {
+            "$ref": "#/components/schemas/draw-filter-entry_canonical"
+          },
+          "entry_count": {
+            "$ref": "#/components/schemas/draw-filter-entry_count"
+          },
+          "entry_hash": {
+            "$ref": "#/components/schemas/draw-filter-entry_hash"
+          },
+          "executed_at": {
+            "$ref": "#/components/schemas/draw-filter-executed_at"
+          },
+          "failed_at": {
+            "$ref": "#/components/schemas/draw-filter-failed_at"
+          },
+          "failure_reason": {
+            "$ref": "#/components/schemas/draw-filter-failure_reason"
+          },
+          "id": {
+            "$ref": "#/components/schemas/draw-filter-id"
+          },
+          "metadata": {
+            "$ref": "#/components/schemas/draw-filter-metadata"
+          },
+          "name": {
+            "$ref": "#/components/schemas/draw-filter-name"
+          },
+          "not": {
+            "$ref": "#/components/schemas/draw-filter"
+          },
+          "or": {
+            "items": {
+              "$ref": "#/components/schemas/draw-filter"
+            },
+            "type": "array",
+            "uniqueItems": true
+          },
+          "seed": {
+            "$ref": "#/components/schemas/draw-filter-seed"
+          },
+          "seed_json": {
+            "$ref": "#/components/schemas/draw-filter-seed_json"
+          },
+          "seed_source": {
+            "$ref": "#/components/schemas/draw-filter-seed_source"
+          },
+          "stage_timestamps": {
+            "$ref": "#/components/schemas/draw-filter-stage_timestamps"
+          },
+          "status": {
+            "$ref": "#/components/schemas/draw-filter-status"
+          },
+          "weather_fallback_reason": {
+            "$ref": "#/components/schemas/draw-filter-weather_fallback_reason"
+          },
+          "weather_observation_time": {
+            "$ref": "#/components/schemas/draw-filter-weather_observation_time"
+          },
+          "weather_raw": {
+            "$ref": "#/components/schemas/draw-filter-weather_raw"
+          },
+          "weather_station": {
+            "$ref": "#/components/schemas/draw-filter-weather_station"
+          },
+          "weather_time": {
+            "$ref": "#/components/schemas/draw-filter-weather_time"
+          },
+          "weather_value": {
+            "$ref": "#/components/schemas/draw-filter-weather_value"
+          },
+          "winner_count": {
+            "$ref": "#/components/schemas/draw-filter-winner_count"
+          }
+        },
+        "type": "deepObject"
+      },
+      "draw-filter-callback_url": {
+        "additionalProperties": false,
+        "description": "Optional HTTPS URL to receive a webhook POST when the draw completes or fails. Must be a valid HTTPS URL.",
+        "properties": {
+          "contains": {
+            "type": "string"
+          },
+          "eq": {
+            "type": "string"
+          },
+          "greater_than": {
+            "type": "string"
+          },
+          "greater_than_or_equal": {
+            "type": "string"
+          },
+          "ilike": {
+            "type": "string"
+          },
+          "in": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "is_distinct_from": {
+            "type": "string"
+          },
+          "is_nil": {
+            "type": "boolean"
+          },
+          "is_not_distinct_from": {
+            "type": "string"
+          },
+          "less_than": {
+            "type": "string"
+          },
+          "less_than_or_equal": {
+            "type": "string"
+          },
+          "like": {
+            "type": "string"
+          },
+          "not_eq": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "draw-filter-metadata": {
+        "additionalProperties": false,
+        "description": "Arbitrary JSON object stored with the draw. Not used in seed computation. Useful for storing external references (e.g. your internal draw ID).",
         "properties": {
           "eq": {
             "type": "object"
@@ -1298,6 +921,79 @@
           "not_eq": {
             "type": "object"
           }
+        },
+        "type": "object"
+      },
+      "draw-filter-drand_response": {
+        "additionalProperties": false,
+        "properties": {
+          "contains": {
+            "type": "string"
+          },
+          "eq": {
+            "type": "string"
+          },
+          "greater_than": {
+            "type": "string"
+          },
+          "greater_than_or_equal": {
+            "type": "string"
+          },
+          "ilike": {
+            "type": "string"
+          },
+          "in": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "is_distinct_from": {
+            "type": "string"
+          },
+          "is_nil": {
+            "type": "boolean"
+          },
+          "is_not_distinct_from": {
+            "type": "string"
+          },
+          "less_than": {
+            "type": "string"
+          },
+          "less_than_or_equal": {
+            "type": "string"
+          },
+          "like": {
+            "type": "string"
+          },
+          "not_eq": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "draw-filter-executed_at": {
+        "additionalProperties": false,
+        "properties": {
+          "eq": {},
+          "greater_than": {},
+          "greater_than_or_equal": {},
+          "in": {
+            "items": {},
+            "type": "array"
+          },
+          "is_distinct_from": {
+            "type": "string"
+          },
+          "is_nil": {
+            "type": "boolean"
+          },
+          "is_not_distinct_from": {
+            "type": "string"
+          },
+          "less_than": {},
+          "less_than_or_equal": {},
+          "not_eq": {}
         },
         "type": "object"
       },
@@ -1395,14 +1091,29 @@
         },
         "type": "object"
       },
-      "draw-filter-weather_observation_time": {
+      "draw-filter-drand_randomness": {
         "additionalProperties": false,
+        "description": "The 64-character hex random value published by drand for the declared round. Combined with weather_value to derive the draw seed.",
         "properties": {
-          "eq": {},
-          "greater_than": {},
-          "greater_than_or_equal": {},
+          "contains": {
+            "type": "string"
+          },
+          "eq": {
+            "type": "string"
+          },
+          "greater_than": {
+            "type": "string"
+          },
+          "greater_than_or_equal": {
+            "type": "string"
+          },
+          "ilike": {
+            "type": "string"
+          },
           "in": {
-            "items": {},
+            "items": {
+              "type": "string"
+            },
             "type": "array"
           },
           "is_distinct_from": {
@@ -1414,13 +1125,22 @@
           "is_not_distinct_from": {
             "type": "string"
           },
-          "less_than": {},
-          "less_than_or_equal": {},
-          "not_eq": {}
+          "less_than": {
+            "type": "string"
+          },
+          "less_than_or_equal": {
+            "type": "string"
+          },
+          "like": {
+            "type": "string"
+          },
+          "not_eq": {
+            "type": "string"
+          }
         },
         "type": "object"
       },
-      "draw-filter-weather_raw": {
+      "draw-filter-failure_reason": {
         "additionalProperties": false,
         "properties": {
           "contains": {
@@ -1468,78 +1188,54 @@
         },
         "type": "object"
       },
-      "draw-filter-weather_station": {
+      "error": {
         "additionalProperties": false,
         "properties": {
-          "contains": {
+          "code": {
+            "description": "An application-specific error code, expressed as a string value.",
             "type": "string"
           },
-          "eq": {
+          "detail": {
+            "description": "A human-readable explanation specific to this occurrence of the problem.",
             "type": "string"
           },
-          "greater_than": {
+          "id": {
+            "description": "A unique identifier for this particular occurrence of the problem.",
             "type": "string"
           },
-          "greater_than_or_equal": {
-            "type": "string"
+          "links": {
+            "$ref": "#/components/schemas/links"
           },
-          "ilike": {
-            "type": "string"
-          },
-          "in": {
-            "items": {
-              "type": "string"
+          "source": {
+            "properties": {
+              "parameter": {
+                "description": "A string indicating which query parameter caused the error.",
+                "type": "string"
+              },
+              "pointer": {
+                "description": "A JSON Pointer [RFC6901] to the associated entity in the request document [e.g. \"/data\" for a primary data object, or \"/data/attributes/title\" for a specific attribute].",
+                "type": "string"
+              }
             },
-            "type": "array"
+            "type": "object"
           },
-          "is_distinct_from": {
+          "status": {
+            "description": "The HTTP status code applicable to this problem, expressed as a string value.",
             "type": "string"
           },
-          "is_nil": {
-            "type": "boolean"
-          },
-          "is_not_distinct_from": {
-            "type": "string"
-          },
-          "less_than": {
-            "type": "string"
-          },
-          "less_than_or_equal": {
-            "type": "string"
-          },
-          "like": {
-            "type": "string"
-          },
-          "not_eq": {
+          "title": {
+            "description": "A short, human-readable summary of the problem. It SHOULD NOT change from occurrence to occurrence of the problem, except for purposes of localization.",
             "type": "string"
           }
         },
         "type": "object"
       },
-      "draw-filter-weather_time": {
-        "additionalProperties": false,
-        "properties": {
-          "eq": {},
-          "greater_than": {},
-          "greater_than_or_equal": {},
-          "in": {
-            "items": {},
-            "type": "array"
-          },
-          "is_distinct_from": {
-            "type": "string"
-          },
-          "is_nil": {
-            "type": "boolean"
-          },
-          "is_not_distinct_from": {
-            "type": "string"
-          },
-          "less_than": {},
-          "less_than_or_equal": {},
-          "not_eq": {}
+      "errors": {
+        "items": {
+          "$ref": "#/components/schemas/error"
         },
-        "type": "object"
+        "type": "array",
+        "uniqueItems": true
       },
       "draw-filter-weather_value": {
         "additionalProperties": false,
@@ -1630,62 +1326,430 @@
         },
         "type": "object"
       },
-      "error": {
+      "draw-filter-weather_observation_time": {
         "additionalProperties": false,
         "properties": {
-          "code": {
-            "description": "An application-specific error code, expressed as a string value.",
+          "eq": {},
+          "greater_than": {},
+          "greater_than_or_equal": {},
+          "in": {
+            "items": {},
+            "type": "array"
+          },
+          "is_distinct_from": {
             "type": "string"
           },
-          "detail": {
-            "description": "A human-readable explanation specific to this occurrence of the problem.",
+          "is_nil": {
+            "type": "boolean"
+          },
+          "is_not_distinct_from": {
             "type": "string"
           },
-          "id": {
-            "description": "A unique identifier for this particular occurrence of the problem.",
+          "less_than": {},
+          "less_than_or_equal": {},
+          "not_eq": {}
+        },
+        "type": "object"
+      },
+      "draw-filter-entry_hash": {
+        "additionalProperties": false,
+        "description": "SHA-256 hash of the canonicalised entry list (JCS). Published at lock time as a cryptographic commitment. Changing any entry would produce a different hash.",
+        "properties": {
+          "contains": {
             "type": "string"
           },
-          "links": {
-            "$ref": "#/components/schemas/links"
+          "eq": {
+            "type": "string"
           },
-          "source": {
-            "properties": {
-              "parameter": {
-                "description": "A string indicating which query parameter caused the error.",
-                "type": "string"
-              },
-              "pointer": {
-                "description": "A JSON Pointer [RFC6901] to the associated entity in the request document [e.g. \"/data\" for a primary data object, or \"/data/attributes/title\" for a specific attribute].",
-                "type": "string"
-              }
+          "greater_than": {
+            "type": "string"
+          },
+          "greater_than_or_equal": {
+            "type": "string"
+          },
+          "ilike": {
+            "type": "string"
+          },
+          "in": {
+            "items": {
+              "type": "string"
             },
-            "type": "object"
+            "type": "array"
           },
-          "status": {
-            "description": "The HTTP status code applicable to this problem, expressed as a string value.",
+          "is_distinct_from": {
             "type": "string"
           },
-          "title": {
-            "description": "A short, human-readable summary of the problem. It SHOULD NOT change from occurrence to occurrence of the problem, except for purposes of localization.",
+          "is_nil": {
+            "type": "boolean"
+          },
+          "is_not_distinct_from": {
+            "type": "string"
+          },
+          "less_than": {
+            "type": "string"
+          },
+          "less_than_or_equal": {
+            "type": "string"
+          },
+          "like": {
+            "type": "string"
+          },
+          "not_eq": {
             "type": "string"
           }
         },
         "type": "object"
       },
-      "errors": {
-        "items": {
-          "$ref": "#/components/schemas/error"
+      "draw-filter-name": {
+        "additionalProperties": false,
+        "description": "Optional human-readable label for the draw. May only be set or changed while the draw is open.",
+        "properties": {
+          "contains": {
+            "type": "string"
+          },
+          "eq": {
+            "type": "string"
+          },
+          "greater_than": {
+            "type": "string"
+          },
+          "greater_than_or_equal": {
+            "type": "string"
+          },
+          "ilike": {
+            "type": "string"
+          },
+          "in": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "is_distinct_from": {
+            "type": "string"
+          },
+          "is_nil": {
+            "type": "boolean"
+          },
+          "is_not_distinct_from": {
+            "type": "string"
+          },
+          "less_than": {
+            "type": "string"
+          },
+          "less_than_or_equal": {
+            "type": "string"
+          },
+          "like": {
+            "type": "string"
+          },
+          "not_eq": {
+            "type": "string"
+          }
         },
-        "type": "array",
-        "uniqueItems": true
+        "type": "object"
       },
-      "link": {
-        "description": "A link MUST be represented as either: a string containing the link's URL or a link object.",
-        "type": "string"
+      "draw-filter-id": {
+        "additionalProperties": false,
+        "properties": {
+          "eq": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "greater_than": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "greater_than_or_equal": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "in": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "is_distinct_from": {
+            "type": "string"
+          },
+          "is_nil": {
+            "type": "boolean"
+          },
+          "is_not_distinct_from": {
+            "type": "string"
+          },
+          "less_than": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "less_than_or_equal": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "not_eq": {
+            "format": "uuid",
+            "type": "string"
+          }
+        },
+        "type": "object"
       },
-      "links": {
-        "additionalProperties": {
-          "$ref": "#/components/schemas/link"
+      "draw-filter-seed_json": {
+        "additionalProperties": false,
+        "properties": {
+          "contains": {
+            "type": "string"
+          },
+          "eq": {
+            "type": "string"
+          },
+          "greater_than": {
+            "type": "string"
+          },
+          "greater_than_or_equal": {
+            "type": "string"
+          },
+          "ilike": {
+            "type": "string"
+          },
+          "in": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "is_distinct_from": {
+            "type": "string"
+          },
+          "is_nil": {
+            "type": "boolean"
+          },
+          "is_not_distinct_from": {
+            "type": "string"
+          },
+          "less_than": {
+            "type": "string"
+          },
+          "less_than_or_equal": {
+            "type": "string"
+          },
+          "like": {
+            "type": "string"
+          },
+          "not_eq": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "draw-filter-weather_fallback_reason": {
+        "additionalProperties": false,
+        "description": "Why weather entropy was unavailable. Null when weather was used.",
+        "properties": {
+          "contains": {
+            "type": "string"
+          },
+          "eq": {
+            "type": "string"
+          },
+          "greater_than": {
+            "type": "string"
+          },
+          "greater_than_or_equal": {
+            "type": "string"
+          },
+          "ilike": {
+            "type": "string"
+          },
+          "in": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "is_distinct_from": {
+            "type": "string"
+          },
+          "is_nil": {
+            "type": "boolean"
+          },
+          "is_not_distinct_from": {
+            "type": "string"
+          },
+          "less_than": {
+            "type": "string"
+          },
+          "less_than_or_equal": {
+            "type": "string"
+          },
+          "like": {
+            "type": "string"
+          },
+          "not_eq": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "draw-filter-entry_canonical": {
+        "additionalProperties": false,
+        "properties": {
+          "contains": {
+            "type": "string"
+          },
+          "eq": {
+            "type": "string"
+          },
+          "greater_than": {
+            "type": "string"
+          },
+          "greater_than_or_equal": {
+            "type": "string"
+          },
+          "ilike": {
+            "type": "string"
+          },
+          "in": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "is_distinct_from": {
+            "type": "string"
+          },
+          "is_nil": {
+            "type": "boolean"
+          },
+          "is_not_distinct_from": {
+            "type": "string"
+          },
+          "less_than": {
+            "type": "string"
+          },
+          "less_than_or_equal": {
+            "type": "string"
+          },
+          "like": {
+            "type": "string"
+          },
+          "not_eq": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "draw-filter-failed_at": {
+        "additionalProperties": false,
+        "properties": {
+          "eq": {},
+          "greater_than": {},
+          "greater_than_or_equal": {},
+          "in": {
+            "items": {},
+            "type": "array"
+          },
+          "is_distinct_from": {
+            "type": "string"
+          },
+          "is_nil": {
+            "type": "boolean"
+          },
+          "is_not_distinct_from": {
+            "type": "string"
+          },
+          "less_than": {},
+          "less_than_or_equal": {},
+          "not_eq": {}
+        },
+        "type": "object"
+      },
+      "draw-filter-drand_signature": {
+        "additionalProperties": false,
+        "properties": {
+          "contains": {
+            "type": "string"
+          },
+          "eq": {
+            "type": "string"
+          },
+          "greater_than": {
+            "type": "string"
+          },
+          "greater_than_or_equal": {
+            "type": "string"
+          },
+          "ilike": {
+            "type": "string"
+          },
+          "in": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "is_distinct_from": {
+            "type": "string"
+          },
+          "is_nil": {
+            "type": "boolean"
+          },
+          "is_not_distinct_from": {
+            "type": "string"
+          },
+          "less_than": {
+            "type": "string"
+          },
+          "less_than_or_equal": {
+            "type": "string"
+          },
+          "like": {
+            "type": "string"
+          },
+          "not_eq": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "draw-filter-entry_count": {
+        "additionalProperties": false,
+        "description": "Number of entries in this draw. Updated atomically when entries are added or removed.",
+        "properties": {
+          "eq": {
+            "type": "integer"
+          },
+          "greater_than": {
+            "type": "integer"
+          },
+          "greater_than_or_equal": {
+            "type": "integer"
+          },
+          "in": {
+            "items": {
+              "type": "integer"
+            },
+            "type": "array"
+          },
+          "is_distinct_from": {
+            "type": "string"
+          },
+          "is_nil": {
+            "type": "boolean"
+          },
+          "is_not_distinct_from": {
+            "type": "string"
+          },
+          "less_than": {
+            "type": "integer"
+          },
+          "less_than_or_equal": {
+            "type": "integer"
+          },
+          "not_eq": {
+            "type": "integer"
+          }
         },
         "type": "object"
       }
@@ -1736,7 +1800,7 @@
             "name": "sort",
             "required": false,
             "schema": {
-              "pattern": "^(id|-id|\\+\\+id|--id|status|-status|\\+\\+status|--status|name|-name|\\+\\+name|--name|entry_count|-entry_count|\\+\\+entry_count|--entry_count|entry_hash|-entry_hash|\\+\\+entry_hash|--entry_hash|entry_canonical|-entry_canonical|\\+\\+entry_canonical|--entry_canonical|winner_count|-winner_count|\\+\\+winner_count|--winner_count|seed|-seed|\\+\\+seed|--seed|seed_source|-seed_source|\\+\\+seed_source|--seed_source|seed_json|-seed_json|\\+\\+seed_json|--seed_json|drand_chain|-drand_chain|\\+\\+drand_chain|--drand_chain|drand_round|-drand_round|\\+\\+drand_round|--drand_round|drand_randomness|-drand_randomness|\\+\\+drand_randomness|--drand_randomness|drand_signature|-drand_signature|\\+\\+drand_signature|--drand_signature|drand_response|-drand_response|\\+\\+drand_response|--drand_response|weather_station|-weather_station|\\+\\+weather_station|--weather_station|weather_time|-weather_time|\\+\\+weather_time|--weather_time|weather_value|-weather_value|\\+\\+weather_value|--weather_value|weather_raw|-weather_raw|\\+\\+weather_raw|--weather_raw|weather_observation_time|-weather_observation_time|\\+\\+weather_observation_time|--weather_observation_time|callback_url|-callback_url|\\+\\+callback_url|--callback_url|metadata|-metadata|\\+\\+metadata|--metadata|executed_at|-executed_at|\\+\\+executed_at|--executed_at|failed_at|-failed_at|\\+\\+failed_at|--failed_at|failure_reason|-failure_reason|\\+\\+failure_reason|--failure_reason|stage_timestamps|-stage_timestamps|\\+\\+stage_timestamps|--stage_timestamps)(,(id|-id|\\+\\+id|--id|status|-status|\\+\\+status|--status|name|-name|\\+\\+name|--name|entry_count|-entry_count|\\+\\+entry_count|--entry_count|entry_hash|-entry_hash|\\+\\+entry_hash|--entry_hash|entry_canonical|-entry_canonical|\\+\\+entry_canonical|--entry_canonical|winner_count|-winner_count|\\+\\+winner_count|--winner_count|seed|-seed|\\+\\+seed|--seed|seed_source|-seed_source|\\+\\+seed_source|--seed_source|seed_json|-seed_json|\\+\\+seed_json|--seed_json|drand_chain|-drand_chain|\\+\\+drand_chain|--drand_chain|drand_round|-drand_round|\\+\\+drand_round|--drand_round|drand_randomness|-drand_randomness|\\+\\+drand_randomness|--drand_randomness|drand_signature|-drand_signature|\\+\\+drand_signature|--drand_signature|drand_response|-drand_response|\\+\\+drand_response|--drand_response|weather_station|-weather_station|\\+\\+weather_station|--weather_station|weather_time|-weather_time|\\+\\+weather_time|--weather_time|weather_value|-weather_value|\\+\\+weather_value|--weather_value|weather_raw|-weather_raw|\\+\\+weather_raw|--weather_raw|weather_observation_time|-weather_observation_time|\\+\\+weather_observation_time|--weather_observation_time|callback_url|-callback_url|\\+\\+callback_url|--callback_url|metadata|-metadata|\\+\\+metadata|--metadata|executed_at|-executed_at|\\+\\+executed_at|--executed_at|failed_at|-failed_at|\\+\\+failed_at|--failed_at|failure_reason|-failure_reason|\\+\\+failure_reason|--failure_reason|stage_timestamps|-stage_timestamps|\\+\\+stage_timestamps|--stage_timestamps))*$",
+              "pattern": "^(id|-id|\\+\\+id|--id|status|-status|\\+\\+status|--status|name|-name|\\+\\+name|--name|entry_count|-entry_count|\\+\\+entry_count|--entry_count|entry_hash|-entry_hash|\\+\\+entry_hash|--entry_hash|entry_canonical|-entry_canonical|\\+\\+entry_canonical|--entry_canonical|winner_count|-winner_count|\\+\\+winner_count|--winner_count|seed|-seed|\\+\\+seed|--seed|seed_source|-seed_source|\\+\\+seed_source|--seed_source|seed_json|-seed_json|\\+\\+seed_json|--seed_json|drand_chain|-drand_chain|\\+\\+drand_chain|--drand_chain|drand_round|-drand_round|\\+\\+drand_round|--drand_round|drand_randomness|-drand_randomness|\\+\\+drand_randomness|--drand_randomness|drand_signature|-drand_signature|\\+\\+drand_signature|--drand_signature|drand_response|-drand_response|\\+\\+drand_response|--drand_response|weather_station|-weather_station|\\+\\+weather_station|--weather_station|weather_time|-weather_time|\\+\\+weather_time|--weather_time|weather_value|-weather_value|\\+\\+weather_value|--weather_value|weather_raw|-weather_raw|\\+\\+weather_raw|--weather_raw|weather_observation_time|-weather_observation_time|\\+\\+weather_observation_time|--weather_observation_time|weather_fallback_reason|-weather_fallback_reason|\\+\\+weather_fallback_reason|--weather_fallback_reason|callback_url|-callback_url|\\+\\+callback_url|--callback_url|metadata|-metadata|\\+\\+metadata|--metadata|executed_at|-executed_at|\\+\\+executed_at|--executed_at|failed_at|-failed_at|\\+\\+failed_at|--failed_at|failure_reason|-failure_reason|\\+\\+failure_reason|--failure_reason|stage_timestamps|-stage_timestamps|\\+\\+stage_timestamps|--stage_timestamps)(,(id|-id|\\+\\+id|--id|status|-status|\\+\\+status|--status|name|-name|\\+\\+name|--name|entry_count|-entry_count|\\+\\+entry_count|--entry_count|entry_hash|-entry_hash|\\+\\+entry_hash|--entry_hash|entry_canonical|-entry_canonical|\\+\\+entry_canonical|--entry_canonical|winner_count|-winner_count|\\+\\+winner_count|--winner_count|seed|-seed|\\+\\+seed|--seed|seed_source|-seed_source|\\+\\+seed_source|--seed_source|seed_json|-seed_json|\\+\\+seed_json|--seed_json|drand_chain|-drand_chain|\\+\\+drand_chain|--drand_chain|drand_round|-drand_round|\\+\\+drand_round|--drand_round|drand_randomness|-drand_randomness|\\+\\+drand_randomness|--drand_randomness|drand_signature|-drand_signature|\\+\\+drand_signature|--drand_signature|drand_response|-drand_response|\\+\\+drand_response|--drand_response|weather_station|-weather_station|\\+\\+weather_station|--weather_station|weather_time|-weather_time|\\+\\+weather_time|--weather_time|weather_value|-weather_value|\\+\\+weather_value|--weather_value|weather_raw|-weather_raw|\\+\\+weather_raw|--weather_raw|weather_observation_time|-weather_observation_time|\\+\\+weather_observation_time|--weather_observation_time|weather_fallback_reason|-weather_fallback_reason|\\+\\+weather_fallback_reason|--weather_fallback_reason|callback_url|-callback_url|\\+\\+callback_url|--callback_url|metadata|-metadata|\\+\\+metadata|--metadata|executed_at|-executed_at|\\+\\+executed_at|--executed_at|failed_at|-failed_at|\\+\\+failed_at|--failed_at|failure_reason|-failure_reason|\\+\\+failure_reason|--failure_reason|stage_timestamps|-stage_timestamps|\\+\\+stage_timestamps|--stage_timestamps))*$",
               "type": "string"
             },
             "style": "form"
@@ -1794,12 +1858,12 @@
             "schema": {
               "additionalProperties": true,
               "example": {
-                "draw": "id,status,name,entry_count,entry_hash,entry_canonical,winner_count,seed,seed_source,seed_json,results,drand_chain,drand_round,drand_randomness,drand_signature,drand_response,weather_station,weather_time,weather_value,weather_raw,weather_observation_time,callback_url,metadata,executed_at,failed_at,failure_reason,stage_timestamps"
+                "draw": "id,status,name,entry_count,entry_hash,entry_canonical,winner_count,seed,seed_source,seed_json,results,drand_chain,drand_round,drand_randomness,drand_signature,drand_response,weather_station,weather_time,weather_value,weather_raw,weather_observation_time,weather_fallback_reason,callback_url,metadata,executed_at,failed_at,failure_reason,stage_timestamps"
               },
               "properties": {
                 "draw": {
                   "description": "Comma separated field names for draw",
-                  "example": "id,status,name,entry_count,entry_hash,entry_canonical,winner_count,seed,seed_source,seed_json,results,drand_chain,drand_round,drand_randomness,drand_signature,drand_response,weather_station,weather_time,weather_value,weather_raw,weather_observation_time,callback_url,metadata,executed_at,failed_at,failure_reason,stage_timestamps",
+                  "example": "id,status,name,entry_count,entry_hash,entry_canonical,winner_count,seed,seed_source,seed_json,results,drand_chain,drand_round,drand_randomness,drand_signature,drand_response,weather_station,weather_time,weather_value,weather_raw,weather_observation_time,weather_fallback_reason,callback_url,metadata,executed_at,failed_at,failure_reason,stage_timestamps",
                   "type": "string"
                 }
               },
@@ -1874,12 +1938,12 @@
             "schema": {
               "additionalProperties": true,
               "example": {
-                "draw": "id,status,name,entry_count,entry_hash,entry_canonical,winner_count,seed,seed_source,seed_json,results,drand_chain,drand_round,drand_randomness,drand_signature,drand_response,weather_station,weather_time,weather_value,weather_raw,weather_observation_time,callback_url,metadata,executed_at,failed_at,failure_reason,stage_timestamps"
+                "draw": "id,status,name,entry_count,entry_hash,entry_canonical,winner_count,seed,seed_source,seed_json,results,drand_chain,drand_round,drand_randomness,drand_signature,drand_response,weather_station,weather_time,weather_value,weather_raw,weather_observation_time,weather_fallback_reason,callback_url,metadata,executed_at,failed_at,failure_reason,stage_timestamps"
               },
               "properties": {
                 "draw": {
                   "description": "Comma separated field names for draw",
-                  "example": "id,status,name,entry_count,entry_hash,entry_canonical,winner_count,seed,seed_source,seed_json,results,drand_chain,drand_round,drand_randomness,drand_signature,drand_response,weather_station,weather_time,weather_value,weather_raw,weather_observation_time,callback_url,metadata,executed_at,failed_at,failure_reason,stage_timestamps",
+                  "example": "id,status,name,entry_count,entry_hash,entry_canonical,winner_count,seed,seed_source,seed_json,results,drand_chain,drand_round,drand_randomness,drand_signature,drand_response,weather_station,weather_time,weather_value,weather_raw,weather_observation_time,weather_fallback_reason,callback_url,metadata,executed_at,failed_at,failure_reason,stage_timestamps",
                   "type": "string"
                 }
               },
@@ -2038,12 +2102,12 @@
             "schema": {
               "additionalProperties": true,
               "example": {
-                "draw": "id,status,name,entry_count,entry_hash,entry_canonical,winner_count,seed,seed_source,seed_json,results,drand_chain,drand_round,drand_randomness,drand_signature,drand_response,weather_station,weather_time,weather_value,weather_raw,weather_observation_time,callback_url,metadata,executed_at,failed_at,failure_reason,stage_timestamps"
+                "draw": "id,status,name,entry_count,entry_hash,entry_canonical,winner_count,seed,seed_source,seed_json,results,drand_chain,drand_round,drand_randomness,drand_signature,drand_response,weather_station,weather_time,weather_value,weather_raw,weather_observation_time,weather_fallback_reason,callback_url,metadata,executed_at,failed_at,failure_reason,stage_timestamps"
               },
               "properties": {
                 "draw": {
                   "description": "Comma separated field names for draw",
-                  "example": "id,status,name,entry_count,entry_hash,entry_canonical,winner_count,seed,seed_source,seed_json,results,drand_chain,drand_round,drand_randomness,drand_signature,drand_response,weather_station,weather_time,weather_value,weather_raw,weather_observation_time,callback_url,metadata,executed_at,failed_at,failure_reason,stage_timestamps",
+                  "example": "id,status,name,entry_count,entry_hash,entry_canonical,winner_count,seed,seed_source,seed_json,results,drand_chain,drand_round,drand_randomness,drand_signature,drand_response,weather_station,weather_time,weather_value,weather_raw,weather_observation_time,weather_fallback_reason,callback_url,metadata,executed_at,failed_at,failure_reason,stage_timestamps",
                   "type": "string"
                 }
               },
@@ -2123,12 +2187,12 @@
             "schema": {
               "additionalProperties": true,
               "example": {
-                "draw": "id,status,name,entry_count,entry_hash,entry_canonical,winner_count,seed,seed_source,seed_json,results,drand_chain,drand_round,drand_randomness,drand_signature,drand_response,weather_station,weather_time,weather_value,weather_raw,weather_observation_time,callback_url,metadata,executed_at,failed_at,failure_reason,stage_timestamps"
+                "draw": "id,status,name,entry_count,entry_hash,entry_canonical,winner_count,seed,seed_source,seed_json,results,drand_chain,drand_round,drand_randomness,drand_signature,drand_response,weather_station,weather_time,weather_value,weather_raw,weather_observation_time,weather_fallback_reason,callback_url,metadata,executed_at,failed_at,failure_reason,stage_timestamps"
               },
               "properties": {
                 "draw": {
                   "description": "Comma separated field names for draw",
-                  "example": "id,status,name,entry_count,entry_hash,entry_canonical,winner_count,seed,seed_source,seed_json,results,drand_chain,drand_round,drand_randomness,drand_signature,drand_response,weather_station,weather_time,weather_value,weather_raw,weather_observation_time,callback_url,metadata,executed_at,failed_at,failure_reason,stage_timestamps",
+                  "example": "id,status,name,entry_count,entry_hash,entry_canonical,winner_count,seed,seed_source,seed_json,results,drand_chain,drand_round,drand_randomness,drand_signature,drand_response,weather_station,weather_time,weather_value,weather_raw,weather_observation_time,weather_fallback_reason,callback_url,metadata,executed_at,failed_at,failure_reason,stage_timestamps",
                   "type": "string"
                 }
               },
@@ -2262,12 +2326,12 @@
             "schema": {
               "additionalProperties": true,
               "example": {
-                "draw": "id,status,name,entry_count,entry_hash,entry_canonical,winner_count,seed,seed_source,seed_json,results,drand_chain,drand_round,drand_randomness,drand_signature,drand_response,weather_station,weather_time,weather_value,weather_raw,weather_observation_time,callback_url,metadata,executed_at,failed_at,failure_reason,stage_timestamps"
+                "draw": "id,status,name,entry_count,entry_hash,entry_canonical,winner_count,seed,seed_source,seed_json,results,drand_chain,drand_round,drand_randomness,drand_signature,drand_response,weather_station,weather_time,weather_value,weather_raw,weather_observation_time,weather_fallback_reason,callback_url,metadata,executed_at,failed_at,failure_reason,stage_timestamps"
               },
               "properties": {
                 "draw": {
                   "description": "Comma separated field names for draw",
-                  "example": "id,status,name,entry_count,entry_hash,entry_canonical,winner_count,seed,seed_source,seed_json,results,drand_chain,drand_round,drand_randomness,drand_signature,drand_response,weather_station,weather_time,weather_value,weather_raw,weather_observation_time,callback_url,metadata,executed_at,failed_at,failure_reason,stage_timestamps",
+                  "example": "id,status,name,entry_count,entry_hash,entry_canonical,winner_count,seed,seed_source,seed_json,results,drand_chain,drand_round,drand_randomness,drand_signature,drand_response,weather_station,weather_time,weather_value,weather_raw,weather_observation_time,weather_fallback_reason,callback_url,metadata,executed_at,failed_at,failure_reason,stage_timestamps",
                   "type": "string"
                 }
               },

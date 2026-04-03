@@ -60,12 +60,13 @@ Update `:status` constraints from `[:locked, :completed]` to `[:locked, :awaitin
 
 ### DrandClient
 
-- Fetches from `https://api.drand.sh/<chain_hash>/public/<round>`
-- Validates chain hash in response matches stored value
+- Fetches from drand relays with automatic failover on transport/5xx errors
+- Relay order: `api.drand.sh`, `drand.cloudflare.com`, `api2.drand.sh`, `api3.drand.sh`
+- Does NOT failover on 404 (round not yet produced) or invalid response
+- All relays serve the same deterministic BLS signature for a given round
 - Validates round number matches declared value
 - Returns: randomness (hex), signature (hex), full response text
 - HTTP timeouts: 5s connect, 10s receive
-- No client-level retries (Oban handles retries)
 - Validates response structure, rejects malformed
 
 ### WeatherClient
@@ -112,27 +113,29 @@ When a draw is created without a caller-provided seed:
 
 **Unique constraint:** `[period: :infinity, keys: [:draw_id]]` — one job per draw
 
+**Two-phase retry:**
+
+Phase 1 (attempts 1-5): Try both drand and weather. On transient failure, retry via Oban.
+
+Phase 2 (attempts 6-10): If drand succeeds but weather has failed for 5+ attempts, fall back to drand-only seed computation via `execute_drand_only` action. The `weather_fallback_reason` is stored in the immutable proof record.
+
 **Flow:**
 1. Load draw
 2. If `awaiting_entropy`: transition to `pending_entropy` (atomic, WHERE status = 'awaiting_entropy')
-3. Fetch drand and weather in parallel via `Task.async`/`Task.await`
-4. If either unavailable (transient error): return `{:error, _}` for Oban retry with exponential backoff
-5. If either returns a permanent error (401, 403, invalid response): fail the draw immediately
-6. Both available:
-   a. Re-verify entry_hash (recompute from stored entries, assert match)
-   b. Compute seed: `Protocol.compute_seed(entry_hash, drand_randomness, weather_value)` → seed_bytes + seed_json
-   c. Run `FairPick.draw(entries, seed_bytes, winner_count)` → results
-   d. Store all fields (results, seed, seed_source: :entropy, seed_json, drand_*, weather_*, executed_at)
-   e. Transition to `completed` (atomic, WHERE status = 'pending_entropy')
-7. Enqueue webhook job if `callback_url` is set
-
-**Failure:** After 2 hours of retries (or immediately on permanent errors like 401/403), transition to `failed` with reason. Enqueue webhook.
+3. Fetch drand (with relay failover) and weather in parallel via `Task.async`/`Task.await`
+4. Broadcast `{:entropy_status, ...}` for proof page live feedback
+5. If permanent error (401, 403, invalid response): fail the draw immediately
+6. If both available: execute with both entropy sources via `execute_with_entropy`
+7. If drand OK but weather failed and attempt >= 5: execute drand-only via `execute_drand_only`
+8. If attempt == max_attempts and still failing: fail the draw
+9. Otherwise: return `{:error, _}` for Oban retry
+10. Enqueue webhook job if `callback_url` is set
 
 **Error classification:**
 - Transient (retry): drand 404 (round not yet available), 5xx, transport errors, timeouts
 - Permanent (fail immediately): 401, 403, invalid API response structure
 
-**Backoff:** Exponential via Oban's built-in attempt tracking. `max_attempts: 10`, backoff ~30s, ~60s, ~2m, ~4m, ~8m, capped at 15m.
+**Backoff:** Flat curve via `backoff/1` callback: 15s, 30s, 45s, 60s, 90s for attempts 1-5, then 120s. Total window ~14 minutes across 10 attempts.
 
 ## Webhook Delivery
 

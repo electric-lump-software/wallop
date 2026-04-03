@@ -95,7 +95,8 @@ defmodule WallopCore.Entropy.IntegrationTest do
       # Run the entropy worker manually
       job = %Oban.Job{
         args: %{"draw_id" => draw.id},
-        inserted_at: DateTime.utc_now()
+        attempt: 1,
+        max_attempts: 10
       }
 
       assert :ok = EntropyWorker.perform(job)
@@ -137,7 +138,8 @@ defmodule WallopCore.Entropy.IntegrationTest do
 
       job = %Oban.Job{
         args: %{"draw_id" => draw.id},
-        inserted_at: DateTime.utc_now()
+        attempt: 1,
+        max_attempts: 10
       }
 
       assert :ok = EntropyWorker.perform(job)
@@ -159,6 +161,60 @@ defmodule WallopCore.Entropy.IntegrationTest do
         :crypto.hash(:sha256, completed.seed_json) |> Base.encode16(case: :lower)
 
       assert completed.seed == recomputed_seed
+    end
+
+    test "drand-only fallback when weather is unavailable" do
+      # Stub weather to fail
+      Req.Test.stub(WeatherClient, fn conn ->
+        Plug.Conn.send_resp(conn, 500, "down")
+      end)
+
+      api_key = create_api_key()
+      draw = create_draw(api_key, %{entropy: true})
+
+      # Simulate attempt 6 (past weather threshold of 5)
+      job = %Oban.Job{
+        args: %{"draw_id" => draw.id},
+        attempt: 6,
+        max_attempts: 10
+      }
+
+      assert :ok = EntropyWorker.perform(job)
+
+      completed =
+        Ash.get!(WallopCore.Resources.Draw, draw.id,
+          domain: WallopCore.Domain,
+          authorize?: false
+        )
+
+      assert completed.status == :completed
+      assert completed.seed_source == :entropy
+      assert completed.weather_value == nil
+      assert completed.weather_fallback_reason != nil
+
+      # seed_json should have only drand and entry_hash (no weather)
+      seed_data = Jason.decode!(completed.seed_json)
+      assert Map.has_key?(seed_data, "drand_randomness")
+      assert Map.has_key?(seed_data, "entry_hash")
+      refute Map.has_key?(seed_data, "weather_value")
+
+      # Verify seed uses drand-only computation
+      {expected_seed_bytes, expected_seed_json} =
+        WallopCore.Protocol.compute_seed(completed.entry_hash, completed.drand_randomness)
+
+      assert completed.seed == Base.encode16(expected_seed_bytes, case: :lower)
+      assert completed.seed_json == expected_seed_json
+
+      # Verify results match
+      atom_entries = WallopCore.Entries.load_for_draw(completed.id)
+      expected_results = FairPick.draw(atom_entries, expected_seed_bytes, completed.winner_count)
+
+      expected_json =
+        Enum.map(expected_results, fn %{position: pos, entry_id: id} ->
+          %{"position" => pos, "entry_id" => id}
+        end)
+
+      assert completed.results == expected_json
     end
   end
 end

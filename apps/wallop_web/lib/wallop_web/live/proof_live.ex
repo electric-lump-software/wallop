@@ -38,6 +38,7 @@ defmodule WallopWeb.ProofLive do
            revealing: false,
            reveal_from: nil,
            reveal_to: nil,
+           entropy_status: nil,
            page_title: "Draw Proof"
          )}
 
@@ -52,7 +53,15 @@ defmodule WallopWeb.ProofLive do
   def handle_info({:draw_updated, draw}, socket) do
     if draw.id == socket.assigns.draw_id do
       schedule_poll_if_live(draw)
-      maybe_reveal(socket, draw)
+      maybe_reveal(%{socket | assigns: Map.put(socket.assigns, :entropy_status, nil)}, draw)
+    else
+      {:noreply, socket}
+    end
+  end
+
+  def handle_info({:entropy_status, status}, socket) do
+    if socket.assigns.draw.status in [:awaiting_entropy, :pending_entropy] do
+      {:noreply, assign(socket, entropy_status: status)}
     else
       {:noreply, socket}
     end

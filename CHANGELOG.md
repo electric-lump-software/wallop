@@ -11,6 +11,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Marketing site at `/` with hero, "Why provable?", organiser/developer split, tabbed protocol explainer, origin story, FAQ, and waitlist CTA
 
+## [0.7.0] - 2026-04-03
+
+### Added
+
+- drand relay failover — tries 4 relays (api.drand.sh, drand.cloudflare.com, api2.drand.sh, api3.drand.sh) on transport/5xx errors
+- drand-only fallback — if weather is unavailable after 5 attempts, draws proceed with drand entropy only instead of failing
+- `weather_fallback_reason` field on draws — stores why weather was skipped, part of the immutable proof record
+- `execute_drand_only` Ash action — separate from `execute_with_entropy`, requires fallback reason
+- `Protocol.compute_seed/2` — drand-only seed computation (weather_value key omitted from JCS, not null)
+- Live retry feedback on proof page — shows attempt count, source status, and drand-only fallback in progress
+- Proof chain and timeline show fallback reason for drand-only draws
+
+### Changed
+
+- Retry backoff flattened: 15s, 30s, 45s, 60s, 90s for first 5 attempts, then 120s. Total window ~14 minutes.
+- Removed 2-hour failure timeout — Oban's max_attempts (10) handles termination
+- EntropyWorker uses `DrandClient.fetch_with_failover/2` instead of `fetch/2`
+
 ## [0.6.3] - 2026-04-02
 
 ### Added
