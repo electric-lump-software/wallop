@@ -210,6 +210,24 @@
     <div>Draw ID: <span class="font-mono">{@draw.id}</span></div>
   </div>
 
+  <div :if={@entropy_status} class="text-xs text-[#555]">
+    <div :if={@entropy_status.phase == :collecting}>
+      Collecting entropy... (attempt {@entropy_status.attempt}/{@entropy_status.max_attempts})
+      <span :if={@entropy_status.drand == :ok and @entropy_status.weather != :ok} class="block mt-0.5 text-[#999]">
+        drand ready, waiting for weather observation...
+      </span>
+      <span :if={@entropy_status.weather == :ok and @entropy_status.drand != :ok} class="block mt-0.5 text-[#999]">
+        Weather ready, waiting for drand beacon...
+      </span>
+      <span :if={@entropy_status.drand != :ok and @entropy_status.weather != :ok} class="block mt-0.5 text-[#999]">
+        Waiting for drand beacon and weather observation...
+      </span>
+    </div>
+    <div :if={@entropy_status.phase == :drand_only_fallback} class="text-amber-700">
+      Proceeding with drand entropy only (weather unavailable)
+    </div>
+  </div>
+
   <div class="bg-white border border-cream-border rounded-xl">
     <div class="p-5">
       <.draw_timeline draw={@draw} />
