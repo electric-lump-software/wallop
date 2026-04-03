@@ -104,6 +104,60 @@ defmodule WallopCore.Entropy.DrandClientTest do
     end
   end
 
+  describe "fetch_with_failover/2" do
+    test "succeeds on first relay" do
+      assert {:ok, result} = DrandClient.fetch_with_failover(@chain_hash, 1000)
+      assert result.randomness == "a" <> String.duplicate("0", 63)
+      assert result.round == 1000
+    end
+
+    test "falls through to next relay on 500" do
+      call_count = :counters.new(1, [:atomics])
+
+      Req.Test.stub(DrandClient, fn conn ->
+        :counters.add(call_count, 1, 1)
+        count = :counters.get(call_count, 1)
+
+        if count == 1 do
+          Plug.Conn.send_resp(conn, 500, "down")
+        else
+          round = conn.request_path |> String.split("/") |> List.last() |> String.to_integer()
+
+          body = %{
+            "randomness" => "a" <> String.duplicate("0", 63),
+            "signature" => "abcdef1234567890",
+            "round" => round
+          }
+
+          conn
+          |> Plug.Conn.put_resp_content_type("application/json")
+          |> Plug.Conn.send_resp(200, Jason.encode!(body))
+        end
+      end)
+
+      assert {:ok, result} = DrandClient.fetch_with_failover(@chain_hash, 1000)
+      assert result.round == 1000
+      assert :counters.get(call_count, 1) == 2
+    end
+
+    test "does NOT failover on 404 (round not yet available)" do
+      Req.Test.stub(DrandClient, fn conn ->
+        Plug.Conn.send_resp(conn, 404, "not found")
+      end)
+
+      assert {:error, :not_found} = DrandClient.fetch_with_failover(@chain_hash, 999)
+    end
+
+    test "returns error when all relays fail" do
+      Req.Test.stub(DrandClient, fn conn ->
+        Plug.Conn.send_resp(conn, 500, "down")
+      end)
+
+      assert {:error, {:all_relays_failed, _}} =
+               DrandClient.fetch_with_failover(@chain_hash, 1000)
+    end
+  end
+
   describe "current_round/1" do
     test "returns the round number from latest endpoint" do
       assert {:ok, 42_000} = DrandClient.current_round(@chain_hash)

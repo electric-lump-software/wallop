@@ -11,10 +11,54 @@ defmodule WallopCore.Entropy.DrandClient do
   @connect_timeout 5_000
   @receive_timeout 10_000
 
+  @default_relays [
+    "https://api.drand.sh",
+    "https://drand.cloudflare.com",
+    "https://api2.drand.sh",
+    "https://api3.drand.sh"
+  ]
+
   @quicknet_chain_hash "52db9ba70e0cc0f6eaf7803dd07447a1f5477735fd3f661792ba94600c84e971"
 
   @doc "The chain hash for the quicknet chain (3-second rounds)."
   def quicknet_chain_hash, do: @quicknet_chain_hash
+
+  @doc """
+  Fetch a specific round, trying multiple relays on failure.
+
+  Fails over on transport errors, timeouts, and 5xx responses.
+  Does NOT failover on 404 (round not yet produced) or invalid responses.
+  """
+  def fetch_with_failover(chain_hash, round) when is_binary(chain_hash) and is_integer(round) do
+    config = Application.get_env(:wallop_core, __MODULE__, [])
+    relays = Keyword.get(config, :relays, @default_relays)
+
+    try_relays(relays, chain_hash, round, [])
+  end
+
+  defp try_relays([], _chain_hash, _round, errors) do
+    {:error, {:all_relays_failed, errors}}
+  end
+
+  defp try_relays([relay | rest], chain_hash, round, errors) do
+    case fetch(chain_hash, round, relay) do
+      {:ok, _} = success ->
+        success
+
+      {:error, :not_found} = not_found ->
+        not_found
+
+      {:error, :invalid_response} = invalid ->
+        invalid
+
+      # Don't failover on auth errors — all relays use the same credentials
+      {:error, {:unexpected_status, status}} = auth_err when status in [401, 403] ->
+        auth_err
+
+      {:error, reason} ->
+        try_relays(rest, chain_hash, round, [{relay, reason} | errors])
+    end
+  end
 
   @doc """
   Fetch a specific round from a drand chain.
@@ -22,8 +66,10 @@ defmodule WallopCore.Entropy.DrandClient do
   Returns `{:ok, %{randomness: hex, signature: hex, round: integer, response: text}}`
   or `{:error, reason}`.
   """
-  def fetch(chain_hash, round) when is_binary(chain_hash) and is_integer(round) do
-    url = "#{base_url()}/#{chain_hash}/public/#{round}"
+  def fetch(chain_hash, round, relay_url \\ nil)
+      when is_binary(chain_hash) and is_integer(round) do
+    base = relay_url || base_url()
+    url = "#{base}/#{chain_hash}/public/#{round}"
 
     case Req.get(url, req_options()) do
       {:ok, %Req.Response{status: 200, body: body}} ->

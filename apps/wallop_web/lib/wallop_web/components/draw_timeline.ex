@@ -205,9 +205,21 @@ defmodule WallopWeb.Components.DrawTimeline do
   end
 
   defp entropy_detail(draw) do
+    weather_part =
+      cond do
+        draw.weather_value ->
+          "weather: #{draw.weather_value}"
+
+        draw.weather_fallback_reason ->
+          "weather unavailable"
+
+        true ->
+          nil
+      end
+
     [
       if(draw.drand_randomness, do: "drand: #{truncate_hash(draw.drand_randomness)}"),
-      if(draw.weather_value, do: "weather: #{draw.weather_value}"),
+      weather_part,
       if(draw.weather_observation_time,
         do: "observed at #{Calendar.strftime(draw.weather_observation_time, "%H:%M UTC")}"
       )

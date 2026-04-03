@@ -124,6 +124,23 @@ defmodule WallopCore.Resources.Draw do
       change({WallopCore.Resources.Draw.Changes.ExecuteWithEntropy, []})
     end
 
+    update :execute_drand_only do
+      require_atomic?(false)
+      filter(expr(status == :pending_entropy))
+
+      argument(:drand_randomness, :string, allow_nil?: false)
+      argument(:drand_signature, :string, allow_nil?: false)
+      argument(:drand_response, :string, allow_nil?: false)
+      argument(:weather_fallback_reason, :string, allow_nil?: false)
+
+      validate match(:drand_randomness, ~r/^[0-9a-f]{64}$/) do
+        message("must be a 64-character lowercase hex string")
+      end
+
+      change({WallopCore.Resources.Draw.Changes.ExecuteDrandOnly, []})
+      change({WallopCore.Resources.Draw.Changes.RecordStageTimestamp, key: "executed_at"})
+    end
+
     update :execute_sandbox do
       @doc "Executes a draw with the published sandbox seed. Only available in dev/test."
       require_atomic?(false)
@@ -203,7 +220,12 @@ defmodule WallopCore.Resources.Draw do
     # Internal-only actions: called by EntropyWorker with authorize?: false.
     # Forbidden for all authorized callers to prevent external actors from
     # racing the entropy worker with fabricated entropy values.
-    policy action([:transition_to_pending, :execute_with_entropy, :mark_failed]) do
+    policy action([
+             :transition_to_pending,
+             :execute_with_entropy,
+             :execute_drand_only,
+             :mark_failed
+           ]) do
       forbid_if(always())
     end
   end
@@ -374,6 +396,12 @@ defmodule WallopCore.Resources.Draw do
     end
 
     attribute :weather_observation_time, :utc_datetime_usec do
+      allow_nil?(true)
+      public?(true)
+    end
+
+    attribute :weather_fallback_reason, :string do
+      description("Why weather entropy was unavailable. Null when weather was used.")
       allow_nil?(true)
       public?(true)
     end
