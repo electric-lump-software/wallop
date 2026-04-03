@@ -37,8 +37,10 @@ defmodule WallopWeb.Router do
   scope "/", WallopWeb do
     pipe_through(:browser)
     live("/", HomeLive)
-    live("/proof/:id/:entry_id", ProofLive)
-    live("/proof/:id", ProofLive)
+    get("/proof/:id/:entry_id", ProofController, :show)
+    get("/proof/:id", ProofController, :show)
+    live("/live/proof/:id/:entry_id", ProofLive)
+    live("/live/proof/:id", ProofLive)
   end
 
   if Mix.env() == :dev do

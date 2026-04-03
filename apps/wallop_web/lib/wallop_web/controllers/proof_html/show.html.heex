@@ -1,0 +1,140 @@
+<%!-- Hide logo on sandbox draws — the logo implies official verification --%>
+<style :if={@draw.seed_source == :sandbox}>
+  [data-wallop-logo] { display: none !important; }
+</style>
+
+<%!-- Completed draw: verification-first view --%>
+<div :if={@draw.status == :completed} class="space-y-6">
+  <div :if={@draw.seed_source == :sandbox} class="rounded-xl px-5 py-4 border-2" style="background-color: #f3e8ff; border-color: #c084fc;">
+    <div class="font-semibold text-sm" style="color: #6b21a8;">
+      Sandbox draw
+    </div>
+    <p class="text-xs mt-1" style="color: #7e22ce;">
+      This draw used a published, predetermined seed. Results are not random and are unsuitable for real use.
+      <br /><br />
+      For integration testing only.
+    </p>
+  </div>
+
+  <div :if={@draw.seed_source == :caller} class="bg-amber-50 border-2 border-amber-300 rounded-xl px-5 py-4">
+    <div class="flex items-center gap-2 text-amber-800 font-semibold text-sm">
+      <span class="text-lg">⚠</span> Not a verified draw
+    </div>
+    <p class="text-amber-700 text-xs mt-1">
+      This draw used a caller-provided seed. The results were not generated from independent public entropy and cannot be independently verified as random.
+    </p>
+  </div>
+
+  <div class="flex items-center gap-3">
+    <span
+      :if={@draw.seed_source == :entropy}
+      class="inline-flex items-center gap-1.5 bg-green-100 text-green-800 text-xs font-semibold px-3 py-1 rounded-full"
+    >
+      ✦ Verified by Wallop
+    </span>
+    <span
+      :if={@draw.seed_source == :caller}
+      class="inline-flex items-center gap-1.5 bg-amber-100 text-amber-800 text-xs font-semibold px-3 py-1 rounded-full"
+    >
+      Unverified draw
+    </span>
+  </div>
+
+  <div class="text-sm text-[#555]">
+    <div>Draw ID: <span class="font-mono">{@draw.id}</span></div>
+    <div :if={@draw.executed_at}>
+      Completed: {Calendar.strftime(@draw.executed_at, "%Y-%m-%d %H:%M:%S UTC")}
+    </div>
+  </div>
+
+  <div class="bg-white border border-cream-border rounded-xl">
+    <div class="p-5">
+      <.winner_list results={@draw.results || []} />
+    </div>
+  </div>
+
+  <div class="bg-white border border-cream-border rounded-xl">
+    <div class="p-5">
+      <div>
+        <h3 class="text-lg font-bold mb-3">Check my entry</h3>
+        <form method="get" action={~p"/proof/#{@draw.id}"} class="flex gap-2">
+          <input
+            type="text"
+            name="entry_id"
+            value={@checked_entry_id}
+            placeholder="Enter your full entry ID"
+            class="flex-1 px-3 py-1.5 rounded-lg border border-cream-border bg-white text-sm focus:outline-none focus:border-[#aaa]"
+            required
+          />
+          <button type="submit" class="btn btn-neutral btn-sm rounded-lg">
+            Check
+          </button>
+        </form>
+
+        <div :if={@check_result} class="mt-3">
+          <div :if={@check_result.found == false} class="bg-yellow-50 border border-yellow-200 text-yellow-800 rounded-lg px-4 py-3 text-sm">
+            Entry not found in this draw.
+          </div>
+          <div :if={@check_result.found && @check_result.winner} class="bg-green-50 border border-green-200 text-green-800 rounded-lg px-4 py-3 text-sm">
+            Your entry won! Position: {@check_result.position}
+          </div>
+          <div :if={@check_result.found && !@check_result.winner} class="bg-red-50 border border-red-200 text-red-800 rounded-lg px-4 py-3 text-sm">
+            Your entry was in this draw but did not win.
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="bg-white border border-cream-border rounded-xl">
+    <div class="p-5">
+      <.draw_timeline draw={@draw} />
+    </div>
+  </div>
+
+  <div class="bg-white border border-cream-border rounded-xl">
+    <div class="p-5">
+      <.proof_chain draw={@draw} />
+    </div>
+  </div>
+</div>
+
+<%!-- Expired draw --%>
+<div :if={@draw.status == :expired} class="space-y-6">
+  <div class="flex items-center gap-3">
+    <span class="inline-flex items-center gap-1.5 bg-yellow-100 text-yellow-800 text-xs font-semibold px-3 py-1 rounded-full">
+      Draw Expired
+    </span>
+  </div>
+
+  <div class="text-sm text-[#555]">
+    <div>Draw ID: <span class="font-mono">{@draw.id}</span></div>
+    <div>This draw was not completed.</div>
+  </div>
+</div>
+
+<%!-- Failed draw --%>
+<div :if={@draw.status == :failed} class="space-y-6">
+  <div class="flex items-center gap-3">
+    <span class="inline-flex items-center gap-1.5 bg-red-100 text-red-800 text-xs font-semibold px-3 py-1 rounded-full">
+      Draw Failed
+    </span>
+  </div>
+
+  <div class="text-sm text-[#555]">
+    <div>Draw ID: <span class="font-mono">{@draw.id}</span></div>
+    <div :if={@draw.failed_at}>
+      Failed: {Calendar.strftime(@draw.failed_at, "%Y-%m-%d %H:%M:%S UTC")}
+    </div>
+  </div>
+
+  <div :if={@draw.failure_reason} class="bg-red-50 border border-red-200 text-red-800 rounded-lg px-4 py-3 text-sm">
+    {@draw.failure_reason}
+  </div>
+
+  <div class="bg-white border border-cream-border rounded-xl">
+    <div class="p-5">
+      <.draw_timeline draw={@draw} />
+    </div>
+  </div>
+</div>
