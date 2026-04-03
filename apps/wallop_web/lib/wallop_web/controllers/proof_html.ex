@@ -4,7 +4,6 @@ defmodule WallopWeb.ProofHTML do
   import WallopWeb.Components.DrawTimeline
   import WallopWeb.Components.ProofChain
   import WallopWeb.Components.WinnerList
-  import WallopWeb.Components.EntryCheck
 
   embed_templates("proof_html/*")
 end
