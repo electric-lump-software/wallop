@@ -9,12 +9,7 @@ defmodule WallopCore.Resources.Draw.Changes.ExecuteDrandOnly do
 
   @impl true
   def change(changeset, _opts, _context) do
-    changeset
-    |> Ash.Changeset.before_action(&run_draw/1)
-    |> Ash.Changeset.after_action(fn _changeset, draw ->
-      Phoenix.PubSub.broadcast(WallopCore.PubSub, "draw:#{draw.id}", {:draw_updated, draw})
-      {:ok, draw}
-    end)
+    Ash.Changeset.before_action(changeset, &run_draw/1)
   end
 
   defp run_draw(changeset) do

@@ -198,11 +198,14 @@ defmodule WallopCore.Entropy.EntropyWorker do
   defp error_from({:ok, _}), do: nil
   defp error_from({:error, reason}), do: reason
 
-  defp find_permanent_error(drand_err, weather_err) do
-    cond do
-      permanent_error?(drand_err) -> "drand: #{format_permanent(drand_err)}"
-      permanent_error?(weather_err) -> "weather: #{format_permanent(weather_err)}"
-      true -> nil
+  # Only drand permanent errors are fatal. Weather permanent errors
+  # (401, 403) are treated as "weather unavailable" — the draw falls
+  # back to drand-only rather than failing entirely.
+  defp find_permanent_error(drand_err, _weather_err) do
+    if permanent_error?(drand_err) do
+      "drand: #{format_permanent(drand_err)}"
+    else
+      nil
     end
   end
 

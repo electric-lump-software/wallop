@@ -166,13 +166,29 @@ defmodule WallopCore.Entropy.EntropyWorkerTest do
       assert completed.seed == Base.encode16(expected_seed, case: :lower)
     end
 
-    test "does not fall back before threshold" do
+    # @weather_attempt_threshold is 5 — attempt 5 is the boundary
+    test "falls back at exactly the threshold (attempt 5)" do
       stub_weather_error(500)
 
       api_key = create_api_key()
       draw = create_draw(api_key, %{entropy: true})
 
-      job = fake_job(draw, attempt: 3)
+      job = fake_job(draw, attempt: 5)
+      assert :ok = EntropyWorker.perform(job)
+
+      completed = reload_draw(draw, api_key)
+      assert completed.status == :completed
+      assert completed.weather_value == nil
+      assert completed.weather_fallback_reason != nil
+    end
+
+    test "does not fall back before threshold (attempt 4)" do
+      stub_weather_error(500)
+
+      api_key = create_api_key()
+      draw = create_draw(api_key, %{entropy: true})
+
+      job = fake_job(draw, attempt: 4)
       assert {:error, _} = EntropyWorker.perform(job)
 
       reloaded = reload_draw(draw, api_key)
@@ -193,22 +209,37 @@ defmodule WallopCore.Entropy.EntropyWorkerTest do
   end
 
   describe "permanent errors" do
-    test "fails draw immediately on weather 401" do
+    test "weather 401 triggers drand-only fallback at threshold, not draw failure" do
       stub_weather_error(401)
 
       api_key = create_api_key()
       draw = create_draw(api_key, %{entropy: true})
 
-      job = fake_job(draw)
+      # At threshold, weather auth failure triggers drand-only
+      job = fake_job(draw, attempt: 5)
       assert :ok = EntropyWorker.perform(job)
 
-      failed = reload_draw(draw, api_key)
-      assert failed.status == :failed
-      assert failed.failure_reason =~ "401"
+      completed = reload_draw(draw, api_key)
+      assert completed.status == :completed
+      assert completed.weather_value == nil
+      assert completed.weather_fallback_reason =~ "401"
     end
 
-    test "fails draw immediately on weather 403" do
-      stub_weather_error(403)
+    test "weather 401 retries before threshold" do
+      stub_weather_error(401)
+
+      api_key = create_api_key()
+      draw = create_draw(api_key, %{entropy: true})
+
+      job = fake_job(draw, attempt: 1)
+      assert {:error, _} = EntropyWorker.perform(job)
+
+      reloaded = reload_draw(draw, api_key)
+      assert reloaded.status == :pending_entropy
+    end
+
+    test "drand 401 fails draw immediately" do
+      stub_drand_error(:unauthorized)
 
       api_key = create_api_key()
       draw = create_draw(api_key, %{entropy: true})
@@ -218,7 +249,7 @@ defmodule WallopCore.Entropy.EntropyWorkerTest do
 
       failed = reload_draw(draw, api_key)
       assert failed.status == :failed
-      assert failed.failure_reason =~ "403"
+      assert failed.failure_reason =~ "drand"
     end
   end
 
@@ -366,6 +397,12 @@ defmodule WallopCore.Entropy.EntropyWorkerTest do
   defp stub_drand_error(:not_found) do
     Req.Test.stub(DrandClient, fn conn ->
       Plug.Conn.send_resp(conn, 404, "not found")
+    end)
+  end
+
+  defp stub_drand_error(:unauthorized) do
+    Req.Test.stub(DrandClient, fn conn ->
+      Plug.Conn.send_resp(conn, 401, "unauthorized")
     end)
   end
 

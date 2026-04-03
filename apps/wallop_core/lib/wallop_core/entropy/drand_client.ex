@@ -51,6 +51,10 @@ defmodule WallopCore.Entropy.DrandClient do
       {:error, :invalid_response} = invalid ->
         invalid
 
+      # Don't failover on auth errors — all relays use the same credentials
+      {:error, {:unexpected_status, status}} = auth_err when status in [401, 403] ->
+        auth_err
+
       {:error, reason} ->
         try_relays(rest, chain_hash, round, [{relay, reason} | errors])
     end
