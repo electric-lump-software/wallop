@@ -39,6 +39,8 @@ defmodule WallopWeb.ProofLive do
            reveal_from: nil,
            reveal_to: nil,
            entropy_status: nil,
+           entries_json: nil,
+           results_json: nil,
            page_title: "Draw Proof"
          )}
 
@@ -98,7 +100,17 @@ defmodule WallopWeb.ProofLive do
 
       # Completion transition: in-progress → completed (animate stages 4-5)
       old_status in [:locked, :awaiting_entropy, :pending_entropy] and new_status == :completed ->
-        {:noreply, assign(socket, draw: draw, revealing: true, reveal_from: 4, reveal_to: 5)}
+        {entries_json, results_json} = load_verify_data(draw)
+
+        {:noreply,
+         assign(socket,
+           draw: draw,
+           revealing: true,
+           reveal_from: 4,
+           reveal_to: 5,
+           entries_json: entries_json,
+           results_json: results_json
+         )}
 
       true ->
         {:noreply, assign(socket, :draw, draw)}
@@ -116,6 +128,14 @@ defmodule WallopWeb.ProofLive do
   defp auto_check_entry(draw, entry_id) do
     {:ok, result} = Proof.check_entry(draw, entry_id)
     result
+  end
+
+  defp load_verify_data(draw) do
+    entries =
+      WallopCore.Entries.load_for_draw(draw.id)
+      |> Enum.map(fn %{id: id, weight: weight} -> %{"id" => id, "weight" => weight} end)
+
+    {Jason.encode!(entries), Jason.encode!(draw.results || [])}
   end
 
   defp load_draw(id) do
