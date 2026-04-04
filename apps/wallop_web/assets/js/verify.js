@@ -5,7 +5,7 @@
  * No LiveView hooks or server round-trips — verification runs
  * entirely in the browser via the wallop_rs WASM module.
  */
-import anime from "animejs"
+import anime from "animejs/lib/anime.es.js"
 
 // Lazy-loaded WASM module
 let wasmModule = null
