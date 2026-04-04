@@ -83,18 +83,6 @@ defmodule WallopWeb.ProofLive do
     {:noreply, assign(socket, check_result: result, checked_entry_id: entry_id)}
   end
 
-  def handle_event("re_verify", _params, socket) do
-    result = Proof.verify(socket.assigns.draw)
-
-    status =
-      case result do
-        {:ok, :verified} -> "verified"
-        {:error, :mismatch} -> "mismatch"
-      end
-
-    {:noreply, push_event(socket, "verify_result", %{result: status})}
-  end
-
   def handle_event("reveal_complete", _params, socket) do
     {:noreply, assign(socket, revealing: false, reveal_from: nil, reveal_to: nil)}
   end
