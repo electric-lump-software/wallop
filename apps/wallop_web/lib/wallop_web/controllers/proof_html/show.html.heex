@@ -92,6 +92,36 @@
     </div>
   </div>
 
+  <div :if={@draw.status == :completed} class="bg-white border border-cream-border rounded-xl">
+    <div class="p-5 space-y-4">
+      <div
+        id="verify-animation"
+        data-verify
+        data-draw-id={@draw.id}
+        data-entry-count={@draw.entry_count || 0}
+        data-entry-hash={@draw.entry_hash && String.slice(@draw.entry_hash, 0, 8)}
+        data-entry-hash-full={@draw.entry_hash}
+        data-seed={@draw.seed && String.slice(@draw.seed, 0, 8)}
+        data-seed-full={@draw.seed}
+        data-drand-round={@draw.drand_round}
+        data-drand-randomness={@draw.drand_randomness}
+        data-weather-value={@draw.weather_value}
+        data-winner-count={length(@draw.results || [])}
+        data-entries-json={@entries_json}
+        data-results-json={@results_json}
+      >
+        <button data-verify-btn class="btn btn-neutral btn-sm rounded-lg">
+          Re-verify results
+        </button>
+        <div
+          data-verify-box
+          style="display:none;background:#1a1a1a;color:#e4e4e4;padding:20px 24px;border-radius:12px;font-family:'SF Mono',Monaco,Consolas,monospace;font-size:13px;line-height:2.2;border:2px solid #1a1a1a;margin-top:8px;"
+        >
+        </div>
+      </div>
+    </div>
+  </div>
+
   <div class="bg-white border border-cream-border rounded-xl">
     <div class="p-5">
       <.proof_chain draw={@draw} />

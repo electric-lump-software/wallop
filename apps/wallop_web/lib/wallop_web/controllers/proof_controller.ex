@@ -31,6 +31,7 @@ defmodule WallopWeb.ProofController do
 
   defp render_static(conn, draw, entry_id) do
     check_result = if entry_id, do: check_entry(draw, entry_id)
+    entries = WallopCore.Entries.load_for_draw(draw.id)
 
     conn
     |> put_resp_header("cache-control", "public, max-age=31536000, immutable")
@@ -39,8 +40,22 @@ defmodule WallopWeb.ProofController do
     |> render(:show,
       draw: draw,
       check_result: check_result,
-      checked_entry_id: entry_id
+      checked_entry_id: entry_id,
+      entries_json: entries_to_json(entries),
+      results_json: results_to_json(draw.results)
     )
+  end
+
+  defp entries_to_json(entries) do
+    entries
+    |> Enum.map(fn %{id: id, weight: weight} -> %{"id" => id, "weight" => weight} end)
+    |> Jason.encode!()
+  end
+
+  defp results_to_json(nil), do: "[]"
+
+  defp results_to_json(results) do
+    Jason.encode!(results)
   end
 
   defp redirect_to_live(conn, id, nil) do
