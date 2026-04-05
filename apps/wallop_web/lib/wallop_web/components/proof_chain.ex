@@ -119,40 +119,12 @@ defmodule WallopWeb.Components.ProofChain do
         </div>
       </div>
 
-      <div class="text-xs text-[#555] space-y-1">
-        <div>
-          The "Re-verify results" button above runs the full verification pipeline in your browser via
-          <a
-            href="https://github.com/electric-lump-software/wallop_rs"
-            target="_blank"
-            rel="noopener"
-            class="text-[#555] underline hover:text-[#1a1a1a]"
-          >
-            wallop_rs
-          </a>
-          (WebAssembly). No server round-trip — your browser independently recomputes the result.
-        </div>
-        <div>
-          Or verify manually with
-          <a
-            href="https://github.com/electric-lump-software/fair_pick"
-            target="_blank"
-            rel="noopener"
-            class="text-[#555] underline hover:text-[#1a1a1a]"
-          >
-            fair_pick
-          </a>
-          (Elixir) or
-          <a
-            href="https://github.com/electric-lump-software/fair_pick_rs"
-            target="_blank"
-            rel="noopener"
-            class="text-[#555] underline hover:text-[#1a1a1a]"
-          >
-            fair_pick_rs
-          </a>
-          (Rust).
-        </div>
+      <div class="text-xs text-[#555]">
+        Verify manually with
+        <a href="https://github.com/electric-lump-software/fair_pick" target="_blank" rel="noopener" class="underline hover:text-[#1a1a1a]">fair_pick</a>
+        (Elixir) or
+        <a href="https://github.com/electric-lump-software/fair_pick_rs" target="_blank" rel="noopener" class="underline hover:text-[#1a1a1a]">fair_pick_rs</a>
+        (Rust)
       </div>
     </div>
     """

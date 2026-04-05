@@ -72,6 +72,28 @@
   transition: background-color 0.8s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
+/* Waitlist submit button — wiggles on hover */
+.waitlist-submit {
+  transition: background-color 0.15s ease;
+}
+
+.waitlist-submit:hover {
+  animation: wiggle 0.4s ease-in-out;
+  background-color: #f0f0f0;
+}
+
+.waitlist-submit:active {
+  animation: none;
+  transform: scale(0.95);
+  transition: transform 0.06s ease;
+}
+
+@keyframes wiggle {
+  0%, 100% { transform: rotate(0deg); }
+  25% { transform: rotate(-2deg); }
+  75% { transform: rotate(2deg); }
+}
+
 /* Mobile menu slide-down */
 @keyframes slide-down {
   from {
