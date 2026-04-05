@@ -16,9 +16,8 @@ defmodule WallopWeb.HomeLiveTest do
 
     test "shows nav links", %{conn: conn} do
       {:ok, _view, html} = live(conn, "/")
-      assert html =~ "How it works"
+      assert html =~ "Results"
       assert html =~ "Pricing"
-      assert html =~ "GitHub"
       assert html =~ "Join waitlist"
     end
 
@@ -69,9 +68,9 @@ defmodule WallopWeb.HomeLiveTest do
       refute html =~ "Durstenfeld"
     end
 
-    test "shows open source section", %{conn: conn} do
+    test "shows trust section", %{conn: conn} do
       {:ok, _view, html} = live(conn, "/")
-      assert html =~ "best hosts"
+      assert html =~ "Verify it yourself"
       assert html =~ "electric-lump-software"
     end
 

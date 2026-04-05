@@ -8,9 +8,8 @@
     <div class="w-36"></div>
     <%!-- Desktop links --%>
     <div class="hidden md:flex items-center gap-7">
-      <a href="#how-it-works" class="text-sm text-[#555] hover:text-[#1a1a1a]">How it works</a>
+      <span class="text-sm text-[#ccc] cursor-default">Results</span>
       <span class="text-sm text-[#ccc] cursor-default">Pricing</span>
-      <a href="https://github.com/electric-lump-software/wallop" target="_blank" rel="noopener" class="text-sm text-[#555] hover:text-[#1a1a1a]">GitHub</a>
       <a href="#waitlist" class="btn btn-neutral btn-sm rounded-lg text-xs font-semibold">Join waitlist</a>
     </div>
     <%!-- Hamburger button --%>
@@ -29,35 +28,38 @@
     :if={@menu_open}
     class="md:hidden sticky top-[53px] z-40 flex flex-col items-end gap-4 px-6 py-5 bg-cream border-b border-cream-border animate-slide-down"
   >
-    <a href="#how-it-works" phx-click="close_menu" class="text-sm text-[#555]">How it works</a>
+    <span class="text-sm text-[#ccc] cursor-default">Results</span>
     <span class="text-sm text-[#ccc] cursor-default">Pricing</span>
-    <a href="https://github.com/electric-lump-software/wallop" target="_blank" rel="noopener" class="text-sm text-[#555]">GitHub</a>
     <a href="#waitlist" phx-click="close_menu" class="btn btn-neutral btn-sm rounded-lg text-xs font-semibold">Join waitlist</a>
   </div>
 
   <%!-- HERO --%>
   <div class="mx-auto max-w-[860px] px-12 pt-20 pb-18">
-    <span class="inline-flex items-center gap-1.5 bg-green-100 text-green-800 text-xs font-semibold px-3 py-1 rounded-full mb-7">
-      ✦ Open source
-    </span>
+    <div class="flex items-start gap-12">
+      <div class="flex-1">
+        <span class="inline-flex items-center gap-1.5 bg-green-100 text-green-800 text-xs font-semibold px-3 py-1 rounded-full mb-7">
+          ✦ Open source
+        </span>
 
-    <h1 class="text-5xl font-extrabold leading-[1.1] tracking-tight mb-5">
-      Run a draw nobody<br />can question.
-    </h1>
+        <h1 class="text-5xl font-extrabold leading-[1.1] tracking-tight mb-5">
+          Run a draw nobody<br />can question.
+        </h1>
 
-    <p class="text-lg text-[#555] leading-relaxed max-w-[560px] mb-9">
-      Wallop! uses public entropy and open-source algorithms to make every
-      result provably fair — and permanently verifiable.<br />The draw no one can rig. Not even us.
-    </p>
-
-    <div class="flex items-center gap-4 flex-wrap">
-      <a href="#waitlist" class="btn btn-neutral rounded-lg font-semibold">Join the waitlist</a>
-      <a href="https://github.com/electric-lump-software/wallop" target="_blank" rel="noopener" class="text-sm text-[#777] hover:text-[#1a1a1a]">
-        View on GitHub →
-      </a>
+        <p class="text-lg text-[#555] leading-relaxed max-w-[560px] mb-3">
+          Wallop! uses public entropy and open-source algorithms to make every
+          result provably fair, and permanently verifiable.
+        </p>
+        <p class="text-lg text-[#555] leading-relaxed max-w-[560px] mb-9">
+          It&#39;s luck you can <em>prove</em>.
+        </p>
+      </div>
+      <div class="hidden md:block shrink-0 self-start mt-16">
+        <img src={~p"/images/dice.png"} alt="" class="w-60 rotate-[4deg]" />
+      </div>
     </div>
 
-    <%!-- FAKE LIVE TICKER — commented out, bring back when wired to real data
+
+    <%!-- FAKE LIVE TICKER — placeholder, wire to real data later
     <div class="mt-12 flex items-start gap-3 p-4 bg-white border border-cream-border rounded-xl">
       <span class="mt-1 w-2 h-2 rounded-full bg-green-500 shrink-0 animate-pulse"></span>
       <div>
@@ -221,7 +223,7 @@
           <div class="w-9 h-9 rounded-full bg-[#1a1a1a] text-white flex items-center justify-center text-sm font-bold shrink-0">5</div>
           <div>
             <h4 class="text-[15px] font-bold mb-1.5">Publish the permanent proof</h4>
-            <p class="text-sm text-[#555] leading-relaxed">Every draw gets a public proof page showing every input, every step, and every winner. Share it with your entrants. Anyone who doubts the result can replay it themselves and see it&#39;s correct.</p>
+            <p class="text-sm text-[#555] leading-relaxed">Every draw gets a <a href="https://wallop.run/proof/e977503d-c0b0-4111-8fac-9e49c825f007" target="_blank" rel="noopener" class="underline decoration-[#ccc] hover:decoration-[#1a1a1a]">public proof page</a> showing every input, every step, and every winner. Share it with your entrants. Anyone who doubts the result can replay it themselves and see it&#39;s correct.</p>
           </div>
         </div>
       </div>
@@ -264,7 +266,7 @@
           <div class="w-9 h-9 rounded-full bg-[#1a1a1a] text-white flex items-center justify-center text-sm font-bold shrink-0">5</div>
           <div>
             <h4 class="text-[15px] font-bold mb-1.5">Permanent immutable proof record</h4>
-            <p class="text-sm text-[#555] leading-relaxed">The full proof record — entry hash, drand round + randomness + signature, weather value, seed, and ordered winner list — is stored permanently. No UPDATE or DELETE. The proof page publishes all values needed for independent verification.</p>
+            <p class="text-sm text-[#555] leading-relaxed">The <a href="https://wallop.run/proof/e977503d-c0b0-4111-8fac-9e49c825f007" target="_blank" rel="noopener" class="underline decoration-[#ccc] hover:decoration-[#1a1a1a]">full proof record</a> — entry hash, drand round + randomness + signature, weather value, seed, and ordered winner list — is stored permanently. No UPDATE or DELETE. The proof page publishes all values needed for independent verification.</p>
             <code class="mt-2 inline-block font-mono text-[11px] text-[#999] bg-cream-dark px-2.5 py-1.5 rounded">wallop.run/proof/:draw_id · independently replayable</code>
           </div>
         </div>
@@ -272,48 +274,108 @@
     </div>
   </section>
 
-  <%!-- OPEN SOURCE --%>
+  <%!-- WHY TRUST US --%>
   <section class="bg-cream py-18 px-12">
     <div class="mx-auto max-w-[860px]">
-      <p class="text-xs font-bold tracking-[3px] uppercase text-[#aaa] mb-4">Trust &amp; transparency</p>
+      <p class="text-xs font-bold tracking-[3px] uppercase text-[#aaa] mb-4">Why should I trust you?</p>
       <h2 class="text-3xl font-extrabold tracking-tight leading-snug mb-4">
-        Open source.<br />We&#39;re just the best hosts.
+        You shouldn&#39;t trust us.<br />Verify it yourself.
       </h2>
+      <p class="text-base text-[#555] leading-relaxed max-w-[580px] mb-10">
+        We built Wallop! so you never have to take our word for it. Every draw produces
+        a permanent proof record with everything you need to independently confirm the result.
+      </p>
 
-      <div class="flex flex-col md:flex-row gap-8 md:gap-12 items-start mt-10">
-        <div class="md:basis-2/3 md:shrink-0">
-          <p class="text-sm text-[#555] leading-[1.7] mb-4">
-            The algorithm that runs every Wallop! draw is published on GitHub. The same code.
-            The same version. You can read it, run it locally, and verify that our proof pages
-            are telling the truth.
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div class="p-6 rounded-xl border border-cream-border bg-white">
+          <h3 class="text-sm font-bold mb-2">Open source — all of it</h3>
+          <p class="text-xs text-[#555] leading-relaxed">
+            The algorithm, the protocol, the API, the proof pages, the entropy logic.
+            Every line of code that touches your draw is published on GitHub.
+            The proof page links to the code. The code links to the protocol. Follow the chain.
           </p>
-          <p class="text-sm text-[#555] leading-[1.7] mb-6">
-            We think being the official host of open-source infrastructure is a feature, not
-            a crutch. You&#39;re not locked in. You&#39;re getting the convenience of not having
-            to run it yourself.
-          </p>
-          <div class="flex flex-col gap-3">
-            <a href="https://github.com/electric-lump-software/wallop" target="_blank" rel="noopener"
-               class="flex items-center justify-between px-4 py-3.5 bg-white border border-cream-border rounded-lg text-sm font-semibold hover:border-[#1a1a1a] transition-colors">
-              electric-lump-software/wallop
-              <span class="text-[#999] font-normal text-xs">API + web app</span>
-            </a>
-            <a href="https://github.com/electric-lump-software/fair_pick" target="_blank" rel="noopener"
-               class="flex items-center justify-between px-4 py-3.5 bg-white border border-cream-border rounded-lg text-sm font-semibold hover:border-[#1a1a1a] transition-colors">
-              electric-lump-software/fair_pick
-              <span class="text-[#999] font-normal text-xs">Algorithm · Hex.pm</span>
-            </a>
-          </div>
         </div>
-        <div class="bg-cream-dark rounded-xl p-7 w-full md:w-auto flex justify-center md:justify-start">
-          <div>
+        <div class="p-6 rounded-xl border border-cream-border bg-white">
+          <h3 class="text-sm font-bold mb-2">Verify in your browser</h3>
+          <p class="text-xs text-[#555] leading-relaxed">
+            Every proof page has a re-verify button that reruns the entire draw in your browser
+            using WebAssembly. No server round-trip. Your machine confirms the result independently.
+          </p>
+        </div>
+        <div class="p-6 rounded-xl border border-cream-border bg-white">
+          <h3 class="text-sm font-bold mb-2">Public entropy you can check</h3>
+          <p class="text-xs text-[#555] leading-relaxed">
+            The randomness comes from
+            <a href="https://drand.love" target="_blank" rel="noopener" class="underline hover:text-[#1a1a1a]">drand</a>,
+            a decentralised beacon run by Cloudflare, Protocol Labs, and universities worldwide.
+            Every proof page links directly to the beacon round.
+          </p>
+        </div>
+        <div class="p-6 rounded-xl border border-cream-border bg-white">
+          <h3 class="text-sm font-bold mb-2">Immutable proof records</h3>
+          <p class="text-xs text-[#555] leading-relaxed">
+            Once a draw completes, the proof record is locked at the database level and cached
+            globally. Not even we can change it. Save the page — it works offline.
+          </p>
+        </div>
+        <div class="p-6 rounded-xl border border-cream-border bg-white">
+          <h3 class="text-sm font-bold mb-2">Committed before the draw</h3>
+          <p class="text-xs text-[#555] leading-relaxed">
+            Entries are locked and hashed before the entropy sources are known. The seed
+            is computed afterwards. Nobody — including us — can influence the outcome.
+          </p>
+        </div>
+        <div class="p-6 rounded-xl border border-cream-border bg-white">
+          <h3 class="text-sm font-bold mb-2">Multiple implementations</h3>
+          <p class="text-xs text-[#555] leading-relaxed">
+            The algorithm exists in
+            <a href="https://github.com/electric-lump-software/fair_pick" target="_blank" rel="noopener" class="underline hover:text-[#1a1a1a]">Elixir</a>
+            and
+            <a href="https://github.com/electric-lump-software/fair_pick_rs" target="_blank" rel="noopener" class="underline hover:text-[#1a1a1a]">Rust</a>.
+            The Rust version compiles to WebAssembly for in-browser verification.
+            Same inputs, same outputs, cross-language.
+          </p>
+        </div>
+      </div>
+
+      <div class="mt-10">
+        <h3 class="text-sm font-bold mb-4">Explore the source</h3>
+        <div class="flex flex-col md:flex-row gap-8 md:gap-12 items-start">
+          <div class="flex-1 flex flex-col gap-3">
+          <a href="https://github.com/electric-lump-software/fair_pick" target="_blank" rel="noopener"
+             class="flex items-center gap-3 px-4 py-3.5 bg-white border border-cream-border rounded-lg text-sm font-semibold hover:border-[#1a1a1a] transition-colors">
+            <svg class="w-5 h-5 shrink-0 text-[#555]" viewBox="0 0 16 16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z" /></svg>
+            <span class="flex-1">fair_pick</span>
+            <span class="text-[#999] font-normal text-xs">Algorithm · Elixir</span>
+          </a>
+          <a href="https://github.com/electric-lump-software/wallop" target="_blank" rel="noopener"
+             class="flex items-center gap-3 px-4 py-3.5 bg-white border border-cream-border rounded-lg text-sm font-semibold hover:border-[#1a1a1a] transition-colors">
+            <svg class="w-5 h-5 shrink-0 text-[#555]" viewBox="0 0 16 16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z" /></svg>
+            <span class="flex-1">wallop</span>
+            <span class="text-[#999] font-normal text-xs">Protocol + API + proof pages</span>
+          </a>
+          <a href="https://github.com/electric-lump-software/fair_pick_rs" target="_blank" rel="noopener"
+             class="flex items-center gap-3 px-4 py-3.5 bg-white border border-cream-border rounded-lg text-sm font-semibold hover:border-[#1a1a1a] transition-colors">
+            <svg class="w-5 h-5 shrink-0 text-[#555]" viewBox="0 0 16 16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z" /></svg>
+            <span class="flex-1">fair_pick_rs</span>
+            <span class="text-[#999] font-normal text-xs">Algorithm · Rust + WASM</span>
+          </a>
+          <a href="https://github.com/electric-lump-software/wallop_rs" target="_blank" rel="noopener"
+             class="flex items-center gap-3 px-4 py-3.5 bg-white border border-cream-border rounded-lg text-sm font-semibold hover:border-[#1a1a1a] transition-colors">
+            <svg class="w-5 h-5 shrink-0 text-[#555]" viewBox="0 0 16 16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z" /></svg>
+            <span class="flex-1">wallop_rs</span>
+            <span class="text-[#999] font-normal text-xs">Protocol + browser verifier · Rust</span>
+          </a>
+          </div>
+          <div class="bg-cream-dark rounded-xl p-7 w-full md:w-auto">
             <h4 class="text-sm font-bold mb-3">What&#39;s open source</h4>
             <ul class="space-y-1">
               <li class="text-xs text-[#555] flex gap-2"><span class="text-green-700 font-bold">✓</span> The draw algorithm (fair_pick)</li>
               <li class="text-xs text-[#555] flex gap-2"><span class="text-green-700 font-bold">✓</span> The commit-reveal protocol</li>
               <li class="text-xs text-[#555] flex gap-2"><span class="text-green-700 font-bold">✓</span> The API layer</li>
-              <li class="text-xs text-[#555] flex gap-2"><span class="text-green-700 font-bold">✓</span> The proof page</li>
+              <li class="text-xs text-[#555] flex gap-2"><span class="text-green-700 font-bold">✓</span> The proof pages</li>
               <li class="text-xs text-[#555] flex gap-2"><span class="text-green-700 font-bold">✓</span> The entropy logic</li>
+              <li class="text-xs text-[#555] flex gap-2"><span class="text-green-700 font-bold">✓</span> The browser verifier</li>
             </ul>
           </div>
         </div>
@@ -349,9 +411,9 @@
             We thought there was something pleasing about the idea that the British weather,
             of all things, is woven into the proof.
           </p>
-          <p class="text-xs text-[#aaa] italic">Also, it&#39;s just a fun word to say.</p>
+          <p class="text-sm text-[#555] leading-[1.8] italic">Also, it&#39;s just a fun word to say.</p>
         </div>
-        <div class="hidden md:block w-[280px] rounded-xl overflow-hidden border border-[#d4c9b8] shadow-md shrink-0">
+        <div class="hidden md:block w-[280px] rounded-xl overflow-hidden border border-[#d4c9b8] shadow-md shrink-0 self-start">
           <img src={~p"/images/map.png"} alt="Middle Wallop, Hampshire" class="w-full" />
         </div>
       </div>
@@ -398,7 +460,7 @@
           </summary>
           <div class="px-5 pb-4 pt-3 text-sm text-[#555] leading-[1.7] bg-white border-t border-cream-border">
             Yes. Every proof page shows all the inputs — entry hash, drand round, weather value.
-            You can download fair_pick from Hex.pm or GitHub and replay the draw locally.
+            You can download fair_pick and replay the draw locally.
             You&#39;ll get the same winners every time.
           </div>
         </details>
@@ -457,7 +519,7 @@
           required
           class="flex-1 px-4 py-3 rounded-lg border border-[#333] bg-[#2a2a2a] text-white text-sm placeholder:text-[#666] focus:outline-none focus:border-[#555]"
         />
-        <button type="submit" class="bg-white text-[#1a1a1a] px-5 py-3 rounded-lg text-sm font-bold whitespace-nowrap hover:bg-[#eee] transition-colors">
+        <button type="submit" class="bg-white text-[#1a1a1a] px-5 py-3 rounded-lg text-sm font-bold whitespace-nowrap cursor-pointer waitlist-submit">
           Join waitlist
         </button>
       </form>
@@ -473,7 +535,6 @@
       <span class="text-xs text-[#ccc] cursor-default">Pricing</span>
       <a href="/api/docs" class="text-xs text-[#999] hover:text-[#555]">API docs</a>
       <a href="/api/open_api" class="text-xs text-[#999] hover:text-[#555]">OpenAPI</a>
-      <a href="https://github.com/electric-lump-software/wallop" target="_blank" rel="noopener" class="text-xs text-[#999] hover:text-[#555]">GitHub</a>
       <a href="https://nether.wallop.run/legal/privacy" class="text-xs text-[#999] hover:text-[#555]">Privacy</a>
       <a href="https://nether.wallop.run/legal/terms" class="text-xs text-[#999] hover:text-[#555]">Terms</a>
       <a href="https://nether.wallop.run/legal/acceptable-use" class="text-xs text-[#999] hover:text-[#555]">Acceptable Use</a>
