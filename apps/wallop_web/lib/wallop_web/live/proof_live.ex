@@ -20,6 +20,10 @@ defmodule WallopWeb.ProofLive do
     entry_id = Map.get(params, "entry_id")
 
     case load_draw(id) do
+      {:ok, draw} when draw.status in [:completed, :failed, :expired] ->
+        path = if entry_id, do: ~p"/proof/#{id}/#{entry_id}", else: ~p"/proof/#{id}"
+        {:ok, redirect(socket, to: path)}
+
       {:ok, draw} ->
         if connected?(socket) do
           Phoenix.PubSub.subscribe(WallopCore.PubSub, "draw:#{id}")
