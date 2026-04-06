@@ -92,7 +92,7 @@
     </div>
   </div>
 
-  <div :if={@draw.status == :completed} class="bg-white border border-cream-border rounded-xl">
+  <div :if={@draw.status == :completed and @draw.seed_source == :entropy} class="bg-white border border-cream-border rounded-xl">
     <div class="p-5 space-y-4">
       <div
         id="verify-animation"
