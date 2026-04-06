@@ -3,6 +3,7 @@ import {Socket} from "phoenix"
 import {LiveSocket} from "phoenix_live_view"
 import anime from "animejs/lib/anime.es.js"
 import "./verify.js"
+import "./winners.js"
 
 let Hooks = {}
 
