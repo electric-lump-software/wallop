@@ -8,7 +8,7 @@ defmodule WallopWeb.OperatorLive do
 
   Server-side keyset paginated on `operator_sequence DESC`. The list grows by
   appending pages as the user scrolls (intersection observer hook), or after
-  the user types in the search bar (which resets the stream).
+  the user types in the search bar (which resets the list to page 1).
   """
   use WallopWeb, :live_view
 
@@ -59,19 +59,24 @@ defmodule WallopWeb.OperatorLive do
     operator = socket.assigns.operator
     {draws, next_cursor, has_more?} = list_draws(operator.id, q, nil)
 
-    socket
-    |> assign(search_query: q, cursor: next_cursor, has_more?: has_more?)
-    |> stream(:draws, draws, reset: true)
+    assign(socket,
+      draws: draws,
+      search_query: q,
+      cursor: next_cursor,
+      has_more?: has_more?
+    )
   end
 
   defp load_next_page(socket) do
     operator = socket.assigns.operator
     q = socket.assigns.search_query
-    {draws, next_cursor, has_more?} = list_draws(operator.id, q, socket.assigns.cursor)
+    {more, next_cursor, has_more?} = list_draws(operator.id, q, socket.assigns.cursor)
 
-    socket
-    |> assign(cursor: next_cursor, has_more?: has_more?)
-    |> stream(:draws, draws)
+    assign(socket,
+      draws: socket.assigns.draws ++ more,
+      cursor: next_cursor,
+      has_more?: has_more?
+    )
   end
 
   defp load_operator(slug) do

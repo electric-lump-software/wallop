@@ -18,7 +18,7 @@ defmodule WallopWeb.Components.OperatorPanel do
       >
         <span>Draw #{@draw.operator_sequence} by</span>
         <span class="font-semibold">{@operator.name}</span>
-        <code class="text-xs text-[#888]">@{@operator.slug}</code>
+        <code class="text-xs text-[#888]">(@{@operator.slug})</code>
         <span aria-hidden="true">→</span>
       </a>
     </div>

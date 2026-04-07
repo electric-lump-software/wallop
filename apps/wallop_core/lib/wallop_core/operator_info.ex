@@ -11,8 +11,6 @@ defmodule WallopCore.OperatorInfo do
 
   alias WallopCore.Resources.{Operator, OperatorReceipt}
 
-  @spec for_draw(%{id: String.t(), operator_id: String.t() | nil}) ::
-          {Operator.t() | nil, OperatorReceipt.t() | nil}
   def for_draw(%{operator_id: nil}), do: {nil, nil}
 
   def for_draw(%{operator_id: operator_id, id: draw_id}) when is_binary(operator_id) do

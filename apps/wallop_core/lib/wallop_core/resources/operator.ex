@@ -129,8 +129,7 @@ defmodule WallopCore.Resources.Operator do
 
       not Regex.match?(~r/^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/, slug) or
           String.length(slug) < 2 ->
-        {:error,
-         field: :slug, message: "must be lowercase alphanumeric with hyphens, 2-63 chars"}
+        {:error, field: :slug, message: "must be lowercase alphanumeric with hyphens, 2-63 chars"}
 
       true ->
         :ok
@@ -150,13 +149,10 @@ defmodule WallopCore.Resources.Operator do
   defp validate_normalised_name(name) do
     cond do
       String.length(name) > @max_name_length ->
-        {:error,
-         field: :name, message: "must be at most #{@max_name_length} characters"}
+        {:error, field: :name, message: "must be at most #{@max_name_length} characters"}
 
       contains_disallowed_chars?(name) ->
-        {:error,
-         field: :name,
-         message: "must not contain control or invisible/bidi codepoints"}
+        {:error, field: :name, message: "must not contain control or invisible/bidi codepoints"}
 
       true ->
         :ok
@@ -167,21 +163,21 @@ defmodule WallopCore.Resources.Operator do
   # spoof another operator's name visually.
   defp contains_disallowed_chars?(name) do
     Enum.any?(String.to_charlist(name), fn cp ->
+      # ASCII soft hyphen
+      # Zero-width space, ZWNJ, ZWJ
+      # Line/paragraph separators
+      # Bidi formatting (LRE, RLE, PDF, LRO, RLO)
+      # Bidi isolates (LRI, RLI, FSI, PDI)
+      # Byte order mark / zero-width no-break space
+      # Tag block — used in some homograph attacks
       cp < 0x20 or
         cp == 0x7F or
-        # ASCII soft hyphen
         cp == 0x00AD or
-        # Zero-width space, ZWNJ, ZWJ
         cp in 0x200B..0x200D or
-        # Line/paragraph separators
         cp in 0x2028..0x2029 or
-        # Bidi formatting (LRE, RLE, PDF, LRO, RLO)
         cp in 0x202A..0x202E or
-        # Bidi isolates (LRI, RLI, FSI, PDI)
         cp in 0x2066..0x2069 or
-        # Byte order mark / zero-width no-break space
         cp == 0xFEFF or
-        # Tag block — used in some homograph attacks
         cp in 0xE0000..0xE007F
     end)
   end

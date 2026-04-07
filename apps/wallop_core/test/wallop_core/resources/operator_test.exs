@@ -25,7 +25,14 @@ defmodule WallopCore.Resources.OperatorTest do
     end
 
     test "rejects bad slug formats" do
-      for bad <- ["A", "a", "with space", "-leading", "trailing-", "TooLong" <> String.duplicate("a", 64)] do
+      for bad <- [
+            "A",
+            "a",
+            "with space",
+            "-leading",
+            "trailing-",
+            "TooLong" <> String.duplicate("a", 64)
+          ] do
         assert {:error, _} =
                  Operator
                  |> Ash.Changeset.for_create(:create, %{slug: bad, name: "x"})

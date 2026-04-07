@@ -30,6 +30,8 @@ This defends against **post-hoc draw shopping**: lock a draw, see the result, di
 
 It does **not** defend against an operator locking parallel draws with *different* entry sets. Operators must follow "one contest = one locked draw."
 
+Signing keys can be rotated by inserting a new `OperatorSigningKey` row with a later `valid_from` timestamp; old keys are never deleted, so previously published receipts remain verifiable forever.
+
 ## Architecture
 
 | Layer | Package | Purpose |
