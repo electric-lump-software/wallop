@@ -99,8 +99,9 @@
           <p class="text-[10px] font-bold tracking-[2px] uppercase text-green-800 mb-3">Wallop!</p>
           <h3 class="text-lg font-bold mb-2">The proof is permanent</h3>
           <p class="text-sm text-[#555] leading-relaxed">
-            Every draw is cryptographically committed before the entropy is known. Anyone —
-            including you, the winners, or a journalist — can replay the draw and get the same result.
+            Every draw is cryptographically committed before the entropy is known, and every
+            draw you run — completed, abandoned, or expired — is pinned to your public
+            operator page. Anyone can replay a draw and get the same result. Nothing disappears.
           </p>
         </div>
       </div>
@@ -122,7 +123,7 @@
             Running a raffle, prize draw, or competition? Wallop! gives you a permanent,
             public proof record for every draw — so nobody can accuse you of picking a favourite.
           </p>
-          <ul class="space-y-2">
+          <ul class="space-y-2 mb-4">
             <li class="text-sm text-[#444] flex gap-2 items-start border-b border-[#f0ebe4] pb-2">
               <span class="text-[#999] shrink-0">→</span> No technical knowledge needed
             </li>
@@ -132,10 +133,16 @@
             <li class="text-sm text-[#444] flex gap-2 items-start border-b border-[#f0ebe4] pb-2">
               <span class="text-[#999] shrink-0">→</span> Winners can verify their own result
             </li>
+            <li class="text-sm text-[#444] flex gap-2 items-start border-b border-[#f0ebe4] pb-2">
+              <span class="text-[#999] shrink-0">→</span> Permanent operator page — all your draws, nothing hidden
+            </li>
             <li class="text-sm text-[#444] flex gap-2 items-start">
               <span class="text-[#999] shrink-0">→</span> PTAs, charities, events, sports clubs
             </li>
           </ul>
+          <a href="#" class="text-sm font-semibold underline decoration-[#ccc] hover:decoration-[#1a1a1a]">
+            See a live example →
+          </a>
         </div>
 
         <div class="p-8 rounded-xl border border-cream-border bg-white">
@@ -474,6 +481,19 @@
             Anyone can claim their random number generator was fair. With Wallop!, you don&#39;t
             have to claim anything — the proof is public and permanent. If someone disputes the
             result, you can show them exactly how it was computed, step by step.
+          </div>
+        </details>
+
+        <details class="border border-cream-border rounded-lg overflow-hidden group">
+          <summary class="px-5 py-4 text-sm font-semibold cursor-pointer list-none flex justify-between items-center bg-white hover:bg-cream-dark transition-colors">
+            What stops you running ten draws and only publishing the one you liked?
+            <span class="text-[#aaa] text-lg group-open:rotate-45 transition-transform">+</span>
+          </summary>
+          <div class="px-5 pb-4 pt-3 text-sm text-[#555] leading-[1.7] bg-white border-t border-cream-border">
+            Every draw you lock gets a permanent slot on your public
+            <a href="#" class="underline decoration-[#ccc] hover:decoration-[#1a1a1a]">operator page</a>
+            with a sequence number and a signed receipt. Discarded draws stay visible. Anyone
+            watching your log would see the ones you hid.
           </div>
         </details>
 
