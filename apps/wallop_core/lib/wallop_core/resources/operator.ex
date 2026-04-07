@@ -32,7 +32,15 @@ defmodule WallopCore.Resources.Operator do
   use Ash.Resource,
     otp_app: :wallop_core,
     domain: WallopCore.Domain,
-    data_layer: AshPostgres.DataLayer
+    data_layer: AshPostgres.DataLayer,
+    extensions: [AshPaperTrail.Resource]
+
+  paper_trail do
+    change_tracking_mode(:changes_only)
+    store_action_name?(true)
+    store_action_inputs?(true)
+    ignore_attributes([:inserted_at, :updated_at])
+  end
 
   @reserved_slugs ~w(
     api admin assets dev key keys live operator operators proof receipts
@@ -74,6 +82,7 @@ defmodule WallopCore.Resources.Operator do
 
     update :update_name do
       accept([:name])
+      require_atomic?(false)
 
       validate(fn changeset, _ ->
         validate_name(Ash.Changeset.get_attribute(changeset, :name))
