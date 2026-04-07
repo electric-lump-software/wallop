@@ -3,11 +3,40 @@ defmodule WallopCore.TestHelpers do
   Convenience functions for creating test data.
   """
 
-  @doc "Creates an active API key and returns the struct (actor for Ash calls)."
-  def create_api_key(name \\ "test-key") do
-    WallopCore.Resources.ApiKey
-    |> Ash.Changeset.for_create(:create, %{name: name})
-    |> Ash.create!()
+  @doc """
+  Creates an active API key and returns the struct (actor for Ash calls).
+
+  Accepts optional tier metadata: `tier`, `monthly_draw_limit`,
+  `monthly_draw_count`, `count_reset_at`.
+  """
+  def create_api_key(name_or_attrs \\ "test-key")
+
+  def create_api_key(name) when is_binary(name) do
+    create_api_key(%{name: name})
+  end
+
+  def create_api_key(attrs) when is_map(attrs) do
+    attrs = Map.put_new(attrs, :name, "test-key")
+    create_attrs = Map.take(attrs, [:name, :tier, :monthly_draw_limit, :count_reset_at])
+
+    api_key =
+      WallopCore.Resources.ApiKey
+      |> Ash.Changeset.for_create(:create, create_attrs)
+      |> Ash.create!()
+
+    case Map.get(attrs, :monthly_draw_count) do
+      nil ->
+        api_key
+
+      count when is_integer(count) ->
+        # Bump the count to the requested value via direct DB update
+        WallopCore.Repo.query!(
+          "UPDATE api_keys SET monthly_draw_count = $2 WHERE id = $1",
+          [Ecto.UUID.dump!(api_key.id), count]
+        )
+
+        Ash.get!(WallopCore.Resources.ApiKey, api_key.id, authorize?: false)
+    end
   end
 
   @doc """
