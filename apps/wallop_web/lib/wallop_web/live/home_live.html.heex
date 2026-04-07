@@ -93,6 +93,8 @@
           <p class="text-sm text-[#555] leading-relaxed">
             The result is random — probably. But you&#39;re taking the organiser&#39;s word for it.
             There&#39;s no way to verify the draw wasn&#39;t rerun until someone convenient won.
+            Even honest organisers can&#39;t prove their draws weren&#39;t fixed — the moment a
+            loser accuses them, they have nothing to show.
           </p>
         </div>
         <div class="p-6 rounded-xl border border-green-200 bg-green-50">
@@ -151,6 +153,10 @@
             A clean JSON API with an OpenAPI spec, built on commit-reveal cryptography.
             The <code class="font-mono text-xs bg-cream-dark px-1 rounded">fair_pick</code>
             algorithm is open source and published on Hex.pm.
+          </p>
+          <p class="text-sm text-[#555] leading-[1.7] mb-4">
+            Every signed receipt is published as queryable JSON — mirror your operator log,
+            build your own dashboards, prove your history without trusting our servers.
           </p>
           <pre class="bg-[#1a1a1a] text-[#e2e8f0] p-4 rounded-lg font-mono text-[11px] leading-[1.8]">{Phoenix.HTML.raw(~s(# POST /api/v1/draws\n{\n  &quot;name&quot;: &quot;Q1 Prize Draw&quot;,\n  &quot;winner_count&quot;: 3\n}\n\n# Returns draw_id + proof_url))}</pre>
         </div>

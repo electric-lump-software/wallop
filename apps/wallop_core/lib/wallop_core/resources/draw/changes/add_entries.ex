@@ -30,7 +30,7 @@ defmodule WallopCore.Resources.Draw.Changes.AddEntries do
       |> Ash.Changeset.after_action(fn _changeset, draw ->
         insert_entries(draw, new_entries)
 
-        Phoenix.PubSub.broadcast(WallopCore.PubSub, "draw:#{draw.id}", {:draw_updated, draw})
+        WallopCore.DrawPubSub.broadcast(draw)
         {:ok, draw}
       end)
     end

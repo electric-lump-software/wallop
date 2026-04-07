@@ -12,7 +12,7 @@ defmodule WallopCore.Resources.Draw.Changes.ExecuteDraw do
     changeset
     |> Ash.Changeset.before_action(&run_draw/1)
     |> Ash.Changeset.after_action(fn _changeset, draw ->
-      Phoenix.PubSub.broadcast(WallopCore.PubSub, "draw:#{draw.id}", {:draw_updated, draw})
+      WallopCore.DrawPubSub.broadcast(draw)
       {:ok, draw}
     end)
   end

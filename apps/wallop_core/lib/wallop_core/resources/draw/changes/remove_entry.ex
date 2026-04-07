@@ -24,7 +24,7 @@ defmodule WallopCore.Resources.Draw.Changes.RemoveEntry do
         |> Ash.Changeset.force_change_attribute(:entry_count, new_count)
         |> Ash.Changeset.after_action(fn _changeset, draw ->
           Ash.destroy!(entry, authorize?: false)
-          Phoenix.PubSub.broadcast(WallopCore.PubSub, "draw:#{draw.id}", {:draw_updated, draw})
+          WallopCore.DrawPubSub.broadcast(draw)
           {:ok, draw}
         end)
     end
