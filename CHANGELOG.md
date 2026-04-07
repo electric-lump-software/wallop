@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.1] - 2026-04-07
+
+### Added
+
+- `WallopCore.DrawPubSub` helper that broadcasts `{:draw_updated, draw}` to both the per-draw topic (`draw:<id>`) and the per-operator topic (`operator:<operator_id>`). All Draw change modules now use this helper instead of calling `Phoenix.PubSub.broadcast` directly. The operator topic broadcast is skipped when the draw has no operator (backward compatible).
+- `BroadcastUpdate` change wired into `Draw.create`, `execute_with_entropy`, `execute_drand_only`, and `mark_failed` actions. Previously these actions had no broadcast at all, so the operator registry page never saw new draws or terminal state transitions in real time.
+
+### Fixed
+
+- Operator registry page now updates live when draws are created or change state, instead of staying static until refresh. Consuming apps that pinned `wallop_core ~> 0.9.0` will only get this fix after bumping to `~> 0.9.1`, since v0.9.0 was tagged before the live-update wiring was added.
+
 ## [0.9.0] - 2026-04-07
 
 ### Added
