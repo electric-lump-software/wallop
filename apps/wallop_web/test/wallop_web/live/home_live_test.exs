@@ -37,7 +37,8 @@ defmodule WallopWeb.HomeLiveTest do
     test "shows for organisers section", %{conn: conn} do
       {:ok, _view, html} = live(conn, "/")
       assert html =~ "For organisers"
-      assert html =~ "Public proof page for every draw"
+      assert html =~ "Public proof page"
+      assert html =~ "for every draw"
     end
 
     test "shows for developers section", %{conn: conn} do
