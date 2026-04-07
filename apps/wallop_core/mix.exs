@@ -4,7 +4,7 @@ defmodule WallopCore.MixProject do
   def project do
     [
       app: :wallop_core,
-      version: "0.9.1",
+      version: "0.10.0",
       build_path: "../../_build",
       deps_path: "../../deps",
       lockfile: "../../mix.lock",
@@ -29,6 +29,7 @@ defmodule WallopCore.MixProject do
     [
       {:ash, "~> 3.0"},
       {:ash_json_api, "~> 1.0"},
+      {:ash_paper_trail, "~> 0.5"},
       {:ash_postgres, "~> 2.0"},
       {:bcrypt_elixir, "~> 3.0"},
       {:fair_pick, "~> 0.2"},
