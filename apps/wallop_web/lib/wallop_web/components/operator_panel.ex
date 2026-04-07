@@ -14,10 +14,11 @@ defmodule WallopWeb.Components.OperatorPanel do
     <div :if={@operator} class="text-sm">
       <a
         href={"/operator/#{@operator.slug}"}
-        class="inline-flex items-center gap-1.5 text-[#555] hover:text-[#222]"
+        class="inline-flex flex-wrap items-baseline gap-x-1.5 text-[#555] hover:text-[#222]"
       >
         <span>Draw #{@draw.operator_sequence} by</span>
         <span class="font-semibold">{@operator.name}</span>
+        <code class="text-xs text-[#888]">@{@operator.slug}</code>
         <span aria-hidden="true">→</span>
       </a>
     </div>
