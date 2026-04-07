@@ -1,0 +1,63 @@
+<div class="max-w-4xl mx-auto px-4 py-12">
+  <div class="mb-8">
+    <h1 class="text-3xl font-bold">{@operator.name}</h1>
+    <p class="text-base-content/60 mt-1">
+      <code>/operator/{@operator.slug}</code> · public draw registry
+    </p>
+  </div>
+
+  <div class="mb-8 p-4 bg-base-200 rounded-lg text-sm">
+    <p class="mb-2">
+      Every draw this operator has ever locked appears here, including discarded
+      and expired ones. Sequence numbers are gap-free; missing numbers indicate
+      a draw that was started and abandoned.
+    </p>
+    <p>
+      <a href={"/operator/#{@operator.slug}/receipts"} class="link">Signed receipts (JSON)</a>
+      ·
+      <a href={"/operator/#{@operator.slug}/key"} class="link">Current public key</a>
+      ·
+      <a href={"/operator/#{@operator.slug}/keys"} class="link">All keys (JSON)</a>
+    </p>
+  </div>
+
+  <div class="overflow-x-auto">
+    <table class="table table-zebra">
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>Name</th>
+          <th>Status</th>
+          <th>Entries</th>
+          <th>Created</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        <%= for draw <- @draws do %>
+          <tr>
+            <td class="font-mono">{draw.operator_sequence}</td>
+            <td>{draw.name || "—"}</td>
+            <td>
+              <span class={status_badge_class(draw.status)}>{draw.status}</span>
+            </td>
+            <td>{draw.entry_count}</td>
+            <td class="text-xs">
+              {Calendar.strftime(draw.inserted_at, "%Y-%m-%d %H:%M UTC")}
+            </td>
+            <td>
+              <a href={"/proof/#{draw.id}"} class="link link-primary text-sm">proof →</a>
+            </td>
+          </tr>
+        <% end %>
+        <%= if @draws == [] do %>
+          <tr>
+            <td colspan="6" class="text-center text-base-content/60 py-8">
+              No draws yet for this operator.
+            </td>
+          </tr>
+        <% end %>
+      </tbody>
+    </table>
+  </div>
+</div>
