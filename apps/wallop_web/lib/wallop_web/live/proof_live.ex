@@ -11,6 +11,7 @@ defmodule WallopWeb.ProofLive do
   import WallopWeb.Components.ProofChain
   import WallopWeb.Components.WinnerList
   import WallopWeb.Components.EntryCheck
+  import WallopWeb.Components.OperatorPanel
 
   alias WallopCore.Proof
 
@@ -31,6 +32,7 @@ defmodule WallopWeb.ProofLive do
         end
 
         check_result = auto_check_entry(draw, entry_id)
+        {operator, receipt} = WallopCore.OperatorInfo.for_draw(draw)
 
         {:ok,
          assign(socket,
@@ -45,6 +47,8 @@ defmodule WallopWeb.ProofLive do
            entropy_status: nil,
            entries_json: nil,
            results_json: nil,
+           operator: operator,
+           receipt: receipt,
            page_title: "Draw Proof"
          )}
 

@@ -43,6 +43,16 @@ defmodule WallopWeb.Router do
     get("/proof/:id", ProofController, :show)
     live("/live/proof/:id/:entry_id", ProofLive)
     live("/live/proof/:id", ProofLive)
+    live("/operator/:slug", OperatorLive)
+    live("/transparency", TransparencyLive)
+  end
+
+  scope "/operator", WallopWeb do
+    pipe_through(:api)
+    get("/:slug/receipts", OperatorController, :receipts_index)
+    get("/:slug/receipts/:sequence", OperatorController, :receipt_show)
+    get("/:slug/keys", OperatorController, :keys_index)
+    get("/:slug/key", OperatorController, :key_pub)
   end
 
   if Mix.env() == :dev do

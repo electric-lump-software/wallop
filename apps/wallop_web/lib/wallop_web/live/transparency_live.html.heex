@@ -1,0 +1,58 @@
+<div data-wallop-logo class="flex justify-center md:hidden">
+  <a href="/">
+    <img src="/images/logo.png" alt="Wallop" class="h-36 mt-2 -mb-12" />
+  </a>
+</div>
+<a data-wallop-logo href="/" class="fixed z-50 hidden md:block" style="top: -16px; right: max(8px, calc(50% - 460px));">
+  <img src="/images/logo.png" alt="Wallop" class="h-40" />
+</a>
+
+<div class="max-w-4xl mx-auto px-4 py-12">
+  <div class="mb-8">
+    <h1 class="text-3xl font-bold">Transparency log</h1>
+    <p class="text-base-content/60 mt-1 text-sm">
+      Daily Merkle roots over all operator commitment receipts, anchored to a
+      drand round. Mirroring this log over time and recomputing roots from the
+      receipt log lets you detect any retroactive tampering with operator
+      receipts.
+    </p>
+  </div>
+
+  <div class="overflow-x-auto">
+    <table class="table">
+      <thead>
+        <tr>
+          <th>Anchored</th>
+          <th>Receipts</th>
+          <th>Merkle root</th>
+          <th>External anchor</th>
+        </tr>
+      </thead>
+      <tbody>
+        <%= for a <- @anchors do %>
+          <tr>
+            <td class="text-xs">
+              {Calendar.strftime(a.anchored_at, "%Y-%m-%d %H:%M UTC")}
+            </td>
+            <td>{a.receipt_count}</td>
+            <td class="font-mono text-xs break-all">{hex(a.merkle_root)}</td>
+            <td class="text-xs">
+              <%= if a.external_anchor_kind do %>
+                {a.external_anchor_kind} #{a.external_anchor_evidence}
+              <% else %>
+                —
+              <% end %>
+            </td>
+          </tr>
+        <% end %>
+        <%= if @anchors == [] do %>
+          <tr>
+            <td colspan="4" class="text-center text-base-content/60 py-8">
+              No anchors yet — first one runs at 03:30 UTC.
+            </td>
+          </tr>
+        <% end %>
+      </tbody>
+    </table>
+  </div>
+</div>

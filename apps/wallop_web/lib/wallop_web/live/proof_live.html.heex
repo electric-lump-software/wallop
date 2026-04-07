@@ -23,6 +23,7 @@
 
   <div class="text-sm text-[#555]">
     <div>Draw ID: <span class="font-mono">{@draw.id}</span></div>
+    <.operator_link operator={@operator} draw={@draw} />
   </div>
 
   <div class="bg-white border border-cream-border rounded-xl">
@@ -76,6 +77,7 @@
 
   <div class="text-sm text-[#555]">
     <div>Draw ID: <span class="font-mono">{@draw.id}</span></div>
+    <.operator_link operator={@operator} draw={@draw} />
     <div :if={@draw.executed_at}>
       Completed: {Calendar.strftime(@draw.executed_at, "%Y-%m-%d %H:%M:%S UTC")}
     </div>
@@ -137,6 +139,8 @@
       <.proof_chain draw={@draw} />
     </div>
   </div>
+
+  <.receipt_panel operator={@operator} receipt={@receipt} />
 </div>
 
 <%!-- Open draw (accepting entries) --%>
@@ -147,10 +151,15 @@
     </span>
   </div>
 
-  <div class="text-sm text-[#555]">
-    <div>Draw ID: <span class="font-mono">{@draw.id}</span></div>
-    <div>Drawing {@draw.winner_count} winner(s)</div>
-    <div>{@draw.entry_count || 0} entries so far</div>
+  <div class="text-sm text-[#555] space-y-3">
+    <div>
+      <div>Draw ID: <span class="font-mono">{@draw.id}</span></div>
+      <.operator_link operator={@operator} draw={@draw} />
+    </div>
+    <div>
+      <div>Drawing {@draw.winner_count} winner(s)</div>
+      <div>{@draw.entry_count || 0} entries so far</div>
+    </div>
   </div>
 
   <div class="bg-white border border-cream-border rounded-xl">
@@ -176,6 +185,7 @@
 
   <div class="text-sm text-[#555]">
     <div>Draw ID: <span class="font-mono">{@draw.id}</span></div>
+    <.operator_link operator={@operator} draw={@draw} />
     <div>This draw was not completed.</div>
   </div>
 </div>
@@ -190,6 +200,7 @@
 
   <div class="text-sm text-[#555]">
     <div>Draw ID: <span class="font-mono">{@draw.id}</span></div>
+    <.operator_link operator={@operator} draw={@draw} />
     <div :if={@draw.failed_at}>
       Failed: {Calendar.strftime(@draw.failed_at, "%Y-%m-%d %H:%M:%S UTC")}
     </div>
@@ -216,6 +227,7 @@
 
   <div class="text-sm text-[#555]">
     <div>Draw ID: <span class="font-mono">{@draw.id}</span></div>
+    <.operator_link operator={@operator} draw={@draw} />
   </div>
 
   <div :if={@entropy_status} class="text-xs text-[#555]">

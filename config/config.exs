@@ -23,7 +23,8 @@ config :wallop_core, Oban,
   plugins: [
     {Oban.Plugins.Cron,
      crontab: [
-       {"0 * * * *", WallopCore.Entropy.ExpiryWorker}
+       {"0 * * * *", WallopCore.Entropy.ExpiryWorker},
+       {"30 3 * * *", WallopCore.Transparency.AnchorWorker}
      ]}
   ]
 

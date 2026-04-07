@@ -20,8 +20,12 @@ defmodule WallopCore.Resources.ApiKey do
     defaults([:read])
 
     create :create do
-      accept([:name, :tier, :monthly_draw_limit, :count_reset_at])
+      accept([:name, :tier, :monthly_draw_limit, :count_reset_at, :operator_id])
       change({WallopCore.Resources.ApiKey.Changes.GenerateKey, []})
+    end
+
+    update :set_operator do
+      accept([:operator_id])
     end
 
     update :deactivate do
@@ -116,5 +120,13 @@ defmodule WallopCore.Resources.ApiKey do
 
   identities do
     identity(:unique_prefix, [:key_prefix])
+  end
+
+  relationships do
+    belongs_to :operator, WallopCore.Resources.Operator do
+      allow_nil?(true)
+      public?(false)
+      attribute_writable?(true)
+    end
   end
 end
