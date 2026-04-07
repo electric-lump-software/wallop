@@ -20,8 +20,7 @@ defmodule WallopWeb.TransparencyLive do
 
     {:ok,
      socket
-     |> assign(anchors: anchors, page_title: "Transparency log — Wallop"),
-     layout: false}
+     |> assign(anchors: anchors, page_title: "Transparency log — Wallop"), layout: false}
   end
 
   def hex(nil), do: ""
