@@ -98,8 +98,12 @@ defmodule WallopWeb.OperatorLive do
 
     base =
       case String.trim(query || "") do
-        "" -> base
-        term -> Ash.Query.filter(base, contains(name, ^term))
+        "" ->
+          base
+
+        term ->
+          like = "%#{term}%"
+          Ash.Query.filter(base, fragment("? ILIKE ?", name, ^like))
       end
 
     rows = Ash.read!(base, authorize?: false)
