@@ -33,7 +33,7 @@ defmodule WallopWeb.OperatorLive do
           |> assign(operator: operator, page_title: "#{operator.name} — Wallop")
           |> assign_search("")
 
-        {:ok, socket, layout: {WallopWeb.Layouts, :root}}
+        {:ok, socket, layout: false}
 
       :error ->
         {:ok,
