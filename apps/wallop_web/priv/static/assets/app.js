@@ -10070,6 +10070,78 @@ removing illegal node: "${(childNode.outerHTML || childNode.nodeValue).trim()}"
     }
   });
 
+  // js/winners.js
+  function attachVirtualWinners() {
+    document.querySelectorAll("[data-virtual-winners]:not([data-virtual-attached])").forEach((el) => {
+      el.setAttribute("data-virtual-attached", "true");
+      new VirtualWinners(el);
+    });
+  }
+  var ROW_HEIGHT, BATCH_SIZE, BUFFER_ROWS, VirtualWinners;
+  var init_winners = __esm({
+    "js/winners.js"() {
+      ROW_HEIGHT = 36;
+      BATCH_SIZE = 50;
+      BUFFER_ROWS = 10;
+      VirtualWinners = class {
+        constructor(el) {
+          this.container = el;
+          this.spacer = el.querySelector("[data-virtual-spacer]");
+          this.winners = JSON.parse(el.dataset.winnersJson || "[]");
+          if (!this.winners.length) return;
+          this.spacer.style.height = `${this.winners.length * ROW_HEIGHT}px`;
+          this.mountedNodes = /* @__PURE__ */ new Map();
+          this.render = this.render.bind(this);
+          this.container.addEventListener("scroll", this.render, { passive: true });
+          this.render();
+        }
+        render() {
+          const scrollTop2 = this.container.scrollTop;
+          const viewportHeight = this.container.clientHeight;
+          const total = this.winners.length;
+          const firstVisible = Math.floor(scrollTop2 / ROW_HEIGHT);
+          const lastVisible = Math.ceil((scrollTop2 + viewportHeight) / ROW_HEIGHT);
+          const start = Math.max(0, Math.floor((firstVisible - BUFFER_ROWS) / BATCH_SIZE) * BATCH_SIZE);
+          const end = Math.min(total, Math.ceil((lastVisible + BUFFER_ROWS) / BATCH_SIZE) * BATCH_SIZE);
+          for (const [index, node] of this.mountedNodes) {
+            if (index < start || index >= end) {
+              node.remove();
+              this.mountedNodes.delete(index);
+            }
+          }
+          for (let i = start; i < end; i++) {
+            if (!this.mountedNodes.has(i)) {
+              const node = this.makeRow(this.winners[i], i);
+              this.spacer.appendChild(node);
+              this.mountedNodes.set(i, node);
+            }
+          }
+        }
+        makeRow(winner, index) {
+          const row = document.createElement("div");
+          row.className = "absolute left-0 right-0 flex items-center gap-3 px-4";
+          row.style.top = `${index * ROW_HEIGHT}px`;
+          row.style.height = `${ROW_HEIGHT}px`;
+          const badge = document.createElement("span");
+          badge.className = "inline-flex items-center justify-center w-6 h-6 bg-[#1a1a1a] text-white text-xs font-mono rounded-full shrink-0";
+          badge.textContent = winner.position;
+          const id = document.createElement("span");
+          id.className = "font-mono text-sm truncate";
+          id.textContent = winner.entry_id;
+          row.appendChild(badge);
+          row.appendChild(id);
+          return row;
+        }
+      };
+      if (document.readyState === "loading") {
+        document.addEventListener("DOMContentLoaded", attachVirtualWinners);
+      } else {
+        attachVirtualWinners();
+      }
+      new MutationObserver(attachVirtualWinners).observe(document.body, { childList: true, subtree: true });
+    }
+  });
+
   // js/app.js
   var require_app = __commonJS({
     "js/app.js"() {
@@ -10078,6 +10150,7 @@ removing illegal node: "${(childNode.outerHTML || childNode.nodeValue).trim()}"
       init_phoenix_live_view_esm();
       init_anime_es();
       init_verify();
+      init_winners();
       var Hooks2 = {};
       Hooks2.Countdown = {
         mounted() {
