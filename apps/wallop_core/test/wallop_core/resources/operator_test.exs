@@ -1,6 +1,9 @@
 defmodule WallopCore.Resources.OperatorTest do
   use WallopCore.DataCase, async: true
 
+  import WallopCore.TestHelpers
+  require Ash.Query
+
   alias WallopCore.Resources.{Operator, OperatorReceipt, OperatorSigningKey}
 
   describe "create" do
@@ -169,6 +172,4 @@ defmodule WallopCore.Resources.OperatorTest do
       refute inspect(key) =~ Base.encode16(key.private_key, case: :lower)
     end
   end
-
-  require Ash.Query
 end

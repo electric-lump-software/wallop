@@ -34,7 +34,7 @@ defmodule WallopCore.Resources.Operator do
       accept([:slug, :name])
 
       validate(fn changeset, _ ->
-        slug = Ash.Changeset.get_attribute(changeset, :slug) || ""
+        slug = changeset |> Ash.Changeset.get_attribute(:slug) |> to_string()
 
         cond do
           slug == "" ->
@@ -43,7 +43,8 @@ defmodule WallopCore.Resources.Operator do
           slug in unquote(@reserved_slugs) ->
             {:error, field: :slug, message: "is reserved"}
 
-          not Regex.match?(~r/^[a-z0-9][a-z0-9-]{1,62}$/, slug) ->
+          not Regex.match?(~r/^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/, slug) or
+              String.length(slug) < 2 ->
             {:error,
              field: :slug,
              message: "must be lowercase alphanumeric with hyphens, 2-63 chars"}

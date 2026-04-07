@@ -16,6 +16,20 @@ Entries are locked before the draw. The seed is computed from public, unpredicta
 4. **Compute seed & run** — entropy sources are combined via JCS + SHA256 to produce a seed, which is fed into the deterministic [fair_pick](https://github.com/electric-lump-software/fair_pick) algorithm
 5. **Permanent proof** — the full proof record (entries, entropy, seed, results) is stored permanently with a public verification page
 
+## Cross-draw verifiability (operator registry)
+
+Single-draw verifiability — the commit-reveal protocol above — proves any *one* draw was fair. It does not prove that the operator running the draw didn't quietly run nine others and only publish the result they liked. That gap is closed by the **operator registry**:
+
+- Every API key may belong to an `Operator`. Operators are public identities with a stable slug.
+- Every draw an operator locks gets a **gap-free per-operator sequence number**. Discarded, expired, and failed draws still occupy their slot — gaps are detectable.
+- At lock time, wallop_core signs an Ed25519 **commitment receipt** over the canonical JSON `{operator, sequence, draw_id, commitment_hash, entry_hash, locked_at, signing_key_id, schema_version}`. The receipt is inserted in the same transaction as the lock, so a draw cannot be locked without its receipt being committed atomically.
+- The operator's public registry lives at `/operator/:slug` and lists every draw they have ever locked, in sequence order, with status badges. Signed receipts are served as JSON at `/operator/:slug/receipts` and individually at `/operator/:slug/receipts/:n`. The current Ed25519 public key is at `/operator/:slug/key`.
+- A **transparency log** at `/transparency` publishes a daily Merkle root over all receipts, pinned to a drand round number. Mirroring the receipt log over time and recomputing the root lets a third party detect any retroactive tampering with operator receipts.
+
+This defends against **post-hoc draw shopping**: lock a draw, see the result, dislike it, discard it, lock another with the same entries on a fresh round, repeat. After this change every locked draw is permanently visible in the operator's registry whether it eventually completed or not, and the signed receipt commits the operator to *that* entry set resolving to *some* outcome at *that* sequence slot. Anyone can verify the receipts independently using the operator's public key.
+
+It does **not** defend against an operator locking parallel draws with *different* entry sets. Operators must follow "one contest = one locked draw."
+
 ## Architecture
 
 | Layer | Package | Purpose |

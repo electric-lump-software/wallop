@@ -55,10 +55,7 @@ defmodule WallopCore.Resources.Draw.Changes.SignAndStoreReceipt do
       signature = Protocol.sign_receipt(payload, private_key)
 
       Ash.Changeset.after_action(changeset, fn _cs, draw ->
-        case insert_receipt(operator.id, draw, signature, payload, locked_at, signing_key.key_id) do
-          {:ok, _receipt} -> {:ok, draw}
-          {:error, error} -> {:error, error}
-        end
+        persist_receipt(draw, operator.id, signature, payload, locked_at, signing_key.key_id)
       end)
     else
       {:error, reason} ->
@@ -66,6 +63,13 @@ defmodule WallopCore.Resources.Draw.Changes.SignAndStoreReceipt do
           field: :receipt,
           message: "failed to sign operator receipt: #{inspect(reason)}"
         )
+    end
+  end
+
+  defp persist_receipt(draw, operator_id, signature, payload, locked_at, key_id) do
+    case insert_receipt(operator_id, draw, signature, payload, locked_at, key_id) do
+      {:ok, _receipt} -> {:ok, draw}
+      {:error, error} -> {:error, error}
     end
   end
 

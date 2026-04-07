@@ -11,6 +11,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Marketing site at `/` with hero, "Why provable?", organiser/developer split, tabbed protocol explainer, origin story, FAQ, and waitlist CTA
 
+## [0.9.0] - 2026-04-07
+
+### Added
+
+- **Operator registry** — closes the cross-draw verifiability gap. Each `Operator` (created by the consuming app or `mix wallop.gen.operator` for self-hosters) gets a public `/operator/:slug` page listing every draw they have ever locked, including discarded and expired ones, with gap-free per-operator sequence numbers
+- `Operator`, `OperatorSigningKey`, `OperatorReceipt`, `TransparencyAnchor` Ash resources
+- Nullable `operator_id` on `ApiKey` (backward compatible — keys with no operator behave exactly as before)
+- Nullable `operator_id` and `operator_sequence` on `Draw`, assigned at create time inside an advisory-locked transaction (gap-free; Postgres sequences explicitly avoided so rollbacks don't leak gaps)
+- **Signed commitment receipts** — every locked draw belonging to an operator gets an Ed25519-signed JCS payload (`commitment_hash`, `entry_hash`, `sequence`, `signing_key_id`, `schema_version`, `locked_at`, ...) inserted into `operator_receipts` in the same transaction as `lock`. Failure to sign rolls back the lock — no sequence is burned
+- `Protocol.build_receipt_payload/1`, `sign_receipt/2`, `verify_receipt/3`, `key_id/1`, and `merkle_root/1` (RFC 6962-style). Frozen test vector for the signing path
+- **Transparency log** — daily Oban cron worker (`Transparency.AnchorWorker`) builds a Merkle root over all receipts since the previous anchor and pins it to a drand round number. Listed at `/transparency`
+- `OperatorController` JSON endpoints under `/operator/:slug`: `receipts`, `receipts/:n`, `keys`, `key` — append-only, cacheable, with ETag on the index and immutable cache on individual receipts
+- Proof page now shows "Draw #N by [Operator →]" linking to the public registry, plus an expandable signed-receipt panel with the JCS payload, signature, and signing-key id. Renders on both the live and cached static proof pages
+- `mix wallop.gen.operator SLUG NAME` — generates an operator and its first Ed25519 keypair, prints the key fingerprint to publish out-of-band
+- Append-only PG triggers on `operator_signing_keys`, `operator_receipts`, and `transparency_anchors`
+- `(operator_id, operator_sequence)` and `(operator_id, sequence)` unique indexes as belt-and-braces backstops
+- Slug denylist to prevent collisions with reserved routes
+
+### Notes
+
+- This defends against post-hoc draw shopping (lock → see result → discard → re-lock with same entries). It does **not** defend against locking 10 parallel draws with different entry sets — operators must follow "one contest = one locked draw"
+- Signing private keys are Cloak-encrypted with `WallopCore.Vault`; rotation is append-only via additional `OperatorSigningKey` rows with later `valid_from` timestamps
+- The transparency anchor worker runs daily at 03:30 UTC
+
 ## [0.8.0] - 2026-04-07
 
 ### Added
