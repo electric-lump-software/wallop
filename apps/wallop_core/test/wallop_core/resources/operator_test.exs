@@ -167,6 +167,68 @@ defmodule WallopCore.Resources.OperatorTest do
     end
   end
 
+  describe "paper trail" do
+    test "creates a version row on create" do
+      {:ok, op} =
+        Operator
+        |> Ash.Changeset.for_create(:create, %{slug: "pt-create-test", name: "Original"})
+        |> Ash.create()
+
+      versions =
+        Operator.Version
+        |> Ash.Query.filter(version_source_id == ^op.id)
+        |> Ash.read!(authorize?: false)
+
+      assert length(versions) == 1
+      [v] = versions
+      assert v.version_action_type == :create
+      assert v.version_action_name == :create
+    end
+
+    test "creates a version row on update_name" do
+      {:ok, op} =
+        Operator
+        |> Ash.Changeset.for_create(:create, %{slug: "pt-update-test", name: "Original"})
+        |> Ash.create()
+
+      {:ok, _updated} =
+        op
+        |> Ash.Changeset.for_update(:update_name, %{name: "Renamed"})
+        |> Ash.update()
+
+      versions =
+        Operator.Version
+        |> Ash.Query.filter(version_source_id == ^op.id)
+        |> Ash.Query.sort(version_inserted_at: :asc)
+        |> Ash.read!(authorize?: false)
+
+      assert length(versions) == 2
+      [_create_v, update_v] = versions
+      assert update_v.version_action_type == :update
+      assert update_v.version_action_name == :update_name
+      assert update_v.version_action_inputs["name"] == "Renamed"
+    end
+
+    test "rejected update does not create a version row" do
+      {:ok, op} =
+        Operator
+        |> Ash.Changeset.for_create(:create, %{slug: "pt-reject-test", name: "Original"})
+        |> Ash.create()
+
+      assert {:error, _} =
+               op
+               |> Ash.Changeset.for_update(:update_name, %{name: String.duplicate("a", 200)})
+               |> Ash.update()
+
+      versions =
+        Operator.Version
+        |> Ash.Query.filter(version_source_id == ^op.id)
+        |> Ash.read!(authorize?: false)
+
+      assert length(versions) == 1
+    end
+  end
+
   describe "sensitive private_key" do
     test "is not exposed in inspect output" do
       operator = create_operator()

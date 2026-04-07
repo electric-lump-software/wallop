@@ -19,6 +19,7 @@ defmodule WallopCore.Domain do
     resource(WallopCore.Resources.Draw)
     resource(WallopCore.Resources.Entry)
     resource(WallopCore.Resources.Operator)
+    resource(WallopCore.Resources.Operator.Version)
     resource(WallopCore.Resources.OperatorSigningKey)
     resource(WallopCore.Resources.OperatorReceipt)
     resource(WallopCore.Resources.TransparencyAnchor)

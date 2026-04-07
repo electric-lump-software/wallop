@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-04-07
+
+### Added
+
+- `ash_paper_trail` extension on `Operator` resource — every change to an operator (create, `update_name`, future mutations) is automatically captured as a row in the new `operators_versions` table. Stores the action name, action inputs, the changes themselves, and the timestamp. Configured in `:changes_only` mode so each version only stores the diff, not a full snapshot.
+- `WallopCore.Resources.Operator.Version` Ash resource (auto-derived by `ash_paper_trail`) for querying the version history idiomatically. Added to `WallopCore.Domain`.
+- Migration `create_operators_versions` adds the `operators_versions` table with `version_source_id` FK to `operators`, action metadata columns, and a `changes` jsonb column.
+- Tests covering create-emits-version, update-emits-version, and rejected-update-does-not-emit-version.
+
+### Notes
+
+- `Operator.update_name` now has `require_atomic? false` because the validation can't be expressed as an atomic SQL update. Functionally identical, slightly less efficient — fine because name changes are rare.
+- Consuming apps that maintain their own ad-hoc audit table for operator changes (e.g. `operator_name_changes`) can stop writing new rows after upgrading to 0.10.0 and migrate to querying `Operator.Version` instead. The wallop_core history is the canonical source going forward.
+
 ## [0.9.1] - 2026-04-07
 
 ### Added
