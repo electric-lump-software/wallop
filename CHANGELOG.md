@@ -11,6 +11,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Marketing site at `/` with hero, "Why provable?", organiser/developer split, tabbed protocol explainer, origin story, FAQ, and waitlist CTA
 
+## [0.8.0] - 2026-04-07
+
+### Added
+
+- API key tier metadata: `tier`, `monthly_draw_limit`, `monthly_draw_count`, `count_reset_at` (set by wallop-app via `update_tier` action)
+- `WallopWeb.Plugs.TierLimit` — enforces monthly draw limit on `POST /api/v1/draws`, returns 429 with tier name and upgrade URL when exceeded
+- `WallopWeb.Plugs.KeyRateLimit` — per-API-key rate limit (60 requests/minute, ETS-based), returns 429 with `Retry-After` header
+- `IncrementApiKeyDrawCount` change — bumps the actor's monthly_draw_count on successful draw create, auto-resets if `count_reset_at` is in the past
+- `increment_draw_count`, `reset_draw_count`, `update_tier` internal actions on `ApiKey`
+
+### Notes
+
+- Per-IP rate limit (`WallopWeb.Plugs.RateLimit`) still runs before auth to protect bcrypt CPU
+- Tier metadata is null by default (unlimited) — wallop-app must populate via `update_tier` for paid tiers
+
 ## [0.7.0] - 2026-04-03
 
 ### Added
