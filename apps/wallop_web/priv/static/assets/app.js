@@ -10152,6 +10152,19 @@ removing illegal node: "${(childNode.outerHTML || childNode.nodeValue).trim()}"
       init_verify();
       init_winners();
       var Hooks2 = {};
+      Hooks2.InfiniteScroll = {
+        mounted() {
+          this.observer = new IntersectionObserver((entries) => {
+            if (entries.some((e) => e.isIntersecting)) {
+              this.pushEvent("load_more", {});
+            }
+          }, { rootMargin: "200px" });
+          this.observer.observe(this.el);
+        },
+        destroyed() {
+          if (this.observer) this.observer.disconnect();
+        }
+      };
       Hooks2.Countdown = {
         mounted() {
           this.start();

@@ -39,6 +39,7 @@ defmodule WallopCore.Resources.Draw do
       change({WallopCore.Resources.Draw.Changes.IncrementApiKeyDrawCount, []})
       change({WallopCore.Resources.Draw.Changes.ValidateCallbackUrl, []})
       change({WallopCore.Resources.Draw.Changes.RecordStageTimestamp, key: "opened_at"})
+      change({WallopCore.Resources.Draw.Changes.BroadcastUpdate, []})
     end
 
     update :add_entries do
@@ -125,6 +126,7 @@ defmodule WallopCore.Resources.Draw do
       end
 
       change({WallopCore.Resources.Draw.Changes.ExecuteWithEntropy, []})
+      change({WallopCore.Resources.Draw.Changes.BroadcastUpdate, []})
     end
 
     update :execute_drand_only do
@@ -142,6 +144,7 @@ defmodule WallopCore.Resources.Draw do
 
       change({WallopCore.Resources.Draw.Changes.ExecuteDrandOnly, []})
       change({WallopCore.Resources.Draw.Changes.RecordStageTimestamp, key: "executed_at"})
+      change({WallopCore.Resources.Draw.Changes.BroadcastUpdate, []})
     end
 
     update :execute_sandbox do
@@ -173,6 +176,8 @@ defmodule WallopCore.Resources.Draw do
         reason = Ash.Changeset.get_argument(changeset, :failure_reason)
         Ash.Changeset.force_change_attribute(changeset, :failure_reason, reason)
       end)
+
+      change({WallopCore.Resources.Draw.Changes.BroadcastUpdate, []})
     end
   end
 

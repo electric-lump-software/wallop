@@ -57,7 +57,7 @@ defmodule WallopCore.Resources.Draw.Changes.DeclareEntropy do
         |> EntropyWorker.new(scheduled_at: draw.weather_time)
         |> Oban.insert()
 
-        Phoenix.PubSub.broadcast(WallopCore.PubSub, "draw:#{draw.id}", {:draw_updated, draw})
+        WallopCore.DrawPubSub.broadcast(draw)
         {:ok, draw}
       end)
     end
