@@ -28,22 +28,26 @@ defmodule WallopCore.Resources.Draw.Changes.AssignOperatorSequence do
   defp assign(changeset, %{operator_id: operator_id}) when is_binary(operator_id) do
     repo = WallopCore.Repo
 
+    # Normalise to canonical UUID string form so the advisory lock key is
+    # stable regardless of whether the caller passed binary or string UUID.
+    {:ok, normalised_id} = Ecto.UUID.cast(operator_id)
+
     # Hash the operator_id into a stable int8 for advisory lock keyspace.
     {:ok, %{rows: [[lock_key]]}} =
-      repo.query("SELECT ('x' || substr(md5($1), 1, 16))::bit(64)::bigint", [operator_id])
+      repo.query("SELECT ('x' || substr(md5($1), 1, 16))::bit(64)::bigint", [normalised_id])
 
     {:ok, _} = repo.query("SELECT pg_advisory_xact_lock($1)", [lock_key])
 
     {:ok, %{rows: [[max_seq]]}} =
       repo.query(
         "SELECT COALESCE(MAX(operator_sequence), 0) FROM draws WHERE operator_id = $1",
-        [Ecto.UUID.dump!(operator_id)]
+        [Ecto.UUID.dump!(normalised_id)]
       )
 
     next = max_seq + 1
 
     changeset
-    |> Ash.Changeset.force_change_attribute(:operator_id, operator_id)
+    |> Ash.Changeset.force_change_attribute(:operator_id, normalised_id)
     |> Ash.Changeset.force_change_attribute(:operator_sequence, next)
   end
 end

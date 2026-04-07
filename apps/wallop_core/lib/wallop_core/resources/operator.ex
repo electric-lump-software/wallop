@@ -55,9 +55,8 @@ defmodule WallopCore.Resources.Operator do
       validate(fn changeset, _ ->
         slug = changeset |> Ash.Changeset.get_attribute(:slug) |> to_string()
 
-        with :ok <- validate_slug(slug),
-             :ok <- validate_name(Ash.Changeset.get_attribute(changeset, :name)) do
-          :ok
+        with :ok <- validate_slug(slug) do
+          validate_name(Ash.Changeset.get_attribute(changeset, :name))
         end
       end)
 
@@ -142,29 +141,48 @@ defmodule WallopCore.Resources.Operator do
   defp validate_name(""), do: {:error, field: :name, message: "must not be blank"}
 
   defp validate_name(name) when is_binary(name) do
+    case :unicode.characters_to_nfc_binary(name) do
+      normalised when is_binary(normalised) -> validate_normalised_name(normalised)
+      _ -> {:error, field: :name, message: "must be valid Unicode"}
+    end
+  end
+
+  defp validate_normalised_name(name) do
     cond do
       String.length(name) > @max_name_length ->
-        {:error, field: :name, message: "must be at most #{@max_name_length} characters"}
+        {:error,
+         field: :name, message: "must be at most #{@max_name_length} characters"}
 
       contains_disallowed_chars?(name) ->
         {:error,
          field: :name,
-         message: "must not contain control characters or RTL override codepoints"}
+         message: "must not contain control or invisible/bidi codepoints"}
 
       true ->
         :ok
     end
   end
 
-  # Reject ASCII control chars (except tab/space) and Unicode bidi-override
-  # codepoints commonly used for homograph/spoofing attacks.
+  # Reject anything that lets a display name be invisible, ambiguous, or
+  # spoof another operator's name visually.
   defp contains_disallowed_chars?(name) do
     Enum.any?(String.to_charlist(name), fn cp ->
       cp < 0x20 or
         cp == 0x7F or
+        # ASCII soft hyphen
+        cp == 0x00AD or
+        # Zero-width space, ZWNJ, ZWJ
+        cp in 0x200B..0x200D or
+        # Line/paragraph separators
+        cp in 0x2028..0x2029 or
+        # Bidi formatting (LRE, RLE, PDF, LRO, RLO)
         cp in 0x202A..0x202E or
-        cp in 0x2066..0x2069
+        # Bidi isolates (LRI, RLI, FSI, PDI)
+        cp in 0x2066..0x2069 or
+        # Byte order mark / zero-width no-break space
+        cp == 0xFEFF or
+        # Tag block — used in some homograph attacks
+        cp in 0xE0000..0xE007F
     end)
   end
-
 end
