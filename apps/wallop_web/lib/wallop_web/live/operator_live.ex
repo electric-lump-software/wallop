@@ -53,13 +53,54 @@ defmodule WallopWeb.OperatorLive do
   end
 
   @impl true
-  def handle_info({:draw_updated, _draw}, socket) do
-    {:noreply, assign_search(socket, socket.assigns.search_query)}
+  def handle_info({:draw_updated, draw}, socket) do
+    {:noreply, apply_draw_update(socket, draw)}
   end
 
   def handle_info(:poll, socket) do
     schedule_poll()
     {:noreply, assign_search(socket, socket.assigns.search_query)}
+  end
+
+  # Surgical in-place update of the affected draw in @draws.
+  #
+  # Phoenix LiveView's change tracking compares assigns with `===`. Ash
+  # structs use value-based equality, so re-querying the DB and reassigning
+  # the whole list often produces a list that compares equal to the previous
+  # one (no diff is pushed even though we just received a broadcast). Update
+  # the single affected element directly so the list reference is provably
+  # different.
+  defp apply_draw_update(socket, %{operator_id: operator_id} = draw)
+       when is_binary(operator_id) do
+    if operator_id == socket.assigns.operator.id and
+         matches_search?(draw, socket.assigns.search_query) do
+      draws = upsert_draw(socket.assigns.draws, draw)
+      assign(socket, :draws, draws)
+    else
+      socket
+    end
+  end
+
+  defp apply_draw_update(socket, _draw), do: socket
+
+  defp upsert_draw(draws, new_draw) do
+    case Enum.find_index(draws, &(&1.id == new_draw.id)) do
+      nil ->
+        [new_draw | draws]
+        |> Enum.sort_by(& &1.operator_sequence, :desc)
+
+      idx ->
+        List.replace_at(draws, idx, new_draw)
+    end
+  end
+
+  defp matches_search?(_draw, ""), do: true
+  defp matches_search?(_draw, nil), do: true
+
+  defp matches_search?(%{name: nil}, _q), do: false
+
+  defp matches_search?(%{name: name}, q) do
+    String.contains?(String.downcase(name), String.downcase(String.trim(q)))
   end
 
   defp schedule_poll do
