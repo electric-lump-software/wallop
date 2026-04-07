@@ -21,7 +21,7 @@ defmodule WallopWeb.TransparencyLive do
     {:ok,
      socket
      |> assign(anchors: anchors, page_title: "Transparency log — Wallop"),
-     layout: {WallopWeb.Layouts, :root}}
+     layout: false}
   end
 
   def hex(nil), do: ""
