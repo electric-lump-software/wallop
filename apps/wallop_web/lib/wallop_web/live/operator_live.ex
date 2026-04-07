@@ -17,6 +17,7 @@ defmodule WallopWeb.OperatorLive do
   alias WallopCore.Resources.{Draw, Operator}
 
   @page_size 50
+  @poll_interval_ms 30_000
 
   @impl true
   def mount(%{"slug" => slug}, _session, socket) do
@@ -24,6 +25,7 @@ defmodule WallopWeb.OperatorLive do
       {:ok, operator} ->
         if connected?(socket) do
           Phoenix.PubSub.subscribe(WallopCore.PubSub, "operator:#{operator.id}")
+          schedule_poll()
         end
 
         socket =
@@ -53,6 +55,15 @@ defmodule WallopWeb.OperatorLive do
   @impl true
   def handle_info({:draw_updated, _draw}, socket) do
     {:noreply, assign_search(socket, socket.assigns.search_query)}
+  end
+
+  def handle_info(:poll, socket) do
+    schedule_poll()
+    {:noreply, assign_search(socket, socket.assigns.search_query)}
+  end
+
+  defp schedule_poll do
+    Process.send_after(self(), :poll, @poll_interval_ms)
   end
 
   defp assign_search(socket, q) do
