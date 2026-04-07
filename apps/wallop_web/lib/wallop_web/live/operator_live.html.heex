@@ -6,7 +6,7 @@
     </p>
   </div>
 
-  <div class="mb-8 p-4 bg-base-200 rounded-lg text-sm">
+  <div class="mb-6 p-4 bg-base-200 rounded-lg text-sm">
     <p class="mb-2">
       Every draw this operator has ever locked appears here, including discarded
       and expired ones. Sequence numbers are gap-free; missing numbers indicate
@@ -21,6 +21,18 @@
     </p>
   </div>
 
+  <form phx-change="search" phx-submit="search" class="mb-4">
+    <input
+      type="text"
+      name="q"
+      value={@search_query}
+      placeholder="Search by draw name…"
+      class="input input-bordered w-full"
+      phx-debounce="200"
+      autocomplete="off"
+    />
+  </form>
+
   <div class="overflow-x-auto">
     <table class="table table-zebra">
       <thead>
@@ -33,31 +45,34 @@
           <th></th>
         </tr>
       </thead>
-      <tbody>
-        <%= for draw <- @draws do %>
-          <tr>
-            <td class="font-mono">{draw.operator_sequence}</td>
-            <td>{draw.name || "—"}</td>
-            <td>
-              <span class={status_badge_class(draw.status)}>{draw.status}</span>
-            </td>
-            <td>{draw.entry_count}</td>
-            <td class="text-xs">
-              {Calendar.strftime(draw.inserted_at, "%Y-%m-%d %H:%M UTC")}
-            </td>
-            <td>
-              <a href={"/proof/#{draw.id}"} class="link link-primary text-sm">proof →</a>
-            </td>
-          </tr>
-        <% end %>
-        <%= if @draws == [] do %>
-          <tr>
-            <td colspan="6" class="text-center text-base-content/60 py-8">
-              No draws yet for this operator.
-            </td>
-          </tr>
-        <% end %>
+      <tbody id="operator-draws" phx-update="stream">
+        <tr :for={{dom_id, draw} <- @streams.draws} id={dom_id}>
+          <td class="font-mono">{draw.operator_sequence}</td>
+          <td>{draw.name || "—"}</td>
+          <td>
+            <span class={status_badge_class(draw.status)}>{draw.status}</span>
+          </td>
+          <td>{draw.entry_count}</td>
+          <td class="text-xs">
+            {Calendar.strftime(draw.inserted_at, "%Y-%m-%d %H:%M UTC")}
+          </td>
+          <td>
+            <a href={"/proof/#{draw.id}"} class="link link-primary text-sm">proof →</a>
+          </td>
+        </tr>
       </tbody>
     </table>
+
+    <div :if={@has_more?} id="operator-draws-sentinel" phx-hook="InfiniteScroll" class="py-6 text-center text-base-content/60 text-sm">
+      Loading more…
+    </div>
+
+    <div :if={not @has_more?} class="py-6 text-center text-base-content/60 text-sm">
+      <%= if @search_query == "" do %>
+        End of registry.
+      <% else %>
+        No more matches for "{@search_query}".
+      <% end %>
+    </div>
   </div>
 </div>

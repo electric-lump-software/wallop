@@ -7,6 +7,20 @@ import "./winners.js"
 
 let Hooks = {}
 
+Hooks.InfiniteScroll = {
+  mounted() {
+    this.observer = new IntersectionObserver(entries => {
+      if (entries.some(e => e.isIntersecting)) {
+        this.pushEvent("load_more", {})
+      }
+    }, {rootMargin: "200px"})
+    this.observer.observe(this.el)
+  },
+  destroyed() {
+    if (this.observer) this.observer.disconnect()
+  }
+}
+
 Hooks.Countdown = {
   mounted() { this.start() },
   updated() { this.start() },
