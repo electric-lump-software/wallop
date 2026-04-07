@@ -34,12 +34,7 @@ defmodule WallopCore.Resources.Draw.Changes.LockDraw do
         |> Ash.Changeset.force_change_attribute(:entry_hash, hash)
         |> Ash.Changeset.force_change_attribute(:entry_canonical, canonical)
         |> Ash.Changeset.after_action(fn _changeset, draw ->
-          Phoenix.PubSub.broadcast(
-            WallopCore.PubSub,
-            "draw:#{draw.id}",
-            {:draw_updated, draw}
-          )
-
+          WallopCore.DrawPubSub.broadcast(draw)
           {:ok, draw}
         end)
     end
