@@ -35,6 +35,7 @@ defmodule WallopCore.Resources.Draw do
 
       change(set_attribute(:api_key_id, actor(:id)))
       change(set_attribute(:status, :open))
+      change({WallopCore.Resources.Draw.Changes.AssignOperatorSequence, []})
       change({WallopCore.Resources.Draw.Changes.IncrementApiKeyDrawCount, []})
       change({WallopCore.Resources.Draw.Changes.ValidateCallbackUrl, []})
       change({WallopCore.Resources.Draw.Changes.RecordStageTimestamp, key: "opened_at"})
@@ -79,6 +80,7 @@ defmodule WallopCore.Resources.Draw do
       change({WallopCore.Resources.Draw.Changes.DeclareEntropy, []})
       change({WallopCore.Resources.Draw.Changes.RecordStageTimestamp, key: "locked_at"})
       change({WallopCore.Resources.Draw.Changes.RecordStageTimestamp, key: "entropy_declared_at"})
+      change({WallopCore.Resources.Draw.Changes.SignAndStoreReceipt, []})
     end
 
     update :execute do
@@ -448,6 +450,16 @@ defmodule WallopCore.Resources.Draw do
       default(%{})
     end
 
+    attribute :operator_sequence, :integer do
+      description(
+        "Per-operator monotonic sequence number assigned at create time. Null when " <>
+          "the api_key has no operator. Gap-free by design — discarded slots are visible."
+      )
+
+      allow_nil?(true)
+      public?(true)
+    end
+
     create_timestamp(:inserted_at)
     update_timestamp(:updated_at)
   end
@@ -458,7 +470,17 @@ defmodule WallopCore.Resources.Draw do
       public?(false)
     end
 
+    belongs_to :operator, WallopCore.Resources.Operator do
+      allow_nil?(true)
+      public?(true)
+      attribute_writable?(true)
+    end
+
     has_many :entry_records, WallopCore.Resources.Entry do
+      destination_attribute(:draw_id)
+    end
+
+    has_one :receipt, WallopCore.Resources.OperatorReceipt do
       destination_attribute(:draw_id)
     end
   end

@@ -40,6 +40,8 @@
     </span>
   </div>
 
+  <.operator_link operator={@operator} draw={@draw} />
+
   <div class="text-sm text-[#555]">
     <div>Draw ID: <span class="font-mono">{@draw.id}</span></div>
     <div :if={@draw.executed_at}>
@@ -130,6 +132,8 @@
       <.proof_chain draw={@draw} />
     </div>
   </div>
+
+  <.receipt_panel operator={@operator} receipt={@receipt} />
 </div>
 
 <%!-- Expired draw --%>
@@ -139,6 +143,8 @@
       Draw Expired
     </span>
   </div>
+
+  <.operator_link operator={@operator} draw={@draw} />
 
   <div class="text-sm text-[#555]">
     <div>Draw ID: <span class="font-mono">{@draw.id}</span></div>
@@ -153,6 +159,8 @@
       Draw Failed
     </span>
   </div>
+
+  <.operator_link operator={@operator} draw={@draw} />
 
   <div class="text-sm text-[#555]">
     <div>Draw ID: <span class="font-mono">{@draw.id}</span></div>

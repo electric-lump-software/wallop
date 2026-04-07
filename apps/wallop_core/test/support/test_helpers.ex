@@ -113,4 +113,41 @@ defmodule WallopCore.TestHelpers do
   def test_drand_randomness do
     "abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890"
   end
+
+  @doc """
+  Creates an Operator with a single Ed25519 signing key, returning the
+  operator struct. Useful for tests that exercise the operator/receipt path.
+  """
+  def create_operator(slug \\ nil, name \\ "Test Operator") do
+    slug = slug || "op-#{:rand.uniform(1_000_000)}"
+
+    {:ok, operator} =
+      WallopCore.Resources.Operator
+      |> Ash.Changeset.for_create(:create, %{slug: slug, name: name})
+      |> Ash.create()
+
+    {public_key, private_key} = :crypto.generate_key(:eddsa, :ed25519)
+    key_id = WallopCore.Protocol.key_id(public_key)
+    {:ok, encrypted} = WallopCore.Vault.encrypt(private_key)
+
+    {:ok, _key} =
+      WallopCore.Resources.OperatorSigningKey
+      |> Ash.Changeset.for_create(:create, %{
+        operator_id: operator.id,
+        key_id: key_id,
+        public_key: public_key,
+        private_key: encrypted,
+        valid_from: DateTime.add(DateTime.utc_now(), -60, :second)
+      })
+      |> Ash.create()
+
+    operator
+  end
+
+  @doc "Creates an api_key bound to the given operator."
+  def create_api_key_for_operator(operator, name \\ "op-key") do
+    WallopCore.Resources.ApiKey
+    |> Ash.Changeset.for_create(:create, %{name: name, operator_id: operator.id})
+    |> Ash.create!()
+  end
 end
