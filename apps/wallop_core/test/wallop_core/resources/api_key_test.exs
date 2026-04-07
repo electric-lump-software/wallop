@@ -59,4 +59,115 @@ defmodule WallopCore.Resources.ApiKeyTest do
       assert deactivated.deactivated_at != nil
     end
   end
+
+  describe "tier metadata" do
+    test "tier defaults to nil and limit defaults to nil (unlimited)" do
+      {:ok, key} = create_key()
+      assert key.tier == nil
+      assert key.monthly_draw_limit == nil
+      assert key.monthly_draw_count == 0
+      assert key.count_reset_at == nil
+    end
+
+    test "create accepts tier metadata" do
+      {:ok, reset_at} = DateTime.new(~D[2026-05-01], ~T[00:00:00.000000], "Etc/UTC")
+
+      {:ok, key} =
+        ApiKey
+        |> Ash.Changeset.for_create(:create, %{
+          name: "test",
+          tier: "starter",
+          monthly_draw_limit: 50,
+          count_reset_at: reset_at
+        })
+        |> Ash.create()
+
+      assert key.tier == "starter"
+      assert key.monthly_draw_limit == 50
+      assert key.count_reset_at == reset_at
+    end
+  end
+
+  describe "update_tier" do
+    test "updates tier metadata on an existing key" do
+      {:ok, key} = create_key()
+      {:ok, reset_at} = DateTime.new(~D[2026-05-01], ~T[00:00:00.000000], "Etc/UTC")
+
+      {:ok, updated} =
+        key
+        |> Ash.Changeset.for_update(:update_tier, %{
+          tier: "pro",
+          monthly_draw_limit: 1000,
+          count_reset_at: reset_at
+        })
+        |> Ash.update()
+
+      assert updated.tier == "pro"
+      assert updated.monthly_draw_limit == 1000
+      assert updated.count_reset_at == reset_at
+    end
+  end
+
+  describe "increment_draw_count" do
+    test "increments the count and sets reset_at on first call" do
+      {:ok, key} = create_key()
+
+      {:ok, updated} =
+        key
+        |> Ash.Changeset.for_update(:increment_draw_count, %{})
+        |> Ash.update()
+
+      assert updated.monthly_draw_count == 1
+      assert updated.count_reset_at != nil
+    end
+
+    test "increments the count without resetting if reset_at is in the future" do
+      future = DateTime.add(DateTime.utc_now(), 7 * 86_400, :second)
+
+      {:ok, key} =
+        ApiKey
+        |> Ash.Changeset.for_create(:create, %{name: "x", count_reset_at: future})
+        |> Ash.create()
+
+      # Bump count to 5 directly
+      WallopCore.Repo.query!(
+        "UPDATE api_keys SET monthly_draw_count = 5 WHERE id = $1",
+        [Ecto.UUID.dump!(key.id)]
+      )
+
+      key = Ash.get!(ApiKey, key.id, authorize?: false)
+
+      {:ok, updated} =
+        key
+        |> Ash.Changeset.for_update(:increment_draw_count, %{})
+        |> Ash.update()
+
+      assert updated.monthly_draw_count == 6
+      assert DateTime.compare(updated.count_reset_at, future) == :eq
+    end
+
+    test "resets the count to 1 if reset_at is in the past" do
+      past = DateTime.add(DateTime.utc_now(), -86_400, :second)
+
+      {:ok, key} =
+        ApiKey
+        |> Ash.Changeset.for_create(:create, %{name: "x", count_reset_at: past})
+        |> Ash.create()
+
+      WallopCore.Repo.query!(
+        "UPDATE api_keys SET monthly_draw_count = 100 WHERE id = $1",
+        [Ecto.UUID.dump!(key.id)]
+      )
+
+      key = Ash.get!(ApiKey, key.id, authorize?: false)
+
+      {:ok, updated} =
+        key
+        |> Ash.Changeset.for_update(:increment_draw_count, %{})
+        |> Ash.update()
+
+      assert updated.monthly_draw_count == 1
+      assert DateTime.compare(updated.count_reset_at, DateTime.utc_now()) == :gt
+    end
+  end
 end
