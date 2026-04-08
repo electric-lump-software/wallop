@@ -27,6 +27,13 @@ config :wallop_core, WallopCore.Vault,
 
 config :wallop_core, :met_office_api_key, "test-placeholder"
 
+# In-memory proof storage for tests (use a unique tmp dir per run)
+config :wallop_web, :proof_storage,
+  backend: WallopWeb.ProofStorage.Filesystem,
+  filesystem: [
+    root: Path.join(System.tmp_dir!(), "wallop_test_proof_pdfs_#{System.unique_integer([:positive])}")
+  ]
+
 config :opentelemetry,
   traces_exporter: :none
 

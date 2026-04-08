@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Proof PDF** — certificate-style downloadable proof artifact for completed draws at `GET /proof/:id/pdf`. Rendered from a dedicated HEEx template with print-specific CSS, POSTed as HTML to a sidecar Gotenberg service (https://gotenberg.dev — headless Chromium wrapped in a stateless HTTP API, deployed separately on Railway), returned as PDF bytes. Contains a certificate front page (logo, title, operator, summary, hashes), a verification chain (drand + weather + seed + signed operator receipt), a full anonymised entries appendix, and a verification recipe. Lazy-generated on first request, cached via a pluggable storage backend (filesystem in dev, S3-compatible in production — configured via `AWS_S3_BUCKET_NAME` and friends), served with `Cache-Control: public, max-age=31536000, immutable`.
+- `WallopWeb.ProofStorage` behaviour with `Filesystem` and `S3` backends. The S3 backend works against any S3-compatible endpoint (Railway volumes, AWS S3, Cloudflare R2, MinIO).
+- "Download PDF certificate" button on terminal proof pages (both the live LiveView and the cached static renderer).
+- `eqrcode`, `ex_aws`, `ex_aws_s3`, `hackney`, `sweet_xml` deps on wallop_web. No Chromium in the wallop image — that lives in the sibling Gotenberg service.
+- In-progress draws (open / locked / awaiting_entropy / pending_entropy) return 404 with a clear "PDF is only available once the draw has completed" message.
+- Tests cover: filesystem storage round-trip, controller 404 for unknown draw, controller 404 for in-progress draw, controller serves cached bytes with the right headers for terminal draws. Tests pre-populate the cache so they never hit Gotenberg.
+
+### Deployment notes
+
+- Deploy `gotenberg/gotenberg:8` as a second Railway service in the same project
+- **Remove Gotenberg's public domain** — it has no built-in auth, keep it on the internal network only
+- Set `GOTENBERG_URL` on the wallop service to the internal URL (e.g. `http://gotenberg.railway.internal:3000`)
+- For local dev: `docker run --rm -p 3000:3000 gotenberg/gotenberg:8`, defaults to `http://localhost:3000`
+
+### Notes
+
+- The PDF inherits the live proof page's entry anonymisation pattern (first character + mask). Both are scheduled to be removed in the entry identifier refactor — until then, the PDF matches what's on screen.
+- QR code linking back to the live proof page is a stretch goal, not in this iteration.
+- Pre-generation on draw completion (via an Oban job) is also stretch; current behaviour is lazy.
+
 ## [0.10.0] - 2026-04-07
 
 ### Added
