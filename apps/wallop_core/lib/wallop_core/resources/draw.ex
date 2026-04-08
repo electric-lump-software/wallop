@@ -147,15 +147,6 @@ defmodule WallopCore.Resources.Draw do
       change({WallopCore.Resources.Draw.Changes.BroadcastUpdate, []})
     end
 
-    update :execute_sandbox do
-      @doc "Executes a draw with the published sandbox seed. Only available in dev/test."
-      require_atomic?(false)
-      filter(expr(status == :awaiting_entropy))
-
-      change({WallopCore.Resources.Draw.Changes.ExecuteSandbox, []})
-      change({WallopCore.Resources.Draw.Changes.RecordStageTimestamp, key: "executed_at"})
-    end
-
     update :expire do
       require_atomic?(false)
       filter(expr(status == :open))
@@ -209,11 +200,6 @@ defmodule WallopCore.Resources.Draw do
     policy action(:execute) do
       forbid_unless(actor_present())
       authorize_if(expr(api_key_id == ^actor(:id) and status == :locked))
-    end
-
-    policy action(:execute_sandbox) do
-      forbid_unless(actor_present())
-      authorize_if(expr(api_key_id == ^actor(:id) and status == :awaiting_entropy))
     end
 
     policy action(:read) do
@@ -313,8 +299,9 @@ defmodule WallopCore.Resources.Draw do
     attribute :seed, :string do
       description(
         "64-character hex SHA-256 seed used to drive the draw algorithm. Derived from " <>
-          "drand + weather entropy (seed_source: entropy), a published constant for " <>
-          "sandbox draws (seed_source: sandbox), or supplied by the caller (seed_source: caller)."
+          "drand + weather entropy (seed_source: entropy) or supplied by the caller " <>
+          "(seed_source: caller). Sandbox draws live in a separate resource — see " <>
+          "`WallopCore.Resources.SandboxDraw`."
       )
 
       allow_nil?(true)
@@ -322,7 +309,7 @@ defmodule WallopCore.Resources.Draw do
     end
 
     attribute :seed_source, :atom do
-      constraints(one_of: [:caller, :entropy, :sandbox])
+      constraints(one_of: [:caller, :entropy])
       allow_nil?(true)
       public?(true)
     end

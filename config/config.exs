@@ -12,8 +12,7 @@ config :wallop_core,
   env: config_env(),
   ecto_repos: [WallopCore.Repo],
   generators: [timestamp_type: :utc_datetime_usec],
-  ash_domains: [WallopCore.Domain],
-  allow_sandbox_execution: config_env() != :prod
+  ash_domains: [WallopCore.Domain]
 
 # Oban config for the wallop service (processes draw jobs).
 # Consuming apps MUST override this with a different prefix — see README.

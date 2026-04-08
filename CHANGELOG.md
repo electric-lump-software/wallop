@@ -7,6 +7,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 🚨 BREAKING — wallop_core 0.11.0
+
+- **Sandbox draws are now a separate resource** (`WallopCore.Resources.SandboxDraw`) with their own table (`sandbox_draws`), own primary key, no foreign key to `draws`, no `operator_sequence`, no `OperatorReceipt`, and no transparency log membership. Sandbox draws are structurally incapable of being confused with real draws at the schema level. See PR that lands this for the full rationale — short version: the previous design had `execute_sandbox` as an update action on `Draw` gated only by a runtime config flag, the `seed_source` column could be set to `'sandbox'` post-lock, and the signed operator receipt did NOT commit to `seed_source`. Any consumer of `wallop_core` that set `allow_sandbox_execution: true` in its prod config could divert a real locked draw to sandbox execution before the entropy worker ran, with nothing cryptographic to contradict a later claim of "that was only a test." This is now a structural impossibility.
+- **Removed from `Draw`:** the `execute_sandbox` update action, its change module (`WallopCore.Resources.Draw.Changes.ExecuteSandbox`), and the `:sandbox` value from the `seed_source` `one_of` constraint (now `[:caller, :entropy]`).
+- **Removed from config:** `config :wallop_core, :allow_sandbox_execution` — the action it gated no longer exists.
+- **Immutability trigger rewritten:** the `awaiting_entropy → completed` transition is now forbidden entirely. The previous sandbox carve-out is gone. Any row attempting `seed_source = 'sandbox'` is also rejected at the trigger level, belt-and-braces against direct SQL.
+- **Migration drops any existing sandbox rows from `draws`** — pre-launch, no real data to preserve. Bypasses the trigger via `session_replication_role = 'replica'` since sandbox rows are typically in terminal state.
+
+#### Migration guide for consumers of wallop_core
+
+1. Bump your `wallop_core` dep to `0.11.0` (git tag).
+2. Search your codebase for `Draw.execute_sandbox`, `:execute_sandbox`, or `seed_source: :sandbox` — all three are now gone.
+3. Replace the create-lock-execute-sandbox flow with a single `SandboxDraw.create` call:
+   ```elixir
+   WallopCore.Resources.SandboxDraw
+   |> Ash.Changeset.for_create(:create, %{
+        name: "My test run",
+        winner_count: 3,
+        entries: [%{"id" => "ticket-1", "weight" => 1}, ...]
+      }, actor: api_key)
+   |> Ash.create!()
+   ```
+   Sandbox draws are create-and-execute in one transaction — no separate lock or execute step.
+4. If your app reads sandbox draws separately from real draws, update UI/admin code to query `SandboxDraw` instead of `Draw`. The two resources share no rows, no FKs, no sequence space.
+5. Drop any `allow_sandbox_execution` config entries from your `config.exs` / `runtime.exs` files — the key is unused.
+6. If your app shows sandbox draws on any public or operator-facing page, consider removing them entirely. Sandbox draws never belong on the real `operator_sequence` registry (`/op/:slug`); real-draw lineage must not be able to accidentally leak sandbox data.
+7. Run `mix ash.codegen` in your own repo if you need to generate a migration for any downstream changes. The `sandbox_draws` table is created by wallop_core's own migration and requires no consumer-side schema work.
+
+#### Rate limiting
+
+- Sandbox draws do **not** increment `ApiKey.monthly_draw_count`, do **not** consume monthly tier quota, and are **not** covered by `WallopWeb.Plugs.TierLimit` (which applies to real `Draw` HTTP routes only). Consumers exposing sandbox draws via their own HTTP API should apply their own rate limit — sandbox create-and-execute runs `fair_pick` synchronously on the request path with no entropy wait, making it the cheapest DoS surface in the system if left unprotected. The telemetry event below is the observability hook.
+
+#### Telemetry
+
+- New event: `[:wallop_core, :sandbox_draw, :create]`, measurements `%{count: 1, entry_count: n}`, metadata `%{api_key_id, operator_id, winner_count}`. Sandbox draws are unaudited by design (no receipt, no transparency log), so this event is the only way to observe abuse or unusual volume — attach it to Honeycomb or your alerting pipeline.
+
 ### Added
 
 - **Proof PDF embedded fingerprint** — every proof PDF now carries a canonical `proof.json` file embedded as a PDF attachment. The JSON contains the full verifiable record of the draw (`draw_id`, `entry_hash`, `seed`, `drand_*`, `weather_*`, `winners`, signed operator receipt, schema version, template revision, generated timestamp). JCS-canonical (RFC 8785) via the same `Jcs.encode/1` code path used by the operator receipt commitment.

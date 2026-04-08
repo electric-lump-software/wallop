@@ -49,11 +49,21 @@ defmodule WallopWeb.ProofPdfControllerTest do
       api_key = create_api_key()
       draw = create_draw(api_key)
 
-      # Force the draw into a terminal state via direct SQL
-      WallopCore.Repo.query!(
-        "UPDATE draws SET status = 'completed' WHERE id = $1",
-        [Ecto.UUID.dump!(draw.id)]
-      )
+      # Force the draw into a terminal state via direct SQL. The
+      # immutability trigger forbids awaiting_entropy → completed
+      # directly (PAM-670 closed that transition), so we bypass the
+      # trigger with session_replication_role = replica for this one
+      # test-only UPDATE. session_replication_role is a session-level
+      # setting, so both statements must run on the same connection —
+      # wrapping in a transaction guarantees that.
+      WallopCore.Repo.transaction(fn ->
+        WallopCore.Repo.query!("SET LOCAL session_replication_role = 'replica'")
+
+        WallopCore.Repo.query!(
+          "UPDATE draws SET status = 'completed' WHERE id = $1",
+          [Ecto.UUID.dump!(draw.id)]
+        )
+      end)
 
       # Pre-populate the cache so the controller doesn't need to call ChromicPDF
       :ok = ProofStorage.put(draw.id, "%PDF-1.4 fake bytes")
