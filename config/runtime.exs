@@ -61,9 +61,10 @@ if config_env() == :prod do
     config :wallop_web, :gotenberg_url, gotenberg_url
   end
 
-  # Proof PDF storage. If AWS_S3_BUCKET is set we use the S3 backend,
-  # otherwise fall back to the local filesystem (useful for self-hosters).
-  if bucket = System.get_env("AWS_S3_BUCKET") do
+  # Proof PDF storage. If AWS_S3_BUCKET_NAME is set we use the S3
+  # backend, otherwise fall back to the local filesystem (useful for
+  # self-hosters). Name matches Railway's convention.
+  if bucket = System.get_env("AWS_S3_BUCKET_NAME") do
     config :wallop_web, :proof_storage,
       backend: WallopWeb.ProofStorage.S3,
       s3: [
