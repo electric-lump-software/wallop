@@ -69,12 +69,14 @@ defmodule WallopWeb.ProofPdf do
   def generate(draw) do
     entries = WallopCore.Entries.load_for_draw(draw.id)
     {operator, receipt} = WallopCore.OperatorInfo.for_draw(draw)
+    winners = WallopCore.Proof.anonymise_results(draw.results || [])
 
     assigns = %{
       draw: draw,
       entries: entries,
       operator: operator,
       receipt: receipt,
+      winners: winners,
       public_url: public_url(draw.id),
       generated_at: DateTime.utc_now()
     }
@@ -85,7 +87,7 @@ defmodule WallopWeb.ProofPdf do
       |> Safe.to_iodata()
       |> IO.iodata_to_binary()
 
-    render_via_gotenberg(html)
+    render_via_gotenberg(html, logo_bytes())
   end
 
   @doc """
@@ -94,14 +96,28 @@ defmodule WallopWeb.ProofPdf do
   multipart form with an `index.html` file (plus any referenced assets);
   we only need the one file.
   """
-  @spec render_via_gotenberg(binary()) :: {:ok, binary()} | {:error, term()}
-  def render_via_gotenberg(html) when is_binary(html) do
+  @spec render_via_gotenberg(binary(), binary() | nil) ::
+          {:ok, binary()} | {:error, term()}
+  def render_via_gotenberg(html, logo \\ nil) when is_binary(html) do
     url = gotenberg_url() <> "/forms/chromium/convert/html"
 
+    files = [
+      {html, filename: "index.html", content_type: "text/html"}
+    ]
+
+    files =
+      case logo do
+        nil ->
+          files
+
+        bytes when is_binary(bytes) ->
+          files ++ [{bytes, filename: "logo.png", content_type: "image/png"}]
+      end
+
+    form_multipart = Enum.map(files, fn file -> {:files, file} end)
+
     case Req.post(url,
-           form_multipart: [
-             files: {html, filename: "index.html", content_type: "text/html"}
-           ],
+           form_multipart: form_multipart,
            receive_timeout: 30_000
          ) do
       {:ok, %Req.Response{status: 200, body: pdf}} ->
@@ -119,6 +135,19 @@ defmodule WallopWeb.ProofPdf do
 
   defp gotenberg_url do
     Application.get_env(:wallop_web, :gotenberg_url, "http://localhost:3000")
+  end
+
+  defp logo_bytes do
+    path = Application.app_dir(:wallop_web, "priv/static/images/logo.png")
+
+    case File.read(path) do
+      {:ok, bytes} ->
+        bytes
+
+      {:error, reason} ->
+        Logger.warning("ProofPdf: could not read logo at #{path}: #{inspect(reason)}")
+        nil
+    end
   end
 
   defp public_url(draw_id) do
