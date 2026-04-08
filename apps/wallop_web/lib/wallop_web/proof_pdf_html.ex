@@ -2,25 +2,22 @@ defmodule WallopWeb.ProofPdfHTML do
   @moduledoc """
   Renders the proof PDF as a full HTML document with print-specific CSS.
 
-  This is rendered by ChromicPDF (headless Chromium) into the final
-  binary. All CSS is inlined, all fonts use the default Chromium system
-  fonts, the only image is the Wallop logo which is served from the
-  static assets directory (ChromicPDF can load local files by absolute
-  path).
+  Fed to Gotenberg via `WallopWeb.ProofPdf.render_via_gotenberg/2` along
+  with the `logo.png` asset as a sibling file in the same multipart
+  request. The HTML references `<img src="logo.png">` and Gotenberg's
+  Chromium resolves it from the multipart payload at render time.
 
-  Layout mirrors the certificate-style described in PAM-432:
-  - Page 1: certificate front (logo, title, operator, summary, hashes)
-  - Page 2: verification chain (entropy, seed, signed receipt)
-  - Page 3+: full entries appendix
-  - Final page: verification recipe
+  Layout mirrors the feedback on the first iteration:
+  - Page 1: certificate front + winners (fits on one page for typical
+    draws because there's space under the hashes)
+  - Page 2: verification chain (entropy + seed)
+  - Page 3: signed operator receipt (separate page because the payload
+    is large)
+  - Page 4: verification recipe + auditor signature block
+  - Page 5+: entries appendix, last because its length is variable
   """
   use Phoenix.Component
 
-  @doc """
-  Top-level render. Takes `assigns` from `WallopWeb.ProofPdf.generate/1`
-  and returns a safe iolist / heex output suitable for feeding into
-  Chromium.
-  """
   def render(assigns) do
     ~H"""
     <!DOCTYPE html>
@@ -37,14 +34,12 @@ defmodule WallopWeb.ProofPdfHTML do
           entries={@entries}
           public_url={@public_url}
           generated_at={@generated_at}
+          winners={@winners}
         />
-        <.verification_chain_page
-          draw={@draw}
-          operator={@operator}
-          receipt={@receipt}
-        />
-        <.entries_appendix entries={@entries} draw={@draw} />
+        <.verification_chain_page draw={@draw} />
+        <.receipt_page operator={@operator} receipt={@receipt} :if={@receipt && @operator} />
         <.verification_recipe_page draw={@draw} public_url={@public_url} />
+        <.entries_appendix entries={@entries} />
       </body>
     </html>
     """
@@ -55,12 +50,13 @@ defmodule WallopWeb.ProofPdfHTML do
   attr(:entries, :list, required: true)
   attr(:public_url, :string, required: true)
   attr(:generated_at, :any, required: true)
+  attr(:winners, :list, required: true)
 
   defp certificate_page(assigns) do
     ~H"""
     <section class="page cert">
-      <header class="cert-header">
-        <div class="wordmark">Wallop!</div>
+      <header class="wordmark">
+        <img src="logo.png" alt="Wallop" class="logo" />
       </header>
 
       <h1 class="cert-title">Proof of Fair Draw</h1>
@@ -96,18 +92,25 @@ defmodule WallopWeb.ProofPdfHTML do
         </dd>
       </dl>
 
-      <footer class="cert-footer">
-        Verify online at
-        <span class="mono">{@public_url}</span>
+      <div :if={@winners != []} class="winners-block">
+        <h3>Winners</h3>
+        <ol class="winners">
+          <li :for={w <- @winners}>
+            <span class="pos">{w["position"]}</span>
+            <span class="mono">{w["entry_id"]}</span>
+          </li>
+        </ol>
+      </div>
+
+      <div class="cert-footer">
+        Verify online at <span class="mono">{@public_url}</span>
         · Generated {Calendar.strftime(@generated_at, "%Y-%m-%d %H:%M:%S UTC")}
-      </footer>
+      </div>
     </section>
     """
   end
 
   attr(:draw, :map, required: true)
-  attr(:operator, :map, default: nil)
-  attr(:receipt, :map, default: nil)
 
   defp verification_chain_page(assigns) do
     ~H"""
@@ -119,7 +122,7 @@ defmodule WallopWeb.ProofPdfHTML do
         <dt>Entry hash</dt>
         <dd class="mono wrap">{@draw.entry_hash || "—"}</dd>
         <dt>Canonical form</dt>
-        <dd>JCS (RFC 8785) canonical JSON, SHA-256</dd>
+        <dd>JCS (RFC 8785), SHA-256</dd>
       </dl>
 
       <h3>Drand entropy</h3>
@@ -146,7 +149,7 @@ defmodule WallopWeb.ProofPdfHTML do
             —
           <% end %>
         </dd>
-        <dt>Value</dt>
+        <dt>Value (°C)</dt>
         <dd class="mono">{@draw.weather_value}</dd>
       </dl>
 
@@ -162,59 +165,44 @@ defmodule WallopWeb.ProofPdfHTML do
         <dt>Seed</dt>
         <dd class="mono wrap">{@draw.seed || "—"}</dd>
         <dt>Canonical JSON</dt>
-        <dd class="mono wrap preblock">{@draw.seed_json || "—"}</dd>
+        <dd><pre class="mono preblock"><%= @draw.seed_json || "—" %></pre></dd>
       </dl>
+    </section>
+    """
+  end
 
-      <h3 :if={@draw.results && @draw.results != []}>Winners</h3>
-      <ol :if={@draw.results && @draw.results != []} class="winners">
-        <li :for={winner <- @draw.results} class="mono">
-          {winner_id(winner)}
-        </li>
-      </ol>
+  attr(:operator, :map, required: true)
+  attr(:receipt, :map, required: true)
 
-      <h3 :if={@receipt && @operator}>Operator receipt</h3>
-      <dl :if={@receipt && @operator}>
+  defp receipt_page(assigns) do
+    ~H"""
+    <section class="page">
+      <h2>Signed operator receipt</h2>
+      <p class="hint">
+        Committed in the same transaction as the draw lock. Anyone can verify
+        this receipt independently using the operator's public key.
+      </p>
+
+      <dl>
         <dt>Operator</dt>
         <dd>
           {@operator.name} <span class="operator-slug">@{@operator.slug}</span>
         </dd>
         <dt>Sequence</dt>
         <dd class="mono">#{@receipt.sequence}</dd>
-        <dt>Signing key</dt>
+        <dt>Signing key ID</dt>
         <dd class="mono">{@receipt.signing_key_id}</dd>
         <dt>Locked at</dt>
         <dd>
           {Calendar.strftime(@receipt.locked_at, "%Y-%m-%d %H:%M:%S UTC")}
         </dd>
-        <dt>Signed payload</dt>
-        <dd class="mono wrap preblock">{@receipt.payload_jcs}</dd>
-        <dt>Signature (base64)</dt>
-        <dd class="mono wrap">{Base.encode64(@receipt.signature)}</dd>
       </dl>
-    </section>
-    """
-  end
 
-  attr(:entries, :list, required: true)
-  attr(:draw, :map, required: true)
+      <h3>Signed payload (JCS)</h3>
+      <pre class="mono preblock"><%= @receipt.payload_jcs %></pre>
 
-  defp entries_appendix(assigns) do
-    ~H"""
-    <section class="page">
-      <h2>Entries</h2>
-      <p class="hint">
-        All {length(@entries)} entries included in this draw, exactly as committed
-        to the <code>entry_hash</code> on the certificate page. Anonymised in the
-        same format as the live proof page.
-      </p>
-      <ul class="entries mono">
-        <li :for={entry <- @entries}>
-          {anonymise(Map.get(entry, :id, ""))}
-          <span :if={Map.get(entry, :weight, 1) != 1} class="weight">
-            × {Map.get(entry, :weight, 1)}
-          </span>
-        </li>
-      </ul>
+      <h3>Signature (base64)</h3>
+      <pre class="mono preblock"><%= Base.encode64(@receipt.signature) %></pre>
     </section>
     """
   end
@@ -231,14 +219,16 @@ defmodule WallopWeb.ProofPdfHTML do
         <li>
           Fetch the drand beacon round
           <span class="mono">{@draw.drand_round || "—"}</span>
-          from any drand relay (e.g. <code>https://api.drand.sh</code>). Confirm
-          the randomness matches the value on the verification chain page.
+          from any drand relay (e.g. <span class="mono">https://api.drand.sh</span>).
+          Confirm the randomness matches the value on the verification chain page.
         </li>
         <li :if={@draw.weather_value}>
           Fetch the Met Office Middle Wallop observation for
-          {if @draw.weather_observation_time,
-            do: Calendar.strftime(@draw.weather_observation_time, "%Y-%m-%d %H:%M UTC"),
-            else: "the declared observation time"}.
+          <%= if @draw.weather_observation_time do %>
+            {Calendar.strftime(@draw.weather_observation_time, "%Y-%m-%d %H:%M UTC")}.
+          <% else %>
+            the declared observation time.
+          <% end %>
           Confirm the temperature value matches.
         </li>
         <li>
@@ -251,9 +241,9 @@ defmodule WallopWeb.ProofPdfHTML do
           matches the published seed.
         </li>
         <li>
-          Run <code>fair_pick</code> (open source, published on Hex.pm) with the
-          entries and seed. Confirm the selected winners match the list on the
-          verification chain page.
+          Run <span class="mono">fair_pick</span> (open source, published on Hex.pm)
+          with the entries and seed. Confirm the selected winners match the list
+          on the certificate page.
         </li>
         <li>
           Cross-check the signed operator receipt (if present) against the
@@ -267,12 +257,46 @@ defmodule WallopWeb.ProofPdfHTML do
         Full protocol details: <span class="mono">github.com/electric-lump-software/wallop</span>
       </p>
 
-      <footer class="cert-footer">
-        <p>
-          Verified by an auditor or witness:
-        </p>
-        <div class="signature-line">Name __________________________ Signature __________________________ Date __________</div>
-      </footer>
+      <div class="auditor">
+        <p class="auditor-title">Verified by an auditor or witness</p>
+        <div class="signature-grid">
+          <div>
+            <div class="sig-line"></div>
+            <div class="sig-label">Name</div>
+          </div>
+          <div>
+            <div class="sig-line"></div>
+            <div class="sig-label">Signature</div>
+          </div>
+          <div>
+            <div class="sig-line"></div>
+            <div class="sig-label">Date</div>
+          </div>
+        </div>
+      </div>
+    </section>
+    """
+  end
+
+  attr(:entries, :list, required: true)
+
+  defp entries_appendix(assigns) do
+    ~H"""
+    <section class="page appendix">
+      <h2>Entries (appendix)</h2>
+      <p class="hint">
+        All {length(@entries)} entries included in this draw, exactly as committed
+        to the <span class="mono">entry_hash</span> on the certificate page. Entry
+        identifiers are anonymised in the same format used by the live proof page.
+      </p>
+      <ul class="entries mono">
+        <li :for={entry <- @entries}>
+          {anonymise(Map.get(entry, :id, ""))}<span
+            :if={Map.get(entry, :weight, 1) != 1}
+            class="weight"
+          >× {Map.get(entry, :weight, 1)}</span>
+        </li>
+      </ul>
     </section>
     """
   end
@@ -285,21 +309,11 @@ defmodule WallopWeb.ProofPdfHTML do
   defp entry_word(1), do: "entry"
   defp entry_word(_), do: "entries"
 
-  defp winner_id(%{"id" => id}), do: id
-  defp winner_id(%{id: id}), do: id
-  defp winner_id(id) when is_binary(id), do: id
-  defp winner_id(_), do: ""
-
-  # Match the live proof page's masking so the PDF is consistent with
-  # what appears on screen. Dropped entirely once the entry identifier
-  # refactor lands — see PAM-627.
   defp anonymise(""), do: ""
 
   defp anonymise(id) when is_binary(id) do
-    case String.graphemes(id) do
-      [] -> ""
-      [first | _rest] -> first <> String.duplicate("•", min(byte_size(id) - 1, 12))
-    end
+    first = String.first(id) || ""
+    first <> String.duplicate("•", min(String.length(id) - 1, 8))
   end
 
   defp anonymise(_), do: ""
@@ -308,7 +322,7 @@ defmodule WallopWeb.ProofPdfHTML do
     """
     @page {
       size: A4;
-      margin: 20mm;
+      margin: 20mm 18mm;
     }
 
     * { box-sizing: border-box; }
@@ -316,48 +330,76 @@ defmodule WallopWeb.ProofPdfHTML do
     html, body {
       margin: 0;
       padding: 0;
-      background: #faf6ec;
+      background: #fffbf5;
       color: #1a1a1a;
-      font-family: Georgia, 'Times New Roman', serif;
+      font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI",
+                   Roboto, "Helvetica Neue", Arial, sans-serif;
       font-size: 11pt;
       line-height: 1.55;
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
     }
 
     .page {
       page-break-after: always;
-      min-height: 257mm;
-      padding: 0;
+      break-after: page;
     }
 
     .page:last-child {
       page-break-after: auto;
+      break-after: auto;
     }
 
-    h1 { font-size: 32pt; font-weight: 900; margin: 40mm 0 8mm; text-align: center; letter-spacing: -0.01em; }
-    h2 { font-size: 22pt; font-weight: 800; margin: 0 0 10mm; padding-bottom: 3mm; border-bottom: 2px solid #1a1a1a; }
-    h3 { font-size: 13pt; font-weight: 700; margin: 8mm 0 3mm; text-transform: uppercase; letter-spacing: 0.08em; color: #555; }
+    h1 {
+      font-size: 30pt;
+      font-weight: 900;
+      margin: 14mm 0 6mm;
+      text-align: center;
+      letter-spacing: -0.01em;
+    }
+
+    h2 {
+      font-size: 20pt;
+      font-weight: 800;
+      margin: 0 0 8mm;
+      padding-bottom: 3mm;
+      border-bottom: 2px solid #1a1a1a;
+    }
+
+    h3 {
+      font-size: 10pt;
+      font-weight: 700;
+      margin: 7mm 0 2mm;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: #555;
+    }
 
     .cert {
       text-align: center;
     }
 
-    .cert-header .wordmark {
-      font-size: 48pt;
-      font-weight: 900;
-      letter-spacing: -0.02em;
-      margin-bottom: 0;
+    .wordmark {
+      text-align: center;
+      margin: 0;
+    }
+
+    .logo {
+      height: 40mm;
+      width: auto;
+      display: inline-block;
     }
 
     .draw-name {
-      font-size: 18pt;
+      font-size: 16pt;
       font-style: italic;
-      margin: 4mm 0;
+      margin: 3mm 0;
       color: #555;
     }
 
     .operator-line {
-      font-size: 13pt;
-      margin: 4mm 0 10mm;
+      font-size: 12pt;
+      margin: 3mm 0 6mm;
     }
 
     .operator-name {
@@ -365,30 +407,30 @@ defmodule WallopWeb.ProofPdfHTML do
     }
 
     .operator-slug {
-      font-family: 'SFMono-Regular', Menlo, Consolas, monospace;
-      font-size: 11pt;
+      font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+      font-size: 10pt;
       color: #888;
       margin-left: 0.4em;
     }
 
     .summary {
-      font-size: 13pt;
+      font-size: 12pt;
       max-width: 140mm;
-      margin: 8mm auto 14mm;
-      line-height: 1.6;
+      margin: 4mm auto 8mm;
+      line-height: 1.55;
     }
 
     dl {
       display: grid;
-      grid-template-columns: 50mm 1fr;
+      grid-template-columns: 44mm 1fr;
       gap: 2mm 6mm;
-      margin: 4mm 0;
+      margin: 3mm 0;
     }
 
     dt {
       font-weight: 700;
       color: #555;
-      font-size: 10pt;
+      font-size: 9pt;
       text-transform: uppercase;
       letter-spacing: 0.05em;
       padding-top: 1mm;
@@ -396,17 +438,17 @@ defmodule WallopWeb.ProofPdfHTML do
 
     dd {
       margin: 0;
-      font-size: 11pt;
+      font-size: 10.5pt;
     }
 
-    .cert dl {
-      max-width: 150mm;
-      margin: 10mm auto;
+    .cert .fingerprints {
+      max-width: 155mm;
+      margin: 6mm auto;
       text-align: left;
     }
 
     .mono {
-      font-family: 'SFMono-Regular', Menlo, Consolas, monospace;
+      font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
       font-size: 9.5pt;
     }
 
@@ -415,10 +457,11 @@ defmodule WallopWeb.ProofPdfHTML do
     .preblock {
       white-space: pre-wrap;
       background: #fff;
-      border: 1px solid #e6e0cf;
-      padding: 3mm;
+      border: 1px solid #e8e0d5;
+      padding: 3mm 4mm;
       border-radius: 2mm;
       font-size: 8.5pt;
+      margin: 2mm 0;
     }
 
     .note {
@@ -429,20 +472,48 @@ defmodule WallopWeb.ProofPdfHTML do
       font-size: 10pt;
     }
 
+    .winners-block {
+      max-width: 155mm;
+      margin: 8mm auto 0;
+      text-align: left;
+    }
+
+    .winners-block h3 {
+      margin-top: 0;
+    }
+
     .winners {
-      padding-left: 6mm;
-      margin: 3mm 0;
+      list-style: none;
+      padding: 0;
+      margin: 2mm 0 0;
     }
 
     .winners li {
-      padding: 1.5mm 0;
-      border-bottom: 1px dotted #ccc;
+      display: flex;
+      align-items: center;
+      gap: 3mm;
+      padding: 1.8mm 0;
+      border-bottom: 1px dotted #d6ccb8;
+    }
+
+    .pos {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 6mm;
+      height: 6mm;
+      border-radius: 50%;
+      background: #1a1a1a;
+      color: #fff;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 8pt;
+      font-weight: 700;
     }
 
     .entries {
       list-style: none;
       padding: 0;
-      margin: 4mm 0;
+      margin: 3mm 0;
       columns: 2;
       column-gap: 8mm;
     }
@@ -456,6 +527,7 @@ defmodule WallopWeb.ProofPdfHTML do
     .entries .weight {
       color: #888;
       font-size: 8pt;
+      margin-left: 0.4em;
     }
 
     .recipe {
@@ -466,37 +538,57 @@ defmodule WallopWeb.ProofPdfHTML do
     .recipe li {
       margin-bottom: 4mm;
       padding-left: 2mm;
+      line-height: 1.55;
     }
 
     .hint {
       color: #666;
       font-size: 10pt;
-      margin: 4mm 0;
+      margin: 3mm 0 5mm;
     }
 
     .cert-footer {
-      position: absolute;
-      bottom: 20mm;
-      left: 20mm;
-      right: 20mm;
+      margin-top: 10mm;
       text-align: center;
-      font-size: 9pt;
+      font-size: 8pt;
       color: #888;
     }
 
-    .cert-footer .signature-line {
-      font-family: 'SFMono-Regular', Menlo, Consolas, monospace;
-      font-size: 9pt;
-      margin-top: 4mm;
+    .auditor {
+      margin-top: 18mm;
+      padding: 6mm 4mm;
+      border: 1px solid #e8e0d5;
+      border-radius: 2mm;
+      background: #fffbf5;
     }
 
-    code {
-      font-family: 'SFMono-Regular', Menlo, Consolas, monospace;
-      font-size: 9.5pt;
-      background: #fff;
-      border: 1px solid #e6e0cf;
-      padding: 0.5mm 1.5mm;
-      border-radius: 1mm;
+    .auditor-title {
+      margin: 0 0 6mm;
+      text-align: center;
+      font-size: 10pt;
+      font-weight: 700;
+      color: #555;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+
+    .signature-grid {
+      display: grid;
+      grid-template-columns: 2fr 3fr 1.2fr;
+      gap: 6mm;
+    }
+
+    .sig-line {
+      border-bottom: 1px solid #888;
+      height: 10mm;
+    }
+
+    .sig-label {
+      margin-top: 1mm;
+      font-size: 8pt;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: #888;
     }
     """
   end
