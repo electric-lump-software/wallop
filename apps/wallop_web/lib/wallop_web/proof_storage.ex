@@ -28,6 +28,9 @@ defmodule WallopWeb.ProofStorage do
   @callback put(draw_id :: String.t(), bytes :: binary()) :: :ok | {:error, term()}
   @callback get(draw_id :: String.t()) :: {:ok, binary()} | {:error, :not_found | term()}
   @callback exists?(draw_id :: String.t()) :: boolean()
+  @callback put_metadata(draw_id :: String.t(), json :: binary()) :: :ok | {:error, term()}
+  @callback get_metadata(draw_id :: String.t()) ::
+              {:ok, binary()} | {:error, :not_found | term()}
 
   @spec put(String.t(), binary()) :: :ok | {:error, term()}
   def put(draw_id, bytes), do: backend().put(draw_id, bytes)
@@ -37,6 +40,20 @@ defmodule WallopWeb.ProofStorage do
 
   @spec exists?(String.t()) :: boolean()
   def exists?(draw_id), do: backend().exists?(draw_id)
+
+  @doc """
+  Store the canonical proof.json fingerprint as a sidecar to the PDF.
+
+  Used by the regeneration invariant: when regenerating a PDF for an
+  existing draw, the new fingerprint must match the stored sidecar
+  modulo `template_revision` and `generated_at`. Anything else is a
+  data drift bug.
+  """
+  @spec put_metadata(String.t(), binary()) :: :ok | {:error, term()}
+  def put_metadata(draw_id, json), do: backend().put_metadata(draw_id, json)
+
+  @spec get_metadata(String.t()) :: {:ok, binary()} | {:error, :not_found | term()}
+  def get_metadata(draw_id), do: backend().get_metadata(draw_id)
 
   defp backend do
     Application.fetch_env!(:wallop_web, :proof_storage)[:backend]
