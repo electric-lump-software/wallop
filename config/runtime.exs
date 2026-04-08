@@ -6,6 +6,29 @@ if config_env() in [:dev, :test] do
   if met_key = env["MET_OFFICE_API_KEY"] do
     config :wallop_core, :met_office_api_key, met_key
   end
+
+  if config_env() == :dev do
+    vault_key =
+      env["VAULT_KEY"] ||
+        raise """
+        VAULT_KEY environment variable is not set.
+
+        The same VAULT_KEY must be used across wallop-app and wallop
+        because both connect to the same local Postgres database and
+        encrypt/decrypt each other's rows via WallopCore.Vault.
+
+        Copy the value from wallop-app/.env into wallop/.env — do not
+        generate a fresh one. To mint a new one from scratch for both
+        projects, use `openssl rand -base64 32` (not mix phx.gen.secret,
+        which produces a double-encoded value).
+        """
+
+    config :wallop_core, WallopCore.Vault,
+      ciphers: [
+        default:
+          {Cloak.Ciphers.AES.GCM, tag: "AES.GCM.V1", key: Base.decode64!(vault_key)}
+      ]
+  end
 end
 
 if honeycomb_api_key = System.get_env("HONEYCOMB_API_KEY") do

@@ -32,13 +32,10 @@ config :phoenix_live_view,
   debug_heex_annotations: true,
   enable_expensive_runtime_checks: true
 
-config :wallop_core, WallopCore.Vault,
-  ciphers: [
-    default:
-      {Cloak.Ciphers.AES.GCM,
-       tag: "AES.GCM.V1",
-       key: Base.decode64!("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=")}
-  ]
+# WallopCore.Vault is configured at runtime in config/runtime.exs so the
+# key can come from .env (VAULT_KEY). This must match the value used by
+# wallop-app because both projects share the same local Postgres and
+# encrypt/decrypt each other's rows.
 
 config :wallop_core, :met_office_api_key, System.get_env("MET_OFFICE_API_KEY", "dev-placeholder")
 
