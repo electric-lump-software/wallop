@@ -28,14 +28,9 @@ defmodule WallopWeb.ProofPdfHTML do
         <style><%= Phoenix.HTML.raw(css()) %></style>
       </head>
       <body>
-        <.certificate_page
-          draw={@draw}
-          operator={@operator}
-          entries={@entries}
-          public_url={@public_url}
-          generated_at={@generated_at}
-          winners={@winners}
-        />
+        <.page_footer public_url={@public_url} generated_at={@generated_at} />
+        <.certificate_page draw={@draw} operator={@operator} entries={@entries} />
+        <.summary_page draw={@draw} winners={@winners} />
         <.verification_chain_page draw={@draw} />
         <.receipt_page operator={@operator} receipt={@receipt} :if={@receipt && @operator} />
         <.verification_recipe_page draw={@draw} public_url={@public_url} />
@@ -45,12 +40,25 @@ defmodule WallopWeb.ProofPdfHTML do
     """
   end
 
+  attr(:public_url, :string, required: true)
+  attr(:generated_at, :any, required: true)
+
+  defp page_footer(assigns) do
+    ~H"""
+    <footer class="page-footer">
+      <div class="footer-line">
+        Verify online at <span class="mono">{@public_url}</span>
+      </div>
+      <div class="footer-line">
+        Generated {Calendar.strftime(@generated_at, "%Y-%m-%d %H:%M:%S UTC")}
+      </div>
+    </footer>
+    """
+  end
+
   attr(:draw, :map, required: true)
   attr(:operator, :map, default: nil)
   attr(:entries, :list, required: true)
-  attr(:public_url, :string, required: true)
-  attr(:generated_at, :any, required: true)
-  attr(:winners, :list, required: true)
 
   defp certificate_page(assigns) do
     ~H"""
@@ -75,10 +83,21 @@ defmodule WallopWeb.ProofPdfHTML do
         <strong>{length(@entries)}</strong> {entry_word(length(@entries))}
         using publicly verifiable entropy.
       </p>
+    </section>
+    """
+  end
 
-      <dl class="fingerprints">
+  attr(:draw, :map, required: true)
+  attr(:winners, :list, required: true)
+
+  defp summary_page(assigns) do
+    ~H"""
+    <section class="page">
+      <h2>Summary</h2>
+
+      <dl>
         <dt>Draw ID</dt>
-        <dd class="mono">{@draw.id}</dd>
+        <dd class="mono wrap">{@draw.id}</dd>
 
         <dt>Entry hash</dt>
         <dd class="mono wrap">{@draw.entry_hash || "—"}</dd>
@@ -100,11 +119,6 @@ defmodule WallopWeb.ProofPdfHTML do
             <span class="mono">{w["entry_id"]}</span>
           </li>
         </ol>
-      </div>
-
-      <div class="cert-footer">
-        Verify online at <span class="mono">{@public_url}</span>
-        · Generated {Calendar.strftime(@generated_at, "%Y-%m-%d %H:%M:%S UTC")}
       </div>
     </section>
     """
@@ -322,7 +336,8 @@ defmodule WallopWeb.ProofPdfHTML do
     """
     @page {
       size: A4;
-      margin: 20mm 18mm;
+      /* Bottom margin reserves room for the fixed page footer */
+      margin: 20mm 18mm 30mm 18mm;
     }
 
     * { box-sizing: border-box; }
@@ -561,13 +576,25 @@ defmodule WallopWeb.ProofPdfHTML do
       margin: 3mm 0 5mm;
     }
 
-    .cert-footer {
-      margin-top: 12mm;
+    /* Fixed-position element repeats on every page in print mode in
+       Chromium. Lives at the bottom of every page; CSS @page bottom
+       margin reserves the room. */
+    .page-footer {
+      position: fixed;
+      bottom: 8mm;
+      left: 18mm;
+      right: 18mm;
       text-align: center;
-      font-size: 10pt;
+      font-size: 9pt;
       color: #888;
+      line-height: 1.4;
       overflow-wrap: anywhere;
       word-break: break-all;
+    }
+
+    .footer-line {
+      display: block;
+      white-space: nowrap;
     }
 
     .auditor {
