@@ -39,5 +39,7 @@ defmodule WallopWeb.Endpoint do
   plug(Plug.Head)
   plug(Plug.Session, @session_options)
 
+  plug(WallopWeb.Plugs.PdfExtensionRewrite)
+
   plug(WallopWeb.Router)
 end
