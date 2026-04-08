@@ -61,6 +61,14 @@ if config_env() == :prod do
     config :wallop_web, :gotenberg_url, gotenberg_url
   end
 
+  # Caching is normally on (immutable PDFs cached forever). Set
+  # PROOF_PDF_CACHE_ENABLED=false during a design iteration phase to
+  # bypass storage and serve a freshly-rendered PDF on every request,
+  # with no-store cache headers.
+  config :wallop_web,
+         :proof_pdf_cache_enabled?,
+         System.get_env("PROOF_PDF_CACHE_ENABLED", "true") == "true"
+
   # Proof PDF storage. If AWS_S3_BUCKET_NAME is set we use the S3
   # backend, otherwise fall back to the local filesystem (useful for
   # self-hosters). Name matches Railway's convention.

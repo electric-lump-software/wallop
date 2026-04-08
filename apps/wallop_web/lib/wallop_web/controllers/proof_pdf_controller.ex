@@ -37,9 +37,16 @@ defmodule WallopWeb.ProofPdfController do
       {:ok, bytes} ->
         filename = "wallop-proof-#{draw.id}.pdf"
 
+        cache_header =
+          if ProofPdf.cache_enabled_for_response?() do
+            "public, max-age=31536000, immutable"
+          else
+            "no-store, no-cache, must-revalidate, max-age=0"
+          end
+
         conn
         |> put_resp_content_type("application/pdf")
-        |> put_resp_header("cache-control", "public, max-age=31536000, immutable")
+        |> put_resp_header("cache-control", cache_header)
         |> put_resp_header(
           "content-disposition",
           ~s(inline; filename="#{filename}")

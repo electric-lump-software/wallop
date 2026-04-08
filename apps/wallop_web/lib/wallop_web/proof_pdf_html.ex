@@ -28,14 +28,13 @@ defmodule WallopWeb.ProofPdfHTML do
         <style><%= Phoenix.HTML.raw(css()) %></style>
       </head>
       <body>
+        <.page_footer public_url={@public_url} generated_at={@generated_at} />
         <.certificate_page
           draw={@draw}
           operator={@operator}
           entries={@entries}
-          public_url={@public_url}
-          generated_at={@generated_at}
-          winners={@winners}
         />
+        <.summary_page draw={@draw} winners={@winners} />
         <.verification_chain_page draw={@draw} />
         <.receipt_page operator={@operator} receipt={@receipt} :if={@receipt && @operator} />
         <.verification_recipe_page draw={@draw} public_url={@public_url} />
@@ -45,12 +44,25 @@ defmodule WallopWeb.ProofPdfHTML do
     """
   end
 
+  attr(:public_url, :string, required: true)
+  attr(:generated_at, :any, required: true)
+
+  defp page_footer(assigns) do
+    ~H"""
+    <footer class="page-footer">
+      <div class="footer-line">
+        Verify online at <span class="mono">{@public_url}</span>
+      </div>
+      <div class="footer-line">
+        Generated {Calendar.strftime(@generated_at, "%Y-%m-%d %H:%M:%S UTC")}
+      </div>
+    </footer>
+    """
+  end
+
   attr(:draw, :map, required: true)
   attr(:operator, :map, default: nil)
   attr(:entries, :list, required: true)
-  attr(:public_url, :string, required: true)
-  attr(:generated_at, :any, required: true)
-  attr(:winners, :list, required: true)
 
   defp certificate_page(assigns) do
     ~H"""
@@ -75,10 +87,21 @@ defmodule WallopWeb.ProofPdfHTML do
         <strong>{length(@entries)}</strong> {entry_word(length(@entries))}
         using publicly verifiable entropy.
       </p>
+    </section>
+    """
+  end
 
-      <dl class="fingerprints">
+  attr(:draw, :map, required: true)
+  attr(:winners, :list, required: true)
+
+  defp summary_page(assigns) do
+    ~H"""
+    <section class="page">
+      <h2>Summary</h2>
+
+      <dl>
         <dt>Draw ID</dt>
-        <dd class="mono">{@draw.id}</dd>
+        <dd class="mono wrap">{@draw.id}</dd>
 
         <dt>Entry hash</dt>
         <dd class="mono wrap">{@draw.entry_hash || "—"}</dd>
@@ -100,11 +123,6 @@ defmodule WallopWeb.ProofPdfHTML do
             <span class="mono">{w["entry_id"]}</span>
           </li>
         </ol>
-      </div>
-
-      <div class="cert-footer">
-        Verify online at <span class="mono">{@public_url}</span>
-        · Generated {Calendar.strftime(@generated_at, "%Y-%m-%d %H:%M:%S UTC")}
       </div>
     </section>
     """
@@ -283,7 +301,7 @@ defmodule WallopWeb.ProofPdfHTML do
   defp entries_appendix(assigns) do
     ~H"""
     <section class="page appendix">
-      <h2>Entries (appendix)</h2>
+      <h2>Entries</h2>
       <p class="hint">
         All {length(@entries)} entries included in this draw, exactly as committed
         to the <span class="mono">entry_hash</span> on the certificate page. Entry
@@ -322,7 +340,8 @@ defmodule WallopWeb.ProofPdfHTML do
     """
     @page {
       size: A4;
-      margin: 20mm 18mm;
+      /* Bottom margin reserves room for the fixed page footer */
+      margin: 20mm 18mm 30mm 18mm;
     }
 
     * { box-sizing: border-box; }
@@ -334,7 +353,7 @@ defmodule WallopWeb.ProofPdfHTML do
       color: #1a1a1a;
       font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI",
                    Roboto, "Helvetica Neue", Arial, sans-serif;
-      font-size: 11pt;
+      font-size: 13pt;
       line-height: 1.55;
       -webkit-print-color-adjust: exact;
       print-color-adjust: exact;
@@ -351,15 +370,15 @@ defmodule WallopWeb.ProofPdfHTML do
     }
 
     h1 {
-      font-size: 30pt;
+      font-size: 38pt;
       font-weight: 900;
-      margin: 14mm 0 6mm;
+      margin: 12mm 0 6mm;
       text-align: center;
       letter-spacing: -0.01em;
     }
 
     h2 {
-      font-size: 20pt;
+      font-size: 24pt;
       font-weight: 800;
       margin: 0 0 8mm;
       padding-bottom: 3mm;
@@ -367,9 +386,9 @@ defmodule WallopWeb.ProofPdfHTML do
     }
 
     h3 {
-      font-size: 10pt;
+      font-size: 12pt;
       font-weight: 700;
-      margin: 7mm 0 2mm;
+      margin: 8mm 0 3mm;
       text-transform: uppercase;
       letter-spacing: 0.08em;
       color: #555;
@@ -385,20 +404,20 @@ defmodule WallopWeb.ProofPdfHTML do
     }
 
     .logo {
-      height: 40mm;
+      height: 60mm;
       width: auto;
       display: inline-block;
     }
 
     .draw-name {
-      font-size: 16pt;
+      font-size: 18pt;
       font-style: italic;
       margin: 3mm 0;
       color: #555;
     }
 
     .operator-line {
-      font-size: 12pt;
+      font-size: 14pt;
       margin: 3mm 0 6mm;
     }
 
@@ -408,29 +427,29 @@ defmodule WallopWeb.ProofPdfHTML do
 
     .operator-slug {
       font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
-      font-size: 10pt;
+      font-size: 12pt;
       color: #888;
       margin-left: 0.4em;
     }
 
     .summary {
-      font-size: 12pt;
-      max-width: 140mm;
+      font-size: 14pt;
+      max-width: 150mm;
       margin: 4mm auto 8mm;
       line-height: 1.55;
     }
 
     dl {
       display: grid;
-      grid-template-columns: 44mm 1fr;
-      gap: 2mm 6mm;
-      margin: 3mm 0;
+      grid-template-columns: 50mm 1fr;
+      gap: 3mm 6mm;
+      margin: 4mm 0;
     }
 
     dt {
       font-weight: 700;
       color: #555;
-      font-size: 9pt;
+      font-size: 10pt;
       text-transform: uppercase;
       letter-spacing: 0.05em;
       padding-top: 1mm;
@@ -438,30 +457,41 @@ defmodule WallopWeb.ProofPdfHTML do
 
     dd {
       margin: 0;
-      font-size: 10.5pt;
+      font-size: 12pt;
+      min-width: 0;
+      overflow-wrap: anywhere;
+      word-break: break-word;
     }
 
     .cert .fingerprints {
-      max-width: 155mm;
+      max-width: 160mm;
       margin: 6mm auto;
       text-align: left;
     }
 
     .mono {
       font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
-      font-size: 9.5pt;
+      font-size: 11pt;
+      overflow-wrap: anywhere;
+      word-break: break-all;
     }
 
-    .wrap { word-break: break-all; }
+    .wrap {
+      overflow-wrap: anywhere;
+      word-break: break-all;
+    }
 
     .preblock {
       white-space: pre-wrap;
+      overflow-wrap: anywhere;
+      word-break: break-all;
       background: #fff;
       border: 1px solid #e8e0d5;
-      padding: 3mm 4mm;
+      padding: 4mm 5mm;
       border-radius: 2mm;
-      font-size: 8.5pt;
+      font-size: 10pt;
       margin: 2mm 0;
+      max-width: 100%;
     }
 
     .note {
@@ -491,8 +521,8 @@ defmodule WallopWeb.ProofPdfHTML do
     .winners li {
       display: flex;
       align-items: center;
-      gap: 3mm;
-      padding: 1.8mm 0;
+      gap: 4mm;
+      padding: 2mm 0;
       border-bottom: 1px dotted #d6ccb8;
     }
 
@@ -500,14 +530,15 @@ defmodule WallopWeb.ProofPdfHTML do
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      width: 6mm;
-      height: 6mm;
+      width: 8mm;
+      height: 8mm;
       border-radius: 50%;
       background: #1a1a1a;
       color: #fff;
       font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-      font-size: 8pt;
+      font-size: 10pt;
       font-weight: 700;
+      flex-shrink: 0;
     }
 
     .entries {
@@ -519,14 +550,16 @@ defmodule WallopWeb.ProofPdfHTML do
     }
 
     .entries li {
-      padding: 0.8mm 0;
-      font-size: 9pt;
+      padding: 1mm 0;
+      font-size: 11pt;
       break-inside: avoid;
+      overflow-wrap: anywhere;
+      word-break: break-all;
     }
 
     .entries .weight {
       color: #888;
-      font-size: 8pt;
+      font-size: 10pt;
       margin-left: 0.4em;
     }
 
@@ -536,27 +569,41 @@ defmodule WallopWeb.ProofPdfHTML do
     }
 
     .recipe li {
-      margin-bottom: 4mm;
+      margin-bottom: 5mm;
       padding-left: 2mm;
       line-height: 1.55;
     }
 
     .hint {
       color: #666;
-      font-size: 10pt;
+      font-size: 12pt;
       margin: 3mm 0 5mm;
     }
 
-    .cert-footer {
-      margin-top: 10mm;
+    /* Fixed-position element repeats on every page in print mode in
+       Chromium. Lives at the bottom of every page; CSS @page bottom
+       margin reserves the room. */
+    .page-footer {
+      position: fixed;
+      bottom: 8mm;
+      left: 18mm;
+      right: 18mm;
       text-align: center;
-      font-size: 8pt;
+      font-size: 9pt;
       color: #888;
+      line-height: 1.4;
+      overflow-wrap: anywhere;
+      word-break: break-all;
+    }
+
+    .footer-line {
+      display: block;
+      white-space: nowrap;
     }
 
     .auditor {
       margin-top: 18mm;
-      padding: 6mm 4mm;
+      padding: 6mm 5mm;
       border: 1px solid #e8e0d5;
       border-radius: 2mm;
       background: #fffbf5;
@@ -565,7 +612,7 @@ defmodule WallopWeb.ProofPdfHTML do
     .auditor-title {
       margin: 0 0 6mm;
       text-align: center;
-      font-size: 10pt;
+      font-size: 11pt;
       font-weight: 700;
       color: #555;
       text-transform: uppercase;
@@ -580,12 +627,12 @@ defmodule WallopWeb.ProofPdfHTML do
 
     .sig-line {
       border-bottom: 1px solid #888;
-      height: 10mm;
+      height: 12mm;
     }
 
     .sig-label {
       margin-top: 1mm;
-      font-size: 8pt;
+      font-size: 10pt;
       text-transform: uppercase;
       letter-spacing: 0.06em;
       color: #888;
