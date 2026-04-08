@@ -39,6 +39,7 @@ defmodule WallopWeb.Router do
   scope "/", WallopWeb do
     pipe_through(:browser)
     live("/", HomeLive)
+    get("/proof/:id/pdf", ProofPdfController, :show)
     get("/proof/:id/:entry_id", ProofController, :show)
     get("/proof/:id", ProofController, :show)
     live("/live/proof/:id/:entry_id", ProofLive)

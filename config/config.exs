@@ -56,6 +56,19 @@ config :tailwind,
     cd: Path.expand("../apps/wallop_web/assets", __DIR__)
   ]
 
+config :wallop_web, :proof_storage,
+  backend: WallopWeb.ProofStorage.Filesystem,
+  filesystem: [root: Path.expand("../priv/proof_pdfs", __DIR__)]
+
+# Gotenberg sidecar (HTML → PDF via headless Chromium). Run locally with
+# `docker run --rm -p 3000:3000 gotenberg/gotenberg:8`. Prod overrides
+# via GOTENBERG_URL env var in runtime.exs.
+config :wallop_web, :gotenberg_url, "http://localhost:3000"
+
+# ex_aws S3 client defaults. Prod overrides via env vars in runtime.exs.
+config :ex_aws,
+  json_codec: Jason
+
 config :ash, :tracer, [OpentelemetryAsh]
 
 config :opentelemetry_ash,
