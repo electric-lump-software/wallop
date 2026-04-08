@@ -2,8 +2,8 @@
 
 > **Status:** v1, 2026-04-08. Pre-launch. Living document — update as the
 > system changes. The protocol-level spec lives at
-> [`docs/specs/fair-pick-protocol.md`](specs/fair-pick-protocol.md); this
-> document is about the *enforcement* of the claims that spec makes.
+> [`spec/protocol.md`](protocol.md); this document is about the
+> *enforcement* of the claims that spec makes.
 >
 > **How to use this:** every PR that touches a protocol-critical resource
 > should be reviewed against the **invariants** in §2 and the **enforcement
