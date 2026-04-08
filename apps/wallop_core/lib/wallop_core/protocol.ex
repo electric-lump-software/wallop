@@ -3,7 +3,7 @@ defmodule WallopCore.Protocol do
   Wallop commit-reveal protocol operations.
 
   Entry hashing (§2.1) and seed computation (§2.3) as defined in
-  docs/specs/fair-pick-protocol.md.
+  `spec/protocol.md`.
   """
 
   @doc """
