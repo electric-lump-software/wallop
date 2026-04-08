@@ -6,7 +6,7 @@ defmodule WallopCore.Resources.ApiKeyTest do
   defp create_key(name \\ "test key") do
     ApiKey
     |> Ash.Changeset.for_create(:create, %{name: name})
-    |> Ash.create()
+    |> Ash.create(authorize?: false)
   end
 
   describe "create" do
@@ -53,7 +53,7 @@ defmodule WallopCore.Resources.ApiKeyTest do
       {:ok, deactivated} =
         key
         |> Ash.Changeset.for_update(:deactivate, %{})
-        |> Ash.update()
+        |> Ash.update(authorize?: false)
 
       assert deactivated.active == false
       assert deactivated.deactivated_at != nil
@@ -80,7 +80,7 @@ defmodule WallopCore.Resources.ApiKeyTest do
           monthly_draw_limit: 50,
           count_reset_at: reset_at
         })
-        |> Ash.create()
+        |> Ash.create(authorize?: false)
 
       assert key.tier == "starter"
       assert key.monthly_draw_limit == 50
@@ -100,7 +100,7 @@ defmodule WallopCore.Resources.ApiKeyTest do
           monthly_draw_limit: 1000,
           count_reset_at: reset_at
         })
-        |> Ash.update()
+        |> Ash.update(authorize?: false)
 
       assert updated.tier == "pro"
       assert updated.monthly_draw_limit == 1000
@@ -115,7 +115,7 @@ defmodule WallopCore.Resources.ApiKeyTest do
       {:ok, updated} =
         key
         |> Ash.Changeset.for_update(:increment_draw_count, %{})
-        |> Ash.update()
+        |> Ash.update(authorize?: false)
 
       assert updated.monthly_draw_count == 1
       assert updated.count_reset_at != nil
@@ -127,7 +127,7 @@ defmodule WallopCore.Resources.ApiKeyTest do
       {:ok, key} =
         ApiKey
         |> Ash.Changeset.for_create(:create, %{name: "x", count_reset_at: future})
-        |> Ash.create()
+        |> Ash.create(authorize?: false)
 
       # Bump count to 5 directly
       WallopCore.Repo.query!(
@@ -140,7 +140,7 @@ defmodule WallopCore.Resources.ApiKeyTest do
       {:ok, updated} =
         key
         |> Ash.Changeset.for_update(:increment_draw_count, %{})
-        |> Ash.update()
+        |> Ash.update(authorize?: false)
 
       assert updated.monthly_draw_count == 6
       assert DateTime.compare(updated.count_reset_at, future) == :eq
@@ -152,7 +152,7 @@ defmodule WallopCore.Resources.ApiKeyTest do
       {:ok, key} =
         ApiKey
         |> Ash.Changeset.for_create(:create, %{name: "x", count_reset_at: past})
-        |> Ash.create()
+        |> Ash.create(authorize?: false)
 
       WallopCore.Repo.query!(
         "UPDATE api_keys SET monthly_draw_count = 100 WHERE id = $1",
@@ -164,7 +164,7 @@ defmodule WallopCore.Resources.ApiKeyTest do
       {:ok, updated} =
         key
         |> Ash.Changeset.for_update(:increment_draw_count, %{})
-        |> Ash.update()
+        |> Ash.update(authorize?: false)
 
       assert updated.monthly_draw_count == 1
       assert DateTime.compare(updated.count_reset_at, DateTime.utc_now()) == :gt

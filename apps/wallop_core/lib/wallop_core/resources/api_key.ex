@@ -9,7 +9,8 @@ defmodule WallopCore.Resources.ApiKey do
   use Ash.Resource,
     otp_app: :wallop_core,
     domain: WallopCore.Domain,
-    data_layer: AshPostgres.DataLayer
+    data_layer: AshPostgres.DataLayer,
+    authorizers: [Ash.Policy.Authorizer]
 
   postgres do
     table("api_keys")
@@ -51,6 +52,32 @@ defmodule WallopCore.Resources.ApiKey do
       require_atomic?(false)
       change(set_attribute(:monthly_draw_count, 0))
       change({WallopCore.Resources.ApiKey.Changes.AdvanceResetAt, []})
+    end
+  end
+
+  policies do
+    # An actor (an authenticated api key) can read its own row. Anything that
+    # needs to read a different api key (lookups by prefix during auth, admin
+    # views) must use `authorize?: false`.
+    policy action(:read) do
+      forbid_unless(actor_present())
+      authorize_if(expr(id == ^actor(:id)))
+    end
+
+    # All admin/management actions are forbidden via Ash policies. Legitimate
+    # callers (mix wallop.gen.api_key, wallop-app admin endpoints, internal
+    # change modules) MUST pass `authorize?: false`. PAM-689: without this,
+    # any caller could mint an api key for any operator and impersonate them
+    # under the operator's REAL signing key.
+    policy action([
+             :create,
+             :set_operator,
+             :deactivate,
+             :update_tier,
+             :increment_draw_count,
+             :reset_draw_count
+           ]) do
+      forbid_if(always())
     end
   end
 

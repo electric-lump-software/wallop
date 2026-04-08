@@ -22,7 +22,7 @@ defmodule WallopCore.TestHelpers do
     api_key =
       WallopCore.Resources.ApiKey
       |> Ash.Changeset.for_create(:create, create_attrs)
-      |> Ash.create!()
+      |> Ash.create!(authorize?: false)
 
     case Map.get(attrs, :monthly_draw_count) do
       nil ->
@@ -124,7 +124,7 @@ defmodule WallopCore.TestHelpers do
     {:ok, operator} =
       WallopCore.Resources.Operator
       |> Ash.Changeset.for_create(:create, %{slug: slug, name: name})
-      |> Ash.create()
+      |> Ash.create(authorize?: false)
 
     {public_key, private_key} = :crypto.generate_key(:eddsa, :ed25519)
     key_id = WallopCore.Protocol.key_id(public_key)
@@ -139,7 +139,7 @@ defmodule WallopCore.TestHelpers do
         private_key: encrypted,
         valid_from: DateTime.add(DateTime.utc_now(), -60, :second)
       })
-      |> Ash.create()
+      |> Ash.create(authorize?: false)
 
     operator
   end
@@ -148,6 +148,6 @@ defmodule WallopCore.TestHelpers do
   def create_api_key_for_operator(operator, name \\ "op-key") do
     WallopCore.Resources.ApiKey
     |> Ash.Changeset.for_create(:create, %{name: name, operator_id: operator.id})
-    |> Ash.create!()
+    |> Ash.create!(authorize?: false)
   end
 end

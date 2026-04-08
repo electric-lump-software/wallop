@@ -11,7 +11,7 @@ defmodule WallopCore.Resources.OperatorTest do
       {:ok, op} =
         Operator
         |> Ash.Changeset.for_create(:create, %{slug: "acme-prizes", name: "Acme"})
-        |> Ash.create()
+        |> Ash.create(authorize?: false)
 
       assert to_string(op.slug) == "acme-prizes"
       assert op.name == "Acme"
@@ -21,7 +21,7 @@ defmodule WallopCore.Resources.OperatorTest do
       assert {:error, %Ash.Error.Invalid{}} =
                Operator
                |> Ash.Changeset.for_create(:create, %{slug: "admin", name: "x"})
-               |> Ash.create()
+               |> Ash.create(authorize?: false)
     end
 
     test "rejects bad slug formats" do
@@ -36,7 +36,7 @@ defmodule WallopCore.Resources.OperatorTest do
         assert {:error, _} =
                  Operator
                  |> Ash.Changeset.for_create(:create, %{slug: bad, name: "x"})
-                 |> Ash.create()
+                 |> Ash.create(authorize?: false)
       end
     end
 
@@ -46,7 +46,7 @@ defmodule WallopCore.Resources.OperatorTest do
       assert {:error, _} =
                Operator
                |> Ash.Changeset.for_create(:create, %{slug: "dup-slug", name: "y"})
-               |> Ash.create()
+               |> Ash.create(authorize?: false)
     end
   end
 
@@ -172,7 +172,7 @@ defmodule WallopCore.Resources.OperatorTest do
       {:ok, op} =
         Operator
         |> Ash.Changeset.for_create(:create, %{slug: "pt-create-test", name: "Original"})
-        |> Ash.create()
+        |> Ash.create(authorize?: false)
 
       versions =
         Operator.Version
@@ -189,12 +189,12 @@ defmodule WallopCore.Resources.OperatorTest do
       {:ok, op} =
         Operator
         |> Ash.Changeset.for_create(:create, %{slug: "pt-update-test", name: "Original"})
-        |> Ash.create()
+        |> Ash.create(authorize?: false)
 
       {:ok, _updated} =
         op
         |> Ash.Changeset.for_update(:update_name, %{name: "Renamed"})
-        |> Ash.update()
+        |> Ash.update(authorize?: false)
 
       versions =
         Operator.Version
@@ -213,12 +213,12 @@ defmodule WallopCore.Resources.OperatorTest do
       {:ok, op} =
         Operator
         |> Ash.Changeset.for_create(:create, %{slug: "pt-reject-test", name: "Original"})
-        |> Ash.create()
+        |> Ash.create(authorize?: false)
 
       assert {:error, _} =
                op
                |> Ash.Changeset.for_update(:update_name, %{name: String.duplicate("a", 200)})
-               |> Ash.update()
+               |> Ash.update(authorize?: false)
 
       versions =
         Operator.Version
