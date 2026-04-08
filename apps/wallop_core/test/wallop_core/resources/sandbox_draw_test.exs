@@ -219,7 +219,10 @@ defmodule WallopCore.Resources.SandboxDrawTest do
       # semantics will break this assertion loudly.
       assert length(sandbox.results) == 3
       assert Enum.map(sandbox.results, & &1["position"]) == [1, 2, 3]
-      assert Enum.all?(sandbox.results, fn r -> r["entry_id"] in ~w(alpha bravo charlie delta echo) end)
+
+      assert Enum.all?(sandbox.results, fn r ->
+               r["entry_id"] in ~w(alpha bravo charlie delta echo)
+             end)
 
       # Pin the seed as well — if this changes, @seed_input was tampered with.
       assert sandbox.seed ==
@@ -227,7 +230,9 @@ defmodule WallopCore.Resources.SandboxDrawTest do
     end
 
     test "emits [:wallop_core, :sandbox_draw, :create] telemetry event" do
-      ref = :telemetry_test.attach_event_handlers(self(), [[:wallop_core, :sandbox_draw, :create]])
+      ref =
+        :telemetry_test.attach_event_handlers(self(), [[:wallop_core, :sandbox_draw, :create]])
+
       api_key = create_api_key()
 
       SandboxDraw
