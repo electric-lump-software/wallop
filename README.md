@@ -116,6 +116,22 @@ mix format
 mix credo --strict
 ```
 
+### Environment variables (`.env`)
+
+Wallop reads `.env` via Dotenvy in dev and test. The only required entry for a fresh clone is `VAULT_KEY` — a base64-encoded 32-byte AES key used by `WallopCore.Vault` to encrypt sensitive fields (operator signing keys, webhook secrets, etc).
+
+Generate one once and append to `.env`:
+
+```bash
+openssl rand -base64 32 | awk '{print "VAULT_KEY=" $0}' >> .env
+```
+
+Keep this key stable across restarts — rotating it will make any previously-encrypted row in your local database undecryptable. If you ever want to start fresh: delete the key from `.env`, generate a new one, and run `mix reset`.
+
+If you run `wallop-app` (or any other consumer of `wallop_core`) against the same local Postgres database, you **must use the same `VAULT_KEY` value in both projects' `.env` files**. Both BEAMs encrypt and decrypt rows in the shared `wallop_dev` DB, and a mismatch will produce `Cloak.MissingCipher` errors at runtime for any row written by the other project.
+
+Production sets the same variable via the platform's env var mechanism (Railway).
+
 ## Status
 
 Active development. The algorithm, protocol layer, API, entropy layer (drand + Met Office weather), and public proof pages are all implemented.
