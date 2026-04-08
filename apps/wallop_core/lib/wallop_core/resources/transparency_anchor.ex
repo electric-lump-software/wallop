@@ -15,7 +15,8 @@ defmodule WallopCore.Resources.TransparencyAnchor do
   use Ash.Resource,
     otp_app: :wallop_core,
     domain: WallopCore.Domain,
-    data_layer: AshPostgres.DataLayer
+    data_layer: AshPostgres.DataLayer,
+    authorizers: [Ash.Policy.Authorizer]
 
   postgres do
     table("transparency_anchors")
@@ -35,6 +36,20 @@ defmodule WallopCore.Resources.TransparencyAnchor do
         :external_anchor_evidence,
         :anchored_at
       ])
+    end
+  end
+
+  policies do
+    # The transparency log is the public attestation — anyone can read.
+    policy action(:read) do
+      authorize_if(always())
+    end
+
+    # Only AnchorWorker (cron) creates anchors, via `authorize?: false`.
+    # PAM-691: without this policy, any caller could pollute the
+    # transparency log with garbage anchors and undermine its trust story.
+    policy action(:create) do
+      forbid_if(always())
     end
   end
 

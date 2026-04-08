@@ -14,7 +14,8 @@ defmodule WallopCore.Resources.OperatorReceipt do
   use Ash.Resource,
     otp_app: :wallop_core,
     domain: WallopCore.Domain,
-    data_layer: AshPostgres.DataLayer
+    data_layer: AshPostgres.DataLayer,
+    authorizers: [Ash.Policy.Authorizer]
 
   postgres do
     table("operator_receipts")
@@ -36,6 +37,20 @@ defmodule WallopCore.Resources.OperatorReceipt do
         :payload_jcs,
         :signature
       ])
+    end
+  end
+
+  policies do
+    # Receipts are the public verification artefact — anyone can read them.
+    policy action(:read) do
+      authorize_if(always())
+    end
+
+    # Creation must go through SignAndStoreReceipt with `authorize?: false`.
+    # PAM-687: without this policy, any caller could forge receipts or DoS
+    # in-flight draws by preempting the unique-draw insert.
+    policy action(:create) do
+      forbid_if(always())
     end
   end
 

@@ -14,7 +14,8 @@ defmodule WallopCore.Resources.OperatorSigningKey do
   use Ash.Resource,
     otp_app: :wallop_core,
     domain: WallopCore.Domain,
-    data_layer: AshPostgres.DataLayer
+    data_layer: AshPostgres.DataLayer,
+    authorizers: [Ash.Policy.Authorizer]
 
   postgres do
     table("operator_signing_keys")
@@ -26,6 +27,20 @@ defmodule WallopCore.Resources.OperatorSigningKey do
 
     create :create do
       accept([:operator_id, :key_id, :public_key, :private_key, :valid_from])
+    end
+  end
+
+  policies do
+    # Public keys are read freely — verifiers need them to check signatures
+    policy action(:read) do
+      authorize_if(always())
+    end
+
+    # Creation must go through internal bootstrap code (mix wallop.gen.operator,
+    # admin endpoints) with `authorize?: false`. PAM-686: without this policy,
+    # any caller could substitute an operator's signing key.
+    policy action(:create) do
+      forbid_if(always())
     end
   end
 

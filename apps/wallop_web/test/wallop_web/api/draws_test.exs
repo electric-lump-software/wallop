@@ -5,7 +5,7 @@ defmodule WallopWeb.Api.DrawsTest do
     {:ok, api_key} =
       WallopCore.Resources.ApiKey
       |> Ash.Changeset.for_create(:create, %{name: name})
-      |> Ash.create()
+      |> Ash.create(authorize?: false)
 
     raw_key = api_key.__metadata__.raw_key
     {api_key, raw_key}
