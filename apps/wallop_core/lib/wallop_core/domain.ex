@@ -17,6 +17,7 @@ defmodule WallopCore.Domain do
   resources do
     resource(WallopCore.Resources.ApiKey)
     resource(WallopCore.Resources.Draw)
+    resource(WallopCore.Resources.SandboxDraw)
     resource(WallopCore.Resources.Entry)
     resource(WallopCore.Resources.Operator)
     resource(WallopCore.Resources.Operator.Version)

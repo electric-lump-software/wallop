@@ -264,7 +264,7 @@
                     "type": "null"
                   }
                 ],
-                "description": "64-character hex SHA-256 seed used to drive the draw algorithm. Derived from drand + weather entropy (seed_source: entropy), a published constant for sandbox draws (seed_source: sandbox), or supplied by the caller (seed_source: caller). Field included by default."
+                "description": "64-character hex SHA-256 seed used to drive the draw algorithm. Derived from drand + weather entropy (seed_source: entropy) or supplied by the caller (seed_source: caller). Sandbox draws live in a separate resource — see `WallopCore.Resources.SandboxDraw`. Field included by default."
               },
               "seed_json": {
                 "anyOf": [
@@ -283,8 +283,7 @@
                   {
                     "enum": [
                       "caller",
-                      "entropy",
-                      "sandbox"
+                      "entropy"
                     ],
                     "nullable": true,
                     "type": "string"
@@ -532,7 +531,7 @@
       },
       "draw-filter-seed": {
         "additionalProperties": false,
-        "description": "64-character hex SHA-256 seed used to drive the draw algorithm. Derived from drand + weather entropy (seed_source: entropy), a published constant for sandbox draws (seed_source: sandbox), or supplied by the caller (seed_source: caller).",
+        "description": "64-character hex SHA-256 seed used to drive the draw algorithm. Derived from drand + weather entropy (seed_source: entropy) or supplied by the caller (seed_source: caller). Sandbox draws live in a separate resource — see `WallopCore.Resources.SandboxDraw`.",
         "properties": {
           "contains": {
             "type": "string"
@@ -679,24 +678,21 @@
           "eq": {
             "enum": [
               "caller",
-              "entropy",
-              "sandbox"
+              "entropy"
             ],
             "type": "string"
           },
           "greater_than": {
             "enum": [
               "caller",
-              "entropy",
-              "sandbox"
+              "entropy"
             ],
             "type": "string"
           },
           "greater_than_or_equal": {
             "enum": [
               "caller",
-              "entropy",
-              "sandbox"
+              "entropy"
             ],
             "type": "string"
           },
@@ -718,24 +714,21 @@
           "less_than": {
             "enum": [
               "caller",
-              "entropy",
-              "sandbox"
+              "entropy"
             ],
             "type": "string"
           },
           "less_than_or_equal": {
             "enum": [
               "caller",
-              "entropy",
-              "sandbox"
+              "entropy"
             ],
             "type": "string"
           },
           "not_eq": {
             "enum": [
               "caller",
-              "entropy",
-              "sandbox"
+              "entropy"
             ],
             "type": "string"
           }
