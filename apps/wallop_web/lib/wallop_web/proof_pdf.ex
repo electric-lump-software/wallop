@@ -35,10 +35,18 @@ defmodule WallopWeb.ProofPdf do
   """
   @spec fetch(map()) :: {:ok, binary()} | {:error, :not_terminal | term()}
   def fetch(draw) do
-    if terminal?(draw) do
-      fetch_or_generate(draw)
-    else
-      {:error, :not_terminal}
+    cond do
+      not terminal?(draw) ->
+        {:error, :not_terminal}
+
+      cache_enabled?() ->
+        fetch_or_generate(draw)
+
+      true ->
+        # Cache disabled — render fresh on every request, don't write
+        # to storage. Used while iterating on the design so old cached
+        # PDFs don't have to be hand-purged.
+        generate(draw)
     end
   end
 
@@ -49,6 +57,14 @@ defmodule WallopWeb.ProofPdf do
       {:error, reason} -> {:error, reason}
     end
   end
+
+  defp cache_enabled? do
+    Application.get_env(:wallop_web, :proof_pdf_cache_enabled?, true)
+  end
+
+  @doc "Public so the controller can mirror this on the response Cache-Control header."
+  @spec cache_enabled_for_response? :: boolean()
+  def cache_enabled_for_response?, do: cache_enabled?()
 
   @doc """
   Force-regenerate the PDF (ignoring cache) and store the new copy.
@@ -138,7 +154,7 @@ defmodule WallopWeb.ProofPdf do
   end
 
   defp logo_bytes do
-    path = Application.app_dir(:wallop_web, "priv/static/images/logo.png")
+    path = Application.app_dir(:wallop_web, "priv/static/images/logo-cropped@2x.png")
 
     case File.read(path) do
       {:ok, bytes} ->
