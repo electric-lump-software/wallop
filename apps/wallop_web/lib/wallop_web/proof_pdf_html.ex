@@ -337,7 +337,7 @@ defmodule WallopWeb.ProofPdfHTML do
     @page {
       size: A4;
       /* Bottom margin reserves room for the fixed page footer */
-      margin: 20mm 18mm 30mm 18mm;
+      margin: 20mm 18mm 15mm 18mm;
     }
 
     * { box-sizing: border-box; }
@@ -581,7 +581,7 @@ defmodule WallopWeb.ProofPdfHTML do
        margin reserves the room. */
     .page-footer {
       position: fixed;
-      bottom: 8mm;
+      bottom: 4mm;
       left: 18mm;
       right: 18mm;
       text-align: center;
