@@ -44,7 +44,31 @@ defmodule WallopWeb.ProofStorage.S3 do
     end
   end
 
+  @impl true
+  def put_metadata(draw_id, json) do
+    bucket()
+    |> S3.put_object(metadata_key_for(draw_id), json, content_type: "application/json")
+    |> ExAws.request()
+    |> case do
+      {:ok, _} -> :ok
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  @impl true
+  def get_metadata(draw_id) do
+    bucket()
+    |> S3.get_object(metadata_key_for(draw_id))
+    |> ExAws.request()
+    |> case do
+      {:ok, %{body: bytes}} -> {:ok, bytes}
+      {:error, {:http_error, 404, _}} -> {:error, :not_found}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
   defp key_for(draw_id), do: "#{prefix()}/#{draw_id}.pdf"
+  defp metadata_key_for(draw_id), do: "#{prefix()}/#{draw_id}.json"
 
   defp bucket do
     Application.fetch_env!(:wallop_web, :proof_storage)[:s3][:bucket]

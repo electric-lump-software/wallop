@@ -30,8 +30,28 @@ defmodule WallopWeb.ProofStorage.Filesystem do
     File.exists?(path_for(draw_id))
   end
 
+  @impl true
+  def put_metadata(draw_id, json) do
+    path = metadata_path_for(draw_id)
+    File.mkdir_p!(Path.dirname(path))
+    File.write(path, json)
+  end
+
+  @impl true
+  def get_metadata(draw_id) do
+    case File.read(metadata_path_for(draw_id)) do
+      {:ok, bytes} -> {:ok, bytes}
+      {:error, :enoent} -> {:error, :not_found}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
   defp path_for(draw_id) do
     Path.join(root(), "#{draw_id}.pdf")
+  end
+
+  defp metadata_path_for(draw_id) do
+    Path.join(root(), "#{draw_id}.json")
   end
 
   defp root do
