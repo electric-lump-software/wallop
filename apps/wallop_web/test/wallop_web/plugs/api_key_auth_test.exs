@@ -7,7 +7,7 @@ defmodule WallopWeb.Plugs.ApiKeyAuthTest do
     {:ok, api_key} =
       WallopCore.Resources.ApiKey
       |> Ash.Changeset.for_create(:create, %{name: name})
-      |> Ash.create()
+      |> Ash.create(authorize?: false)
 
     raw_key = api_key.__metadata__.raw_key
     {api_key, raw_key}
@@ -56,7 +56,7 @@ defmodule WallopWeb.Plugs.ApiKeyAuthTest do
       {:ok, _} =
         api_key
         |> Ash.Changeset.for_update(:deactivate, %{})
-        |> Ash.update()
+        |> Ash.update(authorize?: false)
 
       result = conn |> auth_conn(raw_key) |> ApiKeyAuth.call([])
 

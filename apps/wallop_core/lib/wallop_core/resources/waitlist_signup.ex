@@ -3,7 +3,8 @@ defmodule WallopCore.Resources.WaitlistSignup do
   use Ash.Resource,
     otp_app: :wallop_core,
     domain: WallopCore.Domain,
-    data_layer: AshPostgres.DataLayer
+    data_layer: AshPostgres.DataLayer,
+    authorizers: [Ash.Policy.Authorizer]
 
   postgres do
     table("waitlist_signups")
@@ -14,6 +15,13 @@ defmodule WallopCore.Resources.WaitlistSignup do
     create :create do
       primary?(true)
       accept([:email])
+    end
+  end
+
+  policies do
+    # Public signup form — anonymous create is intentional and explicit.
+    policy action(:create) do
+      authorize_if(always())
     end
   end
 

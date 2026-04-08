@@ -39,10 +39,13 @@ defmodule WallopWeb.Plugs.ApiKeyAuth do
   end
 
   defp find_key_by_prefix(prefix) do
+    # Auth-time lookup runs without an actor (we're determining who the actor
+    # IS), so we bypass the read policy. The bcrypt verification below is the
+    # actual auth check; this is just a directory lookup.
     case WallopCore.Resources.ApiKey
          |> Ash.Query.for_read(:read)
          |> Ash.Query.filter_input(%{key_prefix: prefix, active: true})
-         |> Ash.read_one(domain: WallopCore.Domain) do
+         |> Ash.read_one(domain: WallopCore.Domain, authorize?: false) do
       {:ok, nil} ->
         Bcrypt.no_user_verify()
         :error

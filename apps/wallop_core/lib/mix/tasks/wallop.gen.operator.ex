@@ -28,7 +28,7 @@ defmodule Mix.Tasks.Wallop.Gen.Operator do
     {:ok, operator} =
       Operator
       |> Ash.Changeset.for_create(:create, %{slug: slug, name: name})
-      |> Ash.create()
+      |> Ash.create(authorize?: false)
 
     {public_key, private_key} = :crypto.generate_key(:eddsa, :ed25519)
     key_id = Protocol.key_id(public_key)
@@ -43,7 +43,7 @@ defmodule Mix.Tasks.Wallop.Gen.Operator do
         private_key: encrypted_private,
         valid_from: DateTime.utc_now()
       })
-      |> Ash.create()
+      |> Ash.create(authorize?: false)
 
     IO.puts("""
 

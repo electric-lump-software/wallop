@@ -33,6 +33,7 @@ defmodule WallopCore.Resources.Operator do
     otp_app: :wallop_core,
     domain: WallopCore.Domain,
     data_layer: AshPostgres.DataLayer,
+    authorizers: [Ash.Policy.Authorizer],
     extensions: [AshPaperTrail.Resource]
 
   paper_trail do
@@ -87,6 +88,28 @@ defmodule WallopCore.Resources.Operator do
       validate(fn changeset, _ ->
         validate_name(Ash.Changeset.get_attribute(changeset, :name))
       end)
+    end
+  end
+
+  policies do
+    # Operators are public identities — anyone can read them.
+    policy action(:read) do
+      authorize_if(always())
+    end
+
+    # Operator creation is admin-only — must go through `mix wallop.gen.operator`
+    # or another bootstrap path with `authorize?: false`. PAM-688: without this,
+    # anyone could squat slugs or create rogue operators.
+    policy action(:create) do
+      forbid_if(always())
+    end
+
+    # Only an api_key belonging to an operator can rename that operator. Other
+    # admin paths must use `authorize?: false`. PAM-688: without this, anyone
+    # could rename any operator.
+    policy action(:update_name) do
+      forbid_unless(actor_present())
+      authorize_if(expr(id == ^actor(:operator_id)))
     end
   end
 

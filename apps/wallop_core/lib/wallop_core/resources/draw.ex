@@ -207,14 +207,12 @@ defmodule WallopCore.Resources.Draw do
       authorize_if(expr(api_key_id == ^actor(:id)))
     end
 
-    policy action(:expire) do
-      authorize_if(always())
-    end
-
-    # Internal-only actions: called by EntropyWorker with authorize?: false.
-    # Forbidden for all authorized callers to prevent external actors from
-    # racing the entropy worker with fabricated entropy values.
+    # Internal-only actions: called by EntropyWorker / ExpiryWorker with
+    # authorize?: false. Forbidden for all authorized callers to prevent
+    # external actors from racing the workers (or, in :expire's case, from
+    # burning operator sequence slots maliciously — see PAM-685).
     policy action([
+             :expire,
              :transition_to_pending,
              :execute_with_entropy,
              :execute_drand_only,
