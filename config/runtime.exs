@@ -56,4 +56,31 @@ if config_env() == :prod do
     url: [host: host, port: 443, scheme: "https"],
     http: [ip: {0, 0, 0, 0, 0, 0, 0, 0}, port: port],
     secret_key_base: secret_key_base
+
+  if gotenberg_url = System.get_env("GOTENBERG_URL") do
+    config :wallop_web, :gotenberg_url, gotenberg_url
+  end
+
+  # Proof PDF storage. If AWS_S3_BUCKET is set we use the S3 backend,
+  # otherwise fall back to the local filesystem (useful for self-hosters).
+  if bucket = System.get_env("AWS_S3_BUCKET") do
+    config :wallop_web, :proof_storage,
+      backend: WallopWeb.ProofStorage.S3,
+      s3: [
+        bucket: bucket,
+        prefix: System.get_env("AWS_S3_PROOF_PREFIX", "proof-pdfs")
+      ]
+
+    config :ex_aws,
+      access_key_id: System.get_env("AWS_ACCESS_KEY_ID"),
+      secret_access_key: System.get_env("AWS_SECRET_ACCESS_KEY"),
+      region: System.get_env("AWS_REGION", "us-east-1")
+
+    if endpoint = System.get_env("AWS_S3_ENDPOINT") do
+      config :ex_aws, :s3,
+        scheme: "https://",
+        host: endpoint,
+        region: System.get_env("AWS_REGION", "us-east-1")
+    end
+  end
 end

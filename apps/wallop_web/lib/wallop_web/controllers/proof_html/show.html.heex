@@ -134,6 +134,15 @@
   </div>
 
   <.receipt_panel operator={@operator} receipt={@receipt} />
+
+  <div class="flex justify-center pt-2">
+    <a
+      href={"/proof/#{@draw.id}/pdf"}
+      class="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-cream-border bg-white hover:border-[#999] text-sm font-semibold"
+    >
+      Download PDF certificate
+    </a>
+  </div>
 </div>
 
 <%!-- Expired draw --%>
