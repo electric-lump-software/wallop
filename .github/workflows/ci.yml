@@ -106,3 +106,9 @@ jobs:
         run: |
           mix wallop.gen.openapi
           git diff --exit-code priv/openapi.json || (echo "OpenAPI spec is out of date. Run 'mix wallop.gen.openapi' and commit the result." && exit 1)
+        env:
+          # runtime.exs raises on missing VAULT_KEY in :dev. This step runs
+          # in :dev because the openapi generator introspects the live
+          # router. Give it a dummy 32-byte base64 value — this task
+          # doesn't touch the vault.
+          VAULT_KEY: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
