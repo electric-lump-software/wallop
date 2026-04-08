@@ -83,7 +83,10 @@ defmodule WallopCore.PolicyHardeningTest do
     test "create is Forbidden without authorize?: false" do
       assert_raise Ash.Error.Forbidden, fn ->
         Operator
-        |> Ash.Changeset.for_create(:create, %{slug: "rogue-#{:rand.uniform(1_000_000)}", name: "Rogue"})
+        |> Ash.Changeset.for_create(:create, %{
+          slug: "rogue-#{:rand.uniform(1_000_000)}",
+          name: "Rogue"
+        })
         |> Ash.create!()
       end
     end
@@ -115,7 +118,11 @@ defmodule WallopCore.PolicyHardeningTest do
     test "create is Forbidden without authorize?: false" do
       assert_raise Ash.Error.Forbidden, fn ->
         ApiKey
-        |> Ash.Changeset.for_create(:create, %{name: "rogue", tier: "enterprise", monthly_draw_limit: 9_999_999})
+        |> Ash.Changeset.for_create(:create, %{
+          name: "rogue",
+          tier: "enterprise",
+          monthly_draw_limit: 9_999_999
+        })
         |> Ash.create!()
       end
     end
@@ -146,7 +153,10 @@ defmodule WallopCore.PolicyHardeningTest do
 
       assert_raise Ash.Error.Forbidden, fn ->
         api_key
-        |> Ash.Changeset.for_update(:update_tier, %{tier: "enterprise", monthly_draw_limit: 999_999})
+        |> Ash.Changeset.for_update(:update_tier, %{
+          tier: "enterprise",
+          monthly_draw_limit: 999_999
+        })
         |> Ash.update!()
       end
     end
@@ -233,15 +243,20 @@ defmodule WallopCore.PolicyHardeningTest do
     test "Operator create works with authorize?: false" do
       assert {:ok, _} =
                Operator
-               |> Ash.Changeset.for_create(:create, %{slug: "happy-#{:rand.uniform(1_000_000)}", name: "Happy"})
+               |> Ash.Changeset.for_create(:create, %{
+                 slug: "happy-#{:rand.uniform(1_000_000)}",
+                 name: "Happy"
+               })
                |> Ash.create(authorize?: false)
     end
 
     test "Draw.expire works with authorize?: false (ExpiryWorker path)" do
       api_key = create_api_key()
-      draw = Draw
-             |> Ash.Changeset.for_create(:create, %{name: "abandon", winner_count: 1}, actor: api_key)
-             |> Ash.create!()
+
+      draw =
+        Draw
+        |> Ash.Changeset.for_create(:create, %{name: "abandon", winner_count: 1}, actor: api_key)
+        |> Ash.create!()
 
       assert {:ok, expired} =
                draw
