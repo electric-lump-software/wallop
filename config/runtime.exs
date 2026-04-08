@@ -72,16 +72,28 @@ if config_env() == :prod do
         prefix: System.get_env("AWS_S3_PROOF_PREFIX", "proof-pdfs")
       ]
 
+    region =
+      System.get_env("AWS_DEFAULT_REGION") || System.get_env("AWS_REGION") || "us-east-1"
+
     config :ex_aws,
       access_key_id: System.get_env("AWS_ACCESS_KEY_ID"),
       secret_access_key: System.get_env("AWS_SECRET_ACCESS_KEY"),
-      region: System.get_env("AWS_REGION", "us-east-1")
+      region: region
 
-    if endpoint = System.get_env("AWS_S3_ENDPOINT") do
+    # Railway and other S3-compatible providers expose the endpoint as a
+    # full URL (e.g. https://bucket.region.provider.example:443). ex_aws
+    # wants it split into scheme + host + port, so parse it.
+    endpoint_url =
+      System.get_env("AWS_ENDPOINT_URL") || System.get_env("AWS_S3_ENDPOINT")
+
+    if endpoint_url do
+      uri = URI.parse(endpoint_url)
+
       config :ex_aws, :s3,
-        scheme: "https://",
-        host: endpoint,
-        region: System.get_env("AWS_REGION", "us-east-1")
+        scheme: (uri.scheme || "https") <> "://",
+        host: uri.host,
+        port: uri.port,
+        region: region
     end
   end
 end
