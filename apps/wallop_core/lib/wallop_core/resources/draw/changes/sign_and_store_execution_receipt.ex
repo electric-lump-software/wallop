@@ -81,9 +81,8 @@ defmodule WallopCore.Resources.Draw.Changes.SignAndStoreExecutionReceipt do
       end
     else
       {:error, :no_lock_receipt} ->
-        # Caller-seed draws without operators may not have a lock receipt.
-        # This is expected — skip silently.
-        {:ok, draw}
+        Logger.error("SignAndStoreExecutionReceipt: no lock receipt for draw #{draw.id}")
+        {:error, "draw has no lock receipt — cannot chain execution receipt"}
 
       {:error, :no_infra_key} ->
         Logger.error("SignAndStoreExecutionReceipt: no infrastructure signing key found")

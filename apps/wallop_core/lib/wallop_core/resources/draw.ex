@@ -104,6 +104,7 @@ defmodule WallopCore.Resources.Draw do
       filter(expr(status == :locked))
 
       change({WallopCore.Resources.Draw.Changes.ExecuteDraw, []})
+      change({WallopCore.Resources.Draw.Changes.SignAndStoreExecutionReceipt, []})
     end
 
     update :transition_to_pending do
