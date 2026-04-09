@@ -1,8 +1,8 @@
 defmodule WallopWeb.Components.OperatorPanel do
   @moduledoc """
   Components for showing operator and signed-receipt information on a proof
-  page. Both render nothing when the draw has no operator (backward
-  compatible).
+  page. Missing attestation on completed draws is flagged as an error, not
+  silently omitted.
   """
   use WallopWeb, :html
 
@@ -27,10 +27,12 @@ defmodule WallopWeb.Components.OperatorPanel do
 
   attr(:operator, :map, default: nil)
   attr(:receipt, :map, default: nil)
+  attr(:draw, :map, required: true)
 
   def receipt_panel(assigns) do
     ~H"""
-    <div :if={@receipt && @operator} class="bg-white border border-cream-border rounded-xl">
+    <%!-- Receipt exists: show it --%>
+    <div :if={@receipt && @operator} class="bg-white border border-cream-border rounded-xl overflow-hidden">
       <div class="p-5 space-y-3">
         <h3 class="text-lg font-bold">Operator commitment receipt</h3>
         <p class="text-xs text-[#555]">
@@ -75,15 +77,30 @@ defmodule WallopWeb.Components.OperatorPanel do
         </p>
       </div>
     </div>
+    <%!-- Missing receipt on completed draw with operator: error --%>
+    <div
+      :if={!@receipt && @operator && @draw.status == :completed}
+      class="bg-red-50 border border-red-300 rounded-xl p-5"
+    >
+      <p class="text-xs text-red-700 font-semibold">
+        Commitment receipt missing. This draw completed without a signed
+        lock-time attestation. The cryptographic proof chain is incomplete.
+      </p>
+    </div>
     """
   end
 
   attr(:execution_receipt, :map, default: nil)
   attr(:operator, :map, default: nil)
+  attr(:draw, :map, required: true)
 
   def execution_receipt_panel(assigns) do
     ~H"""
-    <div :if={@execution_receipt} class="bg-white border border-cream-border rounded-xl">
+    <%!-- Receipt exists: show it --%>
+    <div
+      :if={@execution_receipt}
+      class="bg-white border border-cream-border rounded-xl overflow-hidden"
+    >
       <div class="p-5 space-y-3">
         <h3 class="text-lg font-bold">Execution attestation</h3>
         <p class="text-xs text-[#555]">
@@ -104,7 +121,9 @@ defmodule WallopWeb.Components.OperatorPanel do
           </div>
           <div>
             <span class="text-[#888]">Lock receipt hash:</span>
-            <span class="font-mono text-[10px] break-all">{@execution_receipt.lock_receipt_hash}</span>
+            <span class="font-mono text-[10px] break-all">
+              {@execution_receipt.lock_receipt_hash}
+            </span>
           </div>
         </div>
 
@@ -125,9 +144,14 @@ defmodule WallopWeb.Components.OperatorPanel do
         </p>
       </div>
     </div>
-    <div :if={!@execution_receipt && @operator} class="bg-base-200 border border-cream-border rounded-xl p-5">
-      <p class="text-xs text-[#888]">
-        Execution attestation was not available at the time of this draw.
+    <%!-- Missing receipt on completed draw with operator: error --%>
+    <div
+      :if={!@execution_receipt && @operator && @draw.status == :completed}
+      class="bg-red-50 border border-red-300 rounded-xl p-5"
+    >
+      <p class="text-xs text-red-700 font-semibold">
+        Execution attestation missing. This draw completed without a signed
+        execution receipt. The cryptographic proof chain is incomplete.
       </p>
     </div>
     """
