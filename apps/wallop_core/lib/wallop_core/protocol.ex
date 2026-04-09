@@ -68,16 +68,24 @@ defmodule WallopCore.Protocol do
     {seed_bytes, jcs_string}
   end
 
-  @receipt_schema_version "1"
+  @receipt_schema_version "2"
 
   @doc """
   Build the canonical JCS payload bytes for an operator commitment receipt.
 
   Pure function — no IO, no time. Caller passes everything in.
 
-  Field set is fixed and sorted by JCS:
-  `commitment_hash`, `draw_id`, `entry_hash`, `locked_at`, `operator_id`,
-  `operator_slug`, `schema_version`, `sequence`, `signing_key_id`.
+  ## Schema version history
+
+  - **v1** — original: `commitment_hash`, `draw_id`, `entry_hash`,
+    `locked_at`, `operator_id`, `operator_slug`, `schema_version`,
+    `sequence`, `signing_key_id`.
+  - **v2** — adds `winner_count`, declared entropy sources
+    (`drand_chain`, `drand_round`, `weather_station`, `weather_time`),
+    and algorithm version pinning (`wallop_core_version`,
+    `fair_pick_version`). Closes the receipt completeness gaps where
+    outcome-influencing fields were trigger-frozen but not
+    cryptographically committed.
 
   `locked_at` must be a `DateTime` with microsecond precision; the caller is
   responsible for capturing it once at lock time and not re-stamping.
@@ -91,20 +99,39 @@ defmodule WallopCore.Protocol do
         commitment_hash: commitment_hash,
         entry_hash: entry_hash,
         locked_at: %DateTime{} = locked_at,
-        signing_key_id: signing_key_id
+        signing_key_id: signing_key_id,
+        winner_count: winner_count,
+        drand_chain: drand_chain,
+        drand_round: drand_round,
+        weather_station: weather_station,
+        weather_time: weather_time,
+        wallop_core_version: wallop_core_version,
+        fair_pick_version: fair_pick_version
       }) do
-    Jcs.encode(%{
+    payload = %{
       "commitment_hash" => commitment_hash,
       "draw_id" => draw_id,
+      "drand_chain" => drand_chain,
+      "drand_round" => drand_round,
       "entry_hash" => entry_hash,
+      "fair_pick_version" => fair_pick_version,
       "locked_at" => DateTime.to_iso8601(locked_at),
       "operator_id" => operator_id,
       "operator_slug" => to_string(operator_slug),
       "schema_version" => @receipt_schema_version,
       "sequence" => sequence,
-      "signing_key_id" => signing_key_id
-    })
+      "signing_key_id" => signing_key_id,
+      "wallop_core_version" => wallop_core_version,
+      "weather_station" => weather_station,
+      "weather_time" => maybe_iso8601(weather_time),
+      "winner_count" => winner_count
+    }
+
+    Jcs.encode(payload)
   end
+
+  defp maybe_iso8601(%DateTime{} = dt), do: DateTime.to_iso8601(dt)
+  defp maybe_iso8601(nil), do: nil
 
   @doc """
   Sign a receipt payload with an Ed25519 private key.
