@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 🚨 BREAKING — wallop_core 0.12.0
+
+- **Lock receipt schema v2.** `Protocol.build_receipt_payload/1` now requires seven additional fields and the function's pattern match has changed — callers passing the old 8-key map will get a `FunctionClauseError`. `@receipt_schema_version` bumped from `"1"` to `"2"`.
+
+  New fields in the signed JCS payload:
+
+  | Field | Why |
+  |---|---|
+  | `winner_count` | Outcome-determining. Was trigger-frozen but not cryptographically committed. |
+  | `drand_chain` | Declared entropy source, known at lock time. |
+  | `drand_round` | Declared entropy source, known at lock time. |
+  | `weather_station` | Declared entropy source, known at lock time. |
+  | `weather_time` | Declared entropy source, known at lock time. |
+  | `wallop_core_version` | Algorithm version pinning — records which wallop_core ran the draw. |
+  | `fair_pick_version` | Carried separately because `mix deps.update fair_pick` can change it independently. |
+
+  Old v1 receipts remain valid. `schema_version` in the payload lets verifiers pick the right parser.
+
+  **Consumer action required:** if your code calls `Protocol.build_receipt_payload/1` directly (unlikely — it's normally called internally by `SignAndStoreReceipt`), add the seven new fields. If your code parses receipt payloads (e.g. for display or verification), handle both `schema_version: "1"` and `schema_version: "2"` shapes.
+
 ### 🚨 BREAKING — wallop_core 0.11.0
 
 - **Sandbox draws are now a separate resource** (`WallopCore.Resources.SandboxDraw`) with their own table (`sandbox_draws`), own primary key, no foreign key to `draws`, no `operator_sequence`, no `OperatorReceipt`, and no transparency log membership. Sandbox draws are structurally incapable of being confused with real draws at the schema level. See PR that lands this for the full rationale — short version: the previous design had `execute_sandbox` as an update action on `Draw` gated only by a runtime config flag, the `seed_source` column could be set to `'sandbox'` post-lock, and the signed operator receipt did NOT commit to `seed_source`. Any consumer of `wallop_core` that set `allow_sandbox_execution: true` in its prod config could divert a real locked draw to sandbox execution before the entropy worker ran, with nothing cryptographic to contradict a later claim of "that was only a test." This is now a structural impossibility.
