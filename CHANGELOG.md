@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### wallop_core 0.13.1
+
+- **Transparency log: dual sub-trees + infrastructure signature** — `AnchorWorker` now builds separate Merkle roots for operator receipts and execution receipts, combined with RFC 6962 domain separation: `anchor_root = SHA256("wallop-anchor-v1" || operator_receipts_root || execution_receipts_root)`. The combined root is signed by the infrastructure Ed25519 key, making the transparency log itself infra-key-signed. A verifier who only cares about one receipt type can verify their sub-tree independently. New columns on `transparency_anchors`: `operator_receipts_root`, `execution_receipts_root`, `execution_receipt_count`, `infrastructure_signature`, `signing_key_id`. Existing anchors (pre-this-version) have null values for the new columns.
+
 ### wallop_core 0.13.0
 
 - **Execution receipts** — every completed draw belonging to an operator now gets a second signed artefact: an execution receipt signed by the wallop infrastructure Ed25519 key (not the operator's key). The signed payload commits to entropy values (drand randomness, drand BLS signature, weather value), the computed seed, the results, algorithm versions (`wallop_core_version`, `fair_pick_version`), and a `lock_receipt_hash` linking it cryptographically to the lock-time operator receipt. Together, the two receipts let a verifier confirm both halves of the commit-reveal protocol using only signed bytes and public external data.
