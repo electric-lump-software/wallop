@@ -215,7 +215,7 @@ defmodule WallopCore.Resources.Draw do
     # Internal-only actions: called by EntropyWorker / ExpiryWorker with
     # authorize?: false. Forbidden for all authorized callers to prevent
     # external actors from racing the workers (or, in :expire's case, from
-    # burning operator sequence slots maliciously — see PAM-685).
+    # burning operator sequence slots maliciously).
     policy action([
              :expire,
              :transition_to_pending,
