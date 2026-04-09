@@ -22,11 +22,7 @@ defmodule Mix.Tasks.Wallop.BootstrapInfrastructureKey do
   @shortdoc "Generate the wallop infrastructure Ed25519 signing keypair"
 
   def run(_args) do
-    {:ok, _} = Application.ensure_all_started(:postgrex)
-    {:ok, _} = Application.ensure_all_started(:ecto_sql)
-    {:ok, _} = Application.ensure_all_started(:cloak)
-    {:ok, _} = WallopCore.Repo.start_link()
-    {:ok, _} = WallopCore.Vault.start_link()
+    Mix.Task.run("app.start")
 
     # Check if a key already exists
     case InfrastructureSigningKey
