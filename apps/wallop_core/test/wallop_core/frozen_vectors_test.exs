@@ -20,6 +20,11 @@ defmodule WallopCore.FrozenVectorsTest do
     - Execution receipt JCS payload
     - Ed25519 signing
     - End-to-end draw (entries → hash → seed → winners)
+    - key_id fingerprint
+    - merkle_root (RFC 6962)
+
+  See also: FairPick.FrozenVectorsTest in the fair_pick repo for
+  algorithm-level vectors decoupled from wallop_core Protocol functions.
   """
   use ExUnit.Case, async: true
 
@@ -65,21 +70,16 @@ defmodule WallopCore.FrozenVectorsTest do
 
       {hash, jcs} = Protocol.entry_hash(entries)
 
-      # JCS sorts by id (alpha < bravo < charlie), keys within each entry sorted
       assert jcs ==
                ~s({"entries":[{"id":"alpha","weight":10},{"id":"bravo","weight":1},{"id":"charlie","weight":5}]})
 
-      assert hash == sha256_hex(jcs)
-      # Pin the exact hash
       assert hash == "5616386cc36c680fed74464bc2e6eb940b07ba1353dd8aa971e16fb7463013c6"
     end
 
     test "single entry" do
       entries = [%{id: "solo", weight: 1}]
-      {hash, jcs} = Protocol.entry_hash(entries)
-
-      assert jcs == ~s({"entries":[{"id":"solo","weight":1}]})
-      assert hash == sha256_hex(jcs)
+      {hash, _jcs} = Protocol.entry_hash(entries)
+      assert hash == "6df489f98b5dac2a004bdee59e589b4626c9f7c4126e5242c1989335f6dd5d13"
     end
 
     test "input order does not affect output" do
@@ -105,14 +105,16 @@ defmodule WallopCore.FrozenVectorsTest do
                "4c1ae3e623dd22859d869f4d0cb34d3acaf4cf7907dbb472ea690e1400bfb0d0"
     end
 
-    test "drand-only (no weather key in JSON)" do
+    test "drand-only" do
       {seed_bytes, jcs} = Protocol.compute_seed(@v2_entry_hash, @v2_drand)
 
       assert jcs ==
                ~s({"drand_randomness":"abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789","entry_hash":"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"})
 
       refute String.contains?(jcs, "weather")
-      assert Base.encode16(seed_bytes, case: :lower) == sha256_hex(jcs)
+
+      assert Base.encode16(seed_bytes, case: :lower) ==
+               "54f79b8158769d6aba6fa762bb33dce5d9bd1d8986b6285beb12b1c30f020b17"
     end
 
     test "drand-only and drand+weather produce different seeds" do
@@ -125,7 +127,7 @@ defmodule WallopCore.FrozenVectorsTest do
   # ── V-3: FairPick.draw/3 ──────────────────────────────────────────
 
   describe "V-3: FairPick.draw" do
-    test "equal-weight, 3 entries, 2 winners" do
+    test "equal-weight via protocol pipeline" do
       entries = [
         %{id: "ticket-47", weight: 1},
         %{id: "ticket-48", weight: 1},
@@ -143,6 +145,19 @@ defmodule WallopCore.FrozenVectorsTest do
              ]
     end
 
+    test "equal-weight with decoupled arbitrary seed" do
+      entries = [
+        %{id: "ticket-47", weight: 1},
+        %{id: "ticket-48", weight: 1},
+        %{id: "ticket-49", weight: 1}
+      ]
+
+      seed = :crypto.hash(:sha256, "frozen-equal-weight-vector")
+      result = FairPick.draw(entries, seed, 2)
+
+      assert Enum.map(result, & &1.entry_id) == ["ticket-49", "ticket-47"]
+    end
+
     test "weighted entries change selection" do
       entries = [
         %{id: "alpha", weight: 100},
@@ -153,8 +168,7 @@ defmodule WallopCore.FrozenVectorsTest do
       seed = :crypto.hash(:sha256, "frozen-weighted-vector")
       result = FairPick.draw(entries, seed, 2)
 
-      # Pin exact output — if this changes, FairPick's weighted selection drifted
-      assert Enum.map(result, & &1.entry_id) == pinned_weighted_winners()
+      assert Enum.map(result, & &1.entry_id) == ["alpha", "bravo"]
     end
 
     test "single entry, single winner" do
@@ -178,8 +192,7 @@ defmodule WallopCore.FrozenVectorsTest do
       result = FairPick.draw(entries, seed, 5)
 
       assert length(result) == 5
-      # Pin exact ordering
-      assert Enum.map(result, & &1.entry_id) == pinned_full_ordering()
+      assert Enum.map(result, & &1.entry_id) == ["a", "b", "c", "e", "d"]
     end
 
     test "deterministic across calls" do
@@ -202,8 +215,9 @@ defmodule WallopCore.FrozenVectorsTest do
       assert byte_size(signature) == 64
       assert Protocol.verify_receipt(payload, signature, @test_public_key)
 
-      # Signature is deterministic (Ed25519, no nonce)
-      assert Protocol.sign_receipt(payload, @test_private_key) == signature
+      # Pin the exact signature bytes
+      assert Base.encode16(signature, case: :lower) ==
+               "b86d1d6a0ac79fd8af966d14191c6dab4f85a16310d9b079ce2a0cabb6301e4e0f52c5c9c85053232eb46aa039f2cfcea0b669554e51c41c9cfef534cd2e570c"
     end
 
     test "tampered payload does not verify" do
@@ -243,14 +257,13 @@ defmodule WallopCore.FrozenVectorsTest do
       fair_pick_version: "0.2.1"
     }
 
-    test "JCS bytes are deterministic and keys are sorted" do
+    test "payload SHA-256 is pinned (any serialization drift fails this)" do
       payload = Protocol.build_receipt_payload(@lock_input)
-      keys = payload |> Jason.decode!() |> Map.keys()
-      assert keys == Enum.sort(keys)
 
-      # Pin the SHA-256 of the payload bytes
-      hash = sha256_hex(payload)
-      assert hash == sha256_hex(Protocol.build_receipt_payload(@lock_input))
+      assert sha256_hex(payload) ==
+               "cc268c285bd6df5a6acfd56034b4a2a1f191e7e4db41ec7b675a306149f39724"
+
+      assert payload |> Jason.decode!() |> map_size() == 16
     end
 
     test "schema_version is 2" do
@@ -290,10 +303,13 @@ defmodule WallopCore.FrozenVectorsTest do
       executed_at: ~U[2026-04-09 13:01:23.456789Z]
     }
 
-    test "JCS bytes are deterministic and keys are sorted" do
+    test "payload SHA-256 is pinned (any serialization drift fails this)" do
       payload = Protocol.build_execution_receipt_payload(@exec_input)
-      keys = payload |> Jason.decode!() |> Map.keys()
-      assert keys == Enum.sort(keys)
+
+      assert sha256_hex(payload) ==
+               "38f04bb616c97e960f9ab04d565deb805e66e6fdfb1f5ebe8a9cebb4683c8f72"
+
+      assert payload |> Jason.decode!() |> map_size() == 20
     end
 
     test "execution_schema_version is 1" do
@@ -305,11 +321,6 @@ defmodule WallopCore.FrozenVectorsTest do
       payload = Protocol.build_execution_receipt_payload(@exec_input)
       sig = Protocol.sign_receipt(payload, @test_private_key)
       assert Protocol.verify_receipt(payload, sig, @test_public_key)
-    end
-
-    test "20 fields present" do
-      payload = Protocol.build_execution_receipt_payload(@exec_input)
-      assert payload |> Jason.decode!() |> map_size() == 20
     end
   end
 
@@ -345,12 +356,9 @@ defmodule WallopCore.FrozenVectorsTest do
   # ── V-8: key_id ───────────────────────────────────────────────────
 
   describe "V-8: key_id" do
-    test "deterministic 8-char hex fingerprint" do
+    test "deterministic 8-char hex fingerprint pinned to exact value" do
       id = Protocol.key_id(@test_public_key)
-      assert String.length(id) == 8
-      assert String.match?(id, ~r/^[0-9a-f]{8}$/)
-      # Pin the exact value
-      assert id == Protocol.key_id(@test_public_key)
+      assert id == "21fe31df"
     end
   end
 
@@ -366,24 +374,22 @@ defmodule WallopCore.FrozenVectorsTest do
       assert Protocol.merkle_root([leaf]) == :crypto.hash(:sha256, <<0>> <> leaf)
     end
 
-    test "two leaves" do
-      ha = :crypto.hash(:sha256, <<0, ?a>>)
-      hb = :crypto.hash(:sha256, <<0, ?b>>)
-      expected = :crypto.hash(:sha256, <<1>> <> ha <> hb)
-      assert Protocol.merkle_root(["a", "b"]) == expected
+    test "two leaves pinned" do
+      root = Protocol.merkle_root(["a", "b"])
+
+      assert Base.encode16(root, case: :lower) ==
+               "b137985ff484fb600db93107c77b0365c80d78f5b429ded0fd97361d077999eb"
     end
 
-    test "deterministic" do
+    test "16 leaves pinned" do
       input = Enum.map(1..16, &Integer.to_string/1)
-      assert Protocol.merkle_root(input) == Protocol.merkle_root(input)
+
+      assert Protocol.merkle_root(input) |> Base.encode16(case: :lower) ==
+               "5b20458a9dfa66ab1990467a95cbd7af502caf09cd2ff620725cdb314b52d443"
     end
   end
 
   # ── Helpers ────────────────────────────────────────────────────────
-
-  # Hardcoded from FairPick 0.2.x output. If these change, FairPick drifted.
-  defp pinned_weighted_winners, do: ["alpha", "bravo"]
-  defp pinned_full_ordering, do: ["a", "b", "c", "e", "d"]
 
   defp sha256_hex(data) do
     :crypto.hash(:sha256, data) |> Base.encode16(case: :lower)
