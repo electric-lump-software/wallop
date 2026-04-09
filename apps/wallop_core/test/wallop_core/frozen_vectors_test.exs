@@ -389,6 +389,177 @@ defmodule WallopCore.FrozenVectorsTest do
     end
   end
 
+  # ── V-10: anchor combined root ──────────────────────────────────────
+  # Requested by wallop_rs for cross-implementation verification.
+  # The prefix is raw UTF-8 bytes of "wallop-anchor-v1", no length-prefixing.
+
+  describe "V-10: anchor combined root" do
+    test "SHA256(\"wallop-anchor-v1\" || op_root || exec_root) pinned" do
+      op_root = :crypto.hash(:sha256, "operator-receipts-sentinel")
+      exec_root = :crypto.hash(:sha256, "execution-receipts-sentinel")
+
+      combined = WallopCore.Transparency.AnchorWorker.combined_root(op_root, exec_root)
+
+      assert Base.encode16(op_root, case: :lower) ==
+               "15608de04e527005cd03f96a456269aaf9dc068996612d7f5b2ea11d0bc453ac"
+
+      assert Base.encode16(exec_root, case: :lower) ==
+               "f83eba0b2ff61a29603ce50f0a69573944108cc876a461e881d6dbb2270204c2"
+
+      assert Base.encode16(combined, case: :lower) ==
+               "3512c7c5af6f533c5acc9aa42b1368b9c42a7bf265229df5083166740d0e130f"
+    end
+
+    test "prefix is raw UTF-8 bytes, not length-prefixed" do
+      # Verifiers must concatenate exactly: "wallop-anchor-v1" <> op_root <> exec_root
+      # then SHA-256 the result. No length prefix on the tag.
+      dummy = <<0::256>>
+
+      expected = :crypto.hash(:sha256, "wallop-anchor-v1" <> dummy <> dummy)
+      actual = WallopCore.Transparency.AnchorWorker.combined_root(dummy, dummy)
+
+      assert actual == expected
+    end
+  end
+
+  # ── V-11: cross-receipt linkage ────────────────────────────────────
+  # Requested by wallop_rs. Pins the chain:
+  # lock receipt JCS → SHA-256 → lock_receipt_hash in execution receipt
+
+  describe "V-11: cross-receipt linkage" do
+    @linkage_lock_input %{
+      operator_id: "11111111-1111-1111-1111-111111111111",
+      operator_slug: "acme-prizes",
+      sequence: 1,
+      draw_id: "22222222-2222-2222-2222-222222222222",
+      commitment_hash: "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789",
+      entry_hash: "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789",
+      locked_at: ~U[2026-04-09 12:00:00.000000Z],
+      signing_key_id: "deadbeef",
+      winner_count: 2,
+      drand_chain: "52db9ba70e0cc0f6eaf7803dd07447a1f5477735fd3f661792ba94600c84e971",
+      drand_round: 12_345,
+      weather_station: "middle-wallop",
+      weather_time: ~U[2026-04-09 12:10:00.000000Z],
+      wallop_core_version: "0.14.1",
+      fair_pick_version: "0.2.1"
+    }
+
+    test "lock receipt payload → SHA-256 → lock_receipt_hash is pinned" do
+      lock_payload = Protocol.build_receipt_payload(@linkage_lock_input)
+      lock_hash = sha256_hex(lock_payload)
+
+      assert lock_hash ==
+               "3e05d89b6674e825d2b1badc83ac26d6e59272bc84e5742d5d5bd482bb81468a"
+    end
+
+    test "execution receipt uses the same lock_receipt_hash" do
+      lock_payload = Protocol.build_receipt_payload(@linkage_lock_input)
+      lock_hash = sha256_hex(lock_payload)
+
+      exec_input = %{
+        draw_id: "22222222-2222-2222-2222-222222222222",
+        operator_id: "11111111-1111-1111-1111-111111111111",
+        operator_slug: "acme-prizes",
+        sequence: 1,
+        lock_receipt_hash: lock_hash,
+        entry_hash: "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789",
+        drand_chain: "52db9ba70e0cc0f6eaf7803dd07447a1f5477735fd3f661792ba94600c84e971",
+        drand_round: 12_345,
+        drand_randomness: "abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890",
+        drand_signature: "deadbeef-bls-signature",
+        weather_station: "middle-wallop",
+        weather_observation_time: ~U[2026-04-09 12:10:00.000000Z],
+        weather_value: "1013",
+        weather_fallback_reason: nil,
+        wallop_core_version: "0.14.1",
+        fair_pick_version: "0.2.1",
+        seed: "aaaa" <> String.duplicate("0", 60),
+        results: ["ticket-48", "ticket-47"],
+        executed_at: ~U[2026-04-09 12:05:00.000000Z]
+      }
+
+      exec_payload = Protocol.build_execution_receipt_payload(exec_input)
+      decoded = Jason.decode!(exec_payload)
+
+      # The lock_receipt_hash in the execution receipt must equal
+      # SHA-256 of the lock receipt's JCS payload bytes
+      assert decoded["lock_receipt_hash"] == lock_hash
+    end
+  end
+
+  # ── V-12: drand-only execution receipt (null weather fields) ───────
+  # Requested by wallop_rs. JCS null serialization is a classic
+  # cross-implementation divergence point.
+
+  describe "V-12: drand-only execution receipt" do
+    test "null weather fields are present as JSON null, not omitted" do
+      input = %{
+        draw_id: "22222222-2222-2222-2222-222222222222",
+        operator_id: "11111111-1111-1111-1111-111111111111",
+        operator_slug: "acme-prizes",
+        sequence: 1,
+        lock_receipt_hash: "3e05d89b6674e825d2b1badc83ac26d6e59272bc84e5742d5d5bd482bb81468a",
+        entry_hash: "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789",
+        drand_chain: "52db9ba70e0cc0f6eaf7803dd07447a1f5477735fd3f661792ba94600c84e971",
+        drand_round: 12_345,
+        drand_randomness: "abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890",
+        drand_signature: "deadbeef-bls-signature",
+        weather_station: nil,
+        weather_observation_time: nil,
+        weather_value: nil,
+        weather_fallback_reason: "met_office_timeout",
+        wallop_core_version: "0.14.1",
+        fair_pick_version: "0.2.1",
+        seed: "aaaa" <> String.duplicate("0", 60),
+        results: ["ticket-48", "ticket-47"],
+        executed_at: ~U[2026-04-09 12:05:00.000000Z]
+      }
+
+      payload = Protocol.build_execution_receipt_payload(input)
+      decoded = Jason.decode!(payload)
+
+      # Keys MUST be present with null values, not omitted
+      assert Map.has_key?(decoded, "weather_station")
+      assert Map.has_key?(decoded, "weather_observation_time")
+      assert Map.has_key?(decoded, "weather_value")
+
+      assert decoded["weather_station"] == nil
+      assert decoded["weather_observation_time"] == nil
+      assert decoded["weather_value"] == nil
+      assert decoded["weather_fallback_reason"] == "met_office_timeout"
+    end
+
+    test "drand-only payload SHA-256 is pinned" do
+      input = %{
+        draw_id: "22222222-2222-2222-2222-222222222222",
+        operator_id: "11111111-1111-1111-1111-111111111111",
+        operator_slug: "acme-prizes",
+        sequence: 1,
+        lock_receipt_hash: "3e05d89b6674e825d2b1badc83ac26d6e59272bc84e5742d5d5bd482bb81468a",
+        entry_hash: "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789",
+        drand_chain: "52db9ba70e0cc0f6eaf7803dd07447a1f5477735fd3f661792ba94600c84e971",
+        drand_round: 12_345,
+        drand_randomness: "abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890",
+        drand_signature: "deadbeef-bls-signature",
+        weather_station: nil,
+        weather_observation_time: nil,
+        weather_value: nil,
+        weather_fallback_reason: "met_office_timeout",
+        wallop_core_version: "0.14.1",
+        fair_pick_version: "0.2.1",
+        seed: "aaaa" <> String.duplicate("0", 60),
+        results: ["ticket-48", "ticket-47"],
+        executed_at: ~U[2026-04-09 12:05:00.000000Z]
+      }
+
+      payload = Protocol.build_execution_receipt_payload(input)
+
+      assert sha256_hex(payload) ==
+               "3c847e0c73bf65695f66966524029f23c8be3ac6544a6f54e0a03239b4e8ac12"
+    end
+  end
+
   # ── Helpers ────────────────────────────────────────────────────────
 
   defp sha256_hex(data) do
