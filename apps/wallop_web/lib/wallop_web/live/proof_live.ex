@@ -32,7 +32,7 @@ defmodule WallopWeb.ProofLive do
         end
 
         check_result = auto_check_entry(draw, entry_id)
-        {operator, receipt} = WallopCore.OperatorInfo.for_draw(draw)
+        {operator, receipt, execution_receipt} = WallopCore.OperatorInfo.for_draw(draw)
 
         {:ok,
          assign(socket,
@@ -49,6 +49,7 @@ defmodule WallopWeb.ProofLive do
            results_json: nil,
            operator: operator,
            receipt: receipt,
+           execution_receipt: execution_receipt,
            page_title: "Draw Proof"
          )}
 
@@ -109,6 +110,7 @@ defmodule WallopWeb.ProofLive do
       # Completion transition: in-progress → completed (animate stages 4-5)
       old_status in [:locked, :awaiting_entropy, :pending_entropy] and new_status == :completed ->
         {entries_json, results_json} = load_verify_data(draw)
+        {_operator, _lock, execution_receipt} = WallopCore.OperatorInfo.for_draw(draw)
 
         {:noreply,
          assign(socket,
@@ -117,7 +119,8 @@ defmodule WallopWeb.ProofLive do
            reveal_from: 4,
            reveal_to: 5,
            entries_json: entries_json,
-           results_json: results_json
+           results_json: results_json,
+           execution_receipt: execution_receipt
          )}
 
       true ->

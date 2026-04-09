@@ -77,4 +77,59 @@ defmodule WallopWeb.Components.OperatorPanel do
     </div>
     """
   end
+
+  attr(:execution_receipt, :map, default: nil)
+  attr(:operator, :map, default: nil)
+
+  def execution_receipt_panel(assigns) do
+    ~H"""
+    <div :if={@execution_receipt} class="bg-white border border-cream-border rounded-xl">
+      <div class="p-5 space-y-3">
+        <h3 class="text-lg font-bold">Execution attestation</h3>
+        <p class="text-xs text-[#555]">
+          Signed after execution by the wallop infrastructure key.
+          Attests to the entropy values, computed seed, and results.
+          Verify independently using the
+          <a href="/infrastructure/key" class="link">infrastructure public key</a>.
+        </p>
+
+        <div class="text-xs space-y-1">
+          <div>
+            <span class="text-[#888]">Sequence:</span>
+            <span class="font-mono">#{@execution_receipt.sequence}</span>
+          </div>
+          <div>
+            <span class="text-[#888]">Signing key:</span>
+            <span class="font-mono">{@execution_receipt.signing_key_id}</span>
+          </div>
+          <div>
+            <span class="text-[#888]">Lock receipt hash:</span>
+            <span class="font-mono text-[10px]">{@execution_receipt.lock_receipt_hash}</span>
+          </div>
+        </div>
+
+        <details class="text-xs">
+          <summary class="cursor-pointer text-[#555]">Signed payload (JCS)</summary>
+          <pre class="mt-2 p-3 bg-base-200 rounded overflow-x-auto whitespace-pre-wrap break-all"><%= @execution_receipt.payload_jcs %></pre>
+        </details>
+
+        <details class="text-xs">
+          <summary class="cursor-pointer text-[#555]">Signature (base64)</summary>
+          <pre class="mt-2 p-3 bg-base-200 rounded overflow-x-auto whitespace-pre-wrap break-all"><%= Base.encode64(@execution_receipt.signature) %></pre>
+        </details>
+
+        <p class="text-xs text-[#555]">
+          Infrastructure key:
+          <a href="/infrastructure/key" class="link">raw 32 bytes</a>
+          (verify with <code>x-wallop-key-id</code> header)
+        </p>
+      </div>
+    </div>
+    <div :if={!@execution_receipt && @operator} class="bg-base-200 border border-cream-border rounded-xl p-5">
+      <p class="text-xs text-[#888]">
+        Execution attestation was not available at the time of this draw.
+      </p>
+    </div>
+    """
+  end
 end
