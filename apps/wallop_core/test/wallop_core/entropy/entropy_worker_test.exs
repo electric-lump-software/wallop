@@ -13,6 +13,7 @@ defmodule WallopCore.Entropy.EntropyWorkerTest do
   setup do
     stub_drand_success()
     stub_weather_success()
+    ensure_infrastructure_key()
 
     Application.put_env(:wallop_core, DrandClient,
       req_options: [plug: {Req.Test, DrandClient}, retry: false]

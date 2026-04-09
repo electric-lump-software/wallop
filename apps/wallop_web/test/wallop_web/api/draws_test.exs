@@ -2,9 +2,12 @@ defmodule WallopWeb.Api.DrawsTest do
   use WallopWeb.ConnCase, async: true
 
   defp create_key_with_raw(name \\ "test key") do
+    # All API keys must have an operator for the proof protocol
+    operator = create_operator()
+
     {:ok, api_key} =
       WallopCore.Resources.ApiKey
-      |> Ash.Changeset.for_create(:create, %{name: name})
+      |> Ash.Changeset.for_create(:create, %{name: name, operator_id: operator.id})
       |> Ash.create(authorize?: false)
 
     raw_key = api_key.__metadata__.raw_key

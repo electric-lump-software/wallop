@@ -17,7 +17,15 @@ defmodule WallopCore.TestHelpers do
 
   def create_api_key(attrs) when is_map(attrs) do
     attrs = Map.put_new(attrs, :name, "test-key")
-    create_attrs = Map.take(attrs, [:name, :tier, :monthly_draw_limit, :count_reset_at])
+
+    # All API keys must have an operator (draws require it for the proof protocol).
+    # Auto-create one if not provided.
+    operator = Map.get_lazy(attrs, :operator, fn -> create_operator() end)
+
+    create_attrs =
+      attrs
+      |> Map.take([:name, :tier, :monthly_draw_limit, :count_reset_at])
+      |> Map.put(:operator_id, operator.id)
 
     api_key =
       WallopCore.Resources.ApiKey
@@ -85,6 +93,8 @@ defmodule WallopCore.TestHelpers do
   using fake entropy values.
   """
   def execute_draw(draw, _seed_hex, _api_key) do
+    ensure_infrastructure_key()
+
     # Transition to pending_entropy
     draw =
       draw
@@ -107,6 +117,19 @@ defmodule WallopCore.TestHelpers do
   @doc "Returns a known 64-character hex string for deterministic test draws."
   def test_seed do
     "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2"
+  end
+
+  @doc """
+  Ensures at least one infrastructure signing key exists.
+  Creates one if none found. Idempotent.
+  """
+  def ensure_infrastructure_key do
+    case WallopCore.Resources.InfrastructureSigningKey
+         |> Ash.Query.limit(1)
+         |> Ash.read!(authorize?: false) do
+      [_key] -> :ok
+      [] -> create_infrastructure_key() && :ok
+    end
   end
 
   @doc "Returns a deterministic drand randomness hex value for tests."

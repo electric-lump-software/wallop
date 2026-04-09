@@ -33,6 +33,8 @@ defmodule WallopCore.Resources.Draw do
     create :create do
       accept([:name, :winner_count, :metadata, :callback_url])
 
+      validate({WallopCore.Resources.Draw.Validations.RequireOperator, []})
+
       change(set_attribute(:api_key_id, actor(:id)))
       change(set_attribute(:status, :open))
       change({WallopCore.Resources.Draw.Changes.AssignOperatorSequence, []})
