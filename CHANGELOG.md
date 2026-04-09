@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### wallop_core 0.13.2
+
+- **Execution receipt endpoints** — two new public endpoints for third-party verifiers:
+  - `GET /operator/:slug/executions` — list execution receipts for an operator (ETag on max sequence, 60s cache)
+  - `GET /operator/:slug/executions/:n` — single execution receipt by sequence number (immutable cache, `max-age=31536000`)
+
+  Response shape mirrors operator receipt endpoints: decoded payload, base64 JCS bytes, base64 signature. Verifiers can fetch the payload and signature, then verify independently using the infrastructure public key from `GET /infrastructure/key`.
+
 ### wallop_core 0.13.1
 
 - **Transparency log: dual sub-trees + infrastructure signature** — `AnchorWorker` now builds separate Merkle roots for operator receipts and execution receipts, combined with RFC 6962 domain separation: `anchor_root = SHA256("wallop-anchor-v1" || operator_receipts_root || execution_receipts_root)`. The combined root is signed by the infrastructure Ed25519 key, making the transparency log itself infra-key-signed. A verifier who only cares about one receipt type can verify their sub-tree independently. New columns on `transparency_anchors`: `operator_receipts_root`, `execution_receipts_root`, `execution_receipt_count`, `infrastructure_signature`, `signing_key_id`. Existing anchors (pre-this-version) have null values for the new columns.
