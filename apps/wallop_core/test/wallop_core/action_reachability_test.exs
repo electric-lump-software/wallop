@@ -105,7 +105,7 @@ defmodule WallopCore.ActionReachabilityTest do
           end)
 
         # At least one policy must exist that covers this action
-        assert length(matching) > 0,
+        assert matching != [],
                "no policy found covering action #{action_name}"
       end
     end
