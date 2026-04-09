@@ -41,20 +41,16 @@ defmodule WallopCore.Resources.Draw.Changes.SignAndStoreExecutionReceipt do
   defp sign_and_store(draw) do
     with {:ok, lock_receipt} <- load_lock_receipt(draw.id),
          {:ok, infra_key} <- load_current_infra_key(),
-         {:ok, private_key} <- decrypt_private_key(infra_key.private_key) do
+         {:ok, private_key} <- decrypt_private_key(infra_key.private_key),
+         {:ok, operator_slug} <- load_operator_slug(draw.operator_id),
+         {:ok, canonical_results} <- validate_results(draw.results) do
       lock_receipt_hash = hash_lock_receipt(lock_receipt.payload_jcs)
-
-      # Results as flat list of entry_id strings in position order (per Colin's review)
-      canonical_results =
-        (draw.results || [])
-        |> Enum.sort_by(fn r -> r["position"] end)
-        |> Enum.map(fn r -> r["entry_id"] end)
 
       payload =
         Protocol.build_execution_receipt_payload(%{
           draw_id: draw.id,
           operator_id: draw.operator_id,
-          operator_slug: load_operator_slug(draw.operator_id),
+          operator_slug: operator_slug,
           sequence: draw.operator_sequence,
           lock_receipt_hash: lock_receipt_hash,
           entry_hash: draw.entry_hash,
@@ -66,8 +62,8 @@ defmodule WallopCore.Resources.Draw.Changes.SignAndStoreExecutionReceipt do
           weather_observation_time: draw.weather_observation_time,
           weather_value: draw.weather_value,
           weather_fallback_reason: draw.weather_fallback_reason,
-          wallop_core_version: app_version(:wallop_core),
-          fair_pick_version: app_version(:fair_pick),
+          wallop_core_version: app_version!(:wallop_core),
+          fair_pick_version: app_version!(:fair_pick),
           seed: draw.seed,
           results: canonical_results,
           executed_at: draw.executed_at
@@ -87,6 +83,14 @@ defmodule WallopCore.Resources.Draw.Changes.SignAndStoreExecutionReceipt do
       {:error, :no_infra_key} ->
         Logger.error("SignAndStoreExecutionReceipt: no infrastructure signing key found")
         {:error, "no infrastructure signing key — run mix wallop.bootstrap_infrastructure_key"}
+
+      {:error, :operator_not_found} ->
+        Logger.error("SignAndStoreExecutionReceipt: operator not found for draw #{draw.id}")
+        {:error, "operator not found — cannot sign execution receipt"}
+
+      {:error, :no_results} ->
+        Logger.error("SignAndStoreExecutionReceipt: draw #{draw.id} has no results")
+        {:error, "draw has no results — cannot sign execution receipt"}
 
       {:error, reason} ->
         Logger.error(
@@ -136,9 +140,21 @@ defmodule WallopCore.Resources.Draw.Changes.SignAndStoreExecutionReceipt do
 
   defp load_operator_slug(operator_id) do
     case Ash.get(WallopCore.Resources.Operator, operator_id, authorize?: false) do
-      {:ok, op} -> to_string(op.slug)
-      _ -> "unknown"
+      {:ok, op} -> {:ok, to_string(op.slug)}
+      {:error, _} -> {:error, :operator_not_found}
     end
+  end
+
+  defp validate_results(nil), do: {:error, :no_results}
+  defp validate_results([]), do: {:error, :no_results}
+
+  defp validate_results(results) when is_list(results) do
+    canonical =
+      results
+      |> Enum.sort_by(fn r -> r["position"] end)
+      |> Enum.map(fn r -> r["entry_id"] end)
+
+    {:ok, canonical}
   end
 
   defp insert_execution_receipt(draw, lock_receipt_hash, payload, signature, key_id) do
@@ -155,10 +171,13 @@ defmodule WallopCore.Resources.Draw.Changes.SignAndStoreExecutionReceipt do
     |> Ash.create(authorize?: false)
   end
 
-  defp app_version(app) do
+  defp app_version!(app) do
     case Application.spec(app, :vsn) do
-      nil -> "unknown"
-      vsn -> to_string(vsn)
+      nil ->
+        raise "#{app} version not available — cannot sign receipt with unknown version"
+
+      vsn ->
+        to_string(vsn)
     end
   end
 end
