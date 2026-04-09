@@ -184,9 +184,9 @@ marked ✅ is direct enforcement at that layer.
 
 | Invariant | Convention | Docs | Tests | Ash policy | Ash validation | DB constraint | DB trigger |
 |---|---|---|---|---|---|---|---|
-| **I-8** API key non-forgeability | | ✅ ApiKey docstring | ✅ PAM-689 policy hardening test, `api_key_test.exs` | ✅ `ApiKey.create` forbidden without `authorize?: false` (PAM-689 fix) | ✅ `GenerateKey` change generates random secret, stores bcrypt hash + prefix, never the raw key | ✅ unique `key_prefix` | ⚠️ no DB-level guarantee on bcrypt hash format — relies entirely on the change module |
-| **I-9** Operator signing key rotation safety | | ✅ OperatorSigningKey docstring | ✅ PAM-686 policy hardening test, key rotation tests | ✅ `OperatorSigningKey.create` forbidden without `authorize?: false` (PAM-686 fix) | n/a | ✅ unique `(operator_id, key_id)` | ⚠️ no trigger preventing UPDATE / DELETE on signing keys — append-only is enforced only by the absence of an Ash update action |
-| **I-10** Operator slug immutability | | ✅ Operator docstring | ✅ operator_test.exs | ✅ `update_name` accept list excludes `slug` | n/a | ✅ unique `slug` | ⚠️ no trigger preventing direct UPDATE of `slug` via SQL |
+| **I-8** API key non-forgeability | | ✅ ApiKey docstring | ✅ PAM-689 policy hardening test, `api_key_test.exs`, `db_immutability_test.exs` | ✅ `ApiKey.create` forbidden without `authorize?: false` (PAM-689 fix) | ✅ `GenerateKey` change generates random secret, stores bcrypt hash + prefix, never the raw key | ✅ unique `key_prefix`, `api_keys_key_hash_format` CHECK constraint enforces bcrypt format (PAM-696 fix) | n/a |
+| **I-9** Operator signing key rotation safety | | ✅ OperatorSigningKey docstring | ✅ PAM-686 policy hardening test, `db_immutability_test.exs` | ✅ `OperatorSigningKey.create` forbidden without `authorize?: false` (PAM-686 fix) | n/a | ✅ unique `(operator_id, key_id)` | ✅ `signing_key_immutability` BEFORE UPDATE OR DELETE rejects all mutations (PAM-694 fix) |
+| **I-10** Operator slug immutability | | ✅ Operator docstring | ✅ operator_test.exs, `db_immutability_test.exs` | ✅ `update_name` accept list excludes `slug` | n/a | ✅ unique `slug` | ✅ `operator_slug_immutability` BEFORE UPDATE rejects writes that change slug (PAM-695 fix) |
 
 ### Data scoping and privacy
 
@@ -197,9 +197,9 @@ marked ✅ is direct enforcement at that layer.
 
 ### Findings surfaced by the matrix
 
-Five empty cells / ⚠️ markers stand out. **Each is a finding to fix or
-explicitly accept.** The first four already have open cards; the fifth is
-new and filed as part of this writeup.
+Two open gaps remain in this layer. (Three previously-open gaps — I-8, I-9,
+I-10 — were closed by the DB-level immutability hardening migration that
+landed alongside this update to the matrix.)
 
 1. **I-2 receipt completeness has no frozen vector at the receipt-payload-bytes
    layer.** Tracked in PAM-675 and the comment on PAM-654. Until both land,
@@ -208,16 +208,6 @@ new and filed as part of this writeup.
    in PAM-654 layer 3. A library upgrade (`fair_pick`, `Jcs`, OTP) could
    silently change canonical-form output and we wouldn't notice until a
    third-party verifier complained.
-3. **I-9 operator signing key has no trigger preventing direct UPDATE/DELETE.**
-   Append-only-ness is enforced only by the absence of an Ash update action.
-   Any direct SQL or future Ash action could break the invariant. Filed as
-   PAM-694 (this PR's first new finding).
-4. **I-10 operator slug has no trigger preventing direct UPDATE.** Same shape
-   as I-9. Slug is so load-bearing (it's in every signed receipt) that
-   defence-in-depth is worth the trigger. Filed as PAM-695.
-5. **I-8 has no DB-level guarantee on the bcrypt hash format.** Lower
-   severity — the hash field is opaque bytes and the only producer is the
-   `GenerateKey` change. Filing as a low-priority follow-up: **PAM-696**.
 
 ---
 
@@ -307,7 +297,7 @@ explicitly assumes wallop-the-company is honest. The mitigations are:
 
 - The transparency log makes retroactive receipt tampering detectable by
   any third-party mirror that snapshots over time
-- The protocol spec (`docs/specs/fair-pick-protocol.md`) is published, so
+- The protocol spec (`spec/protocol.md`) is published, so
   any consumer can independently verify draws using only public data
 - Operator signing keys are encrypted at rest, so a DB dump alone is
   insufficient to forge new signatures (you also need VAULT_KEY)
@@ -432,17 +422,15 @@ threat model surfaced two new ones (PAM-694, PAM-695) — see §3.
 | **PAM-655** | 🟠 Open, high | Pre-launch legal & insurance |
 | **PAM-692** | 🟡 Open, medium | AshPaperTrail version resource hardening |
 | **PAM-693** | 🔴 Open, urgent | wallop-app: audit Ash callers after policy hardening |
-| **PAM-694** | 🟠 Open, high (this doc) | OperatorSigningKey trigger for append-only enforcement |
-| **PAM-695** | 🟠 Open, high (this doc) | Operator slug immutability trigger |
-| **PAM-696** | 🟡 Open, medium (this doc) | ApiKey hash format DB constraint |
+| **PAM-694** | ✅ Closed (v0.11.2) | OperatorSigningKey trigger for append-only enforcement |
+| **PAM-695** | ✅ Closed (v0.11.2) | Operator slug immutability trigger |
+| **PAM-696** | ✅ Closed (v0.11.2) | ApiKey hash format DB constraint |
 
 ### Recommended order for the open work
 
 1. **PAM-675** (receipt completeness) — highest probability of finding
    another critical, bounded exercise
-2. **PAM-694, PAM-695** (the two new triggers from this doc) — small fixes,
-   defence-in-depth on the most load-bearing fields
-3. **PAM-676, PAM-677** (action reachability + trigger re-verification) —
+2. **PAM-676, PAM-677** (action reachability + trigger re-verification) —
    parallel with PAM-675
 4. **PAM-678** (canonical form drift) — silent-bug class, worth the time
 5. **PAM-681** (receipt algorithm version pinning) — ties into PAM-675's
