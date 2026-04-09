@@ -1,0 +1,26 @@
+# Protocol-critical paths — changes require careful review.
+# These files affect the cryptographic verification story.
+# Any change risks breaking historical proof verifiability.
+
+# Core protocol functions (hashing, signing, seeding, Merkle)
+apps/wallop_core/lib/wallop_core/protocol.ex @revdan
+
+# Receipt signing (lock + execution)
+apps/wallop_core/lib/wallop_core/resources/draw/changes/sign_and_store_receipt.ex @revdan
+apps/wallop_core/lib/wallop_core/resources/draw/changes/sign_and_store_execution_receipt.ex @revdan
+
+# Transparency log
+apps/wallop_core/lib/wallop_core/transparency/ @revdan
+
+# Frozen test vectors — the protocol commitment
+apps/wallop_core/test/wallop_core/frozen_vectors_test.exs @revdan
+apps/wallop_core/test/wallop_core/protocol_test.exs @revdan
+apps/wallop_core/test/wallop_core/protocol_receipt_test.exs @revdan
+apps/wallop_core/test/wallop_core/protocol_execution_receipt_test.exs @revdan
+
+# Entry canonicalization
+apps/wallop_core/lib/wallop_core/resources/draw/changes/lock_draw.ex @revdan
+
+# Infrastructure signing key
+apps/wallop_core/lib/wallop_core/resources/infrastructure_signing_key.ex @revdan
+apps/wallop_core/lib/wallop_core/resources/execution_receipt.ex @revdan
