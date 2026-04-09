@@ -1,0 +1,21 @@
+{
+  "description": "Seed derivation: SHA-256(JCS({drand_randomness, entry_hash, weather_value}))",
+  "vectors": [
+    {
+      "name": "drand + weather",
+      "entry_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "drand_randomness": "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789",
+      "weather_value": "1013",
+      "expected_jcs": "{\"drand_randomness\":\"abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789\",\"entry_hash\":\"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855\",\"weather_value\":\"1013\"}",
+      "expected_seed_hex": "4c1ae3e623dd22859d869f4d0cb34d3acaf4cf7907dbb472ea690e1400bfb0d0"
+    },
+    {
+      "name": "drand-only (no weather key in JSON)",
+      "entry_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "drand_randomness": "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789",
+      "weather_value": null,
+      "note": "weather_value key is OMITTED from JCS, not set to null",
+      "expected_seed_hex": "54f79b8158769d6aba6fa762bb33dce5d9bd1d8986b6285beb12b1c30f020b17"
+    }
+  ]
+}

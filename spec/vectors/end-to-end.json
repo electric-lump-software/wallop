@@ -1,0 +1,18 @@
+{
+  "description": "Full pipeline: entries → entry_hash → compute_seed → FairPick.draw → winners",
+  "input": {
+    "entries": [
+      {"id": "ticket-47", "weight": 1},
+      {"id": "ticket-48", "weight": 1},
+      {"id": "ticket-49", "weight": 1}
+    ],
+    "drand_randomness": "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789",
+    "weather_value": "1013",
+    "winner_count": 2
+  },
+  "expected": {
+    "entry_hash": "6056fbb6c98a0f04404adb013192d284bfec98975e2a7975395c3bcd4ad59577",
+    "seed_hex": "ced93f50d73a619701e9e865eb03fb4540a7232a588c707f85754aa41e3fb037",
+    "winners": ["ticket-48", "ticket-47"]
+  }
+}

@@ -1,0 +1,18 @@
+{
+  "description": "Dual sub-tree combined anchor root: SHA256(\"wallop-anchor-v1\" || op_root || exec_root)",
+  "note": "Prefix is raw UTF-8 bytes of \"wallop-anchor-v1\", no length-prefixing on the tag",
+  "vectors": [
+    {
+      "name": "known sub-tree roots",
+      "operator_receipts_root_hex": "15608de04e527005cd03f96a456269aaf9dc068996612d7f5b2ea11d0bc453ac",
+      "execution_receipts_root_hex": "f83eba0b2ff61a29603ce50f0a69573944108cc876a461e881d6dbb2270204c2",
+      "expected_combined_root_hex": "3512c7c5af6f533c5acc9aa42b1368b9c42a7bf265229df5083166740d0e130f"
+    },
+    {
+      "name": "identical roots (degenerate case)",
+      "operator_receipts_root_hex": "0000000000000000000000000000000000000000000000000000000000000000",
+      "execution_receipts_root_hex": "0000000000000000000000000000000000000000000000000000000000000000",
+      "note": "Implementors: compute SHA256(\"wallop-anchor-v1\" || 32_zero_bytes || 32_zero_bytes)"
+    }
+  ]
+}

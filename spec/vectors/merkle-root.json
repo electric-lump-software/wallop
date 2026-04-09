@@ -1,0 +1,16 @@
+{
+  "description": "RFC 6962-style Merkle tree. Leaf prefix: 0x00. Internal node prefix: 0x01. Odd levels duplicate last node.",
+  "vectors": [
+    {
+      "name": "two leaves",
+      "leaves": ["a", "b"],
+      "note": "leaf_a = SHA256(0x00 || \"a\"), leaf_b = SHA256(0x00 || \"b\"), root = SHA256(0x01 || leaf_a || leaf_b)",
+      "expected_root_hex": "b137985ff484fb600db93107c77b0365c80d78f5b429ded0fd97361d077999eb"
+    },
+    {
+      "name": "16 leaves",
+      "leaves": ["1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16"],
+      "expected_root_hex": "5b20458a9dfa66ab1990467a95cbd7af502caf09cd2ff620725cdb314b52d443"
+    }
+  ]
+}

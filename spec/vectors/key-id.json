@@ -1,0 +1,10 @@
+{
+  "description": "key_id: first 8 lowercase hex chars of SHA-256(public_key)",
+  "vectors": [
+    {
+      "name": "RFC 8032 test public key",
+      "public_key_hex": "D75A980182B10AB7D54BFED3C964073A0EE172F3DAA62325AF021A68F707511A",
+      "expected_key_id": "21fe31df"
+    }
+  ]
+}

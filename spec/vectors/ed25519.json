@@ -1,0 +1,14 @@
+{
+  "description": "Ed25519 signing with RFC 8032 Section 6.1 Test Vector 1 keypair",
+  "keypair": {
+    "private_key_hex": "9D61B19DEFFD5A60BA844AF492EC2CC44449C5697B326919703BAC031CAE7F60",
+    "public_key_hex": "D75A980182B10AB7D54BFED3C964073A0EE172F3DAA62325AF021A68F707511A"
+  },
+  "vectors": [
+    {
+      "name": "sign + verify",
+      "payload": "{\"hello\":\"world\"}",
+      "expected_signature_hex": "b86d1d6a0ac79fd8af966d14191c6dab4f85a16310d9b079ce2a0cabb6301e4e0f52c5c9c85053232eb46aa039f2cfcea0b669554e51c41c9cfef534cd2e570c"
+    }
+  ]
+}
