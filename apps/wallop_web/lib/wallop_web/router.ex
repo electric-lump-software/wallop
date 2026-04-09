@@ -48,6 +48,11 @@ defmodule WallopWeb.Router do
     live("/transparency", TransparencyLive)
   end
 
+  scope "/infrastructure", WallopWeb do
+    pipe_through(:api)
+    get("/key", InfrastructureController, :key_pub)
+  end
+
   scope "/operator", WallopWeb do
     pipe_through(:api)
     get("/:slug/receipts", OperatorController, :receipts_index)

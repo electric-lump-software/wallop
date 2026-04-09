@@ -144,6 +144,28 @@ defmodule WallopCore.TestHelpers do
     operator
   end
 
+  @doc """
+  Creates (or ensures) a wallop infrastructure signing key for execution
+  receipts. Returns the InfrastructureSigningKey struct.
+  """
+  def create_infrastructure_key do
+    {public_key, private_key} = :crypto.generate_key(:eddsa, :ed25519)
+    key_id = WallopCore.Protocol.key_id(public_key)
+    {:ok, encrypted} = WallopCore.Vault.encrypt(private_key)
+
+    {:ok, key} =
+      WallopCore.Resources.InfrastructureSigningKey
+      |> Ash.Changeset.for_create(:create, %{
+        key_id: key_id,
+        public_key: public_key,
+        private_key: encrypted,
+        valid_from: DateTime.add(DateTime.utc_now(), -60, :second)
+      })
+      |> Ash.create(authorize?: false)
+
+    key
+  end
+
   @doc "Creates an api_key bound to the given operator."
   def create_api_key_for_operator(operator, name \\ "op-key") do
     WallopCore.Resources.ApiKey
