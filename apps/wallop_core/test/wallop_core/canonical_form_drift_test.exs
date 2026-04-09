@@ -212,5 +212,82 @@ defmodule WallopCore.CanonicalFormDriftTest do
       {recomputed_hash, _} = Protocol.entry_hash(entries)
       assert decoded["entry_hash"] == recomputed_hash
     end
+
+    test "seed can be recomputed from public inputs (drand + weather)", %{draw: draw} do
+      {recomputed_seed, _} =
+        Protocol.compute_seed(draw.entry_hash, draw.drand_randomness, draw.weather_value)
+
+      assert Base.encode16(recomputed_seed, case: :lower) == draw.seed
+    end
+  end
+
+  describe "drand-only execution path (weather fields null)" do
+    setup do
+      infra_key = create_infrastructure_key()
+      operator = create_operator()
+      api_key = create_api_key_for_operator(operator)
+      draw = create_draw(api_key)
+
+      draw =
+        draw
+        |> Ash.Changeset.for_update(:transition_to_pending, %{})
+        |> Ash.update!(domain: WallopCore.Domain, authorize?: false)
+
+      executed =
+        draw
+        |> Ash.Changeset.for_update(:execute_drand_only, %{
+          drand_randomness: test_drand_randomness(),
+          drand_signature: "test-bls-sig",
+          drand_response: "{}",
+          weather_fallback_reason: "met_office_timeout"
+        })
+        |> Ash.update!(domain: WallopCore.Domain, authorize?: false)
+
+      %{infra_key: infra_key, draw: executed}
+    end
+
+    test "execution receipt has null weather fields and populated fallback reason", %{
+      draw: draw
+    } do
+      [exec_receipt] =
+        ExecutionReceipt
+        |> Ash.Query.filter(draw_id == ^draw.id)
+        |> Ash.read!(authorize?: false)
+
+      decoded = Jason.decode!(exec_receipt.payload_jcs)
+
+      # Weather fields are JSON null (key present, value null)
+      assert Map.has_key?(decoded, "weather_value")
+      assert decoded["weather_value"] == nil
+      assert Map.has_key?(decoded, "weather_observation_time")
+      assert decoded["weather_observation_time"] == nil
+
+      # Fallback reason is populated
+      assert decoded["weather_fallback_reason"] == "met_office_timeout"
+    end
+
+    test "seed can be recomputed from public inputs (drand-only)", %{draw: draw} do
+      {recomputed_seed, _} = Protocol.compute_seed(draw.entry_hash, draw.drand_randomness)
+
+      assert Base.encode16(recomputed_seed, case: :lower) == draw.seed
+    end
+
+    test "signature verifies and entry_hash matches", %{draw: draw, infra_key: infra_key} do
+      [exec_receipt] =
+        ExecutionReceipt
+        |> Ash.Query.filter(draw_id == ^draw.id)
+        |> Ash.read!(authorize?: false)
+
+      assert Protocol.verify_receipt(
+               exec_receipt.payload_jcs,
+               exec_receipt.signature,
+               infra_key.public_key
+             )
+
+      decoded = Jason.decode!(exec_receipt.payload_jcs)
+      entries = WallopCore.Entries.load_for_draw(draw.id)
+      {recomputed_hash, _} = Protocol.entry_hash(entries)
+      assert decoded["entry_hash"] == recomputed_hash
+    end
   end
 end
