@@ -23,6 +23,8 @@ defmodule WallopCore.Domain do
     resource(WallopCore.Resources.Operator.Version)
     resource(WallopCore.Resources.OperatorSigningKey)
     resource(WallopCore.Resources.OperatorReceipt)
+    resource(WallopCore.Resources.ExecutionReceipt)
+    resource(WallopCore.Resources.InfrastructureSigningKey)
     resource(WallopCore.Resources.TransparencyAnchor)
     resource(WallopCore.Resources.WaitlistSignup)
   end
