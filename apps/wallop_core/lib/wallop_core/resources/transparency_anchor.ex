@@ -56,8 +56,8 @@ defmodule WallopCore.Resources.TransparencyAnchor do
       authorize_if(always())
     end
 
-    # Only AnchorWorker (cron) creates anchors, via `authorize?: false`.
-    # PAM-691: without this policy, any caller could pollute the
+    # AnchorWorker (cron) creates anchors via `authorize?: false`.
+    # Without this policy, any unauthenticated caller could pollute the
     # transparency log with garbage anchors and undermine its trust story.
     policy action(:create) do
       forbid_if(always())
