@@ -49,7 +49,13 @@ defmodule WallopCore.Application do
   defp pubsub_child_spec do
     case Application.get_env(:wallop_core, :redis_url) do
       url when is_binary(url) and url != "" ->
-        {Phoenix.PubSub, name: WallopCore.PubSub, adapter: Phoenix.PubSub.Redis, url: url}
+        if Node.alive?() do
+          {Phoenix.PubSub, name: WallopCore.PubSub, adapter: Phoenix.PubSub.Redis, url: url}
+        else
+          # Unnamed node (e.g. mix task via one-off runner) — Redis PubSub
+          # requires a named node. Fall back to local PubSub.
+          {Phoenix.PubSub, name: WallopCore.PubSub}
+        end
 
       _ ->
         # Allow consumers (e.g. wallop-app) to provide full PubSub config
