@@ -107,14 +107,26 @@ defmodule WallopCore.Entropy.EntropyWorker do
   end
 
   # Both sources succeeded
-  defp handle_results(draw, {:ok, drand}, {:ok, weather}, _attempt, _max_attempts) do
+  defp handle_results(draw, {:ok, drand}, {:ok, weather}, attempt, max_attempts) do
     Tracer.set_attributes(%{
       "entropy.drand_round" => drand.round,
       "entropy.weather_value" => weather.value,
       "entropy.weather_observation_time" => DateTime.to_iso8601(weather.observation_time)
     })
 
-    execute_draw(draw, drand, weather)
+    case execute_draw(draw, drand, weather) do
+      :ok ->
+        :ok
+
+      {:error, reason} when attempt >= max_attempts ->
+        fail_draw_with_reason(
+          draw,
+          "execution failed after #{attempt} attempts: #{inspect(reason)}"
+        )
+
+      {:error, reason} ->
+        {:error, reason}
+    end
   end
 
   # At least one source failed
@@ -163,7 +175,16 @@ defmodule WallopCore.Entropy.EntropyWorker do
         "(weather failed after #{attempt} attempts: #{inspect(weather_err)})"
     )
 
-    execute_drand_only(draw, drand, inspect(weather_err))
+    case execute_drand_only(draw, drand, inspect(weather_err)) do
+      :ok ->
+        :ok
+
+      {:error, reason} ->
+        fail_draw_with_reason(
+          draw,
+          "drand-only execution failed: #{inspect(reason)}"
+        )
+    end
   end
 
   defp handle_final_attempt_failure(draw, drand_err, weather_err, attempt) do
