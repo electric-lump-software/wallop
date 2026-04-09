@@ -11,8 +11,8 @@ defmodule WallopCore.Resources.Draw.Changes.AssignOperatorSequence do
   Postgres sequences are NOT used — they leak gaps on rollback, which would
   destroy the draw-shopping signal.
 
-  When the api_key has no operator, this change is a no-op (operator_id and
-  operator_sequence stay nil — backward compatible).
+  Fails hard if the API key has no operator — draws without operators
+  cannot participate in the proof protocol.
   """
   use Ash.Resource.Change
 
@@ -21,9 +21,19 @@ defmodule WallopCore.Resources.Draw.Changes.AssignOperatorSequence do
     Ash.Changeset.before_action(changeset, fn cs -> assign(cs, context.actor) end)
   end
 
-  defp assign(changeset, nil), do: changeset
+  defp assign(changeset, nil) do
+    Ash.Changeset.add_error(changeset,
+      field: :api_key_id,
+      message: "actor is required"
+    )
+  end
 
-  defp assign(changeset, %{operator_id: nil}), do: changeset
+  defp assign(changeset, %{operator_id: nil}) do
+    Ash.Changeset.add_error(changeset,
+      field: :operator_id,
+      message: "API key must belong to an operator"
+    )
+  end
 
   defp assign(changeset, %{operator_id: operator_id}) when is_binary(operator_id) do
     repo = WallopCore.Repo

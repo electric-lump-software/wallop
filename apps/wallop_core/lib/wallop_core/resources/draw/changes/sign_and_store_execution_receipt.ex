@@ -12,9 +12,8 @@ defmodule WallopCore.Resources.Draw.Changes.SignAndStoreExecutionReceipt do
   confirm both halves of the commit-reveal protocol using only signed
   bytes.
 
-  Only fires for draws whose api_key has an operator. If the operator
-  has no lock receipt (e.g. caller-seed draws with no operator), this
-  change is a no-op.
+  Fails hard if the draw has no operator — a draw without an operator
+  cannot participate in the proof protocol.
 
   If anything fails — infra key resolution, decryption, signing, insert
   — the draw completion rolls back. The draw stays in its pre-completion
@@ -33,7 +32,7 @@ defmodule WallopCore.Resources.Draw.Changes.SignAndStoreExecutionReceipt do
   def change(changeset, _opts, _context) do
     Ash.Changeset.after_action(changeset, fn _changeset, draw ->
       case draw.operator_id do
-        nil -> {:ok, draw}
+        nil -> {:error, "draw has no operator — cannot sign execution receipt"}
         _operator_id -> sign_and_store(draw)
       end
     end)
@@ -82,9 +81,8 @@ defmodule WallopCore.Resources.Draw.Changes.SignAndStoreExecutionReceipt do
       end
     else
       {:error, :no_lock_receipt} ->
-        # Caller-seed draws without operators may not have a lock receipt.
-        # This is expected — skip silently.
-        {:ok, draw}
+        Logger.error("SignAndStoreExecutionReceipt: no lock receipt for draw #{draw.id}")
+        {:error, "draw has no lock receipt — cannot chain execution receipt"}
 
       {:error, :no_infra_key} ->
         Logger.error("SignAndStoreExecutionReceipt: no infrastructure signing key found")

@@ -1,12 +1,12 @@
 defmodule WallopCore.Resources.Draw.Changes.SignAndStoreReceipt do
   @moduledoc """
   Signs an operator commitment receipt at draw lock time and inserts it into
-  `operator_receipts` in the same transaction. If the actor has no operator,
-  this change is a no-op (backward compatible).
+  `operator_receipts` in the same transaction.
 
-  If anything fails — current signing key resolution, private key decryption,
-  signing, receipt insert — the entire lock action rolls back via Ash's
-  before_action error path. The draw stays `:open` and no sequence is burned.
+  If anything fails — missing operator, current signing key resolution,
+  private key decryption, signing, receipt insert — the entire lock action
+  rolls back via Ash's before_action error path. The draw stays `:open`
+  and no sequence is burned.
   """
   use Ash.Resource.Change
 
@@ -26,7 +26,10 @@ defmodule WallopCore.Resources.Draw.Changes.SignAndStoreReceipt do
 
     case draw.operator_id do
       nil ->
-        changeset
+        Ash.Changeset.add_error(changeset,
+          field: :operator_id,
+          message: "draw has no operator — cannot sign lock receipt"
+        )
 
       operator_id ->
         do_sign(changeset, draw, operator_id)

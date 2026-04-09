@@ -33,6 +33,8 @@ defmodule WallopCore.Resources.Draw do
     create :create do
       accept([:name, :winner_count, :metadata, :callback_url])
 
+      validate({WallopCore.Resources.Draw.Validations.RequireOperator, []})
+
       change(set_attribute(:api_key_id, actor(:id)))
       change(set_attribute(:status, :open))
       change({WallopCore.Resources.Draw.Changes.AssignOperatorSequence, []})
@@ -102,6 +104,7 @@ defmodule WallopCore.Resources.Draw do
       filter(expr(status == :locked))
 
       change({WallopCore.Resources.Draw.Changes.ExecuteDraw, []})
+      change({WallopCore.Resources.Draw.Changes.SignAndStoreExecutionReceipt, []})
     end
 
     update :transition_to_pending do
@@ -212,7 +215,7 @@ defmodule WallopCore.Resources.Draw do
     # Internal-only actions: called by EntropyWorker / ExpiryWorker with
     # authorize?: false. Forbidden for all authorized callers to prevent
     # external actors from racing the workers (or, in :expire's case, from
-    # burning operator sequence slots maliciously — see PAM-685).
+    # burning operator sequence slots maliciously).
     policy action([
              :expire,
              :transition_to_pending,

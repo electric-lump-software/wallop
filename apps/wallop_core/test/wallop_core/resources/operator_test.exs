@@ -105,17 +105,17 @@ defmodule WallopCore.Resources.OperatorTest do
              )
     end
 
-    test "lock without an operator does not create a receipt (backward compat)" do
-      api_key = create_api_key()
-      draw = create_draw(api_key)
+    test "draw creation is rejected for API keys without an operator" do
+      # Create an API key with no operator (bypass the helper's auto-create)
+      api_key =
+        WallopCore.Resources.ApiKey
+        |> Ash.Changeset.for_create(:create, %{name: "orphan-key"})
+        |> Ash.create!(authorize?: false)
 
-      assert draw.operator_id == nil
-      assert draw.operator_sequence == nil
-
-      [] =
-        OperatorReceipt
-        |> Ash.Query.filter(draw_id == ^draw.id)
-        |> Ash.read!(authorize?: false)
+      assert {:error, %Ash.Error.Invalid{}} =
+               WallopCore.Resources.Draw
+               |> Ash.Changeset.for_create(:create, %{winner_count: 1}, actor: api_key)
+               |> Ash.create()
     end
 
     test "operator_receipts cannot be UPDATEd or DELETEd via SQL" do

@@ -80,7 +80,26 @@ defmodule WallopCore.Resources.DrawImmutabilityTest do
       end
     end
 
-    test "can DELETE a locked draw (cancellation)", %{draw: draw} do
+    test "can DELETE a locked draw (cancellation) after removing dependent receipts", %{
+      draw: draw
+    } do
+      # Must remove dependent receipts first (FK constraint)
+      SQL.query!(
+        WallopCore.Repo,
+        "SET session_replication_role = 'replica'"
+      )
+
+      SQL.query!(
+        WallopCore.Repo,
+        "DELETE FROM operator_receipts WHERE draw_id = $1",
+        [Ecto.UUID.dump!(draw.id)]
+      )
+
+      SQL.query!(
+        WallopCore.Repo,
+        "SET session_replication_role = 'origin'"
+      )
+
       result =
         SQL.query!(
           WallopCore.Repo,
