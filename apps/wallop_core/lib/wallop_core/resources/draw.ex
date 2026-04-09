@@ -126,6 +126,7 @@ defmodule WallopCore.Resources.Draw do
       end
 
       change({WallopCore.Resources.Draw.Changes.ExecuteWithEntropy, []})
+      change({WallopCore.Resources.Draw.Changes.SignAndStoreExecutionReceipt, []})
       change({WallopCore.Resources.Draw.Changes.BroadcastUpdate, []})
     end
 
@@ -144,6 +145,7 @@ defmodule WallopCore.Resources.Draw do
 
       change({WallopCore.Resources.Draw.Changes.ExecuteDrandOnly, []})
       change({WallopCore.Resources.Draw.Changes.RecordStageTimestamp, key: "executed_at"})
+      change({WallopCore.Resources.Draw.Changes.SignAndStoreExecutionReceipt, []})
       change({WallopCore.Resources.Draw.Changes.BroadcastUpdate, []})
     end
 
@@ -471,6 +473,10 @@ defmodule WallopCore.Resources.Draw do
     end
 
     has_one :receipt, WallopCore.Resources.OperatorReceipt do
+      destination_attribute(:draw_id)
+    end
+
+    has_one :execution_receipt, WallopCore.Resources.ExecutionReceipt do
       destination_attribute(:draw_id)
     end
   end

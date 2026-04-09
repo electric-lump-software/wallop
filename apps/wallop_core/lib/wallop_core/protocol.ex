@@ -133,6 +133,63 @@ defmodule WallopCore.Protocol do
   defp maybe_iso8601(%DateTime{} = dt), do: DateTime.to_iso8601(dt)
   defp maybe_iso8601(nil), do: nil
 
+  @execution_receipt_schema_version "1"
+
+  @doc """
+  Build the canonical JCS payload bytes for an execution receipt.
+
+  Signed by the wallop infrastructure key (not the operator's key).
+  Links to the lock receipt via `lock_receipt_hash`.
+
+  `results` must be a flat list of entry_id strings in position order —
+  derived from FairPick output via `Enum.map(results, & &1.entry_id)`.
+  """
+  @spec build_execution_receipt_payload(map()) :: binary()
+  def build_execution_receipt_payload(%{
+        draw_id: draw_id,
+        operator_id: operator_id,
+        operator_slug: operator_slug,
+        sequence: sequence,
+        lock_receipt_hash: lock_receipt_hash,
+        entry_hash: entry_hash,
+        drand_chain: drand_chain,
+        drand_round: drand_round,
+        drand_randomness: drand_randomness,
+        drand_signature: drand_signature,
+        weather_station: weather_station,
+        weather_observation_time: weather_observation_time,
+        weather_value: weather_value,
+        weather_fallback_reason: weather_fallback_reason,
+        wallop_core_version: wallop_core_version,
+        fair_pick_version: fair_pick_version,
+        seed: seed,
+        results: results,
+        executed_at: %DateTime{} = executed_at
+      }) do
+    Jcs.encode(%{
+      "draw_id" => draw_id,
+      "drand_chain" => drand_chain,
+      "drand_randomness" => drand_randomness,
+      "drand_round" => drand_round,
+      "drand_signature" => drand_signature,
+      "entry_hash" => entry_hash,
+      "executed_at" => DateTime.to_iso8601(executed_at),
+      "execution_schema_version" => @execution_receipt_schema_version,
+      "fair_pick_version" => fair_pick_version,
+      "lock_receipt_hash" => lock_receipt_hash,
+      "operator_id" => operator_id,
+      "operator_slug" => to_string(operator_slug),
+      "results" => results,
+      "seed" => seed,
+      "sequence" => sequence,
+      "wallop_core_version" => wallop_core_version,
+      "weather_fallback_reason" => weather_fallback_reason,
+      "weather_observation_time" => maybe_iso8601(weather_observation_time),
+      "weather_station" => weather_station,
+      "weather_value" => weather_value
+    })
+  end
+
   @doc """
   Sign a receipt payload with an Ed25519 private key.
 
