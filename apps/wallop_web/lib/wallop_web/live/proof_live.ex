@@ -32,7 +32,7 @@ defmodule WallopWeb.ProofLive do
         end
 
         check_result = auto_check_entry(draw, entry_id)
-        {operator, receipt} = WallopCore.OperatorInfo.for_draw(draw)
+        {operator, receipt, execution_receipt} = WallopCore.OperatorInfo.for_draw(draw)
 
         {:ok,
          assign(socket,
@@ -49,6 +49,7 @@ defmodule WallopWeb.ProofLive do
            results_json: nil,
            operator: operator,
            receipt: receipt,
+           execution_receipt: execution_receipt,
            page_title: "Draw Proof"
          )}
 
