@@ -104,7 +104,7 @@ defmodule WallopWeb.Components.OperatorPanel do
           </div>
           <div>
             <span class="text-[#888]">Lock receipt hash:</span>
-            <span class="font-mono text-[10px]">{@execution_receipt.lock_receipt_hash}</span>
+            <span class="font-mono text-[10px] break-all">{@execution_receipt.lock_receipt_hash}</span>
           </div>
         </div>
 
