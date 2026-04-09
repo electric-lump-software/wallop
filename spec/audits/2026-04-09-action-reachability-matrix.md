@@ -80,12 +80,21 @@ DB level: INSERT/UPDATE/DELETE blocked when draw status != open.
 
 ## Findings
 
-**No findings.** Every action's state filter matches its documented
-intent. No action is reachable from a state it shouldn't be. The
-DB triggers provide independent enforcement of the same constraints.
+**F-1: `:execute` action is valid but currently unreachable.**
 
-The `locked` state exists briefly between `lock` completing and
-`DeclareEntropy` running (both in the same transaction). The `:execute`
-action filters on `locked`, which is the caller-seed path (no entropy
-declaration). This is correct — caller-seed draws never enter
-`awaiting_entropy`.
+The `:execute` action filters on `status == :locked`. No code path
+currently produces `:locked` state — the `lock` action atomically
+transitions `open → awaiting_entropy` because `LockDraw` and
+`DeclareEntropy` run in the same Ash changeset (single SQL UPDATE).
+
+This is intentional — the caller-seed path ("lock and wait") is a
+future feature. To enable it, the `lock` action needs to be split
+so draws can pause in `:locked` before entropy declaration. Filed
+as a separate card.
+
+The `:execute` action, `NoEntropyDeclared` validation, and `:locked`
+status enum value are retained as forward-looking infrastructure.
+
+**No security findings.** Every reachable action's state filter matches
+its documented intent. The DB triggers independently enforce the same
+constraints.
