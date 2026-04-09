@@ -24,7 +24,8 @@ config :wallop_core, Oban,
      crontab: [
        {"0 * * * *", WallopCore.Entropy.ExpiryWorker},
        {"30 3 * * *", WallopCore.Transparency.AnchorWorker}
-     ]}
+     ]},
+    {Oban.Plugins.Lifeline, rescue_after: :timer.minutes(2)}
   ]
 
 config :wallop_web, WallopWeb.Endpoint,

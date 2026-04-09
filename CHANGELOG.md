@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### wallop_core 0.14.1
+
+- **Deploy safety: Oban Lifeline plugin.** Rescues entropy worker jobs stuck in "executing" state after a node restart (deploy, crash). Without this, a deploy that kills a worker mid-execution left the Oban job orphaned and the draw stuck in `pending_entropy` forever. `rescue_after: 2 minutes`.
+- **Worker timeout.** EntropyWorker now has an explicit 90-second timeout. Prevents hung workers from running indefinitely and racing with Lifeline rescue.
+- **Execution exhaustion → mark_failed.** When entropy fetching succeeds but draw execution fails (e.g. receipt signing error), the draw is now marked as `failed` after max retries instead of staying in `pending_entropy` forever.
+- **Lifeline race tolerance.** `fail_draw_with_reason` now handles the case where a draw has already been completed by a concurrent worker (Lifeline rescue race). Returns `:ok` instead of a false error.
+
 ### 🚨 BREAKING — wallop_core 0.14.0
 
 - **Draw creation now rejects API keys without an operator.** Previously, creating a draw with an operator-less API key silently succeeded but produced no cryptographic attestation (no lock receipt, no execution receipt, no proof chain). This is now a hard validation error. All silent-skip paths in receipt signing and operator sequence assignment are now hard failures. **Consumer action required:** ensure every API key used for draw creation has an `operator_id` set.
