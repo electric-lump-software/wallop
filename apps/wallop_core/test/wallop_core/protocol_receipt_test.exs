@@ -4,7 +4,7 @@ defmodule WallopCore.ProtocolReceiptTest do
   alias WallopCore.Protocol
 
   describe "build_receipt_payload/1" do
-    test "produces JCS-canonical bytes with sorted keys" do
+    test "produces JCS-canonical bytes with sorted keys (schema v2)" do
       payload =
         Protocol.build_receipt_payload(%{
           operator_id: "11111111-1111-1111-1111-111111111111",
@@ -14,7 +14,14 @@ defmodule WallopCore.ProtocolReceiptTest do
           commitment_hash: "abc",
           entry_hash: "abc",
           locked_at: ~U[2026-04-07 12:34:56.789012Z],
-          signing_key_id: "deadbeef"
+          signing_key_id: "deadbeef",
+          winner_count: 3,
+          drand_chain: "quicknet-chain-hash",
+          drand_round: 12_345,
+          weather_station: "middle-wallop",
+          weather_time: ~U[2026-04-07 13:00:00.000000Z],
+          wallop_core_version: "0.11.2",
+          fair_pick_version: "0.2.1"
         })
 
       assert is_binary(payload)
@@ -23,14 +30,50 @@ defmodule WallopCore.ProtocolReceiptTest do
       assert decoded == %{
                "commitment_hash" => "abc",
                "draw_id" => "22222222-2222-2222-2222-222222222222",
+               "drand_chain" => "quicknet-chain-hash",
+               "drand_round" => 12_345,
                "entry_hash" => "abc",
+               "fair_pick_version" => "0.2.1",
                "locked_at" => "2026-04-07T12:34:56.789012Z",
                "operator_id" => "11111111-1111-1111-1111-111111111111",
                "operator_slug" => "acme-prizes",
-               "schema_version" => "1",
+               "schema_version" => "2",
                "sequence" => 42,
-               "signing_key_id" => "deadbeef"
+               "signing_key_id" => "deadbeef",
+               "wallop_core_version" => "0.11.2",
+               "weather_station" => "middle-wallop",
+               "weather_time" => "2026-04-07T13:00:00.000000Z",
+               "winner_count" => 3
              }
+    end
+
+    test "handles nil weather fields for caller-seed draws" do
+      payload =
+        Protocol.build_receipt_payload(%{
+          operator_id: "11111111-1111-1111-1111-111111111111",
+          operator_slug: "acme-prizes",
+          sequence: 1,
+          draw_id: "33333333-3333-3333-3333-333333333333",
+          commitment_hash: "def",
+          entry_hash: "def",
+          locked_at: ~U[2026-04-07 12:00:00.000000Z],
+          signing_key_id: "cafebabe",
+          winner_count: 1,
+          drand_chain: nil,
+          drand_round: nil,
+          weather_station: nil,
+          weather_time: nil,
+          wallop_core_version: "0.11.2",
+          fair_pick_version: "0.2.1"
+        })
+
+      decoded = Jason.decode!(payload)
+      assert decoded["drand_chain"] == nil
+      assert decoded["drand_round"] == nil
+      assert decoded["weather_station"] == nil
+      assert decoded["weather_time"] == nil
+      assert decoded["winner_count"] == 1
+      assert decoded["schema_version"] == "2"
     end
   end
 

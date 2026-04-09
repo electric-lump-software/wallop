@@ -49,7 +49,14 @@ defmodule WallopCore.Resources.Draw.Changes.SignAndStoreReceipt do
           commitment_hash: commitment_hash,
           entry_hash: commitment_hash,
           locked_at: locked_at,
-          signing_key_id: signing_key.key_id
+          signing_key_id: signing_key.key_id,
+          winner_count: draw.winner_count,
+          drand_chain: Ash.Changeset.get_attribute(changeset, :drand_chain),
+          drand_round: Ash.Changeset.get_attribute(changeset, :drand_round),
+          weather_station: Ash.Changeset.get_attribute(changeset, :weather_station),
+          weather_time: Ash.Changeset.get_attribute(changeset, :weather_time),
+          wallop_core_version: app_version(:wallop_core),
+          fair_pick_version: app_version(:fair_pick)
         })
 
       signature = Protocol.sign_receipt(payload, private_key)
@@ -114,5 +121,12 @@ defmodule WallopCore.Resources.Draw.Changes.SignAndStoreReceipt do
       signature: signature
     })
     |> Ash.create(authorize?: false)
+  end
+
+  defp app_version(app) do
+    case Application.spec(app, :vsn) do
+      nil -> "unknown"
+      vsn -> to_string(vsn)
+    end
   end
 end
