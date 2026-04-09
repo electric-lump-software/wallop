@@ -29,6 +29,7 @@ defmodule WallopCore.FrozenVectorsTest do
   use ExUnit.Case, async: true
 
   alias WallopCore.Protocol
+  alias WallopCore.Transparency.AnchorWorker
 
   # ── RFC 8032 test keypair (deterministic, well-known) ──────────────
 
@@ -398,7 +399,7 @@ defmodule WallopCore.FrozenVectorsTest do
       op_root = :crypto.hash(:sha256, "operator-receipts-sentinel")
       exec_root = :crypto.hash(:sha256, "execution-receipts-sentinel")
 
-      combined = WallopCore.Transparency.AnchorWorker.combined_root(op_root, exec_root)
+      combined = AnchorWorker.combined_root(op_root, exec_root)
 
       assert Base.encode16(op_root, case: :lower) ==
                "15608de04e527005cd03f96a456269aaf9dc068996612d7f5b2ea11d0bc453ac"
@@ -416,7 +417,7 @@ defmodule WallopCore.FrozenVectorsTest do
       dummy = <<0::256>>
 
       expected = :crypto.hash(:sha256, "wallop-anchor-v1" <> dummy <> dummy)
-      actual = WallopCore.Transparency.AnchorWorker.combined_root(dummy, dummy)
+      actual = AnchorWorker.combined_root(dummy, dummy)
 
       assert actual == expected
     end
