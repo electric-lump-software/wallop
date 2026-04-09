@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### wallop_core 0.13.0
+
+- **Execution receipts** — every completed draw belonging to an operator now gets a second signed artefact: an execution receipt signed by the wallop infrastructure Ed25519 key (not the operator's key). The signed payload commits to entropy values (drand randomness, drand BLS signature, weather value), the computed seed, the results, algorithm versions (`wallop_core_version`, `fair_pick_version`), and a `lock_receipt_hash` linking it cryptographically to the lock-time operator receipt. Together, the two receipts let a verifier confirm both halves of the commit-reveal protocol using only signed bytes and public external data.
+
+  New resources:
+  - `WallopCore.Resources.ExecutionReceipt` — append-only, one per draw, DB trigger enforced
+  - `WallopCore.Resources.InfrastructureSigningKey` — wallop-wide Ed25519 keypair, append-only, Vault-encrypted
+
+  New protocol function:
+  - `Protocol.build_execution_receipt_payload/1` — 20-field maximalist signed surface, `execution_schema_version: "1"`
+
+  New endpoints:
+  - `GET /infrastructure/key` — raw 32-byte Ed25519 public key with `x-wallop-key-id` header
+
+  New mix tasks:
+  - `mix wallop.bootstrap_infrastructure_key` — one-time first-deploy setup
+  - `mix wallop.rotate_infrastructure_key` — annual rotation
+
+  **Consumer action required:** if your app parses or displays receipts, you can now fetch and verify execution receipts alongside lock receipts. No changes required for existing lock receipt handling — this is purely additive.
+
+- **PubSub unnamed-node fallback** — `WallopCore.Application` now checks `Node.alive?()` before starting PubSub with the Redis adapter. Unnamed nodes (e.g. one-off mix tasks) fall back to local PubSub instead of crashing.
+
 ### 🚨 BREAKING — wallop_core 0.12.0
 
 - **Lock receipt schema v2.** `Protocol.build_receipt_payload/1` now requires seven additional fields and the function's pattern match has changed — callers passing the old 8-key map will get a `FunctionClauseError`. `@receipt_schema_version` bumped from `"1"` to `"2"`.
