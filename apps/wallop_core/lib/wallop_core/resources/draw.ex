@@ -447,11 +447,11 @@ defmodule WallopCore.Resources.Draw do
 
     attribute :operator_sequence, :integer do
       description(
-        "Per-operator monotonic sequence number assigned at create time. Null when " <>
-          "the api_key has no operator. Gap-free by design — discarded slots are visible."
+        "Per-operator monotonic sequence number assigned at create time. " <>
+          "Gap-free by design — discarded slots are visible."
       )
 
-      allow_nil?(true)
+      allow_nil?(false)
       public?(true)
     end
 
@@ -466,7 +466,7 @@ defmodule WallopCore.Resources.Draw do
     end
 
     belongs_to :operator, WallopCore.Resources.Operator do
-      allow_nil?(true)
+      allow_nil?(false)
       public?(true)
       attribute_writable?(true)
     end
