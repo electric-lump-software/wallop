@@ -1,0 +1,31 @@
+{
+  "description": "entry_hash canonicalization: sort entries by id, JCS-encode, SHA-256",
+  "vectors": [
+    {
+      "name": "equal-weight entries",
+      "entries": [
+        {"id": "ticket-47", "weight": 1},
+        {"id": "ticket-48", "weight": 1},
+        {"id": "ticket-49", "weight": 1}
+      ],
+      "expected_jcs": "{\"entries\":[{\"id\":\"ticket-47\",\"weight\":1},{\"id\":\"ticket-48\",\"weight\":1},{\"id\":\"ticket-49\",\"weight\":1}]}",
+      "expected_hash": "6056fbb6c98a0f04404adb013192d284bfec98975e2a7975395c3bcd4ad59577"
+    },
+    {
+      "name": "weighted entries",
+      "entries": [
+        {"id": "alpha", "weight": 10},
+        {"id": "bravo", "weight": 1},
+        {"id": "charlie", "weight": 5}
+      ],
+      "expected_hash": "5616386cc36c680fed74464bc2e6eb940b07ba1353dd8aa971e16fb7463013c6"
+    },
+    {
+      "name": "single entry",
+      "entries": [
+        {"id": "solo", "weight": 1}
+      ],
+      "expected_hash": "6df489f98b5dac2a004bdee59e589b4626c9f7c4126e5242c1989335f6dd5d13"
+    }
+  ]
+}

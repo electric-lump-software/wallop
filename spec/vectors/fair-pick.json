@@ -1,0 +1,52 @@
+{
+  "description": "FairPick.draw(entries, seed_bytes, winner_count) → winners in position order",
+  "note": "seed_bytes is the raw 32-byte SHA-256 output, provided here as hex",
+  "vectors": [
+    {
+      "name": "equal-weight via protocol pipeline",
+      "entries": [
+        {"id": "ticket-47", "weight": 1},
+        {"id": "ticket-48", "weight": 1},
+        {"id": "ticket-49", "weight": 1}
+      ],
+      "seed_hex": "ced93f50d73a619701e9e865eb03fb4540a7232a588c707f85754aa41e3fb037",
+      "winner_count": 2,
+      "expected_winners": ["ticket-48", "ticket-47"]
+    },
+    {
+      "name": "equal-weight with decoupled arbitrary seed",
+      "entries": [
+        {"id": "ticket-47", "weight": 1},
+        {"id": "ticket-48", "weight": 1},
+        {"id": "ticket-49", "weight": 1}
+      ],
+      "seed_note": "SHA-256(\"frozen-equal-weight-vector\")",
+      "winner_count": 2,
+      "expected_winners": ["ticket-49", "ticket-47"]
+    },
+    {
+      "name": "weighted entries",
+      "entries": [
+        {"id": "alpha", "weight": 100},
+        {"id": "bravo", "weight": 1},
+        {"id": "charlie", "weight": 1}
+      ],
+      "seed_note": "SHA-256(\"frozen-weighted-vector\")",
+      "winner_count": 2,
+      "expected_winners": ["alpha", "bravo"]
+    },
+    {
+      "name": "full ordering (all winners)",
+      "entries": [
+        {"id": "a", "weight": 1},
+        {"id": "b", "weight": 1},
+        {"id": "c", "weight": 1},
+        {"id": "d", "weight": 1},
+        {"id": "e", "weight": 1}
+      ],
+      "seed_note": "SHA-256(\"frozen-full-ordering\")",
+      "winner_count": 5,
+      "expected_winners": ["a", "b", "c", "e", "d"]
+    }
+  ]
+}
