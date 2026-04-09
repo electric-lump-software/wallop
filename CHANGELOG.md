@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### wallop_core 0.13.1
 
-- **Transparency log: dual sub-trees + infrastructure signature** — `AnchorWorker` now builds separate Merkle roots for operator receipts and execution receipts, combined with RFC 6962 domain separation: `anchor_root = SHA256(0x01 || operator_receipts_root || execution_receipts_root)`. The combined root is signed by the infrastructure Ed25519 key, making the transparency log itself infra-key-signed. A verifier who only cares about one receipt type can verify their sub-tree independently. New columns on `transparency_anchors`: `operator_receipts_root`, `execution_receipts_root`, `execution_receipt_count`, `infrastructure_signature`, `signing_key_id`. Existing anchors (pre-this-version) have null values for the new columns.
+- **Transparency log: dual sub-trees + infrastructure signature** — `AnchorWorker` now builds separate Merkle roots for operator receipts and execution receipts, combined with RFC 6962 domain separation: `anchor_root = SHA256("wallop-anchor-v1" || operator_receipts_root || execution_receipts_root)`. The combined root is signed by the infrastructure Ed25519 key, making the transparency log itself infra-key-signed. A verifier who only cares about one receipt type can verify their sub-tree independently. New columns on `transparency_anchors`: `operator_receipts_root`, `execution_receipts_root`, `execution_receipt_count`, `infrastructure_signature`, `signing_key_id`. Existing anchors (pre-this-version) have null values for the new columns.
 
 ### wallop_core 0.13.0
 
