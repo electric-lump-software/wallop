@@ -4,10 +4,11 @@ defmodule WallopCore.Repo.Migrations.ExtendTransparencyAnchors do
 
   The anchor's `merkle_root` becomes a combined root:
 
-      SHA256(0x01 || operator_receipts_root || execution_receipts_root)
+      SHA256("wallop-anchor-v1" || operator_receipts_root || execution_receipts_root)
 
-  The `0x01` prefix provides domain separation from leaf hashes (which use
-  `0x00`), following RFC 6962 conventions already used by Protocol.merkle_root/1.
+  The `"wallop-anchor-v1"` prefix provides domain separation from both
+  leaf hashes (`0x00`) and internal Merkle nodes (`0x01`), avoiding
+  structural ambiguity with RFC 6962 tree nodes.
 
   The `infrastructure_signature` signs the combined root with the infra key,
   making the transparency log itself infra-key-signed.
