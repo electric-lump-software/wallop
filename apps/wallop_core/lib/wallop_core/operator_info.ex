@@ -2,7 +2,7 @@ defmodule WallopCore.OperatorInfo do
   @moduledoc """
   Helper for fetching the operator and signed receipt associated with a draw.
 
-  Returns `{nil, nil}` for draws whose api_key has no operator (backward
+  Returns `{nil, nil, nil}` for draws whose api_key has no operator (backward
   compatible — these are draws created before the operator registry existed
   or by self-hosted installations without operators).
   """
