@@ -16,6 +16,8 @@ defmodule WallopCore.ImmutabilityTriggerAuditTest do
   import WallopCore.TestHelpers
   require Ash.Query
 
+  alias WallopCore.Transparency.AnchorWorker
+
   # ── TRUNCATE protection ────────────────────────────────────────────
 
   describe "TRUNCATE protection" do
@@ -426,7 +428,7 @@ defmodule WallopCore.ImmutabilityTriggerAuditTest do
       operator = create_operator()
       api_key = create_api_key_for_operator(operator)
       _draw = create_draw(api_key) |> then(&execute_draw(&1, test_seed(), api_key))
-      {:ok, anchor} = WallopCore.Transparency.AnchorWorker.perform(%Oban.Job{})
+      {:ok, anchor} = AnchorWorker.perform(%Oban.Job{})
       %{anchor: anchor}
     end
 
