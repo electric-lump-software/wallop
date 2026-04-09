@@ -32,7 +32,7 @@ defmodule WallopWeb.ProofController do
   defp render_static(conn, draw, entry_id) do
     check_result = if entry_id, do: check_entry(draw, entry_id)
     entries = WallopCore.Entries.load_for_draw(draw.id)
-    {operator, receipt} = WallopCore.OperatorInfo.for_draw(draw)
+    {operator, receipt, execution_receipt} = WallopCore.OperatorInfo.for_draw(draw)
 
     conn
     |> put_resp_header("cache-control", "public, max-age=31536000, immutable")
@@ -45,7 +45,8 @@ defmodule WallopWeb.ProofController do
       entries_json: entries_to_json(entries),
       results_json: results_to_json(draw.results),
       operator: operator,
-      receipt: receipt
+      receipt: receipt,
+      execution_receipt: execution_receipt
     )
   end
 
