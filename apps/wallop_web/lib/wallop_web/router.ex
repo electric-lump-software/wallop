@@ -57,6 +57,8 @@ defmodule WallopWeb.Router do
     pipe_through(:api)
     get("/:slug/receipts", OperatorController, :receipts_index)
     get("/:slug/receipts/:sequence", OperatorController, :receipt_show)
+    get("/:slug/executions", OperatorController, :executions_index)
+    get("/:slug/executions/:sequence", OperatorController, :execution_show)
     get("/:slug/keys", OperatorController, :keys_index)
     get("/:slug/key", OperatorController, :key_pub)
   end

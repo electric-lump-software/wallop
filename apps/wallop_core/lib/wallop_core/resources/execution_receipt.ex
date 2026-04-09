@@ -71,6 +71,7 @@ defmodule WallopCore.Resources.ExecutionReceipt do
 
   identities do
     identity(:unique_draw, [:draw_id])
+    identity(:unique_operator_sequence, [:operator_id, :sequence])
   end
 
   relationships do

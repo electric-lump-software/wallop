@@ -11,7 +11,7 @@ defmodule WallopWeb.OperatorController do
 
   require Ash.Query
 
-  alias WallopCore.Resources.{Operator, OperatorReceipt, OperatorSigningKey}
+  alias WallopCore.Resources.{ExecutionReceipt, Operator, OperatorReceipt, OperatorSigningKey}
 
   def receipts_index(conn, %{"slug" => slug}) do
     case load_operator(slug) do
@@ -96,6 +96,42 @@ defmodule WallopWeb.OperatorController do
     end
   end
 
+  def executions_index(conn, %{"slug" => slug}) do
+    case load_operator(slug) do
+      {:ok, operator} ->
+        receipts = list_execution_receipts(operator.id)
+        max_seq = receipts |> Enum.map(& &1.sequence) |> Enum.max(fn -> 0 end)
+        etag = "W/\"exec-#{operator.id}-#{max_seq}\""
+
+        conn
+        |> put_resp_header("etag", etag)
+        |> put_resp_header("cache-control", "public, max-age=60")
+        |> json(%{
+          operator: operator_summary(operator),
+          count: length(receipts),
+          execution_receipts: Enum.map(receipts, &serialise_execution_receipt/1)
+        })
+
+      :error ->
+        not_found(conn)
+    end
+  end
+
+  def execution_show(conn, %{"slug" => slug, "sequence" => seq_str}) do
+    with {seq, ""} <- Integer.parse(seq_str),
+         {:ok, operator} <- load_operator(slug),
+         {:ok, receipt} <- find_execution_receipt(operator.id, seq) do
+      conn
+      |> put_resp_header("cache-control", "public, max-age=31536000, immutable")
+      |> json(%{
+        operator: operator_summary(operator),
+        execution_receipt: serialise_execution_receipt(receipt)
+      })
+    else
+      _ -> not_found(conn)
+    end
+  end
+
   defp load_operator(slug) do
     Operator
     |> Ash.Query.filter(slug == ^slug)
@@ -144,6 +180,23 @@ defmodule WallopWeb.OperatorController do
     |> Ash.read!(authorize?: false)
   end
 
+  defp list_execution_receipts(operator_id) do
+    ExecutionReceipt
+    |> Ash.Query.filter(operator_id == ^operator_id)
+    |> Ash.Query.sort(sequence: :asc)
+    |> Ash.read!(authorize?: false)
+  end
+
+  defp find_execution_receipt(operator_id, sequence) do
+    ExecutionReceipt
+    |> Ash.Query.filter(operator_id == ^operator_id and sequence == ^sequence)
+    |> Ash.read_one(authorize?: false)
+    |> case do
+      {:ok, %ExecutionReceipt{} = r} -> {:ok, r}
+      _ -> :error
+    end
+  end
+
   defp operator_summary(operator) do
     %{id: operator.id, slug: to_string(operator.slug), name: operator.name}
   end
@@ -155,6 +208,18 @@ defmodule WallopWeb.OperatorController do
       commitment_hash: r.commitment_hash,
       entry_hash: r.entry_hash,
       locked_at: r.locked_at,
+      signing_key_id: r.signing_key_id,
+      payload: Jason.decode!(r.payload_jcs),
+      payload_jcs_b64: Base.encode64(r.payload_jcs),
+      signature_b64: Base.encode64(r.signature)
+    }
+  end
+
+  defp serialise_execution_receipt(r) do
+    %{
+      sequence: r.sequence,
+      draw_id: r.draw_id,
+      lock_receipt_hash: r.lock_receipt_hash,
       signing_key_id: r.signing_key_id,
       payload: Jason.decode!(r.payload_jcs),
       payload_jcs_b64: Base.encode64(r.payload_jcs),
