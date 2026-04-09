@@ -11,6 +11,7 @@ defmodule WallopCore.Repo.Migrations.AddTruncateProtection do
   @protected_tables ~w(
     draws
     entries
+    operators
     operator_signing_keys
     operator_receipts
     transparency_anchors

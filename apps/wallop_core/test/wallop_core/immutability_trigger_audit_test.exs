@@ -23,6 +23,10 @@ defmodule WallopCore.ImmutabilityTriggerAuditTest do
       assert_truncate_blocked("draws")
     end
 
+    test "operators cannot be TRUNCATEd" do
+      assert_truncate_blocked("operators")
+    end
+
     test "entries cannot be TRUNCATEd" do
       assert_truncate_blocked("entries")
     end
@@ -179,6 +183,87 @@ defmodule WallopCore.ImmutabilityTriggerAuditTest do
       assert_raise Postgrex.Error, ~r/Invalid state transition/, fn ->
         WallopCore.Repo.query!(
           "UPDATE draws SET status = 'expired' WHERE id = $1",
+          [Ecto.UUID.dump!(draw.id)]
+        )
+      end
+    end
+
+    test "pending_entropy cannot return to open" do
+      api_key = create_api_key()
+      draw = create_draw(api_key)
+
+      # Transition to pending_entropy
+      draw =
+        draw
+        |> Ash.Changeset.for_update(:transition_to_pending, %{})
+        |> Ash.update!(domain: WallopCore.Domain, authorize?: false)
+
+      assert_raise Postgrex.Error, ~r/Invalid state transition/, fn ->
+        WallopCore.Repo.query!(
+          "UPDATE draws SET status = 'open' WHERE id = $1",
+          [Ecto.UUID.dump!(draw.id)]
+        )
+      end
+    end
+
+    test "pending_entropy cannot return to awaiting_entropy" do
+      api_key = create_api_key()
+      draw = create_draw(api_key)
+
+      draw =
+        draw
+        |> Ash.Changeset.for_update(:transition_to_pending, %{})
+        |> Ash.update!(domain: WallopCore.Domain, authorize?: false)
+
+      assert_raise Postgrex.Error, ~r/Invalid state transition/, fn ->
+        WallopCore.Repo.query!(
+          "UPDATE draws SET status = 'awaiting_entropy' WHERE id = $1",
+          [Ecto.UUID.dump!(draw.id)]
+        )
+      end
+    end
+  end
+
+  describe "draws: failed state is terminal" do
+    test "cannot UPDATE failed draw" do
+      api_key = create_api_key()
+      draw = create_draw(api_key)
+
+      draw =
+        draw
+        |> Ash.Changeset.for_update(:transition_to_pending, %{})
+        |> Ash.update!(domain: WallopCore.Domain, authorize?: false)
+
+      draw =
+        draw
+        |> Ash.Changeset.for_update(:mark_failed, %{failure_reason: "test failure"})
+        |> Ash.update!(domain: WallopCore.Domain, authorize?: false)
+
+      assert_raise Postgrex.Error, ~r/Cannot modify a failed draw/, fn ->
+        WallopCore.Repo.query!(
+          "UPDATE draws SET status = 'open' WHERE id = $1",
+          [Ecto.UUID.dump!(draw.id)]
+        )
+      end
+    end
+
+    test "cannot DELETE failed draw" do
+      api_key = create_api_key()
+      draw = create_draw(api_key)
+
+      draw =
+        draw
+        |> Ash.Changeset.for_update(:transition_to_pending, %{})
+        |> Ash.update!(domain: WallopCore.Domain, authorize?: false)
+
+      _draw =
+        draw
+        |> Ash.Changeset.for_update(:mark_failed, %{failure_reason: "test failure"})
+        |> Ash.update!(domain: WallopCore.Domain, authorize?: false)
+
+      assert_raise Postgrex.Error, ~r/Cannot delete a failed draw/, fn ->
+        WallopCore.Repo.query!(
+          "DELETE FROM draws WHERE id = $1",
           [Ecto.UUID.dump!(draw.id)]
         )
       end
