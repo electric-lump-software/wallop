@@ -58,8 +58,8 @@ defmodule WallopCore.Resources.Draw.Changes.SignAndStoreReceipt do
           drand_round: Ash.Changeset.get_attribute(changeset, :drand_round),
           weather_station: Ash.Changeset.get_attribute(changeset, :weather_station),
           weather_time: Ash.Changeset.get_attribute(changeset, :weather_time),
-          wallop_core_version: app_version(:wallop_core),
-          fair_pick_version: app_version(:fair_pick)
+          wallop_core_version: app_version!(:wallop_core),
+          fair_pick_version: app_version!(:fair_pick)
         })
 
       signature = Protocol.sign_receipt(payload, private_key)
@@ -126,10 +126,13 @@ defmodule WallopCore.Resources.Draw.Changes.SignAndStoreReceipt do
     |> Ash.create(authorize?: false)
   end
 
-  defp app_version(app) do
+  defp app_version!(app) do
     case Application.spec(app, :vsn) do
-      nil -> "unknown"
-      vsn -> to_string(vsn)
+      nil ->
+        raise "#{app} version not available — cannot sign receipt with unknown version"
+
+      vsn ->
+        to_string(vsn)
     end
   end
 end

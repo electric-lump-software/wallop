@@ -14,18 +14,21 @@ defmodule WallopCore.Resources.Draw.Changes.IncrementApiKeyDrawCount do
     actor = context.actor
 
     Ash.Changeset.after_action(changeset, fn _changeset, draw ->
-      increment(actor)
-      {:ok, draw}
+      case increment(actor) do
+        :ok -> {:ok, draw}
+        {:error, reason} -> {:error, reason}
+      end
     end)
   end
 
   defp increment(nil), do: :ok
 
   defp increment(api_key) do
-    api_key
-    |> Ash.Changeset.for_update(:increment_draw_count, %{})
-    |> Ash.update(domain: WallopCore.Domain, authorize?: false)
-
-    :ok
+    case api_key
+         |> Ash.Changeset.for_update(:increment_draw_count, %{})
+         |> Ash.update(domain: WallopCore.Domain, authorize?: false) do
+      {:ok, _} -> :ok
+      {:error, reason} -> {:error, reason}
+    end
   end
 end
