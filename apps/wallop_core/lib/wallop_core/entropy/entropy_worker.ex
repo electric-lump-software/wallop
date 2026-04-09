@@ -14,6 +14,11 @@ defmodule WallopCore.Entropy.EntropyWorker do
     max_attempts: 10,
     unique: [period: :infinity, keys: [:draw_id]]
 
+  # Kill hung workers before Lifeline rescues at 2 minutes.
+  # Prevents duplicate execution from a slow worker + Lifeline race.
+  @impl Oban.Worker
+  def timeout(_job), do: :timer.seconds(90)
+
   require Logger
   require OpenTelemetry.Tracer, as: Tracer
 
@@ -379,8 +384,13 @@ defmodule WallopCore.Entropy.EntropyWorker do
         maybe_enqueue_webhook(failed_draw)
         :ok
 
-      {:error, reason} ->
-        {:error, reason}
+      {:error, _} ->
+        # Draw may already be completed or failed (Lifeline race).
+        # Re-check — if terminal, that's fine.
+        case load_draw(draw.id) do
+          {:ok, %{status: status}} when status in [:completed, :failed] -> :ok
+          _ -> {:error, reason}
+        end
     end
   end
 
