@@ -157,23 +157,17 @@ defmodule WallopCore.Resources.ExecutionReceiptTest do
     end
   end
 
-  describe "execution receipt — no operator (backward compat)" do
-    setup do
-      _infra_key = create_infrastructure_key()
-      api_key = create_api_key()
-      draw = create_draw(api_key)
-      executed = execute_draw(draw, test_seed(), api_key)
+  describe "execution receipt — no operator rejected" do
+    test "draw creation is rejected for API keys without an operator" do
+      api_key =
+        WallopCore.Resources.ApiKey
+        |> Ash.Changeset.for_create(:create, %{name: "orphan-key"})
+        |> Ash.create!(authorize?: false)
 
-      %{draw: executed}
-    end
-
-    test "draw without operator does not create an execution receipt", %{draw: draw} do
-      assert draw.operator_id == nil
-
-      [] =
-        ExecutionReceipt
-        |> Ash.Query.filter(draw_id == ^draw.id)
-        |> Ash.read!(authorize?: false)
+      assert {:error, %Ash.Error.Invalid{}} =
+               WallopCore.Resources.Draw
+               |> Ash.Changeset.for_create(:create, %{winner_count: 1}, actor: api_key)
+               |> Ash.create()
     end
   end
 
@@ -183,10 +177,24 @@ defmodule WallopCore.Resources.ExecutionReceiptTest do
       api_key = create_api_key_for_operator(operator)
       draw = create_draw(api_key)
 
+      # Transition to pending manually (bypassing execute_draw which auto-creates infra key)
+      draw =
+        draw
+        |> Ash.Changeset.for_update(:transition_to_pending, %{})
+        |> Ash.update!(domain: WallopCore.Domain, authorize?: false)
+
       # No infra key bootstrapped — execution should fail
-      assert_raise Ash.Error.Invalid, fn ->
-        execute_draw(draw, test_seed(), api_key)
-      end
+      assert {:error, _} =
+               draw
+               |> Ash.Changeset.for_update(:execute_with_entropy, %{
+                 drand_randomness: test_drand_randomness(),
+                 drand_signature: "test-signature",
+                 drand_response: "{}",
+                 weather_value: "12.3",
+                 weather_raw: "{}",
+                 weather_observation_time: DateTime.add(draw.inserted_at, 1, :second)
+               })
+               |> Ash.update(domain: WallopCore.Domain, authorize?: false)
     end
   end
 

@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 🚨 BREAKING — wallop_core 0.14.0
+
+- **Draw creation now rejects API keys without an operator.** Previously, creating a draw with an operator-less API key silently succeeded but produced no cryptographic attestation (no lock receipt, no execution receipt, no proof chain). This is now a hard validation error. All silent-skip paths in receipt signing and operator sequence assignment are now hard failures. **Consumer action required:** ensure every API key used for draw creation has an `operator_id` set.
+
 ### wallop_core 0.13.2
 
 - **Execution receipt endpoints** — two new public endpoints for third-party verifiers:

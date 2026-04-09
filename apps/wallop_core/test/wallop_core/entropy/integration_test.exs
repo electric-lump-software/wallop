@@ -63,6 +63,8 @@ defmodule WallopCore.Entropy.IntegrationTest do
       req_options: [plug: {Req.Test, WeatherClient}, retry: false]
     )
 
+    ensure_infrastructure_key()
+
     on_exit(fn ->
       Application.delete_env(:wallop_core, DrandClient)
       Application.delete_env(:wallop_core, WeatherClient)
