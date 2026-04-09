@@ -74,7 +74,7 @@ defmodule WallopCore.Repo.Migrations.AddExecutionReceipts do
              name: "execution_receipts_unique_draw_index"
            )
 
-    create index(:execution_receipts, [:operator_id, :sequence],
+    create unique_index(:execution_receipts, [:operator_id, :sequence],
              name: "execution_receipts_operator_sequence_index"
            )
 
