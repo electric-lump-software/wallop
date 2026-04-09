@@ -22,20 +22,28 @@ defmodule WallopCore.RaceConditionTest do
 
       draw_id = Ecto.UUID.generate()
       api_key_id = Ecto.UUID.generate()
+      operator_id = Ecto.UUID.generate()
       draw_id_bin = Ecto.UUID.dump!(draw_id)
       api_key_id_bin = Ecto.UUID.dump!(api_key_id)
+      operator_id_bin = Ecto.UUID.dump!(operator_id)
 
-      # Create minimal api_key and draw via raw SQL
+      # Create minimal operator, api_key, and draw via raw SQL
       Postgrex.query!(
         setup_conn,
-        "INSERT INTO api_keys (id, name, key_hash, key_prefix, active, monthly_draw_count, inserted_at, updated_at) VALUES ($1, 'race-test', '$2b$04$AAAAAAAAAAAAAAAAAAAAAO6jGWxQhMFTXHCJFRlbNqjh22V6IlCzK', 'wlp_race', true, 0, NOW(), NOW())",
-        [api_key_id_bin]
+        "INSERT INTO operators (id, slug, name, inserted_at, updated_at) VALUES ($1, $2, 'Race Op', NOW(), NOW())",
+        [operator_id_bin, "race-#{String.slice(operator_id, 0, 8)}"]
       )
 
       Postgrex.query!(
         setup_conn,
-        "INSERT INTO draws (id, status, winner_count, entry_count, api_key_id, inserted_at, updated_at) VALUES ($1, 'open', 1, 2, $2, NOW(), NOW())",
-        [draw_id_bin, api_key_id_bin]
+        "INSERT INTO api_keys (id, name, key_hash, key_prefix, active, monthly_draw_count, operator_id, inserted_at, updated_at) VALUES ($1, $3, '$2b$04$AAAAAAAAAAAAAAAAAAAAAO6jGWxQhMFTXHCJFRlbNqjh22V6IlCzK', $3, true, 0, $2, NOW(), NOW())",
+        [api_key_id_bin, operator_id_bin, "wlp_#{String.slice(api_key_id, 0, 8)}"]
+      )
+
+      Postgrex.query!(
+        setup_conn,
+        "INSERT INTO draws (id, status, winner_count, entry_count, api_key_id, operator_id, operator_sequence, inserted_at, updated_at) VALUES ($1, 'open', 1, 2, $2, $3, 1, NOW(), NOW())",
+        [draw_id_bin, api_key_id_bin, operator_id_bin]
       )
 
       task1 =
@@ -65,6 +73,9 @@ defmodule WallopCore.RaceConditionTest do
       # Cleanup
       Postgrex.query!(setup_conn, "DELETE FROM draws WHERE id = $1", [draw_id_bin])
       Postgrex.query!(setup_conn, "DELETE FROM api_keys WHERE id = $1", [api_key_id_bin])
+      Postgrex.query!(setup_conn, "SET session_replication_role = 'replica'", [])
+      Postgrex.query!(setup_conn, "DELETE FROM operators WHERE id = $1", [operator_id_bin])
+      Postgrex.query!(setup_conn, "SET session_replication_role = 'origin'", [])
 
       for c <- [conn1, conn2, setup_conn], do: GenServer.stop(c)
     end
@@ -78,19 +89,27 @@ defmodule WallopCore.RaceConditionTest do
 
       draw_id = Ecto.UUID.generate()
       api_key_id = Ecto.UUID.generate()
+      operator_id = Ecto.UUID.generate()
       draw_id_bin = Ecto.UUID.dump!(draw_id)
       api_key_id_bin = Ecto.UUID.dump!(api_key_id)
+      operator_id_bin = Ecto.UUID.dump!(operator_id)
 
       Postgrex.query!(
         setup_conn,
-        "INSERT INTO api_keys (id, name, key_hash, key_prefix, active, monthly_draw_count, inserted_at, updated_at) VALUES ($1, 'race-test-2', '$2b$04$AAAAAAAAAAAAAAAAAAAAAO6jGWxQhMFTXHCJFRlbNqjh22V6IlCzK', 'wlp_race', true, 0, NOW(), NOW())",
-        [api_key_id_bin]
+        "INSERT INTO operators (id, slug, name, inserted_at, updated_at) VALUES ($1, $2, 'Race Op 2', NOW(), NOW())",
+        [operator_id_bin, "race-#{String.slice(operator_id, 0, 8)}"]
       )
 
       Postgrex.query!(
         setup_conn,
-        "INSERT INTO draws (id, status, winner_count, entry_count, api_key_id, inserted_at, updated_at) VALUES ($1, 'pending_entropy', 1, 1, $2, NOW(), NOW())",
-        [draw_id_bin, api_key_id_bin]
+        "INSERT INTO api_keys (id, name, key_hash, key_prefix, active, monthly_draw_count, operator_id, inserted_at, updated_at) VALUES ($1, $3, '$2b$04$AAAAAAAAAAAAAAAAAAAAAO6jGWxQhMFTXHCJFRlbNqjh22V6IlCzK', $3, true, 0, $2, NOW(), NOW())",
+        [api_key_id_bin, operator_id_bin, "wlp_#{String.slice(api_key_id, 0, 8)}"]
+      )
+
+      Postgrex.query!(
+        setup_conn,
+        "INSERT INTO draws (id, status, winner_count, entry_count, api_key_id, operator_id, operator_sequence, inserted_at, updated_at) VALUES ($1, 'pending_entropy', 1, 1, $2, $3, 1, NOW(), NOW())",
+        [draw_id_bin, api_key_id_bin, operator_id_bin]
       )
 
       task_complete =
@@ -126,6 +145,7 @@ defmodule WallopCore.RaceConditionTest do
       Postgrex.query!(setup_conn, "SET session_replication_role = 'replica'", [])
       Postgrex.query!(setup_conn, "DELETE FROM draws WHERE id = $1", [draw_id_bin])
       Postgrex.query!(setup_conn, "DELETE FROM api_keys WHERE id = $1", [api_key_id_bin])
+      Postgrex.query!(setup_conn, "DELETE FROM operators WHERE id = $1", [operator_id_bin])
       Postgrex.query!(setup_conn, "SET session_replication_role = 'origin'", [])
 
       for c <- [conn1, conn2, setup_conn], do: GenServer.stop(c)
