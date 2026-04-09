@@ -27,6 +27,15 @@ defmodule WallopCore.Resources.Draw.Changes.LockDraw do
         )
 
       true ->
+        # Acquire row lock on the draw BEFORE reading entries. This
+        # serializes with the entries trigger's own FOR UPDATE on the
+        # draw row, closing the TOCTOU window where an entry insert
+        # could sneak in between hash computation and the draw UPDATE.
+        WallopCore.Repo.query!(
+          "SELECT id FROM draws WHERE id = $1 FOR UPDATE",
+          [Ecto.UUID.dump!(draw.id)]
+        )
+
         atom_entries = WallopCore.Entries.load_for_draw(draw.id)
         {hash, canonical} = WallopCore.Protocol.entry_hash(atom_entries)
 

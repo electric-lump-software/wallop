@@ -99,6 +99,18 @@ runs multiple application nodes with shared Oban queues, the Oban
 uniqueness constraint (database-backed) continues to protect against
 duplicate entropy worker execution.
 
+## F-3: LockDraw TOCTOU — fixed
+
+The `LockDraw` change module computed `entry_hash` from a plain
+SELECT on the entries table before the draw UPDATE acquired a row
+lock. An entry INSERT could sneak in between the hash computation
+and the lock transition, producing a stale hash. Not exploitable
+(execution catches the hash mismatch), but the draw becomes stuck.
+
+**Fix:** `LockDraw` now issues `SELECT id FROM draws WHERE id = $1
+FOR UPDATE` before reading entries. This acquires the row lock first,
+serializing with the entries trigger's own FOR UPDATE.
+
 ## DB trigger as backstop
 
 Even if a race somehow produced an invalid state transition, the
