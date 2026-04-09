@@ -31,18 +31,28 @@ defmodule WallopCore.Transparency.AnchorWorkerTest do
       assert byte_size(anchor.operator_receipts_root) == 32
       assert byte_size(anchor.execution_receipts_root) == 32
 
-      # Verify the combined root matches the formula:
-      # SHA256(0x01 || operator_receipts_root || execution_receipts_root)
-      expected_root =
-        :crypto.hash(
-          :sha256,
-          <<1>> <> anchor.operator_receipts_root <> anchor.execution_receipts_root
+      # Verify via the public combined_root/2 function
+      expected =
+        AnchorWorker.combined_root(
+          anchor.operator_receipts_root,
+          anchor.execution_receipts_root
         )
 
-      assert anchor.merkle_root == expected_root
+      assert anchor.merkle_root == expected
     end
 
-    test "sub-tree roots match independent Merkle computations", %{draw: draw} do
+    test "combined root uses distinct domain prefix from Merkle internal nodes" do
+      # The anchor root prefix must NOT be <<1>> (internal node) or <<0>> (leaf)
+      # to avoid structural ambiguity with RFC 6962 tree hashes.
+      dummy_root = :crypto.hash(:sha256, "test")
+      combined = AnchorWorker.combined_root(dummy_root, dummy_root)
+      internal_node = :crypto.hash(:sha256, <<1>> <> dummy_root <> dummy_root)
+
+      refute combined == internal_node
+    end
+
+    test "sub-tree roots match independent Merkle computations with length-prefixed leaves",
+         %{draw: draw} do
       [op_receipt] =
         OperatorReceipt
         |> Ash.Query.filter(draw_id == ^draw.id)
@@ -55,14 +65,17 @@ defmodule WallopCore.Transparency.AnchorWorkerTest do
 
       {:ok, anchor} = perform_anchor()
 
-      expected_op_root =
-        Protocol.merkle_root([op_receipt.payload_jcs <> op_receipt.signature])
+      # Leaves are length-prefixed: <<payload_len::32>> <> payload_jcs <> signature
+      op_leaf =
+        <<byte_size(op_receipt.payload_jcs)::32>> <>
+          op_receipt.payload_jcs <> op_receipt.signature
 
-      expected_exec_root =
-        Protocol.merkle_root([exec_receipt.payload_jcs <> exec_receipt.signature])
+      exec_leaf =
+        <<byte_size(exec_receipt.payload_jcs)::32>> <>
+          exec_receipt.payload_jcs <> exec_receipt.signature
 
-      assert anchor.operator_receipts_root == expected_op_root
-      assert anchor.execution_receipts_root == expected_exec_root
+      assert anchor.operator_receipts_root == Protocol.merkle_root([op_leaf])
+      assert anchor.execution_receipts_root == Protocol.merkle_root([exec_leaf])
     end
 
     test "infrastructure signature verifies under the infra public key", %{
@@ -97,6 +110,19 @@ defmodule WallopCore.Transparency.AnchorWorkerTest do
       # Drand fetch may fail in test (no network), but the fields should be set
       # to either valid values or nil
       assert anchor.external_anchor_kind in ["drand_quicknet", nil]
+    end
+
+    test "anchored_at is derived from latest receipt, not wall clock" do
+      {:ok, anchor} = perform_anchor()
+
+      # anchored_at should equal the latest receipt's inserted_at,
+      # not a DateTime.utc_now() call
+      all_receipts =
+        Ash.read!(OperatorReceipt, authorize?: false) ++
+          Ash.read!(ExecutionReceipt, authorize?: false)
+
+      latest = Enum.max_by(all_receipts, & &1.inserted_at, DateTime)
+      assert anchor.anchored_at == latest.inserted_at
     end
   end
 
@@ -181,18 +207,15 @@ defmodule WallopCore.Transparency.AnchorWorkerTest do
   end
 
   describe "no infrastructure key" do
-    test "anchor is created but unsigned" do
-      # No infra key bootstrapped
+    test "anchor fails when infra key is missing (Oban will retry)" do
       operator = create_operator()
       api_key = create_api_key_for_operator(operator)
       _draw = create_draw(api_key)
 
-      {:ok, anchor} = perform_anchor()
+      assert {:error, _} = perform_anchor()
 
-      assert anchor.infrastructure_signature == nil
-      assert anchor.signing_key_id == nil
-      # Anchor still has valid roots
-      assert byte_size(anchor.merkle_root) == 32
+      # No anchor created
+      [] = Ash.read!(TransparencyAnchor, authorize?: false)
     end
   end
 
@@ -230,6 +253,7 @@ defmodule WallopCore.Transparency.AnchorWorkerTest do
   defp perform_anchor do
     case AnchorWorker.perform(%Oban.Job{}) do
       {:ok, anchor} -> {:ok, anchor}
+      {:error, reason} -> {:error, reason}
       :ok -> :ok
     end
   end
@@ -237,6 +261,7 @@ defmodule WallopCore.Transparency.AnchorWorkerTest do
   defp perform_anchor_raw do
     case AnchorWorker.perform(%Oban.Job{}) do
       {:ok, _} -> :ok
+      {:error, _} -> :error
       :ok -> :ok
     end
   end

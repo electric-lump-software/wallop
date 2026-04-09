@@ -6,11 +6,11 @@ defmodule WallopCore.Transparency.AnchorWorker do
 
   The combined root covers two separate sub-trees:
 
-      anchor_root = SHA256(0x01 || operator_receipts_root || execution_receipts_root)
+      anchor_root = SHA256("wallop-anchor-v1" || operator_receipts_root || execution_receipts_root)
 
-  The `0x01` prefix provides domain separation from leaf hashes (`0x00`),
-  following RFC 6962 conventions. A verifier who only cares about one
-  receipt type can verify their sub-tree independently.
+  The `"wallop-anchor-v1"` prefix provides domain separation from both
+  leaf hashes (`0x00`) and internal Merkle nodes (`0x01`), avoiding any
+  structural ambiguity with RFC 6962 tree nodes.
 
   The `infrastructure_signature` signs the combined root with the infra
   Ed25519 key, making the transparency log itself infra-key-signed.
@@ -34,10 +34,15 @@ defmodule WallopCore.Transparency.AnchorWorker do
 
   alias WallopCore.Vault
 
+  # Domain separation prefix for the combined anchor root.
+  # Distinct from <<0>> (leaf) and <<1>> (internal node) to avoid
+  # structural ambiguity with the Merkle tree's own node hashes.
+  @anchor_root_prefix "wallop-anchor-v1"
+
   @impl true
   def perform(_job) do
-    op_receipts = load_unanchored_receipts(OperatorReceipt, :operator_receipts)
-    exec_receipts = load_unanchored_receipts(ExecutionReceipt, :execution_receipts)
+    op_receipts = load_unanchored_receipts(OperatorReceipt)
+    exec_receipts = load_unanchored_receipts(ExecutionReceipt)
 
     case {op_receipts, exec_receipts} do
       {[], []} ->
@@ -49,7 +54,18 @@ defmodule WallopCore.Transparency.AnchorWorker do
     end
   end
 
-  defp load_unanchored_receipts(resource, _kind) do
+  @doc """
+  Compute the combined anchor root from two sub-tree roots.
+
+  Public for verification in tests and by third-party verifiers.
+  """
+  @spec combined_root(binary(), binary()) :: <<_::256>>
+  def combined_root(op_root, exec_root)
+      when byte_size(op_root) == 32 and byte_size(exec_root) == 32 do
+    :crypto.hash(:sha256, @anchor_root_prefix <> op_root <> exec_root)
+  end
+
+  defp load_unanchored_receipts(resource) do
     cutoff = last_anchor_time()
 
     query =
@@ -76,17 +92,11 @@ defmodule WallopCore.Transparency.AnchorWorker do
   end
 
   defp anchor(op_receipts, exec_receipts) do
-    # Build separate sub-tree roots
-    op_leaves = Enum.map(op_receipts, fn r -> r.payload_jcs <> r.signature end)
-    exec_leaves = Enum.map(exec_receipts, fn r -> r.payload_jcs <> r.signature end)
+    # Build separate sub-tree roots with length-prefixed leaves
+    op_root = build_sub_tree(op_receipts)
+    exec_root = build_sub_tree(exec_receipts)
 
-    op_root = Protocol.merkle_root(op_leaves)
-    exec_root = Protocol.merkle_root(exec_leaves)
-
-    # Combined root with 0x01 domain separation (RFC 6962 internal node prefix)
-    combined_root = :crypto.hash(:sha256, <<1>> <> op_root <> exec_root)
-
-    now = DateTime.utc_now()
+    root = combined_root(op_root, exec_root)
 
     {kind, evidence} =
       case fetch_drand_round() do
@@ -94,19 +104,62 @@ defmodule WallopCore.Transparency.AnchorWorker do
         :error -> {nil, nil}
       end
 
-    # Sign the combined root with the infrastructure key
-    {signature, key_id} = sign_root(combined_root)
+    # Sign the combined root with the infrastructure key — fail if missing
+    case sign_root(root) do
+      {:ok, signature, key_id} ->
+        create_anchor(
+          op_receipts,
+          exec_receipts,
+          root,
+          op_root,
+          exec_root,
+          kind,
+          evidence,
+          signature,
+          key_id
+        )
 
-    # Use the latest receipt (by inserted_at) from either set for the range
+      :error ->
+        {:error, "no infrastructure signing key — run mix wallop.bootstrap_infrastructure_key"}
+    end
+  end
+
+  defp build_sub_tree(receipts) do
+    leaves =
+      Enum.map(receipts, fn r ->
+        # Length-prefix payload_jcs so the boundary with signature is
+        # unambiguous regardless of signing algorithm.
+        payload_len = byte_size(r.payload_jcs)
+        <<payload_len::32>> <> r.payload_jcs <> r.signature
+      end)
+
+    Protocol.merkle_root(leaves)
+  end
+
+  defp create_anchor(
+         op_receipts,
+         exec_receipts,
+         root,
+         op_root,
+         exec_root,
+         kind,
+         evidence,
+         signature,
+         key_id
+       ) do
     all_receipts = op_receipts ++ exec_receipts
     sorted = Enum.sort_by(all_receipts, & &1.inserted_at, DateTime)
     first = List.first(sorted)
     last = List.last(sorted)
 
+    # Use the latest receipt's inserted_at as anchored_at to close
+    # clock-drift gaps between Elixir and Postgres timestamps.
+    anchored_at = last.inserted_at
+
     {:ok, anchor} =
       TransparencyAnchor
       |> Ash.Changeset.for_create(:create, %{
-        merkle_root: combined_root,
+        merkle_root: root,
         operator_receipts_root: op_root,
         execution_receipts_root: exec_root,
         receipt_count: length(op_receipts),
@@ -117,13 +170,13 @@ defmodule WallopCore.Transparency.AnchorWorker do
         external_anchor_evidence: evidence,
         infrastructure_signature: signature,
         signing_key_id: key_id,
-        anchored_at: now
+        anchored_at: anchored_at
       })
       |> Ash.create(authorize?: false)
 
     Logger.info(
       "AnchorWorker: anchored #{length(op_receipts)} operator + #{length(exec_receipts)} execution receipts, " <>
-        "root=#{Base.encode16(combined_root, case: :lower)}, drand=#{evidence}, key=#{key_id}"
+        "root=#{Base.encode16(root, case: :lower)}, drand=#{evidence}, key=#{key_id}"
     )
 
     {:ok, anchor}
@@ -134,11 +187,11 @@ defmodule WallopCore.Transparency.AnchorWorker do
       {:ok, key} ->
         {:ok, private_key} = Vault.decrypt(key.private_key)
         signature = Protocol.sign_receipt(root, private_key)
-        {signature, key.key_id}
+        {:ok, signature, key.key_id}
 
       :error ->
-        Logger.warning("AnchorWorker: no infrastructure key — anchor will not be signed")
-        {nil, nil}
+        Logger.error("AnchorWorker: no infrastructure signing key found")
+        :error
     end
   end
 
@@ -162,6 +215,8 @@ defmodule WallopCore.Transparency.AnchorWorker do
       _ -> :error
     end
   rescue
-    _ -> :error
+    e ->
+      Logger.warning("AnchorWorker: drand fetch failed: #{inspect(e)}")
+      :error
   end
 end
