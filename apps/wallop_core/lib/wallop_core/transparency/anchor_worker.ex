@@ -107,17 +107,17 @@ defmodule WallopCore.Transparency.AnchorWorker do
     # Sign the combined root with the infrastructure key — fail if missing
     case sign_root(root) do
       {:ok, signature, key_id} ->
-        create_anchor(
-          op_receipts,
-          exec_receipts,
-          root,
-          op_root,
-          exec_root,
-          kind,
-          evidence,
-          signature,
-          key_id
-        )
+        create_anchor(%{
+          op_receipts: op_receipts,
+          exec_receipts: exec_receipts,
+          root: root,
+          op_root: op_root,
+          exec_root: exec_root,
+          kind: kind,
+          evidence: evidence,
+          signature: signature,
+          key_id: key_id
+        })
 
       :error ->
         {:error, "no infrastructure signing key — run mix wallop.bootstrap_infrastructure_key"}
@@ -136,17 +136,17 @@ defmodule WallopCore.Transparency.AnchorWorker do
     Protocol.merkle_root(leaves)
   end
 
-  defp create_anchor(
-         op_receipts,
-         exec_receipts,
-         root,
-         op_root,
-         exec_root,
-         kind,
-         evidence,
-         signature,
-         key_id
-       ) do
+  defp create_anchor(%{
+         op_receipts: op_receipts,
+         exec_receipts: exec_receipts,
+         root: root,
+         op_root: op_root,
+         exec_root: exec_root,
+         kind: kind,
+         evidence: evidence,
+         signature: signature,
+         key_id: key_id
+       }) do
     all_receipts = op_receipts ++ exec_receipts
     sorted = Enum.sort_by(all_receipts, & &1.inserted_at, DateTime)
     first = List.first(sorted)
