@@ -46,7 +46,8 @@ defmodule WallopWeb.ProofController do
       results_json: results_to_json(draw.results),
       operator: operator,
       receipt: receipt,
-      execution_receipt: execution_receipt
+      execution_receipt: execution_receipt,
+      wallop_version: Application.spec(:wallop_core, :vsn) |> to_string()
     )
   end
 

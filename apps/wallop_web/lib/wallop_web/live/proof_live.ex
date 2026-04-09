@@ -50,6 +50,7 @@ defmodule WallopWeb.ProofLive do
            operator: operator,
            receipt: receipt,
            execution_receipt: execution_receipt,
+           wallop_version: wallop_version(),
            page_title: "Draw Proof"
          )}
 
@@ -157,5 +158,9 @@ defmodule WallopWeb.ProofLive do
       {:ok, draw} -> {:ok, draw}
       _ -> {:error, :not_found}
     end
+  end
+
+  defp wallop_version do
+    Application.spec(:wallop_core, :vsn) |> to_string()
   end
 end
