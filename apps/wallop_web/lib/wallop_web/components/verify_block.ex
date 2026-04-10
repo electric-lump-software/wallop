@@ -47,7 +47,7 @@ defmodule WallopWeb.Components.VerifyBlock do
           </button>
           <div
             data-verify-box
-            class="text-[9px] sm:text-[13px]"
+            class="text-[9px] sm:text-[12px]"
             style="display:none;background:#1a1a1a;color:#e4e4e4;padding:20px 24px;border-radius:12px;font-family:'SF Mono',Monaco,Consolas,monospace;line-height:2.2;border:2px solid #1a1a1a;margin-top:8px;"
           >
           </div>

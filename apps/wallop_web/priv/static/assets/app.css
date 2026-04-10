@@ -2755,6 +2755,11 @@
       outline-style: none;
     }
   }
+  .sm\:text-\[12px\] {
+    @media (width >= 40rem) {
+      font-size: 12px;
+    }
+  }
   .sm\:text-\[13px\] {
     @media (width >= 40rem) {
       font-size: 13px;

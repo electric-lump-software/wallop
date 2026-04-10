@@ -66,7 +66,7 @@ function injectVerifyStyles() {
       font-weight: 600;
     }
     .vsuffix {
-      color: #555;
+      color: #666;
       font-size: 11px;
     }
     @media (max-width: 639px) {
@@ -403,14 +403,21 @@ class VerifyRunner {
   }
 
   startWaiting(line, label) {
-    line.suffix.style.color = "#333"
+    line.suffix.style.color = "#444"
     let width = label ? label.length : 5
     let pos = 0
+    let forward = true
     let tick = () => {
       let chars = Array(width).fill("-")
-      chars[pos % width] = "_"
+      chars[pos] = "_"
       line.suffix.textContent = chars.join("")
-      pos++
+      if (forward) {
+        pos++
+        if (pos >= width - 1) forward = false
+      } else {
+        pos--
+        if (pos <= 0) forward = true
+      }
     }
     tick()
     line._waitInterval = setInterval(tick, 120)
