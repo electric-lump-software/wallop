@@ -6,6 +6,20 @@ and wallop_rs (Rust) load these files and verify identical outputs.
 If any vector changes, both implementations must update simultaneously.
 A divergence means the protocol is ambiguous.
 
+## Consumer update policy
+
+These vectors are consumed by external repos via git submodule:
+
+- **fair_pick_rs** — Rust crate
+- **wallop_rs** — Rust WASM verifier
+- **fair_pick** — Elixir hex package
+
+When vectors change in this repo, all consumer repos must update their
+submodule pin before their next release. Corrective vector changes
+(bug fixes, not just new coverage) are especially urgent — a stale pin
+means the consumer's tests pass but the implementation may not match
+the current protocol.
+
 ## Files
 
 - `entry-hash.json` — entry_hash canonicalization + SHA-256
