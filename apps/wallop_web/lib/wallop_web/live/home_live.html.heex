@@ -283,9 +283,9 @@
         <div class="flex gap-6 py-6">
           <div class="w-9 h-9 rounded-full bg-[#1a1a1a] text-white flex items-center justify-center text-sm font-bold shrink-0">5</div>
           <div>
-            <h4 class="text-[15px] font-bold mb-1.5">Permanent immutable proof record</h4>
-            <p class="text-sm text-[#555] leading-relaxed">The <a href="https://wallop.run/proof/286838f2-c6d7-49a8-acdb-7b60bce69f35" target="_blank" rel="noopener" class="underline decoration-[#ccc] hover:decoration-[#1a1a1a]">full proof record</a> — entry hash, drand round + randomness + signature, weather value, seed, and ordered winner list — is stored permanently. No UPDATE or DELETE. The proof page publishes all values needed for independent verification.</p>
-            <code class="mt-2 inline-block font-mono text-[11px] text-[#999] bg-cream-dark px-2.5 py-1.5 rounded">wallop.run/proof/:draw_id · independently replayable</code>
+            <h4 class="text-[15px] font-bold mb-1.5">Dual-signed proof chain</h4>
+            <p class="text-sm text-[#555] leading-relaxed">Two Ed25519-signed receipts form a cryptographic chain. The <strong>lock receipt</strong> (signed by the operator's key at lock time) commits to the entry hash. The <strong>execution receipt</strong> (signed by the infrastructure key after execution) commits to the entropy, seed, and results — and embeds a SHA-256 hash of the lock receipt, linking them cryptographically. The <a href="https://wallop.run/proof/286838f2-c6d7-49a8-acdb-7b60bce69f35" target="_blank" rel="noopener" class="underline decoration-[#ccc] hover:decoration-[#1a1a1a]">full proof record</a> is stored permanently. No UPDATE or DELETE.</p>
+            <code class="mt-2 inline-block font-mono text-[11px] text-[#999] bg-cream-dark px-2.5 py-1.5 rounded">lock_receipt → SHA256 → execution_receipt.lock_receipt_hash · chain verified</code>
           </div>
         </div>
       </div>
@@ -316,8 +316,10 @@
         <div class="p-6 rounded-xl border border-cream-border bg-white">
           <h3 class="text-sm font-bold mb-2">Verify in your browser</h3>
           <p class="text-xs text-[#555] leading-relaxed">
-            Every proof page has a re-verify button that reruns the entire draw in your browser
-            using WebAssembly. No server round-trip. Your machine confirms the result independently.
+            Every proof page has a verify button that independently recomputes the draw,
+            checks both Ed25519 receipt signatures, verifies the cryptographic chain between them,
+            and runs a full pipeline double-check — all in your browser via WebAssembly.
+            No server round-trip. No trust required.
           </p>
         </div>
         <div class="p-6 rounded-xl border border-cream-border bg-white">
@@ -346,12 +348,12 @@
         <div class="p-6 rounded-xl border border-cream-border bg-white">
           <h3 class="text-sm font-bold mb-2">Multiple implementations</h3>
           <p class="text-xs text-[#555] leading-relaxed">
-            The algorithm exists in
+            The protocol is implemented independently in
             <a href="https://github.com/electric-lump-software/fair_pick" target="_blank" rel="noopener" class="underline hover:text-[#1a1a1a]">Elixir</a>
             and
-            <a href="https://github.com/electric-lump-software/fair_pick_rs" target="_blank" rel="noopener" class="underline hover:text-[#1a1a1a]">Rust</a>.
+            <a href="https://github.com/electric-lump-software/fair_pick_rs" target="_blank" rel="noopener" class="underline hover:text-[#1a1a1a]">Rust</a>,
+            tested against shared frozen vectors that both must agree on.
             The Rust version compiles to WebAssembly for in-browser verification.
-            Same inputs, same outputs, cross-language.
           </p>
         </div>
       </div>
