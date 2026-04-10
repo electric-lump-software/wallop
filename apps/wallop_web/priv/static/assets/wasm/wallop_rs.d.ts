@@ -2,6 +2,21 @@
 /* eslint-disable */
 
 /**
+ * WASM entry point for anchor_root.
+ */
+export function anchor_root_wasm(op_root_hex: string, exec_root_hex: string): string;
+
+/**
+ * WASM entry point for build_execution_receipt_payload.
+ */
+export function build_execution_receipt_payload_wasm(input_js: any): string;
+
+/**
+ * WASM entry point for build_receipt_payload (lock receipt v2).
+ */
+export function build_receipt_payload_wasm(input_js: any): string;
+
+/**
  * WASM entry point for compute_seed (drand-only).
  */
 export function compute_seed_drand_only_wasm(entry_hash: string, drand_randomness: string): any;
@@ -22,6 +37,36 @@ export function draw_wasm(entries_js: any, seed_js: Uint8Array, count: number): 
 export function entry_hash_wasm(entries_js: any): any;
 
 /**
+ * WASM entry point for key_id.
+ */
+export function key_id_wasm(public_key_hex: string): string;
+
+/**
+ * WASM entry point for lock_receipt_hash.
+ */
+export function lock_receipt_hash_wasm(payload_jcs: string): string;
+
+/**
+ * WASM entry point for merkle_root.
+ */
+export function merkle_root_wasm(leaves_js: any): string;
+
+/**
+ * WASM entry point for receipt_schema_version.
+ */
+export function receipt_schema_version_wasm(payload_jcs: string): string | undefined;
+
+/**
+ * WASM entry point for verify_full.
+ */
+export function verify_full_wasm(lock_receipt_jcs: string, lock_signature_hex: string, operator_public_key_hex: string, execution_receipt_jcs: string, execution_signature_hex: string, infrastructure_public_key_hex: string, entries_js: any, count: number): boolean;
+
+/**
+ * WASM entry point for verify_receipt.
+ */
+export function verify_receipt_wasm(payload_jcs: string, signature_hex: string, public_key_hex: string): boolean;
+
+/**
  * WASM entry point for full verification pipeline.
  */
 export function verify_wasm(entries_js: any, drand_randomness: string, weather_value: string | null | undefined, count: number, expected_results_js: any): boolean;
@@ -30,18 +75,25 @@ export type InitInput = RequestInfo | URL | Response | BufferSource | WebAssembl
 
 export interface InitOutput {
     readonly memory: WebAssembly.Memory;
-    readonly compute_seed_drand_only_wasm: (a: number, b: number, c: number, d: number) => [number, number, number];
-    readonly compute_seed_wasm: (a: number, b: number, c: number, d: number, e: number, f: number) => [number, number, number];
-    readonly draw_wasm: (a: any, b: number, c: number, d: number) => [number, number, number];
-    readonly entry_hash_wasm: (a: any) => [number, number, number];
-    readonly verify_wasm: (a: any, b: number, c: number, d: number, e: number, f: number, g: any) => [number, number, number];
-    readonly __wbindgen_malloc: (a: number, b: number) => number;
-    readonly __wbindgen_realloc: (a: number, b: number, c: number, d: number) => number;
-    readonly __wbindgen_exn_store: (a: number) => void;
-    readonly __externref_table_alloc: () => number;
-    readonly __wbindgen_externrefs: WebAssembly.Table;
-    readonly __externref_table_dealloc: (a: number) => void;
-    readonly __wbindgen_start: () => void;
+    readonly anchor_root_wasm: (a: number, b: number, c: number, d: number, e: number) => void;
+    readonly build_execution_receipt_payload_wasm: (a: number, b: number) => void;
+    readonly build_receipt_payload_wasm: (a: number, b: number) => void;
+    readonly compute_seed_drand_only_wasm: (a: number, b: number, c: number, d: number, e: number) => void;
+    readonly compute_seed_wasm: (a: number, b: number, c: number, d: number, e: number, f: number, g: number) => void;
+    readonly draw_wasm: (a: number, b: number, c: number, d: number, e: number) => void;
+    readonly entry_hash_wasm: (a: number, b: number) => void;
+    readonly key_id_wasm: (a: number, b: number, c: number) => void;
+    readonly lock_receipt_hash_wasm: (a: number, b: number, c: number) => void;
+    readonly merkle_root_wasm: (a: number, b: number) => void;
+    readonly receipt_schema_version_wasm: (a: number, b: number, c: number) => void;
+    readonly verify_full_wasm: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number, m: number, n: number, o: number) => void;
+    readonly verify_receipt_wasm: (a: number, b: number, c: number, d: number, e: number, f: number, g: number) => void;
+    readonly verify_wasm: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number) => void;
+    readonly __wbindgen_export: (a: number, b: number) => number;
+    readonly __wbindgen_export2: (a: number, b: number, c: number, d: number) => number;
+    readonly __wbindgen_export3: (a: number) => void;
+    readonly __wbindgen_add_to_stack_pointer: (a: number) => number;
+    readonly __wbindgen_export4: (a: number, b: number, c: number) => void;
 }
 
 export type SyncInitInput = BufferSource | WebAssembly.Module;

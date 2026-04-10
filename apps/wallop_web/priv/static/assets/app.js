@@ -9882,6 +9882,62 @@ removing illegal node: "${(childNode.outerHTML || childNode.nodeValue).trim()}"
       requestAnimationFrame(frame);
     });
   }
+  function injectVerifyStyles() {
+    if (document.getElementById("verify-runner-css")) return;
+    let style = document.createElement("style");
+    style.id = "verify-runner-css";
+    style.textContent = `
+    .vrow {
+      display: flex;
+      align-items: baseline;
+      gap: 10px;
+      min-height: 24px;
+    }
+    .vmarker {
+      color: #facc15;
+      flex-shrink: 0;
+    }
+    .vtext {
+      flex: 1;
+    }
+    .vmono {
+      color: #4ade80;
+      font-weight: 600;
+    }
+    .vsuffix {
+      color: #666;
+      font-size: 11px;
+    }
+    @media (max-width: 639px) {
+      .vrow {
+        display: block;
+        padding-left: 16px;
+        text-indent: -16px;
+        min-height: 18px;
+        line-height: 1.5;
+      }
+      .vmarker {
+        display: inline;
+        margin-right: 4px;
+      }
+      .vtext {
+        text-indent: 0;
+      }
+      .vmono {
+        display: inline;
+        text-indent: 0;
+        white-space: nowrap;
+      }
+      .vsuffix {
+        font-size: 9px;
+        text-indent: 0;
+        white-space: nowrap;
+        margin-left: 6px;
+      }
+    }
+  `;
+    document.head.appendChild(style);
+  }
   function attachVerifiers() {
     document.querySelectorAll("[data-verify]:not([data-verify-attached])").forEach((el) => {
       el.setAttribute("data-verify-attached", "true");
@@ -9898,6 +9954,7 @@ removing illegal node: "${(childNode.outerHTML || childNode.nodeValue).trim()}"
           this.el = el;
           this.btn = el.querySelector("[data-verify-btn]");
           this.box = el.querySelector("[data-verify-box]");
+          injectVerifyStyles();
           if (this.btn) {
             this.btn.addEventListener("click", () => this.run());
           }
@@ -9934,73 +9991,210 @@ removing illegal node: "${(childNode.outerHTML || childNode.nodeValue).trim()}"
           }
           let line1 = this.addLine();
           await this.typeText(line1.text, `entry_hash = SHA256(${entryCount} entries) \u2192 `, 25);
+          this.startWaiting(line1, "match");
           let hash1 = this.addMono(line1.row);
-          await scrambleText(hash1, entryHash, 1200);
+          let computedEntryHashFull;
+          try {
+            let ehResult = wasm.entry_hash_wasm(JSON.parse(d.entriesJson));
+            computedEntryHashFull = ehResult instanceof Map ? ehResult.get("hash") : ehResult.hash;
+            await scrambleText(hash1, computedEntryHashFull.substring(0, 8), 1200);
+            if (computedEntryHashFull !== d.entryHashFull) {
+              this.markFailed(line1);
+              this.showResult(false, "MISMATCH \u2014 computed entry_hash does not match stored value");
+              return;
+            }
+          } catch (e) {
+            this.markFailed(line1);
+            this.showError("Entry hash computation error: " + e.message);
+            return;
+          }
           this.markDone(line1, "match");
           let line2 = this.addLine();
           let seedLabel = weatherValue ? `seed = SHA256(hash, drand[${drandRound}], wx[${weatherValue}]) \u2192 ` : `seed = SHA256(hash, drand[${drandRound}]) \u2192 `;
           await this.typeText(line2.text, seedLabel, 20);
+          this.startWaiting(line2, "match");
           let hash2 = this.addMono(line2.row);
-          await scrambleText(hash2, seed, 1200);
+          let computedSeedFull;
+          try {
+            let seedResult = weatherValue ? wasm.compute_seed_wasm(computedEntryHashFull, d.drandRandomness, weatherValue) : wasm.compute_seed_drand_only_wasm(computedEntryHashFull, d.drandRandomness);
+            computedSeedFull = seedResult instanceof Map ? seedResult.get("seed") : seedResult.seed;
+            await scrambleText(hash2, computedSeedFull.substring(0, 8), 1200);
+            if (computedSeedFull !== d.seedFull) {
+              this.markFailed(line2);
+              this.showResult(false, "MISMATCH \u2014 computed seed does not match stored value");
+              return;
+            }
+          } catch (e) {
+            this.markFailed(line2);
+            this.showError("Seed computation error: " + e.message);
+            return;
+          }
           this.markDone(line2, "match");
           let line3 = this.addLine();
           await this.typeText(line3.text, `winners = fair_pick.draw(${entryCount} entries, seed, ${winnerCount}) \u2192 `, 20);
+          this.startWaiting(line3, "selected");
           let counter3 = this.addMono(line3.row);
           await this.countUp(counter3, parseInt(entryCount), 1200);
           counter3.textContent = `${winnerCount} winners`;
-          this.markDone(line3, "");
+          this.markDone(line3, "selected");
           let line4 = this.addLine();
-          await this.typeText(line4.text, "assert winners == stored_results ", 25);
+          await this.typeText(line4.text, "assert winners == stored_results \u2192 ", 25);
           let entriesJson = d.entriesJson;
           let resultsJson = d.resultsJson;
-          let result;
+          let mathOk;
           try {
             let entries = JSON.parse(entriesJson);
             let expectedResults = JSON.parse(resultsJson);
             let count = parseInt(winnerCount);
-            result = wasm.verify_wasm(entries, d.drandRandomness, weatherValue || void 0, count, expectedResults);
+            mathOk = wasm.verify_wasm(entries, d.drandRandomness, weatherValue || void 0, count, expectedResults);
           } catch (e) {
             this.markFailed(line4);
             this.showError("Verification error: " + e.message);
             return;
           }
-          if (result) {
-            this.markDone(line4, "");
-            anime_es_default({
-              targets: this.box,
-              borderColor: ["#1a1a1a", "#4ade80", "#4ade80", "#333"],
-              duration: 1500,
-              easing: "easeInOutCubic"
-            });
-            let verified = document.createElement("div");
-            verified.style.cssText = "color:#4ade80;font-weight:700;margin-top:14px;font-size:14px;";
-            verified.textContent = "VERIFIED \u2014 all checks passed (client-side, via WASM)";
-            this.box.appendChild(verified);
-            anime_es_default({ targets: verified, opacity: [0, 1], translateY: [8, 0], duration: 500, easing: "easeOutCubic" });
-          } else {
+          if (!mathOk) {
             this.markFailed(line4);
-            let failed = document.createElement("div");
-            failed.style.cssText = "color:#f87171;font-weight:700;margin-top:14px;font-size:14px;";
-            failed.textContent = "MISMATCH \u2014 verification failed. Please report this draw.";
-            this.box.appendChild(failed);
-            anime_es_default({
-              targets: this.box,
-              borderColor: ["#1a1a1a", "#f87171", "#f87171", "#333"],
-              duration: 1500,
-              easing: "easeInOutCubic"
-            });
+            this.showResult(false, "MISMATCH \u2014 draw math verification failed");
+            return;
           }
+          this.markDone(line4, "match");
+          let hasReceipts = d.lockReceiptJcs && d.lockSignatureHex && d.operatorPublicKeyHex && d.executionReceiptJcs && d.executionSignatureHex && d.infraPublicKeyHex;
+          if (hasReceipts) {
+            let line5 = this.addLine();
+            await this.typeText(line5.text, "verify lock receipt (Ed25519) \u2192 ", 25);
+            this.startWaiting(line5, "valid signature");
+            let opKeyId = this.addMono(line5.row);
+            let lockSigOk;
+            try {
+              let kid = wasm.key_id_wasm(d.operatorPublicKeyHex);
+              await scrambleText(opKeyId, kid, 600);
+              lockSigOk = wasm.verify_receipt_wasm(d.lockReceiptJcs, d.lockSignatureHex, d.operatorPublicKeyHex);
+            } catch (e) {
+              this.markFailed(line5);
+              this.showError("Lock receipt verification error: " + e.message);
+              return;
+            }
+            if (!lockSigOk) {
+              this.markFailed(line5);
+              this.showResult(false, "FAILED \u2014 lock receipt signature invalid");
+              return;
+            }
+            this.markDone(line5, "valid signature");
+            let line6 = this.addLine();
+            await this.typeText(line6.text, "lock receipt entry_hash binding \u2192 ", 25);
+            try {
+              let lockPayload = JSON.parse(d.lockReceiptJcs);
+              let receiptEntryHash = lockPayload.entry_hash;
+              if (receiptEntryHash !== d.entryHashFull) {
+                this.markFailed(line6);
+                this.showResult(false, "MISMATCH \u2014 lock receipt entry_hash does not match computed hash");
+                return;
+              }
+            } catch (e) {
+              this.markFailed(line6);
+              this.showError("Failed to parse lock receipt: " + e.message);
+              return;
+            }
+            this.markDone(line6, "bound");
+            let line7 = this.addLine();
+            await this.typeText(line7.text, "verify execution receipt (Ed25519) \u2192 ", 25);
+            this.startWaiting(line7, "valid signature");
+            let infraKeyId = this.addMono(line7.row);
+            let execSigOk;
+            try {
+              let kid = wasm.key_id_wasm(d.infraPublicKeyHex);
+              await scrambleText(infraKeyId, kid, 600);
+              execSigOk = wasm.verify_receipt_wasm(d.executionReceiptJcs, d.executionSignatureHex, d.infraPublicKeyHex);
+            } catch (e) {
+              this.markFailed(line7);
+              this.showError("Execution receipt verification error: " + e.message);
+              return;
+            }
+            if (!execSigOk) {
+              this.markFailed(line7);
+              this.showResult(false, "FAILED \u2014 execution receipt signature invalid");
+              return;
+            }
+            this.markDone(line7, "valid signature");
+            let line8 = this.addLine();
+            await this.typeText(line8.text, "lock_receipt_hash chain \u2192 ", 25);
+            this.startWaiting(line8, "chain intact");
+            let chainHash = this.addMono(line8.row);
+            try {
+              let execPayload = JSON.parse(d.executionReceiptJcs);
+              if (execPayload.seed !== d.seedFull) {
+                this.markFailed(line8);
+                this.showResult(false, "MISMATCH \u2014 execution receipt seed does not match computed seed");
+                return;
+              }
+              let expectedLockHash = wasm.lock_receipt_hash_wasm(d.lockReceiptJcs);
+              await scrambleText(chainHash, expectedLockHash.substring(0, 8), 800);
+              if (execPayload.lock_receipt_hash !== expectedLockHash) {
+                this.markFailed(line8);
+                this.showResult(false, "MISMATCH \u2014 lock_receipt_hash chain is broken");
+                return;
+              }
+            } catch (e) {
+              this.markFailed(line8);
+              this.showError("Chain verification error: " + e.message);
+              return;
+            }
+            this.markDone(line8, "chain intact");
+            let line8b = this.addLine();
+            await this.typeText(line8b.text, "execution receipt results binding \u2192 ", 25);
+            try {
+              let execPayload2 = JSON.parse(d.executionReceiptJcs);
+              let receiptResults = JSON.stringify(execPayload2.results);
+              let expectedResults = JSON.stringify(JSON.parse(resultsJson).map((r) => r.entry_id));
+              if (receiptResults !== expectedResults) {
+                this.markFailed(line8b);
+                this.showResult(false, "MISMATCH \u2014 execution receipt results do not match computed results");
+                return;
+              }
+            } catch (e) {
+              this.markFailed(line8b);
+              this.showError("Results binding error: " + e.message);
+              return;
+            }
+            this.markDone(line8b, "bound");
+            let line9 = this.addLine();
+            await this.typeText(line9.text, "full pipeline double-check (verify_full_wasm) \u2192 ", 25);
+            let fullOk;
+            try {
+              fullOk = wasm.verify_full_wasm(
+                d.lockReceiptJcs,
+                d.lockSignatureHex,
+                d.operatorPublicKeyHex,
+                d.executionReceiptJcs,
+                d.executionSignatureHex,
+                d.infraPublicKeyHex,
+                JSON.parse(entriesJson),
+                parseInt(winnerCount)
+              );
+            } catch (e) {
+              this.markFailed(line9);
+              this.showError("Full pipeline verification error: " + e.message);
+              return;
+            }
+            if (!fullOk) {
+              this.markFailed(line9);
+              this.showResult(false, "FAILED \u2014 full pipeline verification disagreed");
+              return;
+            }
+            this.markDone(line9, "confirmed");
+          }
+          this.showResult(true, hasReceipts ? "VERIFIED \u2014 all checks passed, receipts valid, chain intact" : "VERIFIED \u2014 draw math confirmed (no receipt data for signature checks)");
         }
         addLine() {
           let row = document.createElement("div");
-          row.style.cssText = "display:flex;align-items:center;gap:10px;min-height:24px;";
+          row.className = "vrow";
           let marker = document.createElement("span");
-          marker.style.cssText = "color:#facc15;flex-shrink:0;";
+          marker.className = "vmarker";
           marker.textContent = "\u25B8";
           let text = document.createElement("span");
-          text.style.cssText = "flex:1;";
+          text.className = "vtext";
           let suffix = document.createElement("span");
-          suffix.style.display = "none";
+          suffix.className = "vsuffix";
           row.appendChild(marker);
           row.appendChild(text);
           row.appendChild(suffix);
@@ -10009,22 +10203,75 @@ removing illegal node: "${(childNode.outerHTML || childNode.nodeValue).trim()}"
         }
         addMono(row) {
           let mono = document.createElement("span");
-          mono.style.cssText = "color:#4ade80;font-weight:600;";
+          mono.className = "vmono";
           row.insertBefore(mono, row.lastChild);
           return mono;
         }
+        startWaiting(line, label) {
+          line.suffix.style.color = "#444";
+          let width = label ? label.length : 5;
+          let pos = 0;
+          let forward = true;
+          let tick = () => {
+            let chars = Array(width).fill("-");
+            chars[pos] = "_";
+            line.suffix.textContent = chars.join("");
+            if (forward) {
+              pos++;
+              if (pos >= width - 1) forward = false;
+            } else {
+              pos--;
+              if (pos <= 0) forward = true;
+            }
+          };
+          tick();
+          line._waitInterval = setInterval(tick, 120);
+        }
+        stopWaiting(line) {
+          if (line._waitInterval) {
+            clearInterval(line._waitInterval);
+            line._waitInterval = null;
+          }
+          line.suffix.style.color = "";
+        }
         markDone(line, label) {
+          this.stopWaiting(line);
           line.marker.textContent = "\u2713";
           line.marker.style.color = "#4ade80";
           if (label) {
-            line.suffix.style.display = "inline";
-            line.suffix.style.cssText = "color:#555;font-size:11px;";
             line.suffix.textContent = label;
           }
         }
         markFailed(line) {
+          this.stopWaiting(line);
           line.marker.textContent = "\u2717";
           line.marker.style.color = "#f87171";
+        }
+        showResult(passed, message) {
+          if (passed) {
+            anime_es_default({
+              targets: this.box,
+              borderColor: ["#1a1a1a", "#4ade80", "#4ade80", "#333"],
+              duration: 1500,
+              easing: "easeInOutCubic"
+            });
+            let el = document.createElement("div");
+            el.style.cssText = "color:#4ade80;font-weight:700;margin-top:14px;";
+            el.textContent = message;
+            this.box.appendChild(el);
+            anime_es_default({ targets: el, opacity: [0, 1], translateY: [8, 0], duration: 500, easing: "easeOutCubic" });
+          } else {
+            let el = document.createElement("div");
+            el.style.cssText = "color:#f87171;font-weight:700;margin-top:14px;";
+            el.textContent = message;
+            this.box.appendChild(el);
+            anime_es_default({
+              targets: this.box,
+              borderColor: ["#1a1a1a", "#f87171", "#f87171", "#333"],
+              duration: 1500,
+              easing: "easeInOutCubic"
+            });
+          }
         }
         showError(msg) {
           let err = document.createElement("div");

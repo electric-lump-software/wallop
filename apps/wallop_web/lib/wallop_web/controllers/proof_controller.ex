@@ -34,6 +34,9 @@ defmodule WallopWeb.ProofController do
     entries = WallopCore.Entries.load_for_draw(draw.id)
     {operator, receipt, execution_receipt} = WallopCore.OperatorInfo.for_draw(draw)
 
+    {operator_public_key_hex, infra_public_key_hex} =
+      WallopCore.OperatorInfo.signing_keys_hex(receipt, execution_receipt)
+
     conn
     |> put_resp_header("cache-control", "public, max-age=31536000, immutable")
     |> put_layout(html: {WallopWeb.Layouts, :app})
@@ -46,7 +49,9 @@ defmodule WallopWeb.ProofController do
       results_json: results_to_json(draw.results),
       operator: operator,
       receipt: receipt,
-      execution_receipt: execution_receipt
+      execution_receipt: execution_receipt,
+      operator_public_key_hex: operator_public_key_hex,
+      infra_public_key_hex: infra_public_key_hex
     )
   end
 
