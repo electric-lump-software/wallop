@@ -43,11 +43,69 @@ function scrambleText(el, target, duration) {
   })
 }
 
+function injectVerifyStyles() {
+  if (document.getElementById("verify-runner-css")) return
+  let style = document.createElement("style")
+  style.id = "verify-runner-css"
+  style.textContent = `
+    .vrow {
+      display: flex;
+      align-items: baseline;
+      gap: 10px;
+      min-height: 24px;
+    }
+    .vmarker {
+      color: #facc15;
+      flex-shrink: 0;
+    }
+    .vtext {
+      flex: 1;
+    }
+    .vmono {
+      color: #4ade80;
+      font-weight: 600;
+    }
+    .vsuffix {
+      color: #555;
+      font-size: 11px;
+    }
+    @media (max-width: 639px) {
+      .vrow {
+        display: block;
+        padding-left: 16px;
+        text-indent: -16px;
+        min-height: 18px;
+        line-height: 1.5;
+      }
+      .vmarker {
+        display: inline;
+        margin-right: 4px;
+      }
+      .vtext {
+        text-indent: 0;
+      }
+      .vmono {
+        display: inline;
+        text-indent: 0;
+        white-space: nowrap;
+      }
+      .vsuffix {
+        font-size: 9px;
+        text-indent: 0;
+        white-space: nowrap;
+        margin-left: 6px;
+      }
+    }
+  `
+  document.head.appendChild(style)
+}
+
 class VerifyRunner {
   constructor(el) {
     this.el = el
     this.btn = el.querySelector("[data-verify-btn]")
     this.box = el.querySelector("[data-verify-box]")
+    injectVerifyStyles()
 
     if (this.btn) {
       this.btn.addEventListener("click", () => this.run())
@@ -94,6 +152,7 @@ class VerifyRunner {
     // Step 2: entry_hash
     let line1 = this.addLine()
     await this.typeText(line1.text, `entry_hash = SHA256(${entryCount} entries) → `, 25)
+    this.startWaiting(line1, "match")
     let hash1 = this.addMono(line1.row)
     await scrambleText(hash1, entryHash, 1200)
     this.markDone(line1, "match")
@@ -104,6 +163,7 @@ class VerifyRunner {
       ? `seed = SHA256(hash, drand[${drandRound}], wx[${weatherValue}]) → `
       : `seed = SHA256(hash, drand[${drandRound}]) → `
     await this.typeText(line2.text, seedLabel, 20)
+    this.startWaiting(line2, "match")
     let hash2 = this.addMono(line2.row)
     await scrambleText(hash2, seed, 1200)
     this.markDone(line2, "match")
@@ -111,67 +171,173 @@ class VerifyRunner {
     // Step 4: draw
     let line3 = this.addLine()
     await this.typeText(line3.text, `winners = fair_pick.draw(${entryCount} entries, seed, ${winnerCount}) → `, 20)
+    this.startWaiting(line3, "selected")
     let counter3 = this.addMono(line3.row)
     await this.countUp(counter3, parseInt(entryCount), 1200)
     counter3.textContent = `${winnerCount} winners`
-    this.markDone(line3, "")
+    this.markDone(line3, "selected")
 
-    // Step 5: WASM verification
+    // Step 5: verify_wasm (entries → results math)
     let line4 = this.addLine()
-    await this.typeText(line4.text, "assert winners == stored_results ", 25)
+    await this.typeText(line4.text, "assert winners == stored_results → ", 25)
 
     let entriesJson = d.entriesJson
     let resultsJson = d.resultsJson
-    let result
+    let mathOk
     try {
       let entries = JSON.parse(entriesJson)
       let expectedResults = JSON.parse(resultsJson)
       let count = parseInt(winnerCount)
-      result = wasm.verify_wasm(entries, d.drandRandomness, weatherValue || undefined, count, expectedResults)
+      mathOk = wasm.verify_wasm(entries, d.drandRandomness, weatherValue || undefined, count, expectedResults)
     } catch (e) {
       this.markFailed(line4)
       this.showError("Verification error: " + e.message)
       return
     }
-
-    if (result) {
-      this.markDone(line4, "")
-      anime({
-        targets: this.box,
-        borderColor: ["#1a1a1a", "#4ade80", "#4ade80", "#333"],
-        duration: 1500,
-        easing: "easeInOutCubic"
-      })
-      let verified = document.createElement("div")
-      verified.style.cssText = "color:#4ade80;font-weight:700;margin-top:14px;font-size:14px;"
-      verified.textContent = "VERIFIED — all checks passed (client-side, via WASM)"
-      this.box.appendChild(verified)
-      anime({ targets: verified, opacity: [0, 1], translateY: [8, 0], duration: 500, easing: "easeOutCubic" })
-    } else {
+    if (!mathOk) {
       this.markFailed(line4)
-      let failed = document.createElement("div")
-      failed.style.cssText = "color:#f87171;font-weight:700;margin-top:14px;font-size:14px;"
-      failed.textContent = "MISMATCH — verification failed. Please report this draw."
-      this.box.appendChild(failed)
-      anime({
-        targets: this.box,
-        borderColor: ["#1a1a1a", "#f87171", "#f87171", "#333"],
-        duration: 1500,
-        easing: "easeInOutCubic"
-      })
+      this.showResult(false, "MISMATCH — draw math verification failed")
+      return
     }
+    this.markDone(line4, "match")
+
+    // Steps 6-10: receipt verification (only if receipt data is present)
+    let hasReceipts = d.lockReceiptJcs && d.lockSignatureHex && d.operatorPublicKeyHex
+                   && d.executionReceiptJcs && d.executionSignatureHex && d.infraPublicKeyHex
+
+    if (hasReceipts) {
+      // Step 6: verify lock receipt signature
+      let line5 = this.addLine()
+      await this.typeText(line5.text, "verify lock receipt (Ed25519) → ", 25)
+      this.startWaiting(line5, "valid signature")
+      let opKeyId = this.addMono(line5.row)
+      let lockSigOk
+      try {
+        let kid = wasm.key_id_wasm(d.operatorPublicKeyHex)
+        await scrambleText(opKeyId, kid, 600)
+        lockSigOk = wasm.verify_receipt_wasm(d.lockReceiptJcs, d.lockSignatureHex, d.operatorPublicKeyHex)
+      } catch (e) {
+        this.markFailed(line5)
+        this.showError("Lock receipt verification error: " + e.message)
+        return
+      }
+      if (!lockSigOk) {
+        this.markFailed(line5)
+        this.showResult(false, "FAILED — lock receipt signature invalid")
+        return
+      }
+      this.markDone(line5, "valid signature")
+
+      // Step 7: binding check — lock receipt entry_hash matches computed
+      let line6 = this.addLine()
+      await this.typeText(line6.text, "lock receipt entry_hash binding → ", 25)
+      try {
+        let lockPayload = JSON.parse(d.lockReceiptJcs)
+        let receiptEntryHash = lockPayload.entry_hash
+        if (receiptEntryHash !== d.entryHashFull) {
+          this.markFailed(line6)
+          this.showResult(false, "MISMATCH — lock receipt entry_hash does not match computed hash")
+          return
+        }
+      } catch (e) {
+        this.markFailed(line6)
+        this.showError("Failed to parse lock receipt: " + e.message)
+        return
+      }
+      this.markDone(line6, "bound")
+
+      // Step 8: verify execution receipt signature
+      let line7 = this.addLine()
+      await this.typeText(line7.text, "verify execution receipt (Ed25519) → ", 25)
+      this.startWaiting(line7, "valid signature")
+      let infraKeyId = this.addMono(line7.row)
+      let execSigOk
+      try {
+        let kid = wasm.key_id_wasm(d.infraPublicKeyHex)
+        await scrambleText(infraKeyId, kid, 600)
+        execSigOk = wasm.verify_receipt_wasm(d.executionReceiptJcs, d.executionSignatureHex, d.infraPublicKeyHex)
+      } catch (e) {
+        this.markFailed(line7)
+        this.showError("Execution receipt verification error: " + e.message)
+        return
+      }
+      if (!execSigOk) {
+        this.markFailed(line7)
+        this.showResult(false, "FAILED — execution receipt signature invalid")
+        return
+      }
+      this.markDone(line7, "valid signature")
+
+      // Step 9: binding check — execution receipt seed + chain linkage
+      let line8 = this.addLine()
+      await this.typeText(line8.text, "lock_receipt_hash chain → ", 25)
+      this.startWaiting(line8, "chain intact")
+      let chainHash = this.addMono(line8.row)
+      try {
+        let execPayload = JSON.parse(d.executionReceiptJcs)
+        if (execPayload.seed !== d.seedFull) {
+          this.markFailed(line8)
+          this.showResult(false, "MISMATCH — execution receipt seed does not match computed seed")
+          return
+        }
+        let expectedLockHash = wasm.lock_receipt_hash_wasm(d.lockReceiptJcs)
+        await scrambleText(chainHash, expectedLockHash.substring(0, 8), 800)
+        if (execPayload.lock_receipt_hash !== expectedLockHash) {
+          this.markFailed(line8)
+          this.showResult(false, "MISMATCH — lock_receipt_hash chain is broken")
+          return
+        }
+      } catch (e) {
+        this.markFailed(line8)
+        this.showError("Chain verification error: " + e.message)
+        return
+      }
+      this.markDone(line8, "chain intact")
+
+      // Step 10: verify_full_wasm — independent full pipeline double-check
+      let line9 = this.addLine()
+      await this.typeText(line9.text, "full pipeline double-check (verify_full_wasm) → ", 25)
+      let fullOk
+      try {
+        fullOk = wasm.verify_full_wasm(
+          d.lockReceiptJcs,
+          d.lockSignatureHex,
+          d.operatorPublicKeyHex,
+          d.executionReceiptJcs,
+          d.executionSignatureHex,
+          d.infraPublicKeyHex,
+          JSON.parse(entriesJson),
+          parseInt(winnerCount)
+        )
+      } catch (e) {
+        this.markFailed(line9)
+        this.showError("Full pipeline verification error: " + e.message)
+        return
+      }
+      if (!fullOk) {
+        this.markFailed(line9)
+        this.showResult(false, "FAILED — full pipeline verification disagreed")
+        return
+      }
+      this.markDone(line9, "confirmed")
+    }
+
+    // Final result
+    this.showResult(true, hasReceipts
+      ? "VERIFIED — all checks passed, receipts valid, chain intact"
+      : "VERIFIED — draw math confirmed (no receipt data for signature checks)")
   }
 
   addLine() {
     let row = document.createElement("div")
-    row.style.cssText = "display:flex;align-items:center;gap:10px;min-height:24px;"
+    row.className = "vrow"
     let marker = document.createElement("span")
-    marker.style.cssText = "color:#facc15;flex-shrink:0;"
+    marker.className = "vmarker"
     marker.textContent = "▸"
     let text = document.createElement("span")
-    text.style.cssText = "flex:1;"
+    text.className = "vtext"
     let suffix = document.createElement("span")
-    suffix.style.display = "none"
+    suffix.className = "vsuffix"
     row.appendChild(marker)
     row.appendChild(text)
     row.appendChild(suffix)
@@ -181,24 +347,73 @@ class VerifyRunner {
 
   addMono(row) {
     let mono = document.createElement("span")
-    mono.style.cssText = "color:#4ade80;font-weight:600;"
+    mono.className = "vmono"
     row.insertBefore(mono, row.lastChild)
     return mono
   }
 
+  startWaiting(line, label) {
+    line.suffix.style.color = "#333"
+    let width = label ? label.length : 5
+    let pos = 0
+    let tick = () => {
+      let chars = Array(width).fill("-")
+      chars[pos % width] = "_"
+      line.suffix.textContent = chars.join("")
+      pos++
+    }
+    tick()
+    line._waitInterval = setInterval(tick, 120)
+  }
+
+  stopWaiting(line) {
+    if (line._waitInterval) {
+      clearInterval(line._waitInterval)
+      line._waitInterval = null
+    }
+    line.suffix.style.color = ""
+  }
+
   markDone(line, label) {
+    this.stopWaiting(line)
     line.marker.textContent = "✓"
     line.marker.style.color = "#4ade80"
     if (label) {
-      line.suffix.style.display = "inline"
-      line.suffix.style.cssText = "color:#555;font-size:11px;"
       line.suffix.textContent = label
     }
   }
 
   markFailed(line) {
+    this.stopWaiting(line)
     line.marker.textContent = "✗"
     line.marker.style.color = "#f87171"
+  }
+
+  showResult(passed, message) {
+    if (passed) {
+      anime({
+        targets: this.box,
+        borderColor: ["#1a1a1a", "#4ade80", "#4ade80", "#333"],
+        duration: 1500,
+        easing: "easeInOutCubic"
+      })
+      let el = document.createElement("div")
+      el.style.cssText = "color:#4ade80;font-weight:700;margin-top:14px;"
+      el.textContent = message
+      this.box.appendChild(el)
+      anime({ targets: el, opacity: [0, 1], translateY: [8, 0], duration: 500, easing: "easeOutCubic" })
+    } else {
+      let el = document.createElement("div")
+      el.style.cssText = "color:#f87171;font-weight:700;margin-top:14px;"
+      el.textContent = message
+      this.box.appendChild(el)
+      anime({
+        targets: this.box,
+        borderColor: ["#1a1a1a", "#f87171", "#f87171", "#333"],
+        duration: 1500,
+        easing: "easeInOutCubic"
+      })
+    }
   }
 
   showError(msg) {

@@ -12,6 +12,7 @@ defmodule WallopWeb.ProofLive do
   import WallopWeb.Components.WinnerList
   import WallopWeb.Components.EntryCheck
   import WallopWeb.Components.OperatorPanel
+  import WallopWeb.Components.VerifyBlock
 
   alias WallopCore.Proof
 
@@ -34,6 +35,9 @@ defmodule WallopWeb.ProofLive do
         check_result = auto_check_entry(draw, entry_id)
         {operator, receipt, execution_receipt} = WallopCore.OperatorInfo.for_draw(draw)
 
+        {operator_public_key_hex, infra_public_key_hex} =
+          WallopCore.OperatorInfo.signing_keys_hex(receipt, execution_receipt)
+
         {:ok,
          assign(socket,
            draw: draw,
@@ -50,6 +54,8 @@ defmodule WallopWeb.ProofLive do
            operator: operator,
            receipt: receipt,
            execution_receipt: execution_receipt,
+           operator_public_key_hex: operator_public_key_hex,
+           infra_public_key_hex: infra_public_key_hex,
            page_title: "Draw Proof"
          )}
 
@@ -112,6 +118,12 @@ defmodule WallopWeb.ProofLive do
         {entries_json, results_json} = load_verify_data(draw)
         {_operator, _lock, execution_receipt} = WallopCore.OperatorInfo.for_draw(draw)
 
+        {operator_public_key_hex, infra_public_key_hex} =
+          WallopCore.OperatorInfo.signing_keys_hex(
+            socket.assigns.receipt,
+            execution_receipt
+          )
+
         {:noreply,
          assign(socket,
            draw: draw,
@@ -120,7 +132,9 @@ defmodule WallopWeb.ProofLive do
            reveal_to: 5,
            entries_json: entries_json,
            results_json: results_json,
-           execution_receipt: execution_receipt
+           execution_receipt: execution_receipt,
+           operator_public_key_hex: operator_public_key_hex,
+           infra_public_key_hex: infra_public_key_hex
          )}
 
       true ->
