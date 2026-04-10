@@ -58,8 +58,10 @@ export function receipt_schema_version_wasm(payload_jcs: string): string | undef
 
 /**
  * WASM entry point for verify_full.
+ *
+ * `winner_count` is extracted from the signed lock receipt, not passed externally.
  */
-export function verify_full_wasm(lock_receipt_jcs: string, lock_signature_hex: string, operator_public_key_hex: string, execution_receipt_jcs: string, execution_signature_hex: string, infrastructure_public_key_hex: string, entries_js: any, count: number): boolean;
+export function verify_full_wasm(lock_receipt_jcs: string, lock_signature_hex: string, operator_public_key_hex: string, execution_receipt_jcs: string, execution_signature_hex: string, infrastructure_public_key_hex: string, entries_js: any): boolean;
 
 /**
  * WASM entry point for verify_receipt.
@@ -86,7 +88,7 @@ export interface InitOutput {
     readonly lock_receipt_hash_wasm: (a: number, b: number, c: number) => void;
     readonly merkle_root_wasm: (a: number, b: number) => void;
     readonly receipt_schema_version_wasm: (a: number, b: number, c: number) => void;
-    readonly verify_full_wasm: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number, m: number, n: number, o: number) => void;
+    readonly verify_full_wasm: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number, m: number, n: number) => void;
     readonly verify_receipt_wasm: (a: number, b: number, c: number, d: number, e: number, f: number, g: number) => void;
     readonly verify_wasm: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number) => void;
     readonly __wbindgen_export: (a: number, b: number) => number;
