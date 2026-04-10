@@ -157,8 +157,7 @@ class VerifyRunner {
     let computedEntryHashFull
     try {
       let ehResult = wasm.entry_hash_wasm(JSON.parse(d.entriesJson))
-      // Result may be {hash_hex: "..."} or a plain string
-      computedEntryHashFull = typeof ehResult === "string" ? ehResult : ehResult.hash_hex
+      computedEntryHashFull = ehResult.hash
       await scrambleText(hash1, computedEntryHashFull.substring(0, 8), 1200)
       if (computedEntryHashFull !== d.entryHashFull) {
         this.markFailed(line1)
@@ -185,8 +184,7 @@ class VerifyRunner {
       let seedResult = weatherValue
         ? wasm.compute_seed_wasm(computedEntryHashFull, d.drandRandomness, weatherValue)
         : wasm.compute_seed_drand_only_wasm(computedEntryHashFull, d.drandRandomness)
-      // Result may be {seed_hex: "..."} or a plain string
-      computedSeedFull = typeof seedResult === "string" ? seedResult : seedResult.seed_hex
+      computedSeedFull = seedResult.seed
       await scrambleText(hash2, computedSeedFull.substring(0, 8), 1200)
       if (computedSeedFull !== d.seedFull) {
         this.markFailed(line2)
