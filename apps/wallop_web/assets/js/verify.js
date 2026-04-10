@@ -9,12 +9,17 @@ import anime from "animejs/lib/anime.es.js"
 
 // Lazy-loaded WASM module
 let wasmModule = null
+let wasmVersion = null
 
 async function loadWasm() {
   if (wasmModule) return wasmModule
-  const wasm = await import("/assets/wasm/wallop_rs.js")
+  const [wasm, pkg] = await Promise.all([
+    import("/assets/wasm/wallop_rs.js"),
+    fetch("/assets/wasm/package.json").then(r => r.json()).catch(() => null)
+  ])
   await wasm.default("/assets/wasm/wallop_rs_bg.wasm")
   wasmModule = wasm
+  wasmVersion = pkg && pkg.version ? `v${pkg.version}` : null
   return wasm
 }
 
@@ -142,7 +147,7 @@ class VerifyRunner {
     let wasm
     try {
       wasm = await loadWasm()
-      this.markDone(line0, "loaded")
+      this.markDone(line0, wasmVersion || "loaded")
     } catch (e) {
       this.markFailed(line0)
       this.showError("Failed to load WASM verifier: " + e.message)
@@ -356,8 +361,7 @@ class VerifyRunner {
           d.executionReceiptJcs,
           d.executionSignatureHex,
           d.infraPublicKeyHex,
-          JSON.parse(entriesJson),
-          parseInt(winnerCount)
+          JSON.parse(entriesJson)
         )
       } catch (e) {
         this.markFailed(line9)

@@ -308,6 +308,8 @@ export function receipt_schema_version_wasm(payload_jcs) {
 
 /**
  * WASM entry point for verify_full.
+ *
+ * `winner_count` is extracted from the signed lock receipt, not passed externally.
  * @param {string} lock_receipt_jcs
  * @param {string} lock_signature_hex
  * @param {string} operator_public_key_hex
@@ -315,10 +317,9 @@ export function receipt_schema_version_wasm(payload_jcs) {
  * @param {string} execution_signature_hex
  * @param {string} infrastructure_public_key_hex
  * @param {any} entries_js
- * @param {number} count
  * @returns {boolean}
  */
-export function verify_full_wasm(lock_receipt_jcs, lock_signature_hex, operator_public_key_hex, execution_receipt_jcs, execution_signature_hex, infrastructure_public_key_hex, entries_js, count) {
+export function verify_full_wasm(lock_receipt_jcs, lock_signature_hex, operator_public_key_hex, execution_receipt_jcs, execution_signature_hex, infrastructure_public_key_hex, entries_js) {
     try {
         const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
         const ptr0 = passStringToWasm0(lock_receipt_jcs, wasm.__wbindgen_export, wasm.__wbindgen_export2);
@@ -333,7 +334,7 @@ export function verify_full_wasm(lock_receipt_jcs, lock_signature_hex, operator_
         const len4 = WASM_VECTOR_LEN;
         const ptr5 = passStringToWasm0(infrastructure_public_key_hex, wasm.__wbindgen_export, wasm.__wbindgen_export2);
         const len5 = WASM_VECTOR_LEN;
-        wasm.verify_full_wasm(retptr, ptr0, len0, ptr1, len1, ptr2, len2, ptr3, len3, ptr4, len4, ptr5, len5, addHeapObject(entries_js), count);
+        wasm.verify_full_wasm(retptr, ptr0, len0, ptr1, len1, ptr2, len2, ptr3, len3, ptr4, len4, ptr5, len5, addHeapObject(entries_js));
         var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
         var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
         var r2 = getDataViewMemory0().getInt32(retptr + 4 * 2, true);

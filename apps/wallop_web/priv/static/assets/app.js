@@ -9854,9 +9854,13 @@ removing illegal node: "${(childNode.outerHTML || childNode.nodeValue).trim()}"
   // js/verify.js
   async function loadWasm() {
     if (wasmModule) return wasmModule;
-    const wasm = await import("/assets/wasm/wallop_rs.js");
+    const [wasm, pkg] = await Promise.all([
+      import("/assets/wasm/wallop_rs.js"),
+      fetch("/assets/wasm/package.json").then((r) => r.json()).catch(() => null)
+    ]);
     await wasm.default("/assets/wasm/wallop_rs_bg.wasm");
     wasmModule = wasm;
+    wasmVersion = pkg && pkg.version ? `v${pkg.version}` : null;
     return wasm;
   }
   function scrambleText(el, target, duration) {
@@ -9944,11 +9948,12 @@ removing illegal node: "${(childNode.outerHTML || childNode.nodeValue).trim()}"
       new VerifyRunner(el);
     });
   }
-  var wasmModule, VerifyRunner;
+  var wasmModule, wasmVersion, VerifyRunner;
   var init_verify = __esm({
     "js/verify.js"() {
       init_anime_es();
       wasmModule = null;
+      wasmVersion = null;
       VerifyRunner = class {
         constructor(el) {
           this.el = el;
@@ -9983,7 +9988,7 @@ removing illegal node: "${(childNode.outerHTML || childNode.nodeValue).trim()}"
           let wasm;
           try {
             wasm = await loadWasm();
-            this.markDone(line0, "loaded");
+            this.markDone(line0, wasmVersion || "loaded");
           } catch (e) {
             this.markFailed(line0);
             this.showError("Failed to load WASM verifier: " + e.message);
@@ -10168,8 +10173,7 @@ removing illegal node: "${(childNode.outerHTML || childNode.nodeValue).trim()}"
                 d.executionReceiptJcs,
                 d.executionSignatureHex,
                 d.infraPublicKeyHex,
-                JSON.parse(entriesJson),
-                parseInt(winnerCount)
+                JSON.parse(entriesJson)
               );
             } catch (e) {
               this.markFailed(line9);
