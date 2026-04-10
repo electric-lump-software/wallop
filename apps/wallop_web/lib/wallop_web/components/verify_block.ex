@@ -38,7 +38,6 @@ defmodule WallopWeb.Components.VerifyBlock do
           data-execution-receipt-jcs={@execution_receipt && @execution_receipt.payload_jcs}
           data-execution-signature-hex={@execution_receipt && Base.encode16(@execution_receipt.signature, case: :lower)}
           data-infra-public-key-hex={@infra_public_key_hex}
-          data-lock-receipt-hash={@execution_receipt && @execution_receipt.lock_receipt_hash}
         >
           <p data-verify-hint class="text-[10px] text-[#999] mb-1.5">
             Runs locally in your browser via WebAssembly. No server involved.

@@ -149,15 +149,30 @@ class VerifyRunner {
       return
     }
 
-    // Step 2: entry_hash
+    // Step 2: entry_hash — independently computed
     let line1 = this.addLine()
     await this.typeText(line1.text, `entry_hash = SHA256(${entryCount} entries) → `, 25)
     this.startWaiting(line1, "match")
     let hash1 = this.addMono(line1.row)
-    await scrambleText(hash1, entryHash, 1200)
+    let computedEntryHashFull
+    try {
+      let ehResult = wasm.entry_hash_wasm(JSON.parse(d.entriesJson))
+      // Result may be {hash_hex: "..."} or a plain string
+      computedEntryHashFull = typeof ehResult === "string" ? ehResult : ehResult.hash_hex
+      await scrambleText(hash1, computedEntryHashFull.substring(0, 8), 1200)
+      if (computedEntryHashFull !== d.entryHashFull) {
+        this.markFailed(line1)
+        this.showResult(false, "MISMATCH — computed entry_hash does not match stored value")
+        return
+      }
+    } catch (e) {
+      this.markFailed(line1)
+      this.showError("Entry hash computation error: " + e.message)
+      return
+    }
     this.markDone(line1, "match")
 
-    // Step 3: seed
+    // Step 3: seed — independently computed
     let line2 = this.addLine()
     let seedLabel = weatherValue
       ? `seed = SHA256(hash, drand[${drandRound}], wx[${weatherValue}]) → `
@@ -165,7 +180,24 @@ class VerifyRunner {
     await this.typeText(line2.text, seedLabel, 20)
     this.startWaiting(line2, "match")
     let hash2 = this.addMono(line2.row)
-    await scrambleText(hash2, seed, 1200)
+    let computedSeedFull
+    try {
+      let seedResult = weatherValue
+        ? wasm.compute_seed_wasm(computedEntryHashFull, d.drandRandomness, weatherValue)
+        : wasm.compute_seed_drand_only_wasm(computedEntryHashFull, d.drandRandomness)
+      // Result may be {seed_hex: "..."} or a plain string
+      computedSeedFull = typeof seedResult === "string" ? seedResult : seedResult.seed_hex
+      await scrambleText(hash2, computedSeedFull.substring(0, 8), 1200)
+      if (computedSeedFull !== d.seedFull) {
+        this.markFailed(line2)
+        this.showResult(false, "MISMATCH — computed seed does not match stored value")
+        return
+      }
+    } catch (e) {
+      this.markFailed(line2)
+      this.showError("Seed computation error: " + e.message)
+      return
+    }
     this.markDone(line2, "match")
 
     // Step 4: draw
@@ -293,6 +325,25 @@ class VerifyRunner {
         return
       }
       this.markDone(line8, "chain intact")
+
+      // Step 9b: verify execution receipt results match computed results
+      let line8b = this.addLine()
+      await this.typeText(line8b.text, "execution receipt results binding → ", 25)
+      try {
+        let execPayload2 = JSON.parse(d.executionReceiptJcs)
+        let receiptResults = JSON.stringify(execPayload2.results)
+        let expectedResults = JSON.stringify(JSON.parse(resultsJson).map(r => r.entry_id))
+        if (receiptResults !== expectedResults) {
+          this.markFailed(line8b)
+          this.showResult(false, "MISMATCH — execution receipt results do not match computed results")
+          return
+        }
+      } catch (e) {
+        this.markFailed(line8b)
+        this.showError("Results binding error: " + e.message)
+        return
+      }
+      this.markDone(line8b, "bound")
 
       // Step 10: verify_full_wasm — independent full pipeline double-check
       let line9 = this.addLine()

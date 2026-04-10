@@ -30,7 +30,6 @@ defmodule WallopWeb.ProofLiveTest do
       assert html =~ "data-execution-receipt-jcs"
       assert html =~ "data-execution-signature-hex"
       assert html =~ "data-infra-public-key-hex"
-      assert html =~ "data-lock-receipt-hash"
     end
 
     test "sets immutable cache headers", %{conn: conn} do
