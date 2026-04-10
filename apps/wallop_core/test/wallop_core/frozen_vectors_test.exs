@@ -169,6 +169,32 @@ defmodule WallopCore.FrozenVectorsTest do
       assert Enum.map(result, & &1.entry_id) == v["expected_winners"]
     end
 
+    test "large pool — 500 entries, mixed weights (pool size 700)", %{vectors: vectors} do
+      v = Enum.find(vectors, &(&1["name"] =~ "500 entries"))
+
+      entries = Enum.map(v["entries"], fn e -> %{id: e["id"], weight: e["weight"]} end)
+      seed = Base.decode16!(v["seed_hex"], case: :lower)
+
+      # Verify seed_hex matches seed_note derivation
+      assert seed == :crypto.hash(:sha256, "large-pool-500-entries-mixed-weights")
+
+      result = FairPick.draw(entries, seed, v["winner_count"])
+      assert Enum.map(result, & &1.entry_id) == v["expected_winners"]
+    end
+
+    test "large pool — 1000 entries, 10 winners (pool size 1200)", %{vectors: vectors} do
+      v = Enum.find(vectors, &(&1["name"] =~ "1000 entries"))
+
+      entries = Enum.map(v["entries"], fn e -> %{id: e["id"], weight: e["weight"]} end)
+      seed = Base.decode16!(v["seed_hex"], case: :lower)
+
+      # Verify seed_hex matches seed_note derivation
+      assert seed == :crypto.hash(:sha256, "large-pool-1000-entries-10-winners")
+
+      result = FairPick.draw(entries, seed, v["winner_count"])
+      assert Enum.map(result, & &1.entry_id) == v["expected_winners"]
+    end
+
     test "deterministic across calls" do
       entries = [%{id: "x", weight: 1}, %{id: "y", weight: 1}, %{id: "z", weight: 1}]
       seed = :crypto.hash(:sha256, "determinism-check")
