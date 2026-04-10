@@ -16,6 +16,22 @@ defmodule WallopWeb.ProofLiveTest do
       assert html =~ "Verified by Wallop"
     end
 
+    test "renders verify block with receipt data attributes", %{conn: conn} do
+      api_key = create_api_key()
+      draw = create_draw(api_key, %{})
+      draw = execute_draw(draw, test_seed(), api_key)
+
+      conn = get(conn, "/proof/#{draw.id}")
+      html = html_response(conn, 200)
+
+      assert html =~ "data-lock-receipt-jcs"
+      assert html =~ "data-lock-signature-hex"
+      assert html =~ "data-operator-public-key-hex"
+      assert html =~ "data-execution-receipt-jcs"
+      assert html =~ "data-execution-signature-hex"
+      assert html =~ "data-infra-public-key-hex"
+    end
+
     test "sets immutable cache headers", %{conn: conn} do
       api_key = create_api_key()
       draw = create_draw(api_key, %{})

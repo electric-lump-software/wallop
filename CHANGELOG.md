@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### wallop_rs 0.2.0
+
+New WASM exports for third-party verification:
+- `verify_full_wasm` — full end-to-end draw verification (entries → hash → seed → results → receipt signatures)
+- `verify_receipt_wasm` — Ed25519 signature verification for lock and execution receipts
+- `key_id_wasm` — key fingerprint derivation from public key hex
+- `lock_receipt_hash_wasm` — SHA-256 hash of lock receipt payload (for chain linkage verification)
+- `build_receipt_payload_wasm` — reconstruct lock receipt canonical payload
+- `build_execution_receipt_payload_wasm` — reconstruct execution receipt canonical payload
+- `receipt_schema_version_wasm` — extract schema version from receipt payload
+- `merkle_root_wasm` — Merkle root computation for transparency log verification
+- `anchor_root_wasm` — anchor root computation (combined operator + execution receipt trees)
+
+### wallop_web
+
+- **Full client-side verification pipeline.** The proof page "Verify independently" button now runs an 11-step animated verification: independently compute entry hash and seed, rerun the draw, verify lock and execution receipt Ed25519 signatures, check binding between receipts and computed values (entry hash, seed, results), verify lock_receipt_hash chain linkage, and run a final `verify_full_wasm` double-check. All computation happens in the visitor's browser via the wallop_rs WASM module — no server round-trip.
+- **Extract shared verify block component.** The duplicated verification UI between the static proof controller and LiveView proof page is now a single shared component (`VerifyBlock`).
+
 ### wallop_core 0.14.1
 
 - **Deploy safety: Oban Lifeline plugin.** Rescues entropy worker jobs stuck in "executing" state after a node restart (deploy, crash). Without this, a deploy that kills a worker mid-execution left the Oban job orphaned and the draw stuck in `pending_entropy` forever. `rescue_after: 2 minutes`.
