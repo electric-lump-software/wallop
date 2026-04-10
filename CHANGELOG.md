@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### wallop_rs 0.3.0
+
+**Breaking:** `verify_full_wasm` no longer accepts a `count` parameter. Winner count is now extracted from the signed lock receipt after signature verification, closing a trust gap where a caller could pass a different count than what was committed at lock time.
+
 ### wallop_rs 0.2.0
 
 New WASM exports for third-party verification:

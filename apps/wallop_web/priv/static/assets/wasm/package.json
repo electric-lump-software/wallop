@@ -2,7 +2,7 @@
   "name": "wallop_rs",
   "type": "module",
   "description": "Protocol functions and WASM verifier for the Wallop provably fair draw system.",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "license": "MIT",
   "files": [
     "wallop_rs_bg.wasm",

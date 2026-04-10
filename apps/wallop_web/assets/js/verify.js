@@ -356,8 +356,7 @@ class VerifyRunner {
           d.executionReceiptJcs,
           d.executionSignatureHex,
           d.infraPublicKeyHex,
-          JSON.parse(entriesJson),
-          parseInt(winnerCount)
+          JSON.parse(entriesJson)
         )
       } catch (e) {
         this.markFailed(line9)
