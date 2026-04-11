@@ -101,7 +101,13 @@ defmodule WallopWeb.ProofLive do
   end
 
   def handle_event("reveal_complete", _params, socket) do
-    {:noreply, assign(socket, revealing: false, reveal_from: nil, reveal_to: nil)}
+    socket = assign(socket, revealing: false, reveal_from: nil, reveal_to: nil)
+
+    if socket.assigns.draw.status == :completed do
+      {:noreply, push_navigate(socket, to: ~p"/proof/#{socket.assigns.draw_id}")}
+    else
+      {:noreply, socket}
+    end
   end
 
   defp maybe_reveal(socket, draw) do
@@ -111,9 +117,11 @@ defmodule WallopWeb.ProofLive do
     cond do
       # Lock transition: open → awaiting_entropy (animate stages 0-3).
       # Refresh the lock receipt — it didn't exist when the LiveView mounted
-      # in :open state, but the lock action just wrote it. Without this the
-      # receipt assign stays nil and the operator panel later shows a
-      # spurious "commitment receipt missing" error after reveal.
+      # in :open state, but the lock action just wrote it. The reveal_complete
+      # redirect (PAM-750) masks the user-visible symptom by handing off to
+      # the static controller, but this assign refresh keeps the LiveView's
+      # internal state consistent — defense in depth for any future code path
+      # that renders the receipt panel from the LiveView itself.
       old_status == :open and new_status == :awaiting_entropy ->
         {_operator, lock_receipt, _exec} = WallopCore.OperatorInfo.for_draw(draw)
 
@@ -130,6 +138,7 @@ defmodule WallopWeb.ProofLive do
       # Refresh both receipts — the execution receipt is new, and the lock
       # receipt may also be stale if the user landed on the page after lock
       # but before this branch ever fired (no lock animation, no refresh).
+      # Same defense-in-depth rationale as the lock branch above.
       old_status in [:locked, :awaiting_entropy, :pending_entropy] and new_status == :completed ->
         {entries_json, results_json} = load_verify_data(draw)
         {_operator, lock_receipt, execution_receipt} = WallopCore.OperatorInfo.for_draw(draw)
