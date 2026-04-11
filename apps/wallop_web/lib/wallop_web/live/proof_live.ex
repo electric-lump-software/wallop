@@ -101,7 +101,13 @@ defmodule WallopWeb.ProofLive do
   end
 
   def handle_event("reveal_complete", _params, socket) do
-    {:noreply, assign(socket, revealing: false, reveal_from: nil, reveal_to: nil)}
+    socket = assign(socket, revealing: false, reveal_from: nil, reveal_to: nil)
+
+    if socket.assigns.draw.status == :completed do
+      {:noreply, push_navigate(socket, to: ~p"/proof/#{socket.assigns.draw_id}")}
+    else
+      {:noreply, socket}
+    end
   end
 
   defp maybe_reveal(socket, draw) do
