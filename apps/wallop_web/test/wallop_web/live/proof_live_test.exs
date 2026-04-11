@@ -16,6 +16,18 @@ defmodule WallopWeb.ProofLiveTest do
       assert html =~ "Verified by Wallop"
     end
 
+    test "renders download proof bundle button", %{conn: conn} do
+      api_key = create_api_key()
+      draw = create_draw(api_key, %{})
+      draw = execute_draw(draw, test_seed(), api_key)
+
+      conn = get(conn, "/proof/#{draw.id}")
+      html = html_response(conn, 200)
+
+      assert html =~ "Download proof bundle (JSON)"
+      assert html =~ "/proof/#{draw.id}.json"
+    end
+
     test "renders verify block with receipt data attributes", %{conn: conn} do
       api_key = create_api_key()
       draw = create_draw(api_key, %{})
