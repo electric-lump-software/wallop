@@ -9,12 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### wallop_web
 
-- **Proof bundle endpoint.** New `GET /proof/:id.json` endpoint serves a canonical, JCS-encoded proof bundle for any completed draw. The bundle contains the entries, results, drand entropy + signature + chain hash, weather value (if present), both signed receipts, and both public keys — everything needed for offline verification with the wallop-verify CLI. Output is byte-equivalent to `spec/vectors/proof-bundle.json` and produced by the same `WallopCore.ProofBundle.build/1` function. 404 before completion, immutable cache headers after.
+- **Proof bundle endpoint.** New `GET /proof/:id.json` endpoint serves a canonical, JCS-encoded proof bundle for any completed draw. The bundle contains the entries, results, drand entropy + signature + chain hash, weather value (if present), both signed receipts, and both public keys — everything needed for offline verification with the wallop-verify CLI. Output is byte-equivalent to `spec/vectors/proof-bundle.json` and produced by the same `WallopCore.ProofBundle.build/1` function.
 - **Download proof bundle button** on the proof page links directly to the new endpoint. Sits alongside the existing PDF certificate download.
+- **Proof bundle controller now distinguishes corrupt-state failures from missing draws** — completed draws with broken proof chains return 500 with `proof_chain_incomplete` instead of masquerading as 404, mirroring the visible warning the operator panel surfaces for the same condition.
+- **LiveView proof page refreshes lock receipt assign** on the lock and completion transitions of `maybe_reveal/2`. A user watching a draw lock + complete in real time previously ended up with `@receipt = nil` from mount and saw a spurious "commitment receipt missing" warning after the reveal animation.
 
 ### wallop_core
 
 - **`WallopCore.ProofBundle.build/1`** — single producer for proof bundle JSON, used by both the test vector generator and the live HTTP endpoint. Cannot drift because both consumers share the same function.
+- **Bundle bytes are deterministic.** Entries are sorted by id and results are sorted by position before serialization, so repeated calls for the same draw return byte-equal output. Third-party verifiers caching bundle hashes depend on this contract.
+- **New `proof-bundle-drand-only.json` frozen vector** — a reference for the weather-omitted bundle shape, the most likely cross-implementation divergence point.
 
 ### wallop_verifier 0.4.0
 

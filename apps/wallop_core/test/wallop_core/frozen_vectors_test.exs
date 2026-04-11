@@ -507,6 +507,7 @@ defmodule WallopCore.FrozenVectorsTest do
       assert bundle["entropy"]["drand_randomness"]
       assert bundle["entropy"]["drand_signature"]
       assert bundle["entropy"]["drand_chain_hash"]
+      assert bundle["entropy"]["weather_value"]
 
       assert bundle["lock_receipt"]["payload_jcs"]
       assert bundle["lock_receipt"]["signature_hex"]
@@ -515,6 +516,19 @@ defmodule WallopCore.FrozenVectorsTest do
       assert bundle["execution_receipt"]["payload_jcs"]
       assert bundle["execution_receipt"]["signature_hex"]
       assert bundle["execution_receipt"]["infrastructure_public_key_hex"]
+    end
+
+    test "frozen proof-bundle-drand-only.json omits weather_value entirely" do
+      bundle = load_vector("proof-bundle-drand-only.json")
+
+      assert bundle["version"] == 1
+      assert is_map(bundle["entropy"])
+      assert bundle["entropy"]["drand_randomness"]
+      assert bundle["entropy"]["drand_signature"]
+
+      # Critical: weather_value must be ABSENT, not null. The CLI verifier
+      # branches on key presence to choose compute_seed vs compute_seed_drand_only.
+      refute Map.has_key?(bundle["entropy"], "weather_value")
     end
   end
 end
