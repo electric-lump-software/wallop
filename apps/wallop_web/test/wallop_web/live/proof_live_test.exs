@@ -222,10 +222,8 @@ defmodule WallopWeb.ProofLiveTest do
       html = render(view)
       assert html =~ "Verifying..."
 
-      render_click(view, "reveal_complete")
-      html = render(view)
-
-      assert html =~ "Verified by Wallop"
+      assert {:error, {:live_redirect, %{to: path}}} = render_click(view, "reveal_complete")
+      assert path == "/proof/#{draw.id}"
     end
 
     test "ignores PubSub update for different draw", %{conn: conn} do
