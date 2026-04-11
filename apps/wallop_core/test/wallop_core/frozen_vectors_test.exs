@@ -490,4 +490,31 @@ defmodule WallopCore.FrozenVectorsTest do
   defp parse_datetime!(str), do: DateTime.from_iso8601(str) |> elem(1)
   defp parse_datetime(nil), do: nil
   defp parse_datetime(str), do: parse_datetime!(str)
+
+  describe "V-13: proof bundle shape" do
+    test "frozen proof-bundle.json has the expected top-level keys" do
+      bundle = load_vector("proof-bundle.json")
+
+      assert bundle["version"] == 1
+      assert is_binary(bundle["draw_id"])
+      assert is_list(bundle["entries"])
+      assert is_list(bundle["results"])
+      assert is_map(bundle["entropy"])
+      assert is_map(bundle["lock_receipt"])
+      assert is_map(bundle["execution_receipt"])
+
+      assert bundle["entropy"]["drand_round"]
+      assert bundle["entropy"]["drand_randomness"]
+      assert bundle["entropy"]["drand_signature"]
+      assert bundle["entropy"]["drand_chain_hash"]
+
+      assert bundle["lock_receipt"]["payload_jcs"]
+      assert bundle["lock_receipt"]["signature_hex"]
+      assert bundle["lock_receipt"]["operator_public_key_hex"]
+
+      assert bundle["execution_receipt"]["payload_jcs"]
+      assert bundle["execution_receipt"]["signature_hex"]
+      assert bundle["execution_receipt"]["infrastructure_public_key_hex"]
+    end
+  end
 end

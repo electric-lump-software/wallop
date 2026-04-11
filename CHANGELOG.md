@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### wallop_web
+
+- **Proof bundle endpoint.** New `GET /proof/:id.json` endpoint serves a canonical, JCS-encoded proof bundle for any completed draw. The bundle contains the entries, results, drand entropy + signature + chain hash, weather value (if present), both signed receipts, and both public keys — everything needed for offline verification with the wallop-verify CLI. Output is byte-equivalent to `spec/vectors/proof-bundle.json` and produced by the same `WallopCore.ProofBundle.build/1` function. 404 before completion, immutable cache headers after.
+- **Download proof bundle button** on the proof page links directly to the new endpoint. Sits alongside the existing PDF certificate download.
+
+### wallop_core
+
+- **`WallopCore.ProofBundle.build/1`** — single producer for proof bundle JSON, used by both the test vector generator and the live HTTP endpoint. Cannot drift because both consumers share the same function.
+
 ### wallop_verifier 0.4.0
 
 Rust crate renamed from `wallop_rs` to `wallop_verifier` (v0.4.0); browser verifier and test-vector docs updated to match. The new name reflects the crate's actual scope — independent protocol verification — rather than a generic "Rust port of wallop" framing.
