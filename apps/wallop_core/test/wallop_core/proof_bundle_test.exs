@@ -26,6 +26,13 @@ defmodule WallopCore.ProofBundleTest do
       assert is_map(decoded["execution_receipt"])
     end
 
+    test "returns error for non-completed draw" do
+      api_key = create_api_key()
+      draw = create_draw(api_key)
+
+      assert {:error, :draw_not_completed} = ProofBundle.build(draw)
+    end
+
     test "omits weather_value entirely for drand-only draws" do
       _infra_key = create_infrastructure_key()
       operator = create_operator()
