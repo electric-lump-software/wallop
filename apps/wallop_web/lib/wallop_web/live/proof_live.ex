@@ -115,20 +115,36 @@ defmodule WallopWeb.ProofLive do
     new_status = draw.status
 
     cond do
-      # Lock transition: open → awaiting_entropy (animate stages 0-3)
+      # Lock transition: open → awaiting_entropy (animate stages 0-3).
+      # Refresh the lock receipt — it didn't exist when the LiveView mounted
+      # in :open state, but the lock action just wrote it. The reveal_complete
+      # redirect (PAM-750) masks the user-visible symptom by handing off to
+      # the static controller, but this assign refresh keeps the LiveView's
+      # internal state consistent — defense in depth for any future code path
+      # that renders the receipt panel from the LiveView itself.
       old_status == :open and new_status == :awaiting_entropy ->
-        {:noreply, assign(socket, draw: draw, revealing: true, reveal_from: 0, reveal_to: 3)}
+        {_operator, lock_receipt, _exec} = WallopCore.OperatorInfo.for_draw(draw)
 
-      # Completion transition: in-progress → completed (animate stages 4-5)
+        {:noreply,
+         assign(socket,
+           draw: draw,
+           receipt: lock_receipt,
+           revealing: true,
+           reveal_from: 0,
+           reveal_to: 3
+         )}
+
+      # Completion transition: in-progress → completed (animate stages 4-5).
+      # Refresh both receipts — the execution receipt is new, and the lock
+      # receipt may also be stale if the user landed on the page after lock
+      # but before this branch ever fired (no lock animation, no refresh).
+      # Same defense-in-depth rationale as the lock branch above.
       old_status in [:locked, :awaiting_entropy, :pending_entropy] and new_status == :completed ->
         {entries_json, results_json} = load_verify_data(draw)
-        {_operator, _lock, execution_receipt} = WallopCore.OperatorInfo.for_draw(draw)
+        {_operator, lock_receipt, execution_receipt} = WallopCore.OperatorInfo.for_draw(draw)
 
         {operator_public_key_hex, infra_public_key_hex} =
-          WallopCore.OperatorInfo.signing_keys_hex(
-            socket.assigns.receipt,
-            execution_receipt
-          )
+          WallopCore.OperatorInfo.signing_keys_hex(lock_receipt, execution_receipt)
 
         {:noreply,
          assign(socket,
@@ -138,6 +154,7 @@ defmodule WallopWeb.ProofLive do
            reveal_to: 5,
            entries_json: entries_json,
            results_json: results_json,
+           receipt: lock_receipt,
            execution_receipt: execution_receipt,
            operator_public_key_hex: operator_public_key_hex,
            infra_public_key_hex: infra_public_key_hex

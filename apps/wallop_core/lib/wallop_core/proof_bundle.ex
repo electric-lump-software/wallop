@@ -70,16 +70,25 @@ defmodule WallopCore.ProofBundle do
     end
   end
 
+  # Entries are sorted by id for deterministic bundle bytes — Entries.load_for_draw/1
+  # has no ORDER BY, so two calls for the same draw could return different orders,
+  # which would produce different JCS-encoded bundle bytes for the same logical
+  # draw. Third-party verifiers caching bundle hashes depend on byte stability.
   defp entries_for(draw) do
     draw.id
     |> WallopCore.Entries.load_for_draw()
+    |> Enum.sort_by(& &1.id)
     |> Enum.map(fn e -> %{"id" => e.id, "weight" => e.weight} end)
   end
 
+  # Results are sorted by position defensively. The execution receipt's results
+  # are stored in position order, but PostgreSQL JSONB does not strictly guarantee
+  # array order preservation across all operations — sorting here is cheap
+  # insurance and matches the canonical "winners in position order" contract.
   defp results_for(draw) do
-    Enum.map(draw.results || [], fn r ->
-      %{"entry_id" => r["entry_id"], "position" => r["position"]}
-    end)
+    (draw.results || [])
+    |> Enum.sort_by(& &1["position"])
+    |> Enum.map(fn r -> %{"entry_id" => r["entry_id"], "position" => r["position"]} end)
   end
 
   defp entropy_for(draw) do
