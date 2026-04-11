@@ -1,4 +1,4 @@
-/* @ts-self-types="./wallop_rs.d.ts" */
+/* @ts-self-types="./wallop_verifier.d.ts" */
 
 /**
  * WASM entry point for anchor_root.
@@ -622,7 +622,7 @@ function __wbg_get_imports() {
     };
     return {
         __proto__: null,
-        "./wallop_rs_bg.js": import0,
+        "./wallop_verifier_bg.js": import0,
     };
 }
 
@@ -907,7 +907,7 @@ async function __wbg_init(module_or_path) {
     }
 
     if (module_or_path === undefined) {
-        module_or_path = new URL('wallop_rs_bg.wasm', import.meta.url);
+        module_or_path = new URL('wallop_verifier_bg.wasm', import.meta.url);
     }
     const imports = __wbg_get_imports();
 
