@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### wallop_web
+
+- **Proof bundle endpoint.** New `GET /proof/:id.json` endpoint serves a canonical, JCS-encoded proof bundle for any completed draw. The bundle contains the entries, results, drand entropy + signature + chain hash, weather value (if present), both signed receipts, and both public keys — everything needed for offline verification with the wallop-verify CLI. Output is byte-equivalent to `spec/vectors/proof-bundle.json` and produced by the same `WallopCore.ProofBundle.build/1` function. 404 before completion, immutable cache headers after.
+- **Download proof bundle button** on the proof page links directly to the new endpoint. Sits alongside the existing PDF certificate download.
+
+### wallop_core
+
+- **`WallopCore.ProofBundle.build/1`** — single producer for proof bundle JSON, used by both the test vector generator and the live HTTP endpoint. Cannot drift because both consumers share the same function.
+
 ### wallop_rs 0.3.0
 
 **Breaking:** `verify_full_wasm` no longer accepts a `count` parameter. Winner count is now extracted from the signed lock receipt after signature verification, closing a trust gap where a caller could pass a different count than what was committed at lock time.
