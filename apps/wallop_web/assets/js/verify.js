@@ -3,7 +3,7 @@
  *
  * Works on both static (controller-rendered) and LiveView pages.
  * No LiveView hooks or server round-trips — verification runs
- * entirely in the browser via the wallop_rs WASM module.
+ * entirely in the browser via the wallop_verifier WASM module.
  */
 import anime from "animejs/lib/anime.es.js"
 
@@ -14,10 +14,10 @@ let wasmVersion = null
 async function loadWasm() {
   if (wasmModule) return wasmModule
   const [wasm, pkg] = await Promise.all([
-    import("/assets/wasm/wallop_rs.js"),
+    import("/assets/wasm/wallop_verifier.js"),
     fetch("/assets/wasm/package.json").then(r => r.json()).catch(() => null)
   ])
-  await wasm.default("/assets/wasm/wallop_rs_bg.wasm")
+  await wasm.default("/assets/wasm/wallop_verifier_bg.wasm")
   wasmModule = wasm
   wasmVersion = pkg && pkg.version ? `v${pkg.version}` : null
   return wasm
@@ -143,7 +143,7 @@ class VerifyRunner {
 
     // Step 1: loading WASM
     let line0 = this.addLine()
-    await this.typeText(line0.text, "loading verifier (wallop_rs.wasm)... ", 25)
+    await this.typeText(line0.text, "loading verifier (wallop_verifier.wasm)... ", 25)
     let wasm
     try {
       wasm = await loadWasm()

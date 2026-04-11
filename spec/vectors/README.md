@@ -1,7 +1,7 @@
 # Shared Frozen Test Vectors
 
 Protocol commitment vectors in JSON format. Both wallop_core (Elixir)
-and wallop_rs (Rust) load these files and verify identical outputs.
+and wallop_verifier (Rust) load these files and verify identical outputs.
 
 If any vector changes, both implementations must update simultaneously.
 A divergence means the protocol is ambiguous.
@@ -11,7 +11,7 @@ A divergence means the protocol is ambiguous.
 These vectors are consumed by external repos via git submodule:
 
 - **fair_pick_rs** — Rust crate
-- **wallop_rs** — Rust WASM verifier
+- **wallop_verifier** — Rust WASM verifier
 - **fair_pick** — Elixir hex package
 
 When vectors change in this repo, all consumer repos must update their

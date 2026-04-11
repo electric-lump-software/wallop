@@ -3,7 +3,7 @@ defmodule WallopCore.FrozenVectorsTest do
   PROTOCOL COMMITMENT — FROZEN TEST VECTORS
 
   These tests load pinned vectors from spec/vectors/*.json — the single
-  source of truth shared with wallop_rs. If any assertion fails, the
+  source of truth shared with wallop_verifier. If any assertion fails, the
   protocol has drifted. DO NOT update expected values without:
 
     1. A wallop_core version bump
