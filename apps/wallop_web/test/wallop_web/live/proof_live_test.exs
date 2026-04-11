@@ -226,6 +226,70 @@ defmodule WallopWeb.ProofLiveTest do
       html = render(view)
 
       assert html =~ "Verified by Wallop"
+
+      # Regression: the completion branch of maybe_reveal must refresh the
+      # lock receipt assign. Before this fix, @receipt stayed nil from mount
+      # (which loaded the draw in :open state, before the receipt existed),
+      # and the operator panel rendered a spurious "commitment receipt
+      # missing" warning after the reveal animation finished.
+      refute html =~ "Commitment receipt missing"
+    end
+
+    test "lock animation branch refreshes receipt assign", %{conn: conn} do
+      _infra_key = create_infrastructure_key()
+      operator = create_operator()
+      api_key = create_api_key_for_operator(operator)
+
+      # Create a draw without locking it — receipt does not yet exist
+      draw =
+        WallopCore.Resources.Draw
+        |> Ash.Changeset.for_create(:create, %{winner_count: 2}, actor: api_key)
+        |> Ash.create!()
+        |> Ash.Changeset.for_update(
+          :add_entries,
+          %{
+            entries: [
+              %{"id" => "ticket-1", "weight" => 1},
+              %{"id" => "ticket-2", "weight" => 1},
+              %{"id" => "ticket-3", "weight" => 1}
+            ]
+          },
+          actor: api_key
+        )
+        |> Ash.update!()
+
+      {:ok, view, _html} = live(conn, "/live/proof/#{draw.id}")
+
+      # At this point @receipt is nil (mounted while draw was :open).
+      # Lock the draw — this writes the lock receipt.
+      locked_draw =
+        draw
+        |> Ash.Changeset.for_update(:lock, %{}, actor: api_key)
+        |> Ash.update!()
+
+      Phoenix.PubSub.broadcast(
+        WallopCore.PubSub,
+        "draw:#{draw.id}",
+        {:draw_updated, locked_draw}
+      )
+
+      # The lock animation reveal hides the receipt panel, so we can't
+      # directly inspect rendered HTML for the receipt. Instead, drive the
+      # draw to completion via a second PubSub broadcast and verify the
+      # warning never appears.
+      completed_draw = execute_draw(locked_draw, test_seed(), api_key)
+
+      Phoenix.PubSub.broadcast(
+        WallopCore.PubSub,
+        "draw:#{draw.id}",
+        {:draw_updated, completed_draw}
+      )
+
+      render_click(view, "reveal_complete")
+      html = render(view)
+
+      assert html =~ "Verified by Wallop"
+      refute html =~ "Commitment receipt missing"
     end
 
     test "ignores PubSub update for different draw", %{conn: conn} do

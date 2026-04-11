@@ -26,6 +26,25 @@ defmodule WallopCore.ProofBundleTest do
       assert is_map(decoded["execution_receipt"])
     end
 
+    test "is byte-deterministic across repeated calls (regression: PAM-117)" do
+      _infra_key = create_infrastructure_key()
+      operator = create_operator()
+      api_key = create_api_key_for_operator(operator)
+
+      # Create a draw with several entries — enough that any non-deterministic
+      # ordering of Entries.load_for_draw/1 would surface as a byte difference.
+      entries = for n <- 1..20, do: %{"id" => "entry-#{n}", "weight" => 1}
+      draw = create_draw(api_key, %{entries: entries})
+      executed = execute_draw(draw, test_seed(), api_key)
+
+      {:ok, first} = ProofBundle.build(executed)
+      {:ok, second} = ProofBundle.build(executed)
+      {:ok, third} = ProofBundle.build(executed)
+
+      assert first == second
+      assert second == third
+    end
+
     test "returns error for non-completed draw" do
       api_key = create_api_key()
       draw = create_draw(api_key)
