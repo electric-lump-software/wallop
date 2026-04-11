@@ -9855,10 +9855,10 @@ removing illegal node: "${(childNode.outerHTML || childNode.nodeValue).trim()}"
   async function loadWasm() {
     if (wasmModule) return wasmModule;
     const [wasm, pkg] = await Promise.all([
-      import("/assets/wasm/wallop_rs.js"),
+      import("/assets/wasm/wallop_verifier.js"),
       fetch("/assets/wasm/package.json").then((r) => r.json()).catch(() => null)
     ]);
-    await wasm.default("/assets/wasm/wallop_rs_bg.wasm");
+    await wasm.default("/assets/wasm/wallop_verifier_bg.wasm");
     wasmModule = wasm;
     wasmVersion = pkg && pkg.version ? `v${pkg.version}` : null;
     return wasm;
@@ -9984,7 +9984,7 @@ removing illegal node: "${(childNode.outerHTML || childNode.nodeValue).trim()}"
           let weatherValue = d.weatherValue;
           let winnerCount = d.winnerCount;
           let line0 = this.addLine();
-          await this.typeText(line0.text, "loading verifier (wallop_rs.wasm)... ", 25);
+          await this.typeText(line0.text, "loading verifier (wallop_verifier.wasm)... ", 25);
           let wasm;
           try {
             wasm = await loadWasm();

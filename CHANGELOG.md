@@ -16,6 +16,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **`WallopCore.ProofBundle.build/1`** — single producer for proof bundle JSON, used by both the test vector generator and the live HTTP endpoint. Cannot drift because both consumers share the same function.
 
+### wallop_verifier 0.4.0
+
+Rust crate renamed from `wallop_rs` to `wallop_verifier` (v0.4.0); browser verifier and test-vector docs updated to match. The new name reflects the crate's actual scope — independent protocol verification — rather than a generic "Rust port of wallop" framing.
+
 ### wallop_rs 0.3.0
 
 **Breaking:** `verify_full_wasm` no longer accepts a `count` parameter. Winner count is now extracted from the signed lock receipt after signature verification, closing a trust gap where a caller could pass a different count than what was committed at lock time.
