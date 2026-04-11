@@ -31,9 +31,19 @@ defmodule WallopCore.ProofBundleTest do
       operator = create_operator()
       api_key = create_api_key_for_operator(operator)
 
-      # Create a draw with several entries — enough that any non-deterministic
-      # ordering of Entries.load_for_draw/1 would surface as a byte difference.
-      entries = for n <- 1..20, do: %{"id" => "entry-#{n}", "weight" => 1}
+      # Create a draw with entries inserted in reverse order. If the bundle's
+      # entries_for/1 ever stops sorting and instead trusts insertion order,
+      # the output will be reversed relative to a sorted-by-id baseline —
+      # which would still be repeatable but observably wrong. Reversed input
+      # makes the test adversarial: the only way both byte-equality AND
+      # sorted-by-id can hold is if entries_for/1 actually sorts.
+      entries =
+        for n <- 1..20 do
+          padded = String.pad_leading(Integer.to_string(n), 2, "0")
+          %{"id" => "entry-#{padded}", "weight" => 1}
+        end
+        |> Enum.reverse()
+
       draw = create_draw(api_key, %{entries: entries})
       executed = execute_draw(draw, test_seed(), api_key)
 
@@ -43,6 +53,14 @@ defmodule WallopCore.ProofBundleTest do
 
       assert first == second
       assert second == third
+
+      # Confirm the entries inside the bundle are sorted ascending by id,
+      # not in their original (reversed) insertion order.
+      decoded = Jason.decode!(first)
+      ids = Enum.map(decoded["entries"], & &1["id"])
+      assert ids == Enum.sort(ids)
+      assert hd(ids) == "entry-01"
+      assert List.last(ids) == "entry-20"
     end
 
     test "returns error for non-completed draw" do
