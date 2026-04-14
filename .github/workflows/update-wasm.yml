@@ -42,7 +42,7 @@ jobs:
           git checkout -b "$BRANCH"
           git add apps/wallop_web/priv/static/assets/wasm/
           git commit -m "Update WASM verifier to ${VERSION}"
-          git push -u origin "$BRANCH"
+          git push -u origin "$BRANCH" --force
 
           gh pr create \
             --title "Update WASM verifier to ${VERSION}" \
