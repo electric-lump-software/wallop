@@ -1,0 +1,61 @@
+name: Update WASM verifier
+
+on:
+  repository_dispatch:
+    types: [wasm-updated]
+
+jobs:
+  update:
+    name: Update WASM and open PR
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download WASM release
+        run: |
+          VERSION="${{ github.event.client_payload.version }}"
+          ASSET="wallop-verifier-wasm-${VERSION}.tar.gz"
+          WASM_DIR="apps/wallop_web/priv/static/assets/wasm"
+
+          gh release download "$VERSION" \
+            --repo electric-lump-software/wallop-verifier \
+            --pattern "$ASSET" \
+            --dir /tmp
+
+          tar xzf "/tmp/${ASSET}" -C "$WASM_DIR"
+
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+        id: download
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create PR
+        run: |
+          VERSION="${{ github.event.client_payload.version }}"
+          BRANCH="auto/wasm-${VERSION}"
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git checkout -b "$BRANCH"
+          git add apps/wallop_web/priv/static/assets/wasm/
+          git commit -m "Update WASM verifier to ${VERSION}"
+          git push -u origin "$BRANCH"
+
+          gh pr create \
+            --title "Update WASM verifier to ${VERSION}" \
+            --body "$(cat <<EOF
+          ## Summary
+
+          - Updates wallop_verifier WASM module to ${VERSION}
+          - Triggered automatically by [wallop-verifier ${VERSION}](https://github.com/electric-lump-software/wallop-verifier/releases/tag/${VERSION})
+
+          ## Test plan
+
+          - [ ] Deploy to staging and verify browser-side proof verification works
+          EOF
+          )"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
