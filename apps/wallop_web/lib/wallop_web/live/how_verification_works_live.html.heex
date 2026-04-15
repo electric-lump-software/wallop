@@ -1,0 +1,285 @@
+<div class="min-h-screen bg-cream font-sans text-[#1a1a1a]">
+
+  <%!-- NAV --%>
+  <nav class="sticky top-0 z-50 flex items-center justify-between px-6 md:px-12 py-3.5 bg-cream border-b border-cream-border">
+    <a href={~p"/"} class="absolute bottom-0 left-6 md:left-12 translate-y-[35%] z-20">
+      <img src={~p"/images/logo.png"} alt="Wallop!" class="h-32" />
+    </a>
+    <div class="w-36"></div>
+    <div class="hidden md:flex items-center gap-7">
+      <a href={~p"/"} class="text-sm text-[#999] hover:text-[#555]">Home</a>
+    </div>
+  </nav>
+
+  <%!-- HEADER --%>
+  <div class="mx-auto max-w-[740px] px-6 md:px-12 pt-20 pb-12">
+    <span class="inline-flex items-center gap-1.5 bg-green-100 text-green-800 text-xs font-semibold px-3 py-1 rounded-full mb-7">
+      ✦ Open source
+    </span>
+    <h1 class="text-4xl md:text-5xl font-extrabold leading-[1.1] tracking-tight mb-5">
+      How verification works.
+    </h1>
+    <p class="text-lg text-[#555] leading-relaxed max-w-[560px]">
+      Every Wallop! draw answers four questions. If all four check out,
+      the draw is provably fair. If any one fails, something is wrong.
+    </p>
+  </div>
+
+  <%!-- THE FOUR QUESTIONS --%>
+  <section class="bg-white py-16 px-6 md:px-12">
+    <div class="mx-auto max-w-[740px]">
+
+      <%!-- QUESTION 1 --%>
+      <div class="flex gap-6 py-8 border-b border-[#f0ebe4]">
+        <div class="w-9 h-9 rounded-full bg-[#1a1a1a] text-white flex items-center justify-center text-sm font-bold shrink-0 mt-0.5">1</div>
+        <div>
+          <p class="text-[10px] font-bold tracking-[2px] uppercase text-[#aaa] mb-2">The question</p>
+          <h2 class="text-xl font-extrabold mb-3">Were the entries fixed before the draw?</h2>
+          <p class="text-sm text-[#555] leading-relaxed mb-4">
+            Before any randomness is known, the entry list is locked and hashed. Think of it
+            like sealing raffle tickets in a box in front of everyone — after this point, nobody
+            can add names, remove names, or change anything.
+          </p>
+          <p class="text-sm text-[#555] leading-relaxed mb-4">
+            The hash is a fingerprint of the entire entry list. Change one entry and the fingerprint
+            is completely different. This is recorded in the <strong>lock receipt</strong>, which is
+            signed by the operator&#39;s own cryptographic key.
+          </p>
+          <div class="bg-cream-dark rounded-lg px-4 py-3">
+            <p class="text-xs font-semibold text-[#555] mb-1">What proves it</p>
+            <p class="text-xs text-[#777]">Lock receipt → entry_hash = SHA-256 of the sorted, canonicalised entry list. Signed by the operator&#39;s Ed25519 key at lock time.</p>
+          </div>
+        </div>
+      </div>
+
+      <%!-- QUESTION 2 --%>
+      <div class="flex gap-6 py-8 border-b border-[#f0ebe4]">
+        <div class="w-9 h-9 rounded-full bg-[#1a1a1a] text-white flex items-center justify-center text-sm font-bold shrink-0 mt-0.5">2</div>
+        <div>
+          <p class="text-[10px] font-bold tracking-[2px] uppercase text-[#aaa] mb-2">The question</p>
+          <h2 class="text-xl font-extrabold mb-3">Was the randomness unpredictable and public?</h2>
+          <p class="text-sm text-[#555] leading-relaxed mb-4">
+            A fair draw needs randomness that nobody — not Wallop, not the operator, not anyone —
+            could have predicted or controlled. Wallop! uses two independent public sources:
+          </p>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+            <div class="p-4 rounded-lg border border-cream-border bg-cream">
+              <h3 class="text-sm font-bold mb-1">drand beacon</h3>
+              <p class="text-xs text-[#555] leading-relaxed">
+                A global randomness beacon run by the
+                <a href="https://drand.love" target="_blank" rel="noopener" class="underline decoration-[#ccc] hover:decoration-[#1a1a1a]">League of Entropy</a>
+                — Cloudflare, Protocol Labs, universities. Every 3 seconds it publishes a new
+                random value that nobody can predict. Each value carries a BLS cryptographic
+                signature proving it came from the real beacon.
+              </p>
+            </div>
+            <div class="p-4 rounded-lg border border-cream-border bg-cream">
+              <h3 class="text-sm font-bold mb-1">Middle Wallop weather</h3>
+              <p class="text-xs text-[#555] leading-relaxed">
+                A live atmospheric pressure reading from Met Office station 3749 in
+                Middle Wallop, Hampshire. Nobody controls the weather. It&#39;s a second,
+                completely independent source of unpredictability — and it&#39;s provably British.
+              </p>
+            </div>
+          </div>
+          <p class="text-sm text-[#555] leading-relaxed mb-4">
+            Both sources are declared in advance — &#34;we will use drand round 12345 and
+            the weather at 14:00&#34; — before either value is published. You can check both
+            directly from the proof page.
+          </p>
+          <div class="bg-cream-dark rounded-lg px-4 py-3">
+            <p class="text-xs font-semibold text-[#555] mb-1">What proves it</p>
+            <p class="text-xs text-[#777]">Execution receipt → drand round, drand randomness (BLS-verified), weather value, weather station, observation time. Both entropy sources are independently verifiable from public records.</p>
+          </div>
+        </div>
+      </div>
+
+      <%!-- QUESTION 3 --%>
+      <div class="flex gap-6 py-8 border-b border-[#f0ebe4]">
+        <div class="w-9 h-9 rounded-full bg-[#1a1a1a] text-white flex items-center justify-center text-sm font-bold shrink-0 mt-0.5">3</div>
+        <div>
+          <p class="text-[10px] font-bold tracking-[2px] uppercase text-[#aaa] mb-2">The question</p>
+          <h2 class="text-xl font-extrabold mb-3">Was the algorithm run correctly?</h2>
+          <p class="text-sm text-[#555] leading-relaxed mb-4">
+            The entry hash and the two entropy values are combined into a single seed.
+            That seed is fed into
+            <a href="https://github.com/electric-lump-software/fair_pick" target="_blank" rel="noopener" class="underline decoration-[#ccc] hover:decoration-[#1a1a1a]">fair_pick</a>,
+            an open-source algorithm that shuffles the entries and picks the winners.
+          </p>
+          <p class="text-sm text-[#555] leading-relaxed mb-4">
+            The algorithm is deterministic — the same inputs always produce the same winners.
+            That&#39;s the entire point. You can take the seed from the proof page, run fair_pick
+            yourself, and you&#39;ll get the identical result. Every time.
+          </p>
+          <p class="text-sm text-[#555] leading-relaxed mb-4">
+            fair_pick is implemented independently in
+            <a href="https://github.com/electric-lump-software/fair_pick" target="_blank" rel="noopener" class="underline decoration-[#ccc] hover:decoration-[#1a1a1a]">Elixir</a>
+            and
+            <a href="https://github.com/electric-lump-software/fair_pick_rs" target="_blank" rel="noopener" class="underline decoration-[#ccc] hover:decoration-[#1a1a1a]">Rust</a>,
+            tested against shared frozen test vectors that both must agree on. The Rust version
+            compiles to WebAssembly for in-browser verification.
+          </p>
+          <div class="bg-cream-dark rounded-lg px-4 py-3">
+            <p class="text-xs font-semibold text-[#555] mb-1">What proves it</p>
+            <p class="text-xs text-[#777]">seed = SHA-256(JCS(entry_hash + drand_randomness + weather_value)) → fair_pick.draw(entries, seed, winner_count) → results. Deterministic. Reproducible. Open source.</p>
+          </div>
+        </div>
+      </div>
+
+      <%!-- QUESTION 4 --%>
+      <div class="flex gap-6 py-8">
+        <div class="w-9 h-9 rounded-full bg-[#1a1a1a] text-white flex items-center justify-center text-sm font-bold shrink-0 mt-0.5">4</div>
+        <div>
+          <p class="text-[10px] font-bold tracking-[2px] uppercase text-[#aaa] mb-2">The question</p>
+          <h2 class="text-xl font-extrabold mb-3">Can anyone rewrite history?</h2>
+          <p class="text-sm text-[#555] leading-relaxed mb-4">
+            Every draw produces two signed receipts that form a cryptographic chain:
+          </p>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+            <div class="p-4 rounded-lg border border-cream-border bg-cream">
+              <h3 class="text-sm font-bold mb-1">Lock receipt</h3>
+              <p class="text-xs text-[#555] leading-relaxed">
+                Signed by the operator&#39;s Ed25519 key at the moment the entries are frozen.
+                Commits to the entry hash, draw ID, and declared entropy sources. This is the
+                operator&#39;s promise: &#34;these are the entries, and this is the randomness I&#39;ll use.&#34;
+              </p>
+            </div>
+            <div class="p-4 rounded-lg border border-cream-border bg-cream">
+              <h3 class="text-sm font-bold mb-1">Execution receipt</h3>
+              <p class="text-xs text-[#555] leading-relaxed">
+                Signed by Wallop!&#39;s infrastructure key after the draw runs. Records the
+                entropy values, seed, and results — and includes a SHA-256 hash of the lock
+                receipt, chaining them cryptographically. You can&#39;t swap one without breaking the other.
+              </p>
+            </div>
+          </div>
+          <p class="text-sm text-[#555] leading-relaxed mb-4">
+            Both receipts are published permanently. Every draw gets a gap-free sequence number
+            on the operator&#39;s
+            <a href="https://wallop.run/operator/daves-demo-draws" target="_blank" rel="noopener" class="underline decoration-[#ccc] hover:decoration-[#1a1a1a]">public page</a>
+            — completed, failed, or abandoned. Nothing disappears. Discard a draw and the gap
+            in the sequence tells the story. The
+            <a href="https://wallop.run/transparency" class="underline decoration-[#ccc] hover:decoration-[#1a1a1a]">transparency log</a>
+            pins daily Merkle roots across all operators, anchored to drand.
+          </p>
+          <div class="bg-cream-dark rounded-lg px-4 py-3">
+            <p class="text-xs font-semibold text-[#555] mb-1">What proves it</p>
+            <p class="text-xs text-[#777]">Dual Ed25519-signed receipts → cryptographic chain (execution receipt embeds SHA-256 of lock receipt) → gap-free operator log → daily transparency anchors. Database immutability enforced at the trigger level — not even we can UPDATE or DELETE.</p>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+  <%!-- THREE WAYS TO VERIFY --%>
+  <section class="bg-cream py-16 px-6 md:px-12">
+    <div class="mx-auto max-w-[740px]">
+      <p class="text-[10px] font-bold tracking-[2px] uppercase text-[#aaa] mb-4">Your choice</p>
+      <h2 class="text-3xl font-extrabold tracking-tight leading-snug mb-4">
+        Three ways to check. Same proof.
+      </h2>
+      <p class="text-sm text-[#555] leading-relaxed max-w-[560px] mb-10">
+        These aren&#39;t three different proofs — they&#39;re three ways to access the same one.
+        Pick whichever suits you.
+      </p>
+
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div class="p-6 rounded-xl border border-cream-border bg-white">
+          <h3 class="text-sm font-bold mb-2">In your browser</h3>
+          <p class="text-xs text-[#555] leading-relaxed mb-3">
+            Every proof page has a &#34;Verify independently&#34; button. It downloads the
+            Rust verifier as WebAssembly and reruns every check — entry hash, seed derivation,
+            algorithm, receipt signatures, chain integrity — right in your browser.
+          </p>
+          <p class="text-xs text-[#777] italic">
+            No server round-trip. No trust required.
+          </p>
+        </div>
+        <div class="p-6 rounded-xl border border-cream-border bg-white">
+          <h3 class="text-sm font-bold mb-2">With the CLI</h3>
+          <p class="text-xs text-[#555] leading-relaxed mb-3">
+            Download the
+            <a href="https://github.com/electric-lump-software/wallop-verifier" target="_blank" rel="noopener" class="underline decoration-[#ccc] hover:decoration-[#1a1a1a]">wallop-verify</a>
+            command-line tool. Point it at a proof bundle JSON file and it runs every verification
+            step, including BLS signature verification on the drand beacon value.
+          </p>
+          <code class="inline-block font-mono text-[10px] text-[#999] bg-cream-dark px-2 py-1 rounded">wallop-verify proof-bundle.json</code>
+        </div>
+        <div class="p-6 rounded-xl border border-cream-border bg-white">
+          <h3 class="text-sm font-bold mb-2">From the JSON</h3>
+          <p class="text-xs text-[#555] leading-relaxed mb-3">
+            Every proof page has a JSON endpoint. Download the bundle, read the inputs, and
+            replay the draw yourself using fair_pick in any language. The algorithm is
+            deterministic — same inputs, same winners, every time.
+          </p>
+          <code class="inline-block font-mono text-[10px] text-[#999] bg-cream-dark px-2 py-1 rounded">GET /proof/:id/json</code>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <%!-- WHY TWO RECEIPTS --%>
+  <section class="bg-white py-16 px-6 md:px-12">
+    <div class="mx-auto max-w-[740px]">
+      <p class="text-[10px] font-bold tracking-[2px] uppercase text-[#aaa] mb-4">A common question</p>
+      <h2 class="text-3xl font-extrabold tracking-tight leading-snug mb-4">
+        Why are there two receipts?
+      </h2>
+      <p class="text-sm text-[#555] leading-relaxed mb-6">
+        Because they&#39;re signed at different times, by different parties, with different information.
+      </p>
+      <p class="text-sm text-[#555] leading-relaxed mb-4">
+        The <strong>lock receipt</strong> is the operator&#39;s commitment: &#34;These are the entries
+        and this is the entropy I&#39;ll use.&#34; It&#39;s signed before the randomness is known.
+        If the operator could see the randomness first, they could choose entries that favour
+        a particular outcome.
+      </p>
+      <p class="text-sm text-[#555] leading-relaxed mb-4">
+        The <strong>execution receipt</strong> is Wallop!&#39;s attestation: &#34;Here&#39;s what
+        happened.&#34; It&#39;s signed after the draw runs, and it includes a hash of the lock receipt
+        to prove it was computed against the same commitment. You can&#39;t swap one receipt for
+        another without breaking the chain.
+      </p>
+      <p class="text-sm text-[#555] leading-relaxed">
+        Two receipts, two signers, one unbroken chain. That&#39;s the point.
+      </p>
+    </div>
+  </section>
+
+  <%!-- FOOTER CTA --%>
+  <section class="bg-cream py-16 px-6 md:px-12">
+    <div class="mx-auto max-w-[740px] text-center">
+      <h2 class="text-2xl font-extrabold tracking-tight mb-4">
+        See it in action.
+      </h2>
+      <p class="text-sm text-[#555] leading-relaxed mb-6">
+        Every completed draw has a public proof page. Pick one and try the verify button yourself.
+      </p>
+      <a
+        href="https://wallop.run/proof/286838f2-c6d7-49a8-acdb-7b60bce69f35"
+        target="_blank"
+        rel="noopener"
+        class="inline-flex items-center gap-2 bg-[#1a1a1a] text-white px-6 py-3 rounded-lg text-sm font-bold hover:bg-[#333] transition-colors"
+      >
+        View an example proof
+        <span class="text-[#888]">&rarr;</span>
+      </a>
+    </div>
+  </section>
+
+  <%!-- FOOTER --%>
+  <footer class="flex flex-col md:flex-row md:items-center md:justify-between gap-4 px-6 md:px-12 py-8 border-t border-cream-border bg-cream">
+    <div class="flex flex-wrap gap-4 md:gap-6">
+      <a href={~p"/"} class="text-xs text-[#999] hover:text-[#555]">Home</a>
+      <a href="/api/docs" class="text-xs text-[#999] hover:text-[#555]">API docs</a>
+      <a href="/api/open_api" class="text-xs text-[#999] hover:text-[#555]">OpenAPI</a>
+      <a href="https://nether.wallop.run/legal/privacy" class="text-xs text-[#999] hover:text-[#555]">Privacy</a>
+      <a href="https://nether.wallop.run/legal/terms" class="text-xs text-[#999] hover:text-[#555]">Terms</a>
+    </div>
+    <p class="text-xs text-[#bbb]">
+      &copy; 2026 Electric Lump Software &middot; Made in Britain
+    </p>
+  </footer>
+
+</div>
