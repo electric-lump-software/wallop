@@ -1,18 +1,19 @@
 <div class="min-h-screen bg-cream font-sans text-[#1a1a1a]">
 
   <%!-- NAV --%>
-  <nav class="sticky top-0 z-50 flex items-center justify-between px-6 md:px-12 py-3.5 bg-cream border-b border-cream-border">
+  <nav class="sticky top-0 z-50 relative flex items-center justify-between px-6 md:px-12 py-3.5 bg-cream border-b border-cream-border">
     <a href={~p"/"} class="absolute bottom-0 left-6 md:left-12 translate-y-[35%] z-20">
       <img src={~p"/images/logo.png"} alt="Wallop!" class="h-32" />
     </a>
     <div class="w-36"></div>
     <div class="hidden md:flex items-center gap-7">
       <a href={~p"/"} class="text-sm text-[#999] hover:text-[#555]">Home</a>
+      <a href="/#waitlist" class="btn btn-neutral btn-sm rounded-lg text-xs font-semibold">Join waitlist</a>
     </div>
   </nav>
 
   <%!-- HEADER --%>
-  <div class="mx-auto max-w-[740px] px-6 md:px-12 pt-20 pb-12">
+  <div class="mx-auto max-w-[740px] px-6 md:px-12 pt-20 pb-18">
     <span class="inline-flex items-center gap-1.5 bg-green-100 text-green-800 text-xs font-semibold px-3 py-1 rounded-full mb-7">
       ✦ Open source
     </span>
@@ -26,7 +27,7 @@
   </div>
 
   <%!-- THE FOUR QUESTIONS --%>
-  <section class="bg-white py-16 px-6 md:px-12">
+  <section class="bg-white py-18 px-6 md:px-12">
     <div class="mx-auto max-w-[740px]">
 
       <%!-- QUESTION 1 --%>
@@ -173,7 +174,7 @@
   </section>
 
   <%!-- THREE WAYS TO VERIFY --%>
-  <section class="bg-cream py-16 px-6 md:px-12">
+  <section class="bg-cream py-18 px-6 md:px-12">
     <div class="mx-auto max-w-[740px]">
       <p class="text-[10px] font-bold tracking-[2px] uppercase text-[#aaa] mb-4">Your choice</p>
       <h2 class="text-3xl font-extrabold tracking-tight leading-snug mb-4">
@@ -220,7 +221,7 @@
   </section>
 
   <%!-- WHY TWO RECEIPTS --%>
-  <section class="bg-white py-16 px-6 md:px-12">
+  <section class="bg-white py-18 px-6 md:px-12">
     <div class="mx-auto max-w-[740px]">
       <p class="text-[10px] font-bold tracking-[2px] uppercase text-[#aaa] mb-4">A common question</p>
       <h2 class="text-3xl font-extrabold tracking-tight leading-snug mb-4">
@@ -248,7 +249,7 @@
   </section>
 
   <%!-- FOOTER CTA --%>
-  <section class="bg-cream py-16 px-6 md:px-12">
+  <section class="bg-cream py-18 px-6 md:px-12">
     <div class="mx-auto max-w-[740px] text-center">
       <h2 class="text-2xl font-extrabold tracking-tight mb-4">
         See it in action.
