@@ -47,6 +47,7 @@ defmodule WallopWeb.Router do
     live("/live/proof/:id", ProofLive)
     live("/operator/:slug", OperatorLive)
     live("/transparency", TransparencyLive)
+    live("/how-verification-works", HowVerificationWorksLive)
   end
 
   scope "/infrastructure", WallopWeb do
