@@ -2,11 +2,15 @@
 
 Provably fair random draw service. Commit-reveal protocol with public entropy.
 
+**[wallop.run](https://wallop.run)** · [How verification works](https://wallop.run/how-verification-works)
+
 ## What is this?
 
 Wallop runs verifiably fair random draws where nobody controls the outcome — not the organiser, not the platform, not the service itself.
 
-Entries are locked before the draw. The seed is computed from public, unpredictable entropy sources. The algorithm is open source and deterministic. Anyone can re-run it and verify the result.
+Entries are locked before the draw. The seed is computed from two public, unpredictable entropy sources: a [drand](https://drand.love) beacon value and a live atmospheric pressure reading from Middle Wallop, Hampshire — three villages in the Test Valley, and the reason the service is called Wallop. Neither source is predictable or controllable. The algorithm is open source and deterministic. Anyone can re-run it and verify the result.
+
+You shouldn't trust us. [Verify it yourself](https://wallop.run/how-verification-works).
 
 ## How it works
 
