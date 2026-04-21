@@ -33,6 +33,7 @@ defmodule WallopWeb.Router do
   scope "/api/v1" do
     pipe_through([:api, :api_authenticated])
 
+    get("/health", WallopWeb.ApiHealthController, :index)
     forward("/", WallopWeb.AshJsonApiRouter)
   end
 
