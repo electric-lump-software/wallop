@@ -26,7 +26,7 @@ if config_env() in [:dev, :test] do
     config :wallop_core, WallopCore.Vault,
       ciphers: [
         default:
-          {Cloak.Ciphers.AES.GCM, tag: "AES.GCM.V1", key: Base.decode64!(vault_key)}
+          {Cloak.Ciphers.AES.GCM, tag: "AES.GCM.V1", key: Base.decode64!(vault_key), iv_length: 12}
       ]
   end
 end
@@ -52,13 +52,13 @@ if config_env() == :prod do
     config :wallop_core, :redis_url, redis_url
   end
 
-  cloak_key =
-    System.get_env("CLOAK_KEY") ||
-      raise "CLOAK_KEY environment variable is not set"
+  vault_key =
+    System.get_env("VAULT_KEY") || System.get_env("CLOAK_KEY") ||
+      raise "VAULT_KEY environment variable is not set"
 
   config :wallop_core, WallopCore.Vault,
     ciphers: [
-      default: {Cloak.Ciphers.AES.GCM, tag: "AES.GCM.V1", key: Base.decode64!(cloak_key)}
+      default: {Cloak.Ciphers.AES.GCM, tag: "AES.GCM.V1", key: Base.decode64!(vault_key), iv_length: 12}
     ]
   database_url =
     System.get_env("DATABASE_URL") ||
