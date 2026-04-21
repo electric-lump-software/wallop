@@ -47,6 +47,12 @@ defmodule WallopCore.Resources.ApiKey do
       change({WallopCore.Resources.ApiKey.Changes.IncrementDrawCount, []})
     end
 
+    update :regenerate_webhook_secret do
+      accept([])
+      require_atomic?(false)
+      change({WallopCore.Resources.ApiKey.Changes.RegenerateWebhookSecret, []})
+    end
+
     # Resets monthly_draw_count to zero and bumps count_reset_at.
     update :reset_draw_count do
       require_atomic?(false)
@@ -75,7 +81,8 @@ defmodule WallopCore.Resources.ApiKey do
              :deactivate,
              :update_tier,
              :increment_draw_count,
-             :reset_draw_count
+             :reset_draw_count,
+             :regenerate_webhook_secret
            ]) do
       forbid_if(always())
     end
