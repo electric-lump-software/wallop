@@ -4,6 +4,8 @@ defmodule WallopWeb.Application do
 
   @impl true
   def start(_type, _args) do
+    WallopCore.VaultHealthCheck.check!(WallopCore.Vault)
+
     OpentelemetryPhoenix.setup(adapter: :bandit)
     OpentelemetryBandit.setup()
 

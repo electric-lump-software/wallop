@@ -91,34 +91,35 @@ defmodule WallopCore.Entropy.WebhookWorker do
   end
 
   defp post_webhook(url, draw, api_key) do
-    payload = build_payload(draw)
-    timestamp = System.system_time(:second)
-    secret = decrypt_webhook_secret(api_key.webhook_secret)
-    signature = compute_signature(payload, timestamp, secret)
+    with {:ok, secret} <- decrypt_webhook_secret(api_key.webhook_secret) do
+      payload = build_payload(draw)
+      timestamp = System.system_time(:second)
+      signature = compute_signature(payload, timestamp, secret)
 
-    headers = [
-      {"content-type", "application/json"},
-      {"x-wallop-signature", "t=#{timestamp},v1=#{signature}"}
-    ]
+      headers = [
+        {"content-type", "application/json"},
+        {"x-wallop-signature", "t=#{timestamp},v1=#{signature}"}
+      ]
 
-    case Req.post(
-           url,
-           [body: payload, headers: headers, receive_timeout: 10_000] ++ req_options()
-         ) do
-      {:ok, %Req.Response{status: status}} when status in 200..299 ->
-        {:ok, :delivered}
+      case Req.post(
+             url,
+             [body: payload, headers: headers, receive_timeout: 10_000] ++ req_options()
+           ) do
+        {:ok, %Req.Response{status: status}} when status in 200..299 ->
+          {:ok, :delivered}
 
-      {:ok, %Req.Response{status: status}} when status >= 500 ->
-        {:error, {:transient, {:unexpected_status, status}}}
+        {:ok, %Req.Response{status: status}} when status >= 500 ->
+          {:error, {:transient, {:unexpected_status, status}}}
 
-      {:ok, %Req.Response{status: status}} ->
-        {:error, {:unexpected_status, status}}
+        {:ok, %Req.Response{status: status}} ->
+          {:error, {:unexpected_status, status}}
 
-      {:error, %Req.TransportError{} = reason} ->
-        {:error, {:transient, reason}}
+        {:error, %Req.TransportError{} = reason} ->
+          {:error, {:transient, reason}}
 
-      {:error, reason} ->
-        {:error, {:transient, reason}}
+        {:error, reason} ->
+          {:error, {:transient, reason}}
+      end
     end
   end
 
@@ -136,12 +137,17 @@ defmodule WallopCore.Entropy.WebhookWorker do
   end
 
   defp decrypt_webhook_secret(encrypted_base64) do
-    {:ok, decrypted} =
-      encrypted_base64
-      |> Base.decode64!()
-      |> WallopCore.Vault.decrypt()
+    case encrypted_base64 |> Base.decode64!() |> WallopCore.Vault.decrypt() do
+      {:ok, decrypted} ->
+        {:ok, decrypted}
 
-    decrypted
+      _error ->
+        Logger.error(
+          "Vault decrypt failed for webhook secret — check VAULT_KEY and iv_length config"
+        )
+
+        {:error, :vault_decrypt_failed}
+    end
   end
 
   defp compute_signature(payload, timestamp, secret) do
