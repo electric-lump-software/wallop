@@ -13,6 +13,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Explicit vault decrypt error handling.** `WebhookWorker` and `AnchorWorker` previously used bare pattern matches (`{:ok, decrypted} = Vault.decrypt(...)`) that crashed with `MatchError` on decrypt failure. Both now handle errors explicitly — webhook delivery routes to `{:cancel, :vault_decrypt_failed}` (permanent, not retried) and anchor signing logs the failing key_id.
 - **Boot-time vault health check.** New `WallopCore.VaultHealthCheck.check!/1` performs an encrypt/decrypt round-trip on startup and refuses to boot if the vault is misconfigured. Distinguishes encrypt failure, decrypt failure, and round-trip mismatch with specific error messages. Wired into `WallopWeb.Application.start/2`.
 - **Rename prod env var from `CLOAK_KEY` to `VAULT_KEY`** for consistency. Falls back to `CLOAK_KEY` for one deploy cycle.
+- **Webhook on draw expiry.** `ExpiryWorker` now sends a webhook when a draw expires (open for 90+ days), matching the existing pattern for completed and failed draws. Integrators no longer need to poll to discover expired draws.
+- **Authenticated `/api/v1/health` endpoint.** Returns `{"status": "ok"}` behind API-key auth. Useful for integrator liveness probes.
 
 ### wallop_web
 
