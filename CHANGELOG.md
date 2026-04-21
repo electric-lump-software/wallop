@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### wallop_core
+
+- **Pin AES-GCM IV length to 12 bytes.** Cloak defaults to 16 when `iv_length` is omitted, which differs from the NIST SP 800-38D recommendation of 96-bit (12-byte) IVs. Any service sharing the same database must use the same IV length — pinning it explicitly in all environments (dev, test, prod) prevents silent interop failures when decrypting at-rest signing keys and webhook secrets.
+- **Explicit vault decrypt error handling.** `WebhookWorker` and `AnchorWorker` previously used bare pattern matches (`{:ok, decrypted} = Vault.decrypt(...)`) that crashed with `MatchError` on decrypt failure. Both now handle errors explicitly — webhook delivery routes to `{:cancel, :vault_decrypt_failed}` (permanent, not retried) and anchor signing logs the failing key_id.
+- **Boot-time vault health check.** New `WallopCore.VaultHealthCheck.check!/1` performs an encrypt/decrypt round-trip on startup and refuses to boot if the vault is misconfigured. Distinguishes encrypt failure, decrypt failure, and round-trip mismatch with specific error messages. Wired into `WallopWeb.Application.start/2`.
+- **Rename prod env var from `CLOAK_KEY` to `VAULT_KEY`** for consistency. Falls back to `CLOAK_KEY` for one deploy cycle.
+
 ### wallop_web
 
 - **Proof bundle endpoint.** New `GET /proof/:id.json` endpoint serves a canonical, JCS-encoded proof bundle for any completed draw. The bundle contains the entries, results, drand entropy + signature + chain hash, weather value (if present), both signed receipts, and both public keys — everything needed for offline verification with the wallop-verify CLI. Output is byte-equivalent to `spec/vectors/proof-bundle.json` and produced by the same `WallopCore.ProofBundle.build/1` function.
