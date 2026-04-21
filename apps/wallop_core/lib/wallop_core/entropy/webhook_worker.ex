@@ -141,7 +141,7 @@ defmodule WallopCore.Entropy.WebhookWorker do
       {:ok, decrypted} ->
         {:ok, decrypted}
 
-      :error ->
+      _error ->
         Logger.error(
           "Vault decrypt failed for webhook secret — check VAULT_KEY and iv_length config"
         )

@@ -190,7 +190,7 @@ defmodule WallopCore.Transparency.AnchorWorker do
             signature = Protocol.sign_receipt(root, private_key)
             {:ok, signature, key.key_id}
 
-          :error ->
+          _error ->
             Logger.error(
               "AnchorWorker: vault decrypt failed for infra key #{key.key_id} — check VAULT_KEY and iv_length config"
             )

@@ -14,25 +14,40 @@ defmodule WallopCore.VaultHealthCheck do
 
   @doc """
   Asserts the given vault module can encrypt and decrypt successfully.
-  Raises on failure.
+  Raises on failure with a specific message indicating which step failed.
   """
   @spec check!(module()) :: :ok
   def check!(vault_module) do
-    with {:ok, ciphertext} <- vault_module.encrypt(@probe_plaintext),
-         {:ok, decrypted} <- vault_module.decrypt(ciphertext),
-         true <- decrypted == @probe_plaintext do
-      :ok
-    else
-      _ ->
+    case vault_module.encrypt(@probe_plaintext) do
+      {:ok, ciphertext} ->
+        case vault_module.decrypt(ciphertext) do
+          {:ok, @probe_plaintext} ->
+            Logger.info("Vault health check passed for #{inspect(vault_module)}")
+            :ok
+
+          {:ok, _wrong} ->
+            raise """
+            #{inspect(vault_module)} round-trip mismatch.
+
+            Encrypt succeeded but decrypt returned a different value.
+            This should not happen — investigate immediately.
+            """
+
+          other ->
+            raise """
+            #{inspect(vault_module)} decrypt failed after successful encrypt: #{inspect(other)}
+
+            This usually means iv_length is misconfigured between
+            encrypt and decrypt, or the vault restarted with a
+            different key between the two calls.
+            """
+        end
+
+      {:error, reason} ->
         raise """
-        #{inspect(vault_module)} failed its startup health check.
+        #{inspect(vault_module)} encrypt failed: #{inspect(reason)}
 
-        The vault cannot complete an encrypt/decrypt round-trip.
-        This means either VAULT_KEY is wrong, or iv_length is
-        misconfigured between services sharing the same database.
-
-        Check that VAULT_KEY is set correctly and that all services
-        use iv_length: 12 in their Cloak cipher config.
+        Check that VAULT_KEY is set and the vault process is started.
         """
     end
   end
