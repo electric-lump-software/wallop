@@ -22,7 +22,8 @@ config :wallop_core, WallopCore.Vault,
     default:
       {Cloak.Ciphers.AES.GCM,
        tag: "AES.GCM.V1",
-       key: Base.decode64!("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=")}
+       key: Base.decode64!("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="),
+       iv_length: 12}
   ]
 
 config :wallop_core, :met_office_api_key, "test-placeholder"
