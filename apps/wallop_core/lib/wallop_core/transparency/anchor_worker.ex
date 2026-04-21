@@ -185,9 +185,18 @@ defmodule WallopCore.Transparency.AnchorWorker do
   defp sign_root(root) do
     case load_current_infra_key() do
       {:ok, key} ->
-        {:ok, private_key} = Vault.decrypt(key.private_key)
-        signature = Protocol.sign_receipt(root, private_key)
-        {:ok, signature, key.key_id}
+        case Vault.decrypt(key.private_key) do
+          {:ok, private_key} ->
+            signature = Protocol.sign_receipt(root, private_key)
+            {:ok, signature, key.key_id}
+
+          :error ->
+            Logger.error(
+              "AnchorWorker: vault decrypt failed for infra key #{key.key_id} — check VAULT_KEY and iv_length config"
+            )
+
+            :error
+        end
 
       :error ->
         Logger.error("AnchorWorker: no infrastructure signing key found")

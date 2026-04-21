@@ -11,7 +11,13 @@ defmodule WallopCore.Resources.ApiKey.Changes.GenerateKey do
     hash = Bcrypt.hash_pwd_salt(raw_key)
 
     webhook_secret = :crypto.strong_rand_bytes(32) |> Base.encode64(padding: false)
-    {:ok, encrypted_secret} = WallopCore.Vault.encrypt(webhook_secret)
+
+    encrypted_secret =
+      case WallopCore.Vault.encrypt(webhook_secret) do
+        {:ok, enc} -> enc
+        {:error, _} -> raise "Vault encrypt failed — check VAULT_KEY config"
+      end
+
     encoded_secret = Base.encode64(encrypted_secret)
 
     changeset
