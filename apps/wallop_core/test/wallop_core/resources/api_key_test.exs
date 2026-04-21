@@ -108,6 +108,50 @@ defmodule WallopCore.Resources.ApiKeyTest do
     end
   end
 
+  describe "regenerate_webhook_secret" do
+    test "produces a new encrypted secret and returns raw via metadata" do
+      {:ok, key} = create_key()
+      old_secret = key.webhook_secret
+
+      {:ok, updated} =
+        key
+        |> Ash.Changeset.for_update(:regenerate_webhook_secret, %{})
+        |> Ash.update(authorize?: false)
+
+      assert updated.webhook_secret != old_secret
+      assert updated.__metadata__.raw_webhook_secret != nil
+      assert byte_size(updated.__metadata__.raw_webhook_secret) > 0
+    end
+
+    test "new secret decrypts successfully" do
+      {:ok, key} = create_key()
+
+      {:ok, updated} =
+        key
+        |> Ash.Changeset.for_update(:regenerate_webhook_secret, %{})
+        |> Ash.update(authorize?: false)
+
+      {:ok, decrypted} =
+        updated.webhook_secret
+        |> Base.decode64!()
+        |> WallopCore.Vault.decrypt()
+
+      assert decrypted == updated.__metadata__.raw_webhook_secret
+    end
+
+    test "old secret no longer matches after regeneration" do
+      {:ok, key} = create_key()
+      original_raw = key.__metadata__.raw_webhook_secret
+
+      {:ok, updated} =
+        key
+        |> Ash.Changeset.for_update(:regenerate_webhook_secret, %{})
+        |> Ash.update(authorize?: false)
+
+      assert updated.__metadata__.raw_webhook_secret != original_raw
+    end
+  end
+
   describe "increment_draw_count" do
     test "increments the count and sets reset_at on first call" do
       {:ok, key} = create_key()
