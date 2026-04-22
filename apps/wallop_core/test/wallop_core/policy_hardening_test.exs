@@ -1,6 +1,6 @@
 defmodule WallopCore.PolicyHardeningTest do
   @moduledoc """
-  Per-resource regression tests for the PAM-685..691 policy hardening sweep.
+  Per-resource regression tests for the policy hardening sweep.
 
   Each test asserts that a previously-unguarded action is now Forbidden when
   called with a normal actor (or no actor). The legitimate `authorize?: false`
@@ -22,7 +22,7 @@ defmodule WallopCore.PolicyHardeningTest do
     TransparencyAnchor
   }
 
-  describe "PAM-685: Draw.expire" do
+  describe "Draw.expire" do
     test "is Forbidden for any actor" do
       api_key = create_api_key()
       draw = create_draw(api_key)
@@ -35,7 +35,7 @@ defmodule WallopCore.PolicyHardeningTest do
     end
   end
 
-  describe "PAM-686: OperatorSigningKey" do
+  describe "OperatorSigningKey" do
     test "create is Forbidden without authorize?: false" do
       operator = create_operator()
       {public_key, private_key} = :crypto.generate_key(:eddsa, :ed25519)
@@ -55,7 +55,7 @@ defmodule WallopCore.PolicyHardeningTest do
     end
   end
 
-  describe "PAM-687: OperatorReceipt" do
+  describe "OperatorReceipt" do
     test "create is Forbidden without authorize?: false" do
       operator = create_operator()
       api_key = create_api_key_for_operator(operator)
@@ -79,7 +79,7 @@ defmodule WallopCore.PolicyHardeningTest do
     end
   end
 
-  describe "PAM-688: Operator" do
+  describe "Operator" do
     test "create is Forbidden without authorize?: false" do
       assert_raise Ash.Error.Forbidden, fn ->
         Operator
@@ -114,7 +114,7 @@ defmodule WallopCore.PolicyHardeningTest do
     end
   end
 
-  describe "PAM-689: ApiKey" do
+  describe "ApiKey" do
     test "create is Forbidden without authorize?: false" do
       assert_raise Ash.Error.Forbidden, fn ->
         ApiKey
@@ -172,7 +172,7 @@ defmodule WallopCore.PolicyHardeningTest do
     end
   end
 
-  describe "PAM-690: Entry" do
+  describe "Entry" do
     test "direct create is Forbidden" do
       api_key = create_api_key()
       draw = create_draw(api_key)
@@ -205,7 +205,7 @@ defmodule WallopCore.PolicyHardeningTest do
     end
   end
 
-  describe "PAM-691: TransparencyAnchor" do
+  describe "TransparencyAnchor" do
     test "create is Forbidden without authorize?: false" do
       operator = create_operator()
       api_key = create_api_key_for_operator(operator)

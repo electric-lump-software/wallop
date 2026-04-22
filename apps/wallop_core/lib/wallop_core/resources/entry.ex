@@ -34,8 +34,8 @@ defmodule WallopCore.Resources.Entry do
 
     # Direct create/destroy is forbidden — must go through Draw.add_entries
     # and Draw.remove_entry, which run validation and call this with
-    # `authorize?: false`. PAM-690: without this, an attacker could insert
-    # entries that bypass PII rejection and weight caps. The entries
+    # `authorize?: false`. Without this, an attacker could insert entries
+    # that bypass the action-level validation and weight caps. The entries
     # immutability trigger (see migration 20260330214428) backstops the
     # post-lock case at the Postgres level.
     policy action([:create, :destroy]) do

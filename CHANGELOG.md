@@ -33,7 +33,7 @@ The `entry_id` column is renamed to `operator_ref`, made nullable, and stripped 
 
 #### Ingest API
 
-`add_entries` now accepts `[%{ref, weight}]` (ref optional). The response includes the wallop-assigned UUID per entry, in submission order. **Capture the `uuid ↔ your customer` mapping immediately from the submit response — wallop cannot reconstruct it later.** `remove_entry` now takes an `entry_uuid` argument. The batch-dedup check is removed; `operator_ref` uniqueness is the operator's problem.
+`add_entries` now accepts `[%{ref, weight}]` (ref optional). The response includes the wallop-assigned UUID per entry, in submission order. Empty-string refs are normalised to nil in the `add_entries` ingest path; direct `Entry.create` calls (internal/test only, policy-forbidden in production) preserve the exact string. Either way, the canonical `entry_hash` treats nil and `""` refs identically — the key is omitted from the JCS payload. **Capture the `uuid ↔ your customer` mapping immediately from the submit response — wallop cannot reconstruct it later.** `remove_entry` now takes an `entry_uuid` argument. The batch-dedup check is removed; `operator_ref` uniqueness is the operator's problem.
 
 #### Receipts
 
@@ -279,7 +279,7 @@ New WASM exports for third-party verification:
 
 ### Added
 
-- API key tier metadata: `tier`, `monthly_draw_limit`, `monthly_draw_count`, `count_reset_at` (set by wallop-app via `update_tier` action)
+- API key tier metadata: `tier`, `monthly_draw_limit`, `monthly_draw_count`, `count_reset_at` (set by consuming apps via `update_tier` action)
 - `WallopWeb.Plugs.TierLimit` — enforces monthly draw limit on `POST /api/v1/draws`, returns 429 with tier name and upgrade URL when exceeded
 - `WallopWeb.Plugs.KeyRateLimit` — per-API-key rate limit (60 requests/minute, ETS-based), returns 429 with `Retry-After` header
 - `IncrementApiKeyDrawCount` change — bumps the actor's monthly_draw_count on successful draw create, auto-resets if `count_reset_at` is in the past
@@ -288,7 +288,7 @@ New WASM exports for third-party verification:
 ### Notes
 
 - Per-IP rate limit (`WallopWeb.Plugs.RateLimit`) still runs before auth to protect bcrypt CPU
-- Tier metadata is null by default (unlimited) — wallop-app must populate via `update_tier` for paid tiers
+- Tier metadata is null by default (unlimited) — consuming apps must populate via `update_tier` for paid tiers
 
 ## [0.7.0] - 2026-04-03
 
@@ -384,7 +384,7 @@ New WASM exports for third-party verification:
 
 ### Fixed
 
-- PubSub config: consuming apps (e.g. wallop-app) can provide full PubSub config via `config :wallop_core, :pubsub` for Redis adapter support
+- PubSub config: consuming apps can provide full PubSub config via `config :wallop_core, :pubsub` for Redis adapter support
 
 ### Added
 

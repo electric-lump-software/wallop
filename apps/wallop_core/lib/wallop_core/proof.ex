@@ -58,10 +58,9 @@ defmodule WallopCore.Proof do
   end
 
   @doc """
-  DEPRECATED — kept temporarily while PAM-1011 lands.
-
-  Old three-state lookup. Use `winner?/2` for new code. This function will
-  be removed in the self-check flat-boolean card.
+  DEPRECATED — kept temporarily while the self-check flat-boolean
+  cutover lands. Use `winner?/2` for new code; this function will be
+  removed once all callers migrate.
   """
   @spec check_entry(map(), String.t()) ::
           {:ok, %{found: boolean(), winner: boolean(), position: non_neg_integer() | nil}}
