@@ -1,38 +1,14 @@
 defmodule WallopCore.Proof do
   @moduledoc """
-  Proof verification and anonymisation logic for public proof pages.
+  Proof verification and public-facing entry lookup.
+
+  Entries are identified publicly by their wallop-assigned UUID (the Ash PK
+  `id`). `operator_ref` is NEVER exposed by anything in this module.
   """
 
   require Ash.Query
 
   alias WallopCore.Resources.Entry
-
-  @mask_char "*"
-  @mask_length 6
-
-  @doc """
-  Anonymise an entry ID. Shows first character + fixed-width mask.
-
-  ## Examples
-
-      iex> WallopCore.Proof.anonymise_id("ticket-47")
-      "t******"
-
-      iex> WallopCore.Proof.anonymise_id("a")
-      "a******"
-  """
-  @spec anonymise_id(String.t()) :: String.t()
-  def anonymise_id(id) when is_binary(id) and byte_size(id) > 0 do
-    String.first(id) <> String.duplicate(@mask_char, @mask_length)
-  end
-
-  @doc "Anonymise all entry_ids in a results list."
-  @spec anonymise_results([map()]) :: [map()]
-  def anonymise_results(results) when is_list(results) do
-    Enum.map(results, fn result ->
-      Map.update!(result, "entry_id", &anonymise_id/1)
-    end)
-  end
 
   @doc """
   Re-verify a completed draw by re-running the algorithm.
@@ -42,9 +18,10 @@ defmodule WallopCore.Proof do
   """
   @spec verify(map()) :: {:ok, :verified} | {:error, :mismatch}
   def verify(draw) do
-    atom_entries = WallopCore.Entries.load_for_draw(draw.id)
+    entries = WallopCore.Entries.load_for_draw(draw.id)
     seed_bytes = Base.decode16!(draw.seed, case: :mixed)
-    computed = FairPick.draw(atom_entries, seed_bytes, draw.winner_count)
+    fair_pick_entries = Enum.map(entries, &%{id: &1.uuid, weight: &1.weight})
+    computed = FairPick.draw(fair_pick_entries, seed_bytes, draw.winner_count)
 
     computed_json =
       Enum.map(computed, fn %{position: pos, entry_id: id} ->
@@ -59,25 +36,44 @@ defmodule WallopCore.Proof do
   end
 
   @doc """
-  Check if an entry ID is in a draw and whether it won.
+  Public self-check: is a given UUID in the winner list of this draw?
 
-  Returns:
-  - `{:ok, %{found: true, winner: true, position: N}}` for a winning entry
-  - `{:ok, %{found: true, winner: false}}` for a non-winning entry
-  - `{:ok, %{found: false}}` for an entry not in the draw
+  Returns a flat boolean. Pre-launch decision (2026-04-22): wallop's public
+  endpoint exposes only what is already public on the proof page. The
+  operator gates any richer state (entered/didn't-win/position) via their
+  own `metadata.check_url` page.
+
+  Accepts any string input. Invalid UUIDs, UUIDs that entered but didn't
+  win, and UUIDs that never entered all return `{:ok, %{winner: false}}` —
+  byte-identical response.
+  """
+  @spec winner?(map(), String.t()) :: {:ok, %{winner: boolean()}}
+  def winner?(draw, uuid) when is_binary(uuid) do
+    winner_uuids =
+      (draw.results || [])
+      |> Enum.map(& &1["entry_id"])
+      |> MapSet.new()
+
+    {:ok, %{winner: MapSet.member?(winner_uuids, uuid)}}
+  end
+
+  @doc """
+  DEPRECATED — kept temporarily while the self-check flat-boolean
+  cutover lands. Use `winner?/2` for new code; this function will be
+  removed once all callers migrate.
   """
   @spec check_entry(map(), String.t()) ::
           {:ok, %{found: boolean(), winner: boolean(), position: non_neg_integer() | nil}}
-  def check_entry(draw, entry_id) when is_binary(entry_id) do
+  def check_entry(draw, uuid) when is_binary(uuid) do
     in_entries? =
       Entry
-      |> Ash.Query.filter(draw_id == ^draw.id and entry_id == ^entry_id)
+      |> Ash.Query.filter(draw_id == ^draw.id and id == ^uuid)
       |> Ash.exists?(authorize?: false)
 
     if in_entries? do
       winner =
         Enum.find(draw.results || [], fn r ->
-          r["entry_id"] == entry_id
+          r["entry_id"] == uuid
         end)
 
       if winner do

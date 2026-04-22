@@ -2,9 +2,12 @@ defmodule WallopCore.Resources.Draw.Changes.ValidateEntries do
   @moduledoc """
   Validates a batch of entries being added to a draw.
 
-  Checks structure, weight limits, and uniqueness within the batch.
-  Total count and cross-batch duplicate detection are handled by
-  AddEntries (count) and the unique index on entries (duplicates).
+  Entry shape: `%{ref: String.t() | nil, weight: pos_integer()}`. Refs are
+  optional operator-supplied sidecars (stored as `operator_ref`). There is no
+  dedup on refs — duplicates are the operator's responsibility.
+
+  Byte-length + control-char validation of `ref` is enforced by
+  `WallopCore.Resources.Entry.Validations.OperatorRef` at insert time.
   """
   use Ash.Resource.Change
 
@@ -13,10 +16,6 @@ defmodule WallopCore.Resources.Draw.Changes.ValidateEntries do
   @max_entries 10_000
   @max_weight 1_000
   @max_total_weight 100_000
-
-  # Alphanumeric, hyphens, underscores, dots, colons, equals (for base64).
-  # No @, no spaces, no slashes — blocks emails, phone numbers, and most PII patterns.
-  @valid_entry_id_pattern ~r/^[a-zA-Z0-9_\-:.=]+$/
 
   @impl true
   def change(changeset, _opts, _context) do
@@ -34,9 +33,7 @@ defmodule WallopCore.Resources.Draw.Changes.ValidateEntries do
     draw = changeset.data
 
     with :ok <- validate_structure(entries),
-         :ok <- validate_entry_id_format(entries),
          :ok <- validate_weights(entries),
-         :ok <- validate_batch_unique_ids(entries),
          :ok <- validate_total_count(draw, entries),
          :ok <- validate_total_weight(draw, entries) do
       changeset
@@ -49,33 +46,18 @@ defmodule WallopCore.Resources.Draw.Changes.ValidateEntries do
   defp validate_structure(entries) do
     valid? =
       Enum.all?(entries, fn entry ->
-        id = entry["id"] || entry[:id]
+        ref = entry["ref"] || entry[:ref]
         weight = entry["weight"] || entry[:weight]
 
-        is_binary(id) and id != "" and is_integer(weight) and weight > 0
+        ref_ok? = is_nil(ref) or is_binary(ref)
+        weight_ok? = is_integer(weight) and weight > 0
+
+        ref_ok? and weight_ok?
       end)
 
     if valid?,
       do: :ok,
-      else: {:error, "each entry must have a non-empty string id and a positive integer weight"}
-  end
-
-  defp validate_entry_id_format(entries) do
-    invalid =
-      entries
-      |> Enum.map(fn e -> e["id"] || e[:id] end)
-      |> Enum.reject(&Regex.match?(@valid_entry_id_pattern, &1))
-
-    case invalid do
-      [] ->
-        :ok
-
-      [first | _] ->
-        {:error,
-         "entry ID #{inspect(first)} contains invalid characters — " <>
-           "use only alphanumeric characters, hyphens, underscores, dots, colons, and equals signs. " <>
-           "Do not use email addresses, phone numbers, or other personally identifiable information"}
-    end
+      else: {:error, "each entry must have an optional string ref and a positive integer weight"}
   end
 
   defp validate_weights(entries) do
@@ -86,16 +68,6 @@ defmodule WallopCore.Resources.Draw.Changes.ValidateEntries do
       end)
 
     if valid?, do: :ok, else: {:error, "entry weight must not exceed #{@max_weight}"}
-  end
-
-  defp validate_batch_unique_ids(entries) do
-    ids = Enum.map(entries, fn e -> e["id"] || e[:id] end)
-
-    if length(ids) == length(Enum.uniq(ids)) do
-      :ok
-    else
-      {:error, "must not contain duplicate entry IDs within batch"}
-    end
   end
 
   defp validate_total_count(draw, entries) do

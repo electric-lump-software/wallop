@@ -30,3 +30,7 @@ CLAUDE.md
 # Node.js dependencies (daisyUI etc.)
 /apps/wallop_web/assets/node_modules/
 .mcp.json
+
+# Git worktrees for isolated feature branches
+.worktrees/
+docs/superpowers/plans/

@@ -108,20 +108,75 @@ integer reflecting the order of selection.
 
 ### 2.1 Entry hashing
 
-Given a list of entries (each with `id` and `weight`):
+Given a `draw_id` and a list of entries (each with a wallop-assigned
+UUID and a weight):
 
 1. Construct a JSON object:
    ```json
-   {"entries": [{"id": "...", "weight": N}, ...]}
+   {
+     "draw_id": "<lowercase-hyphenated-uuidv4>",
+     "entries": [
+       {"uuid": "<lowercase-hyphenated-uuidv4>", "weight": N},
+       ...
+     ]
+   }
    ```
-   Entries are sorted by `id` ascending (lexicographic byte order). Each entry
-   object has exactly two keys: `id` (string) and `weight` (integer).
+   Entries are sorted by `uuid` ascending (lexicographic byte order).
+   `weight` is a positive integer.
 
 2. Serialize using JCS (RFC 8785).
 
 3. `entry_hash = hex_lowercase(SHA256(jcs_bytes))`
 
 The `entry_hash` is a 64-character lowercase hexadecimal string.
+
+#### Durable invariant: public-derivability
+
+**Anything this hash commits must be derivable from the public
+ProofBundle bytes alone.** A third-party verifier reading the public
+proof bundle MUST be able to reproduce `entry_hash` exactly, without
+any authenticated operator-only data. This is why `operator_ref`
+(an optional operator-supplied sidecar stored on the Entry resource)
+is NOT part of the canonical form — it is operator-private and
+must not appear in the signed hash.
+
+The invariant applies to all future protocol commitments. Before
+adding a field to any hashed blob, confirm the field is byte-
+identically present in the public artifact a verifier consumes.
+
+#### Validation at the boundary
+
+A conformant producer/verifier MUST reject input that violates any
+of the following, rather than silently normalising:
+
+- `draw_id` and every entry `uuid` must be 36-character RFC 4122
+  lowercase hyphenated form. No braces, no `urn:uuid:` prefix, no
+  uppercase.
+- `weight` must be a positive integer. Reject `0`, negative values,
+  floats, and strings.
+
+`operator_ref`, when stored on the Entry resource, has its own
+validation (≤ 64 bytes, no control codepoints U+0000–U+001F, U+007F,
+U+2028, U+2029) enforced at ingest. It is visible only to the
+operator via the authenticated `GET /api/v1/draws/:id/entries`
+endpoint and never on the public proof surface.
+
+#### Binding properties
+
+- `draw_id` is bound into the hash to prevent cross-draw confusion:
+  two draws with identical entry sets produce different `entry_hash`
+  values.
+- `uuid` (wallop-assigned, public) and `weight` are committed. An
+  operator who altered a committed `uuid` or `weight` post-lock would
+  change the hash and break the signed lock receipt's signature
+  verification.
+- `operator_ref` is NOT committed. Post-lock mutation of the column
+  is prevented at the database level by the `prevent_entry_mutation`
+  trigger; a malicious wallop controlling the database could however
+  rewrite refs without detection by the signed receipt. Operators who
+  require stronger-than-database-level assurance of ref immutability
+  should mirror the `(uuid, operator_ref)` mapping in their own
+  append-only store at submit time.
 
 ### 2.2 Entropy sources
 
@@ -308,13 +363,18 @@ expected_output:
 #### Vector P-1: entry hashing
 
 ```yaml
+draw_id: "11111111-1111-4111-8111-111111111111"
 entries:
-  - {id: "ticket-47", weight: 1}
-  - {id: "ticket-48", weight: 1}
-  - {id: "ticket-49", weight: 1}
-expected_jcs: '{"entries":[{"id":"ticket-47","weight":1},{"id":"ticket-48","weight":1},{"id":"ticket-49","weight":1}]}'
-expected_entry_hash: "6056fbb6c98a0f04404adb013192d284bfec98975e2a7975395c3bcd4ad59577"
+  - {uuid: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", weight: 1}
+  - {uuid: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", weight: 2}
+expected_jcs: '{"draw_id":"11111111-1111-4111-8111-111111111111","entries":[{"uuid":"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa","weight":1},{"uuid":"bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb","weight":2}]}'
+expected_entry_hash: "ca823c8814baae6a390f6f336b83584f8675aba80e0f2923963adc2511b0899c"
 ```
+
+Full vector set in `spec/vectors/entry-hash.json`: single entry;
+presence of `operator_ref` in the input has no effect on the hash;
+two entries sorted by uuid; weight at 2^53-1 boundary; same entries
+in a different draw_id produce a different hash.
 
 #### Vector P-2: seed computation
 
@@ -328,20 +388,10 @@ expected_seed: "4c1ae3e623dd22859d869f4d0cb34d3acaf4cf7907dbb472ea690e1400bfb0d0
 
 #### Vector P-3: end-to-end
 
-```yaml
-entries:
-  - {id: "ticket-47", weight: 1}
-  - {id: "ticket-48", weight: 1}
-  - {id: "ticket-49", weight: 1}
-drand_randomness: "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789"
-weather_value: "1013"
-count: 2
-expected_entry_hash: "6056fbb6c98a0f04404adb013192d284bfec98975e2a7975395c3bcd4ad59577"
-expected_seed: "ced93f50d73a619701e9e865eb03fb4540a7232a588c707f85754aa41e3fb037"
-expected_output:
-  - {position: 1, entry_id: "ticket-48"}
-  - {position: 2, entry_id: "ticket-47"}
-```
+The canonical end-to-end vector lives in `spec/vectors/end-to-end.json`
+and exercises the full pipeline: entries → entry_hash →
+compute_seed → FairPick.draw → winners. Winners are emitted as
+entry UUIDs (not the operator-supplied refs).
 
 ---
 

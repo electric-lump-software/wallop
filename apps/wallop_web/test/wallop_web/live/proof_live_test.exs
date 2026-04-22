@@ -89,7 +89,8 @@ defmodule WallopWeb.ProofLiveTest do
       draw = create_draw(api_key, %{})
       _draw = execute_draw(draw, test_seed(), api_key)
 
-      conn = get(conn, "/proof/#{draw.id}?entry_id=nonexistent-id")
+      unknown_uuid = "00000000-0000-4000-8000-000000000000"
+      conn = get(conn, "/proof/#{draw.id}?entry_id=#{unknown_uuid}")
       html = html_response(conn, 200)
 
       assert html =~ "not found"
@@ -115,11 +116,11 @@ defmodule WallopWeb.ProofLiveTest do
       draw = create_draw(api_key, %{})
       draw = execute_draw(draw, test_seed(), api_key)
 
-      winning_ids = Enum.map(draw.results, & &1["entry_id"])
-      all_ids = Enum.map(WallopCore.Entries.load_for_draw(draw.id), & &1.id)
-      losing_id = Enum.find(all_ids, fn id -> id not in winning_ids end)
+      winning_uuids = Enum.map(draw.results, & &1["entry_id"])
+      all_uuids = Enum.map(WallopCore.Entries.load_for_draw(draw.id), & &1.uuid)
+      losing_uuid = Enum.find(all_uuids, fn u -> u not in winning_uuids end)
 
-      conn = get(conn, "/proof/#{draw.id}/#{losing_id}")
+      conn = get(conn, "/proof/#{draw.id}/#{losing_uuid}")
       html = html_response(conn, 200)
 
       assert html =~ "did not win"

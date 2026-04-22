@@ -16,10 +16,10 @@ defmodule WallopCore.Resources.Draw.Changes.ExecuteWithEntropy do
 
   defp run_draw(changeset) do
     draw = changeset.data
-    atom_entries = WallopCore.Entries.load_for_draw(draw.id)
+    entries = WallopCore.Entries.load_for_draw(draw.id)
 
     # Integrity check: recompute entry hash and verify it matches
-    {recomputed_hash, _canonical} = WallopCore.Protocol.entry_hash(atom_entries)
+    {recomputed_hash, _canonical} = WallopCore.Protocol.entry_hash({draw.id, entries})
 
     weather_observation_time = Ash.Changeset.get_argument(changeset, :weather_observation_time)
 
@@ -35,11 +35,11 @@ defmodule WallopCore.Resources.Draw.Changes.ExecuteWithEntropy do
         )
 
       true ->
-        apply_results(changeset, draw, atom_entries)
+        apply_results(changeset, draw, entries)
     end
   end
 
-  defp apply_results(changeset, draw, atom_entries) do
+  defp apply_results(changeset, draw, entries) do
     drand_randomness = Ash.Changeset.get_argument(changeset, :drand_randomness)
     drand_signature = Ash.Changeset.get_argument(changeset, :drand_signature)
     drand_response = Ash.Changeset.get_argument(changeset, :drand_response)
@@ -51,7 +51,8 @@ defmodule WallopCore.Resources.Draw.Changes.ExecuteWithEntropy do
       WallopCore.Protocol.compute_seed(draw.entry_hash, drand_randomness, weather_value)
 
     seed_hex = Base.encode16(seed_bytes, case: :lower)
-    results = FairPick.draw(atom_entries, seed_bytes, draw.winner_count)
+    fair_pick_entries = Enum.map(entries, &%{id: &1.uuid, weight: &1.weight})
+    results = FairPick.draw(fair_pick_entries, seed_bytes, draw.winner_count)
 
     string_results =
       Enum.map(results, fn %{position: pos, entry_id: id} ->

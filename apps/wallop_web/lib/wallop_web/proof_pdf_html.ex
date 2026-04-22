@@ -300,12 +300,11 @@ defmodule WallopWeb.ProofPdfHTML do
       <h2>Entries</h2>
       <p class="hint">
         All {length(@entries)} entries included in this draw, exactly as committed
-        to the <span class="mono">entry_hash</span> on the certificate page. Entry
-        identifiers are anonymised in the same format used by the live proof page.
+        to the <span class="mono">entry_hash</span> on the certificate page.
       </p>
       <ul class="entries mono">
         <li :for={entry <- @entries}>
-          {anonymise(Map.get(entry, :id, ""))}<span
+          {Map.get(entry, :uuid, "")}<span
             :if={Map.get(entry, :weight, 1) != 1}
             class="weight"
           >× {Map.get(entry, :weight, 1)}</span>
@@ -322,15 +321,6 @@ defmodule WallopWeb.ProofPdfHTML do
 
   defp entry_word(1), do: "entry"
   defp entry_word(_), do: "entries"
-
-  defp anonymise(""), do: ""
-
-  defp anonymise(id) when is_binary(id) do
-    first = String.first(id) || ""
-    first <> String.duplicate("•", min(String.length(id) - 1, 8))
-  end
-
-  defp anonymise(_), do: ""
 
   defp css do
     """

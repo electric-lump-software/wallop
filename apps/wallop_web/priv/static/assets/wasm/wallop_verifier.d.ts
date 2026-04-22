@@ -33,8 +33,12 @@ export function draw_wasm(entries_js: any, seed_js: Uint8Array, count: number): 
 
 /**
  * WASM entry point for entry_hash.
+ *
+ * Takes `draw_id` (the public draw UUID) and an entries array. Each
+ * entry's `id` field is interpreted as the public UUID at this
+ * boundary. See `protocol::entry_hash` for the canonical form.
  */
-export function entry_hash_wasm(entries_js: any): any;
+export function entry_hash_wasm(draw_id: string, entries_js: any): any;
 
 /**
  * WASM entry point for key_id.
@@ -71,7 +75,7 @@ export function verify_receipt_wasm(payload_jcs: string, signature_hex: string, 
 /**
  * WASM entry point for full verification pipeline.
  */
-export function verify_wasm(entries_js: any, drand_randomness: string, weather_value: string | null | undefined, count: number, expected_results_js: any): boolean;
+export function verify_wasm(draw_id: string, entries_js: any, drand_randomness: string, weather_value: string | null | undefined, count: number, expected_results_js: any): boolean;
 
 export type InitInput = RequestInfo | URL | Response | BufferSource | WebAssembly.Module;
 
@@ -83,14 +87,14 @@ export interface InitOutput {
     readonly compute_seed_drand_only_wasm: (a: number, b: number, c: number, d: number, e: number) => void;
     readonly compute_seed_wasm: (a: number, b: number, c: number, d: number, e: number, f: number, g: number) => void;
     readonly draw_wasm: (a: number, b: number, c: number, d: number, e: number) => void;
-    readonly entry_hash_wasm: (a: number, b: number) => void;
+    readonly entry_hash_wasm: (a: number, b: number, c: number, d: number) => void;
     readonly key_id_wasm: (a: number, b: number, c: number) => void;
     readonly lock_receipt_hash_wasm: (a: number, b: number, c: number) => void;
     readonly merkle_root_wasm: (a: number, b: number) => void;
     readonly receipt_schema_version_wasm: (a: number, b: number, c: number) => void;
     readonly verify_full_wasm: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number, m: number, n: number) => void;
     readonly verify_receipt_wasm: (a: number, b: number, c: number, d: number, e: number, f: number, g: number) => void;
-    readonly verify_wasm: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number) => void;
+    readonly verify_wasm: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number) => void;
     readonly __wbindgen_export: (a: number, b: number) => number;
     readonly __wbindgen_export2: (a: number, b: number, c: number, d: number) => number;
     readonly __wbindgen_export3: (a: number) => void;

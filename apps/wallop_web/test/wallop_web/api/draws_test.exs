@@ -107,8 +107,8 @@ defmodule WallopWeb.Api.DrawsTest do
           "id" => draw_id,
           "attributes" => %{
             "entries" => [
-              %{"id" => "a", "weight" => 1},
-              %{"id" => "b", "weight" => 1}
+              %{"ref" => "a", "weight" => 1},
+              %{"ref" => "b", "weight" => 1}
             ]
           }
         }
@@ -145,9 +145,9 @@ defmodule WallopWeb.Api.DrawsTest do
           "id" => draw_id,
           "attributes" => %{
             "entries" => [
-              %{"id" => "a", "weight" => 1},
-              %{"id" => "b", "weight" => 1},
-              %{"id" => "c", "weight" => 1}
+              %{"ref" => "a", "weight" => 1},
+              %{"ref" => "b", "weight" => 1},
+              %{"ref" => "c", "weight" => 1}
             ]
           }
         }

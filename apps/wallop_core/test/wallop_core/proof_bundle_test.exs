@@ -26,23 +26,16 @@ defmodule WallopCore.ProofBundleTest do
       assert is_map(decoded["execution_receipt"])
     end
 
-    test "is byte-deterministic across repeated calls (regression: PAM-117)" do
+    test "is byte-deterministic across repeated calls" do
       _infra_key = create_infrastructure_key()
       operator = create_operator()
       api_key = create_api_key_for_operator(operator)
 
-      # Create a draw with entries inserted in reverse order. If the bundle's
-      # entries_for/1 ever stops sorting and instead trusts insertion order,
-      # the output will be reversed relative to a sorted-by-id baseline —
-      # which would still be repeatable but observably wrong. Reversed input
-      # makes the test adversarial: the only way both byte-equality AND
-      # sorted-by-id can hold is if entries_for/1 actually sorts.
       entries =
         for n <- 1..20 do
           padded = String.pad_leading(Integer.to_string(n), 2, "0")
-          %{"id" => "entry-#{padded}", "weight" => 1}
+          %{"ref" => "entry-#{padded}", "weight" => 1}
         end
-        |> Enum.reverse()
 
       draw = create_draw(api_key, %{entries: entries})
       executed = execute_draw(draw, test_seed(), api_key)
@@ -54,13 +47,12 @@ defmodule WallopCore.ProofBundleTest do
       assert first == second
       assert second == third
 
-      # Confirm the entries inside the bundle are sorted ascending by id,
-      # not in their original (reversed) insertion order.
+      # The bundle sorts entries by uuid — byte-determinism depends on that
+      # ordering being stable regardless of DB return order.
       decoded = Jason.decode!(first)
-      ids = Enum.map(decoded["entries"], & &1["id"])
-      assert ids == Enum.sort(ids)
-      assert hd(ids) == "entry-01"
-      assert List.last(ids) == "entry-20"
+      uuids = Enum.map(decoded["entries"], & &1["uuid"])
+      assert uuids == Enum.sort(uuids)
+      assert length(uuids) == 20
     end
 
     test "returns error for non-completed draw" do
@@ -68,6 +60,51 @@ defmodule WallopCore.ProofBundleTest do
       draw = create_draw(api_key)
 
       assert {:error, :draw_not_completed} = ProofBundle.build(draw)
+    end
+
+    test "bundle entries reproduce the committed entry_hash (public-verifier invariant)" do
+      # Durable invariant: anything a commitment hashes must be derivable
+      # from public bundle bytes alone. A third-party verifier reading the
+      # public ProofBundle and recomputing the canonical form MUST reproduce
+      # the entry_hash inside the signed lock receipt — otherwise the bundle
+      # is unverifiable by anyone outside wallop.
+      #
+      # Test fixture deliberately mixes entries with and without operator_ref.
+      # The previous bug manifested only when at least one ref was non-nil;
+      # all-nil draws would accidentally pass.
+      _infra_key = create_infrastructure_key()
+      operator = create_operator()
+      api_key = create_api_key_for_operator(operator)
+
+      draw =
+        create_draw(api_key, %{
+          entries: [
+            %{"ref" => "ticket-with-ref", "weight" => 1},
+            %{"ref" => nil, "weight" => 1},
+            %{"ref" => "another-ref", "weight" => 1}
+          ]
+        })
+
+      executed = execute_draw(draw, test_seed(), api_key)
+
+      {:ok, bundle_json} = ProofBundle.build(executed)
+      bundle = Jason.decode!(bundle_json)
+
+      # Reconstruct the entry_hash input from the public bundle bytes only.
+      bundle_entries =
+        Enum.map(bundle["entries"], fn e ->
+          %{uuid: e["uuid"], operator_ref: nil, weight: e["weight"]}
+        end)
+
+      {recomputed_hash, _jcs} =
+        WallopCore.Protocol.entry_hash({bundle["draw_id"], bundle_entries})
+
+      lock_payload = Jason.decode!(bundle["lock_receipt"]["payload_jcs"])
+      committed_hash = lock_payload["entry_hash"]
+
+      assert recomputed_hash == committed_hash,
+             "public bundle cannot reproduce committed entry_hash — " <>
+               "the canonical form depends on data not present in the public bundle"
     end
 
     test "omits weather_value entirely for drand-only draws" do

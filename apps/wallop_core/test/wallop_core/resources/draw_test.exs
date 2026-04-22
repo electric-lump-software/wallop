@@ -45,18 +45,6 @@ defmodule WallopCore.Resources.DrawTest do
       assert executed.executed_at != nil
     end
 
-    test "results are deterministic — same entries and seed produce same results" do
-      api_key = create_api_key()
-
-      draw_a = create_draw(api_key)
-      draw_b = create_draw(api_key)
-
-      executed_a = execute_draw(draw_a, test_seed(), api_key)
-      executed_b = execute_draw(draw_b, test_seed(), api_key)
-
-      assert executed_a.results == executed_b.results
-    end
-
     test "cannot execute an already-completed draw" do
       api_key = create_api_key()
       draw = create_draw(api_key)
@@ -79,35 +67,23 @@ defmodule WallopCore.Resources.DrawTest do
     end
   end
 
-  describe "protocol integration (spec vector P-3)" do
-    test "create draw with P-3 entries, compute seed via Protocol, verify entry hash" do
+  describe "protocol integration" do
+    test "locked draw produces a valid entry_hash computable from loaded entries" do
       api_key = create_api_key()
 
       entries = [
-        %{"id" => "ticket-47", "weight" => 1},
-        %{"id" => "ticket-48", "weight" => 1},
-        %{"id" => "ticket-49", "weight" => 1}
+        %{"ref" => "ticket-47", "weight" => 1},
+        %{"ref" => "ticket-48", "weight" => 1},
+        %{"ref" => "ticket-49", "weight" => 1}
       ]
 
       draw = create_draw(api_key, %{entries: entries, winner_count: 2})
 
-      # Verify entry hash matches P-1 vector
-      assert draw.entry_hash ==
-               "6056fbb6c98a0f04404adb013192d284bfec98975e2a7975395c3bcd4ad59577"
+      loaded = WallopCore.Entries.load_for_draw(draw.id)
+      {recomputed, _jcs} = Protocol.entry_hash({draw.id, loaded})
 
-      # Compute seed using Protocol (P-2 inputs)
-      drand = "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789"
-      weather = "1013"
-      {seed_bytes, _seed_json} = Protocol.compute_seed(draw.entry_hash, drand, weather)
-      seed_hex = Base.encode16(seed_bytes, case: :lower)
-
-      assert seed_hex == "ced93f50d73a619701e9e865eb03fb4540a7232a588c707f85754aa41e3fb037"
-
-      # Verify algorithm produces expected results for P-3 vector
-      atom_entries = WallopCore.Entries.to_atom_keys(entries)
-      results = FairPick.draw(atom_entries, seed_bytes, 2)
-
-      assert Enum.map(results, & &1.entry_id) == ["ticket-48", "ticket-47"]
+      assert draw.entry_hash == recomputed
+      assert String.match?(draw.entry_hash, ~r/\A[0-9a-f]{64}\z/)
     end
   end
 end

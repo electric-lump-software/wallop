@@ -60,7 +60,7 @@ defmodule WallopCore.Resources.Draw do
       require_atomic?(false)
       filter(expr(status == :open))
 
-      argument :entry_id, :string do
+      argument :entry_uuid, :string do
         allow_nil?(false)
       end
 

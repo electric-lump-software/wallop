@@ -165,7 +165,7 @@ defmodule WallopCore.RaceConditionTest do
         draw
         |> Ash.Changeset.for_update(
           :add_entries,
-          %{entries: [%{"id" => "a", "weight" => 1}]},
+          %{entries: [%{"ref" => "a", "weight" => 1}]},
           actor: api_key
         )
         |> Ash.update!()
@@ -179,7 +179,7 @@ defmodule WallopCore.RaceConditionTest do
 
       assert_raise Postgrex.Error, ~r/Cannot modify entries/, fn ->
         WallopCore.Repo.query!(
-          "INSERT INTO entries (id, draw_id, entry_id, weight, inserted_at) VALUES ($1, $2, 'injected', 1, NOW())",
+          "INSERT INTO entries (id, draw_id, operator_ref, weight, inserted_at) VALUES ($1, $2, 'injected', 1, NOW())",
           [Ecto.UUID.dump!(Ecto.UUID.generate()), Ecto.UUID.dump!(draw.id)]
         )
       end

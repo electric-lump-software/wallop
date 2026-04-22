@@ -7,6 +7,55 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### wallop_core 0.15.0 — BREAKING: entry identifier refactor
+
+This release replaces operator-chosen entry IDs with wallop-assigned
+UUIDs, adds an optional `operator_ref` sidecar, and rewrites the
+`entry_hash` canonical form. Lock receipt schema bumps v2 → v3. Every
+downstream consumer that reads entries, winners, or signed receipts
+needs to update.
+
+The previous scheme ("opaque operator IDs, masked on the public proof
+page") was cryptographically incoherent — unsalted SHA-256 made
+`entry_hash` brute-forceable against low-entropy IDs, and third
+parties couldn't actually verify a draw without the raw entry list.
+The new scheme publishes UUIDs + weights on the public proof page,
+keeps any operator-supplied reference strings private, and binds the
+`draw_id` into the hash to prevent cross-draw confusion.
+
+#### Canonical form
+
+`entry_hash = SHA-256(JCS({draw_id, entries: [{uuid, weight} sorted by uuid]}))`. All UUIDs must be lowercase, hyphenated, 36-char RFC 4122. Weights must be positive integers. Violations raise at the Protocol boundary.
+
+**`operator_ref` is deliberately NOT committed in the hash.** It lives as an operator-private sidecar on the Entry resource, validated at ingest (≤ 64 bytes, no control codepoints U+0000–U+001F, U+007F, U+2028, U+2029), visible only to the operator via the authenticated entries endpoint, and never exposed on the public proof surface. The canonical form obeys a durable invariant: anything the hash commits must be derivable from the public ProofBundle bytes alone — so a third-party verifier can independently reproduce `entry_hash` without needing operator-only data. See `spec/protocol.md` §2.1 and the frozen vectors in `spec/vectors/entry-hash.json`.
+
+#### Entry resource
+
+The `entry_id` column is renamed to `operator_ref`, made nullable, and stripped of the old PII-reject regex and `(draw_id, entry_id)` unique index. The Ash primary key `id` is the public UUID — bound into `entry_hash`, returned in the API, published on the proof page. Entry rows remain immutable post-lock via the existing Postgres trigger.
+
+#### Ingest API
+
+`add_entries` now accepts `[%{ref, weight}]` (ref optional). The response includes the wallop-assigned UUID per entry, in submission order. Empty-string refs are normalised to nil in the `add_entries` ingest path; direct `Entry.create` calls (internal/test only, policy-forbidden in production) preserve the exact string. Either way, the canonical `entry_hash` treats nil and `""` refs identically — the key is omitted from the JCS payload. **Capture the `uuid ↔ your customer` mapping immediately from the submit response — wallop cannot reconstruct it later.** `remove_entry` now takes an `entry_uuid` argument. The batch-dedup check is removed; `operator_ref` uniqueness is the operator's problem.
+
+#### Receipts
+
+Lock receipt schema v3 — same 16 fields as v2, new `schema_version` value signals the new `entry_hash` canonical form. Verifiers reject unknown `schema_version` values rather than attempting to reconstruct an older shape. `wallop_core_version` in the signed payload is the forensic anchor if a future canonical form ever ships. Execution receipt schema unchanged; its `results` field now holds entry UUIDs (was operator IDs).
+
+#### Public-verifier invariant
+
+The canonical `entry_hash` deliberately commits only fields present byte-identically in the public ProofBundle. A regression test (`ProofBundleTest`, "bundle entries reproduce the committed entry_hash") ensures any future change preserves this: it builds a draw with a mix of entries with and without `operator_ref`, emits the public bundle, and asserts the bundle's entries (without access to `operator_ref`) reproduce the signed lock receipt's `entry_hash`. The other commitments in the protocol (`compute_seed`, lock/execution receipt payload SHA-256, `lock_receipt_hash`, transparency anchor `merkle_root`) were audited and all satisfy the same invariant — their hashed inputs appear byte-identically in the public artifacts.
+
+#### Proof page / PDF
+
+Entry-ID anonymisation is removed. `WinnerList`, PDF appendix, and proof bundle emit raw UUIDs. `operator_ref` is never rendered on any public surface. Any historical cached PDFs of locked draws will fail the fingerprint invariant on regeneration — **purge the PDF cache on deploy.**
+
+#### Migrating
+
+- Anyone reading `entry.entry_id` → `entry.operator_ref`.
+- Anyone reading winners: `results[n]["entry_id"]` is now a UUID.
+- Anyone submitting entries: send `%{ref: ..., weight: ...}`, store the returned `uuid` per entry alongside your own customer ID.
+- External verifiers (the published Rust verifier crate + WASM bindings) must bump to 0.5.0 and implement the new canonical form.
+
 ### wallop_core
 
 - **Pin AES-GCM IV length to 12 bytes.** Cloak defaults to 16 when `iv_length` is omitted, which differs from the NIST SP 800-38D recommendation of 96-bit (12-byte) IVs. Any service sharing the same database must use the same IV length — pinning it explicitly in all environments (dev, test, prod) prevents silent interop failures when decrypting at-rest signing keys and webhook secrets.
@@ -236,7 +285,7 @@ New WASM exports for third-party verification:
 
 ### Added
 
-- API key tier metadata: `tier`, `monthly_draw_limit`, `monthly_draw_count`, `count_reset_at` (set by wallop-app via `update_tier` action)
+- API key tier metadata: `tier`, `monthly_draw_limit`, `monthly_draw_count`, `count_reset_at` (set by consuming apps via `update_tier` action)
 - `WallopWeb.Plugs.TierLimit` — enforces monthly draw limit on `POST /api/v1/draws`, returns 429 with tier name and upgrade URL when exceeded
 - `WallopWeb.Plugs.KeyRateLimit` — per-API-key rate limit (60 requests/minute, ETS-based), returns 429 with `Retry-After` header
 - `IncrementApiKeyDrawCount` change — bumps the actor's monthly_draw_count on successful draw create, auto-resets if `count_reset_at` is in the past
@@ -245,7 +294,7 @@ New WASM exports for third-party verification:
 ### Notes
 
 - Per-IP rate limit (`WallopWeb.Plugs.RateLimit`) still runs before auth to protect bcrypt CPU
-- Tier metadata is null by default (unlimited) — wallop-app must populate via `update_tier` for paid tiers
+- Tier metadata is null by default (unlimited) — consuming apps must populate via `update_tier` for paid tiers
 
 ## [0.7.0] - 2026-04-03
 
@@ -341,7 +390,7 @@ New WASM exports for third-party verification:
 
 ### Fixed
 
-- PubSub config: consuming apps (e.g. wallop-app) can provide full PubSub config via `config :wallop_core, :pubsub` for Redis adapter support
+- PubSub config: consuming apps can provide full PubSub config via `config :wallop_core, :pubsub` for Redis adapter support
 
 ### Added
 

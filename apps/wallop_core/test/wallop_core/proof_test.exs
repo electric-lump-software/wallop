@@ -4,44 +4,6 @@ defmodule WallopCore.ProofTest do
 
   alias WallopCore.Proof
 
-  describe "anonymise_id/1" do
-    test "shows first character + fixed mask" do
-      assert Proof.anonymise_id("ticket-47") == "t******"
-    end
-
-    test "single character gets mask" do
-      assert Proof.anonymise_id("a") == "a******"
-    end
-
-    test "two characters gets mask" do
-      assert Proof.anonymise_id("ab") == "a******"
-    end
-
-    test "three characters gets mask" do
-      assert Proof.anonymise_id("abc") == "a******"
-    end
-
-    test "long ID gets same mask length" do
-      assert Proof.anonymise_id("entry-1234-abcdef") == "e******"
-    end
-  end
-
-  describe "anonymise_results/1" do
-    test "anonymises all entry_ids in results" do
-      results = [
-        %{"position" => 1, "entry_id" => "charlie"},
-        %{"position" => 2, "entry_id" => "alice"}
-      ]
-
-      anonymised = Proof.anonymise_results(results)
-
-      assert Enum.at(anonymised, 0)["entry_id"] == "c******"
-      assert Enum.at(anonymised, 1)["entry_id"] == "a******"
-      # Positions preserved
-      assert Enum.at(anonymised, 0)["position"] == 1
-    end
-  end
-
   describe "verify/1" do
     test "returns :verified for a correctly executed draw" do
       api_key = create_api_key()
@@ -52,49 +14,93 @@ defmodule WallopCore.ProofTest do
     end
   end
 
-  describe "check_entry/2" do
+  describe "winner?/2" do
     setup do
       api_key = create_api_key()
 
       draw =
         create_draw(api_key, %{
           entries: [
-            %{"id" => "winner-1", "weight" => 1},
-            %{"id" => "winner-2", "weight" => 1},
-            %{"id" => "loser-1", "weight" => 1}
+            %{"ref" => "winner-1", "weight" => 1},
+            %{"ref" => "winner-2", "weight" => 1},
+            %{"ref" => "loser-1", "weight" => 1}
           ],
           winner_count: 2
         })
 
       draw = execute_draw(draw, test_seed(), api_key)
 
-      # Find which entries actually won
-      winner_ids = Enum.map(draw.results, & &1["entry_id"])
-
-      %{draw: draw, winner_ids: winner_ids}
+      winner_uuids = Enum.map(draw.results, & &1["entry_id"])
+      %{draw: draw, winner_uuids: winner_uuids}
     end
 
-    test "returns found + winner for a winning entry", %{draw: draw, winner_ids: winner_ids} do
-      winning_id = List.first(winner_ids)
+    test "returns true for a winning uuid", %{draw: draw, winner_uuids: winner_uuids} do
+      winner = List.first(winner_uuids)
+      assert {:ok, %{winner: true}} = Proof.winner?(draw, winner)
+    end
+
+    test "returns false for a valid uuid that entered but didn't win", %{
+      draw: draw,
+      winner_uuids: winner_uuids
+    } do
+      all_uuids = Enum.map(WallopCore.Entries.load_for_draw(draw.id), & &1.uuid)
+      loser = Enum.find(all_uuids, fn u -> u not in winner_uuids end)
+
+      assert {:ok, %{winner: false}} = Proof.winner?(draw, loser)
+    end
+
+    test "returns false for a uuid that never entered the draw", %{draw: draw} do
+      never_entered = "00000000-0000-4000-8000-000000000000"
+      assert {:ok, %{winner: false}} = Proof.winner?(draw, never_entered)
+    end
+
+    test "returns false for malformed input", %{draw: draw} do
+      assert {:ok, %{winner: false}} = Proof.winner?(draw, "not-a-uuid")
+      assert {:ok, %{winner: false}} = Proof.winner?(draw, "")
+    end
+  end
+
+  describe "check_entry/2 (legacy)" do
+    setup do
+      api_key = create_api_key()
+
+      draw =
+        create_draw(api_key, %{
+          entries: [
+            %{"ref" => "winner-1", "weight" => 1},
+            %{"ref" => "winner-2", "weight" => 1},
+            %{"ref" => "loser-1", "weight" => 1}
+          ],
+          winner_count: 2
+        })
+
+      draw = execute_draw(draw, test_seed(), api_key)
+      winner_uuids = Enum.map(draw.results, & &1["entry_id"])
+      %{draw: draw, winner_uuids: winner_uuids}
+    end
+
+    test "returns found + winner for a winning uuid", %{draw: draw, winner_uuids: winner_uuids} do
+      winning = List.first(winner_uuids)
 
       assert {:ok, %{found: true, winner: true, position: pos}} =
-               Proof.check_entry(draw, winning_id)
+               Proof.check_entry(draw, winning)
 
       assert is_integer(pos)
     end
 
-    test "returns found + not winner for a non-winning entry", %{
+    test "returns found + not winner for a non-winning uuid", %{
       draw: draw,
-      winner_ids: winner_ids
+      winner_uuids: winner_uuids
     } do
-      all_ids = Enum.map(WallopCore.Entries.load_for_draw(draw.id), & &1.id)
-      loser_id = Enum.find(all_ids, fn id -> id not in winner_ids end)
+      all_uuids = Enum.map(WallopCore.Entries.load_for_draw(draw.id), & &1.uuid)
+      loser = Enum.find(all_uuids, fn u -> u not in winner_uuids end)
 
-      assert {:ok, %{found: true, winner: false}} = Proof.check_entry(draw, loser_id)
+      assert {:ok, %{found: true, winner: false}} = Proof.check_entry(draw, loser)
     end
 
-    test "returns not found for unknown entry", %{draw: draw} do
-      assert {:ok, %{found: false}} = Proof.check_entry(draw, "nonexistent-entry")
+    test "returns not found for unknown uuid", %{draw: draw} do
+      assert {:ok, %{found: false}} =
+               Proof.check_entry(draw, "00000000-0000-4000-8000-000000000000")
     end
   end
 end
