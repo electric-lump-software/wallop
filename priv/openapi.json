@@ -72,6 +72,18 @@
                 ],
                 "description": "Optional HTTPS URL to receive a webhook POST when the draw completes or fails. Must be a valid HTTPS URL. Field included by default."
               },
+              "check_url": {
+                "anyOf": [
+                  {
+                    "nullable": true,
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "Optional HTTPS URL to the operator's own \"check your ticket\" page. Rendered as an outbound link on the public proof page when a user checks a non-winning UUID — lets operators offer richer-than-flat- boolean lookup (e.g. confirm an entry was submitted, show position) which wallop itself does not provide publicly. Must be ≤ 2048 characters, must be `https://`, and must not contain whitespace. `javascript:`, `data:`, `file:`, `vbscript:`, and other non-https schemes are rejected. Note: `check_url` is display metadata, not part of the signed receipt or entry_hash — operators can point the URL's DNS elsewhere later. Treat it as operator-mutable-in-effect. Field included by default."
+              },
               "drand_chain": {
                 "anyOf": [
                   {
@@ -564,6 +576,55 @@
         },
         "type": "object"
       },
+      "draw-filter-check_url": {
+        "additionalProperties": false,
+        "description": "Optional HTTPS URL to the operator's own \"check your ticket\" page. Rendered as an outbound link on the public proof page when a user checks a non-winning UUID — lets operators offer richer-than-flat- boolean lookup (e.g. confirm an entry was submitted, show position) which wallop itself does not provide publicly. Must be ≤ 2048 characters, must be `https://`, and must not contain whitespace. `javascript:`, `data:`, `file:`, `vbscript:`, and other non-https schemes are rejected. Note: `check_url` is display metadata, not part of the signed receipt or entry_hash — operators can point the URL's DNS elsewhere later. Treat it as operator-mutable-in-effect.",
+        "properties": {
+          "contains": {
+            "type": "string"
+          },
+          "eq": {
+            "type": "string"
+          },
+          "greater_than": {
+            "type": "string"
+          },
+          "greater_than_or_equal": {
+            "type": "string"
+          },
+          "ilike": {
+            "type": "string"
+          },
+          "in": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "is_distinct_from": {
+            "type": "string"
+          },
+          "is_nil": {
+            "type": "boolean"
+          },
+          "is_not_distinct_from": {
+            "type": "string"
+          },
+          "less_than": {
+            "type": "string"
+          },
+          "less_than_or_equal": {
+            "type": "string"
+          },
+          "like": {
+            "type": "string"
+          },
+          "not_eq": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
       "draw-filter-drand_chain": {
         "additionalProperties": false,
         "properties": {
@@ -824,67 +885,6 @@
         "description": "Filters the query to results matching the given filter object",
         "example": "",
         "properties": {
-          "and": {
-            "items": {
-              "$ref": "#/components/schemas/draw-filter"
-            },
-            "type": "array",
-            "uniqueItems": true
-          },
-          "callback_url": {
-            "$ref": "#/components/schemas/draw-filter-callback_url"
-          },
-          "drand_chain": {
-            "$ref": "#/components/schemas/draw-filter-drand_chain"
-          },
-          "drand_randomness": {
-            "$ref": "#/components/schemas/draw-filter-drand_randomness"
-          },
-          "drand_response": {
-            "$ref": "#/components/schemas/draw-filter-drand_response"
-          },
-          "drand_round": {
-            "$ref": "#/components/schemas/draw-filter-drand_round"
-          },
-          "drand_signature": {
-            "$ref": "#/components/schemas/draw-filter-drand_signature"
-          },
-          "entry_canonical": {
-            "$ref": "#/components/schemas/draw-filter-entry_canonical"
-          },
-          "entry_count": {
-            "$ref": "#/components/schemas/draw-filter-entry_count"
-          },
-          "entry_hash": {
-            "$ref": "#/components/schemas/draw-filter-entry_hash"
-          },
-          "executed_at": {
-            "$ref": "#/components/schemas/draw-filter-executed_at"
-          },
-          "failed_at": {
-            "$ref": "#/components/schemas/draw-filter-failed_at"
-          },
-          "failure_reason": {
-            "$ref": "#/components/schemas/draw-filter-failure_reason"
-          },
-          "id": {
-            "$ref": "#/components/schemas/draw-filter-id"
-          },
-          "metadata": {
-            "$ref": "#/components/schemas/draw-filter-metadata"
-          },
-          "name": {
-            "$ref": "#/components/schemas/draw-filter-name"
-          },
-          "not": {
-            "$ref": "#/components/schemas/draw-filter"
-          },
-          "operator_id": {
-            "$ref": "#/components/schemas/draw-filter-operator_id"
-          },
-          "operator_sequence": {
-            "$ref": "#/components/schemas/draw-filter-operator_sequence"
-          },
           "or": {
             "items": {
               "$ref": "#/components/schemas/draw-filter"
@@ -892,41 +892,105 @@
             "type": "array",
             "uniqueItems": true
           },
-          "seed": {
-            "$ref": "#/components/schemas/draw-filter-seed"
-          },
-          "seed_json": {
-            "$ref": "#/components/schemas/draw-filter-seed_json"
-          },
-          "seed_source": {
-            "$ref": "#/components/schemas/draw-filter-seed_source"
-          },
-          "stage_timestamps": {
-            "$ref": "#/components/schemas/draw-filter-stage_timestamps"
-          },
-          "status": {
-            "$ref": "#/components/schemas/draw-filter-status"
-          },
-          "weather_fallback_reason": {
-            "$ref": "#/components/schemas/draw-filter-weather_fallback_reason"
-          },
-          "weather_observation_time": {
-            "$ref": "#/components/schemas/draw-filter-weather_observation_time"
+          "entry_canonical": {
+            "$ref": "#/components/schemas/draw-filter-entry_canonical"
           },
           "weather_raw": {
             "$ref": "#/components/schemas/draw-filter-weather_raw"
           },
-          "weather_station": {
-            "$ref": "#/components/schemas/draw-filter-weather_station"
+          "failure_reason": {
+            "$ref": "#/components/schemas/draw-filter-failure_reason"
+          },
+          "and": {
+            "items": {
+              "$ref": "#/components/schemas/draw-filter"
+            },
+            "type": "array",
+            "uniqueItems": true
           },
           "weather_time": {
             "$ref": "#/components/schemas/draw-filter-weather_time"
           },
-          "weather_value": {
-            "$ref": "#/components/schemas/draw-filter-weather_value"
+          "seed_json": {
+            "$ref": "#/components/schemas/draw-filter-seed_json"
+          },
+          "drand_response": {
+            "$ref": "#/components/schemas/draw-filter-drand_response"
+          },
+          "weather_observation_time": {
+            "$ref": "#/components/schemas/draw-filter-weather_observation_time"
+          },
+          "seed": {
+            "$ref": "#/components/schemas/draw-filter-seed"
+          },
+          "not": {
+            "$ref": "#/components/schemas/draw-filter"
+          },
+          "status": {
+            "$ref": "#/components/schemas/draw-filter-status"
+          },
+          "name": {
+            "$ref": "#/components/schemas/draw-filter-name"
+          },
+          "id": {
+            "$ref": "#/components/schemas/draw-filter-id"
+          },
+          "callback_url": {
+            "$ref": "#/components/schemas/draw-filter-callback_url"
+          },
+          "stage_timestamps": {
+            "$ref": "#/components/schemas/draw-filter-stage_timestamps"
+          },
+          "entry_hash": {
+            "$ref": "#/components/schemas/draw-filter-entry_hash"
           },
           "winner_count": {
             "$ref": "#/components/schemas/draw-filter-winner_count"
+          },
+          "seed_source": {
+            "$ref": "#/components/schemas/draw-filter-seed_source"
+          },
+          "drand_round": {
+            "$ref": "#/components/schemas/draw-filter-drand_round"
+          },
+          "weather_value": {
+            "$ref": "#/components/schemas/draw-filter-weather_value"
+          },
+          "weather_fallback_reason": {
+            "$ref": "#/components/schemas/draw-filter-weather_fallback_reason"
+          },
+          "executed_at": {
+            "$ref": "#/components/schemas/draw-filter-executed_at"
+          },
+          "operator_sequence": {
+            "$ref": "#/components/schemas/draw-filter-operator_sequence"
+          },
+          "drand_signature": {
+            "$ref": "#/components/schemas/draw-filter-drand_signature"
+          },
+          "drand_chain": {
+            "$ref": "#/components/schemas/draw-filter-drand_chain"
+          },
+          "entry_count": {
+            "$ref": "#/components/schemas/draw-filter-entry_count"
+          },
+          "failed_at": {
+            "$ref": "#/components/schemas/draw-filter-failed_at"
+          },
+          "check_url": {
+            "$ref": "#/components/schemas/draw-filter-check_url"
+          },
+          "metadata": {
+            "$ref": "#/components/schemas/draw-filter-metadata"
+          },
+          "weather_station": {
+            "$ref": "#/components/schemas/draw-filter-weather_station"
+          },
+          "operator_id": {
+            "$ref": "#/components/schemas/draw-filter-operator_id"
+          },
+          "drand_randomness": {
+            "$ref": "#/components/schemas/draw-filter-drand_randomness"
           }
         },
         "type": "deepObject"
@@ -1938,7 +2002,7 @@
             "name": "sort",
             "required": false,
             "schema": {
-              "pattern": "^(id|-id|\\+\\+id|--id|status|-status|\\+\\+status|--status|name|-name|\\+\\+name|--name|entry_count|-entry_count|\\+\\+entry_count|--entry_count|entry_hash|-entry_hash|\\+\\+entry_hash|--entry_hash|entry_canonical|-entry_canonical|\\+\\+entry_canonical|--entry_canonical|winner_count|-winner_count|\\+\\+winner_count|--winner_count|seed|-seed|\\+\\+seed|--seed|seed_source|-seed_source|\\+\\+seed_source|--seed_source|seed_json|-seed_json|\\+\\+seed_json|--seed_json|drand_chain|-drand_chain|\\+\\+drand_chain|--drand_chain|drand_round|-drand_round|\\+\\+drand_round|--drand_round|drand_randomness|-drand_randomness|\\+\\+drand_randomness|--drand_randomness|drand_signature|-drand_signature|\\+\\+drand_signature|--drand_signature|drand_response|-drand_response|\\+\\+drand_response|--drand_response|weather_station|-weather_station|\\+\\+weather_station|--weather_station|weather_time|-weather_time|\\+\\+weather_time|--weather_time|weather_value|-weather_value|\\+\\+weather_value|--weather_value|weather_raw|-weather_raw|\\+\\+weather_raw|--weather_raw|weather_observation_time|-weather_observation_time|\\+\\+weather_observation_time|--weather_observation_time|weather_fallback_reason|-weather_fallback_reason|\\+\\+weather_fallback_reason|--weather_fallback_reason|callback_url|-callback_url|\\+\\+callback_url|--callback_url|metadata|-metadata|\\+\\+metadata|--metadata|executed_at|-executed_at|\\+\\+executed_at|--executed_at|failed_at|-failed_at|\\+\\+failed_at|--failed_at|failure_reason|-failure_reason|\\+\\+failure_reason|--failure_reason|stage_timestamps|-stage_timestamps|\\+\\+stage_timestamps|--stage_timestamps|operator_sequence|-operator_sequence|\\+\\+operator_sequence|--operator_sequence|operator_id|-operator_id|\\+\\+operator_id|--operator_id)(,(id|-id|\\+\\+id|--id|status|-status|\\+\\+status|--status|name|-name|\\+\\+name|--name|entry_count|-entry_count|\\+\\+entry_count|--entry_count|entry_hash|-entry_hash|\\+\\+entry_hash|--entry_hash|entry_canonical|-entry_canonical|\\+\\+entry_canonical|--entry_canonical|winner_count|-winner_count|\\+\\+winner_count|--winner_count|seed|-seed|\\+\\+seed|--seed|seed_source|-seed_source|\\+\\+seed_source|--seed_source|seed_json|-seed_json|\\+\\+seed_json|--seed_json|drand_chain|-drand_chain|\\+\\+drand_chain|--drand_chain|drand_round|-drand_round|\\+\\+drand_round|--drand_round|drand_randomness|-drand_randomness|\\+\\+drand_randomness|--drand_randomness|drand_signature|-drand_signature|\\+\\+drand_signature|--drand_signature|drand_response|-drand_response|\\+\\+drand_response|--drand_response|weather_station|-weather_station|\\+\\+weather_station|--weather_station|weather_time|-weather_time|\\+\\+weather_time|--weather_time|weather_value|-weather_value|\\+\\+weather_value|--weather_value|weather_raw|-weather_raw|\\+\\+weather_raw|--weather_raw|weather_observation_time|-weather_observation_time|\\+\\+weather_observation_time|--weather_observation_time|weather_fallback_reason|-weather_fallback_reason|\\+\\+weather_fallback_reason|--weather_fallback_reason|callback_url|-callback_url|\\+\\+callback_url|--callback_url|metadata|-metadata|\\+\\+metadata|--metadata|executed_at|-executed_at|\\+\\+executed_at|--executed_at|failed_at|-failed_at|\\+\\+failed_at|--failed_at|failure_reason|-failure_reason|\\+\\+failure_reason|--failure_reason|stage_timestamps|-stage_timestamps|\\+\\+stage_timestamps|--stage_timestamps|operator_sequence|-operator_sequence|\\+\\+operator_sequence|--operator_sequence|operator_id|-operator_id|\\+\\+operator_id|--operator_id))*$",
+              "pattern": "^(id|-id|\\+\\+id|--id|status|-status|\\+\\+status|--status|name|-name|\\+\\+name|--name|entry_count|-entry_count|\\+\\+entry_count|--entry_count|entry_hash|-entry_hash|\\+\\+entry_hash|--entry_hash|entry_canonical|-entry_canonical|\\+\\+entry_canonical|--entry_canonical|winner_count|-winner_count|\\+\\+winner_count|--winner_count|seed|-seed|\\+\\+seed|--seed|seed_source|-seed_source|\\+\\+seed_source|--seed_source|seed_json|-seed_json|\\+\\+seed_json|--seed_json|drand_chain|-drand_chain|\\+\\+drand_chain|--drand_chain|drand_round|-drand_round|\\+\\+drand_round|--drand_round|drand_randomness|-drand_randomness|\\+\\+drand_randomness|--drand_randomness|drand_signature|-drand_signature|\\+\\+drand_signature|--drand_signature|drand_response|-drand_response|\\+\\+drand_response|--drand_response|weather_station|-weather_station|\\+\\+weather_station|--weather_station|weather_time|-weather_time|\\+\\+weather_time|--weather_time|weather_value|-weather_value|\\+\\+weather_value|--weather_value|weather_raw|-weather_raw|\\+\\+weather_raw|--weather_raw|weather_observation_time|-weather_observation_time|\\+\\+weather_observation_time|--weather_observation_time|weather_fallback_reason|-weather_fallback_reason|\\+\\+weather_fallback_reason|--weather_fallback_reason|callback_url|-callback_url|\\+\\+callback_url|--callback_url|metadata|-metadata|\\+\\+metadata|--metadata|check_url|-check_url|\\+\\+check_url|--check_url|executed_at|-executed_at|\\+\\+executed_at|--executed_at|failed_at|-failed_at|\\+\\+failed_at|--failed_at|failure_reason|-failure_reason|\\+\\+failure_reason|--failure_reason|stage_timestamps|-stage_timestamps|\\+\\+stage_timestamps|--stage_timestamps|operator_sequence|-operator_sequence|\\+\\+operator_sequence|--operator_sequence|operator_id|-operator_id|\\+\\+operator_id|--operator_id)(,(id|-id|\\+\\+id|--id|status|-status|\\+\\+status|--status|name|-name|\\+\\+name|--name|entry_count|-entry_count|\\+\\+entry_count|--entry_count|entry_hash|-entry_hash|\\+\\+entry_hash|--entry_hash|entry_canonical|-entry_canonical|\\+\\+entry_canonical|--entry_canonical|winner_count|-winner_count|\\+\\+winner_count|--winner_count|seed|-seed|\\+\\+seed|--seed|seed_source|-seed_source|\\+\\+seed_source|--seed_source|seed_json|-seed_json|\\+\\+seed_json|--seed_json|drand_chain|-drand_chain|\\+\\+drand_chain|--drand_chain|drand_round|-drand_round|\\+\\+drand_round|--drand_round|drand_randomness|-drand_randomness|\\+\\+drand_randomness|--drand_randomness|drand_signature|-drand_signature|\\+\\+drand_signature|--drand_signature|drand_response|-drand_response|\\+\\+drand_response|--drand_response|weather_station|-weather_station|\\+\\+weather_station|--weather_station|weather_time|-weather_time|\\+\\+weather_time|--weather_time|weather_value|-weather_value|\\+\\+weather_value|--weather_value|weather_raw|-weather_raw|\\+\\+weather_raw|--weather_raw|weather_observation_time|-weather_observation_time|\\+\\+weather_observation_time|--weather_observation_time|weather_fallback_reason|-weather_fallback_reason|\\+\\+weather_fallback_reason|--weather_fallback_reason|callback_url|-callback_url|\\+\\+callback_url|--callback_url|metadata|-metadata|\\+\\+metadata|--metadata|check_url|-check_url|\\+\\+check_url|--check_url|executed_at|-executed_at|\\+\\+executed_at|--executed_at|failed_at|-failed_at|\\+\\+failed_at|--failed_at|failure_reason|-failure_reason|\\+\\+failure_reason|--failure_reason|stage_timestamps|-stage_timestamps|\\+\\+stage_timestamps|--stage_timestamps|operator_sequence|-operator_sequence|\\+\\+operator_sequence|--operator_sequence|operator_id|-operator_id|\\+\\+operator_id|--operator_id))*$",
               "type": "string"
             },
             "style": "form"
@@ -1996,12 +2060,12 @@
             "schema": {
               "additionalProperties": true,
               "example": {
-                "draw": "id,status,name,entry_count,entry_hash,entry_canonical,winner_count,seed,seed_source,seed_json,results,drand_chain,drand_round,drand_randomness,drand_signature,drand_response,weather_station,weather_time,weather_value,weather_raw,weather_observation_time,weather_fallback_reason,callback_url,metadata,executed_at,failed_at,failure_reason,stage_timestamps,operator_sequence,operator_id"
+                "draw": "id,status,name,entry_count,entry_hash,entry_canonical,winner_count,seed,seed_source,seed_json,results,drand_chain,drand_round,drand_randomness,drand_signature,drand_response,weather_station,weather_time,weather_value,weather_raw,weather_observation_time,weather_fallback_reason,callback_url,metadata,check_url,executed_at,failed_at,failure_reason,stage_timestamps,operator_sequence,operator_id"
               },
               "properties": {
                 "draw": {
                   "description": "Comma separated field names for draw",
-                  "example": "id,status,name,entry_count,entry_hash,entry_canonical,winner_count,seed,seed_source,seed_json,results,drand_chain,drand_round,drand_randomness,drand_signature,drand_response,weather_station,weather_time,weather_value,weather_raw,weather_observation_time,weather_fallback_reason,callback_url,metadata,executed_at,failed_at,failure_reason,stage_timestamps,operator_sequence,operator_id",
+                  "example": "id,status,name,entry_count,entry_hash,entry_canonical,winner_count,seed,seed_source,seed_json,results,drand_chain,drand_round,drand_randomness,drand_signature,drand_response,weather_station,weather_time,weather_value,weather_raw,weather_observation_time,weather_fallback_reason,callback_url,metadata,check_url,executed_at,failed_at,failure_reason,stage_timestamps,operator_sequence,operator_id",
                   "type": "string"
                 }
               },
@@ -2076,12 +2140,12 @@
             "schema": {
               "additionalProperties": true,
               "example": {
-                "draw": "id,status,name,entry_count,entry_hash,entry_canonical,winner_count,seed,seed_source,seed_json,results,drand_chain,drand_round,drand_randomness,drand_signature,drand_response,weather_station,weather_time,weather_value,weather_raw,weather_observation_time,weather_fallback_reason,callback_url,metadata,executed_at,failed_at,failure_reason,stage_timestamps,operator_sequence,operator_id"
+                "draw": "id,status,name,entry_count,entry_hash,entry_canonical,winner_count,seed,seed_source,seed_json,results,drand_chain,drand_round,drand_randomness,drand_signature,drand_response,weather_station,weather_time,weather_value,weather_raw,weather_observation_time,weather_fallback_reason,callback_url,metadata,check_url,executed_at,failed_at,failure_reason,stage_timestamps,operator_sequence,operator_id"
               },
               "properties": {
                 "draw": {
                   "description": "Comma separated field names for draw",
-                  "example": "id,status,name,entry_count,entry_hash,entry_canonical,winner_count,seed,seed_source,seed_json,results,drand_chain,drand_round,drand_randomness,drand_signature,drand_response,weather_station,weather_time,weather_value,weather_raw,weather_observation_time,weather_fallback_reason,callback_url,metadata,executed_at,failed_at,failure_reason,stage_timestamps,operator_sequence,operator_id",
+                  "example": "id,status,name,entry_count,entry_hash,entry_canonical,winner_count,seed,seed_source,seed_json,results,drand_chain,drand_round,drand_randomness,drand_signature,drand_response,weather_station,weather_time,weather_value,weather_raw,weather_observation_time,weather_fallback_reason,callback_url,metadata,check_url,executed_at,failed_at,failure_reason,stage_timestamps,operator_sequence,operator_id",
                   "type": "string"
                 }
               },
@@ -2112,6 +2176,17 @@
                               }
                             ],
                             "description": "Optional HTTPS URL to receive a webhook POST when the draw completes or fails. Must be a valid HTTPS URL."
+                          },
+                          "check_url": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ],
+                            "description": "Optional HTTPS URL to the operator's own \"check your ticket\" page. Rendered as an outbound link on the public proof page when a user checks a non-winning UUID — lets operators offer richer-than-flat- boolean lookup (e.g. confirm an entry was submitted, show position) which wallop itself does not provide publicly. Must be ≤ 2048 characters, must be `https://`, and must not contain whitespace. `javascript:`, `data:`, `file:`, `vbscript:`, and other non-https schemes are rejected. Note: `check_url` is display metadata, not part of the signed receipt or entry_hash — operators can point the URL's DNS elsewhere later. Treat it as operator-mutable-in-effect."
                           },
                           "metadata": {
                             "anyOf": [
@@ -2240,12 +2315,12 @@
             "schema": {
               "additionalProperties": true,
               "example": {
-                "draw": "id,status,name,entry_count,entry_hash,entry_canonical,winner_count,seed,seed_source,seed_json,results,drand_chain,drand_round,drand_randomness,drand_signature,drand_response,weather_station,weather_time,weather_value,weather_raw,weather_observation_time,weather_fallback_reason,callback_url,metadata,executed_at,failed_at,failure_reason,stage_timestamps,operator_sequence,operator_id"
+                "draw": "id,status,name,entry_count,entry_hash,entry_canonical,winner_count,seed,seed_source,seed_json,results,drand_chain,drand_round,drand_randomness,drand_signature,drand_response,weather_station,weather_time,weather_value,weather_raw,weather_observation_time,weather_fallback_reason,callback_url,metadata,check_url,executed_at,failed_at,failure_reason,stage_timestamps,operator_sequence,operator_id"
               },
               "properties": {
                 "draw": {
                   "description": "Comma separated field names for draw",
-                  "example": "id,status,name,entry_count,entry_hash,entry_canonical,winner_count,seed,seed_source,seed_json,results,drand_chain,drand_round,drand_randomness,drand_signature,drand_response,weather_station,weather_time,weather_value,weather_raw,weather_observation_time,weather_fallback_reason,callback_url,metadata,executed_at,failed_at,failure_reason,stage_timestamps,operator_sequence,operator_id",
+                  "example": "id,status,name,entry_count,entry_hash,entry_canonical,winner_count,seed,seed_source,seed_json,results,drand_chain,drand_round,drand_randomness,drand_signature,drand_response,weather_station,weather_time,weather_value,weather_raw,weather_observation_time,weather_fallback_reason,callback_url,metadata,check_url,executed_at,failed_at,failure_reason,stage_timestamps,operator_sequence,operator_id",
                   "type": "string"
                 }
               },
@@ -2325,12 +2400,12 @@
             "schema": {
               "additionalProperties": true,
               "example": {
-                "draw": "id,status,name,entry_count,entry_hash,entry_canonical,winner_count,seed,seed_source,seed_json,results,drand_chain,drand_round,drand_randomness,drand_signature,drand_response,weather_station,weather_time,weather_value,weather_raw,weather_observation_time,weather_fallback_reason,callback_url,metadata,executed_at,failed_at,failure_reason,stage_timestamps,operator_sequence,operator_id"
+                "draw": "id,status,name,entry_count,entry_hash,entry_canonical,winner_count,seed,seed_source,seed_json,results,drand_chain,drand_round,drand_randomness,drand_signature,drand_response,weather_station,weather_time,weather_value,weather_raw,weather_observation_time,weather_fallback_reason,callback_url,metadata,check_url,executed_at,failed_at,failure_reason,stage_timestamps,operator_sequence,operator_id"
               },
               "properties": {
                 "draw": {
                   "description": "Comma separated field names for draw",
-                  "example": "id,status,name,entry_count,entry_hash,entry_canonical,winner_count,seed,seed_source,seed_json,results,drand_chain,drand_round,drand_randomness,drand_signature,drand_response,weather_station,weather_time,weather_value,weather_raw,weather_observation_time,weather_fallback_reason,callback_url,metadata,executed_at,failed_at,failure_reason,stage_timestamps,operator_sequence,operator_id",
+                  "example": "id,status,name,entry_count,entry_hash,entry_canonical,winner_count,seed,seed_source,seed_json,results,drand_chain,drand_round,drand_randomness,drand_signature,drand_response,weather_station,weather_time,weather_value,weather_raw,weather_observation_time,weather_fallback_reason,callback_url,metadata,check_url,executed_at,failed_at,failure_reason,stage_timestamps,operator_sequence,operator_id",
                   "type": "string"
                 }
               },
@@ -2485,12 +2560,12 @@
             "schema": {
               "additionalProperties": true,
               "example": {
-                "draw": "id,status,name,entry_count,entry_hash,entry_canonical,winner_count,seed,seed_source,seed_json,results,drand_chain,drand_round,drand_randomness,drand_signature,drand_response,weather_station,weather_time,weather_value,weather_raw,weather_observation_time,weather_fallback_reason,callback_url,metadata,executed_at,failed_at,failure_reason,stage_timestamps,operator_sequence,operator_id"
+                "draw": "id,status,name,entry_count,entry_hash,entry_canonical,winner_count,seed,seed_source,seed_json,results,drand_chain,drand_round,drand_randomness,drand_signature,drand_response,weather_station,weather_time,weather_value,weather_raw,weather_observation_time,weather_fallback_reason,callback_url,metadata,check_url,executed_at,failed_at,failure_reason,stage_timestamps,operator_sequence,operator_id"
               },
               "properties": {
                 "draw": {
                   "description": "Comma separated field names for draw",
-                  "example": "id,status,name,entry_count,entry_hash,entry_canonical,winner_count,seed,seed_source,seed_json,results,drand_chain,drand_round,drand_randomness,drand_signature,drand_response,weather_station,weather_time,weather_value,weather_raw,weather_observation_time,weather_fallback_reason,callback_url,metadata,executed_at,failed_at,failure_reason,stage_timestamps,operator_sequence,operator_id",
+                  "example": "id,status,name,entry_count,entry_hash,entry_canonical,winner_count,seed,seed_source,seed_json,results,drand_chain,drand_round,drand_randomness,drand_signature,drand_response,weather_station,weather_time,weather_value,weather_raw,weather_observation_time,weather_fallback_reason,callback_url,metadata,check_url,executed_at,failed_at,failure_reason,stage_timestamps,operator_sequence,operator_id",
                   "type": "string"
                 }
               },

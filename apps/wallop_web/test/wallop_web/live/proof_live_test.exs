@@ -140,13 +140,13 @@ defmodule WallopWeb.ProofLiveTest do
     end
   end
 
-  describe "metadata.check_url passthrough on the static proof page" do
+  describe "check_url passthrough on the static proof page" do
     test "renders the operator's check_url when a non-winner is checked", %{conn: conn} do
       api_key = create_api_key()
 
       draw =
         create_draw(api_key, %{
-          metadata: %{"check_url" => "https://operator.example/check-your-ticket"}
+          check_url: "https://operator.example/check-your-ticket"
         })
 
       draw = execute_draw(draw, test_seed(), api_key)
@@ -164,7 +164,7 @@ defmodule WallopWeb.ProofLiveTest do
       assert html =~ ~s|target="_blank"|
     end
 
-    test "does not render check_url when draw has no metadata.check_url", %{conn: conn} do
+    test "does not render check_url when draw has none", %{conn: conn} do
       api_key = create_api_key()
       draw = create_draw(api_key, %{})
       draw = execute_draw(draw, test_seed(), api_key)
@@ -186,7 +186,7 @@ defmodule WallopWeb.ProofLiveTest do
 
       draw =
         create_draw(api_key, %{
-          metadata: %{"check_url" => "https://operator.example/check"}
+          check_url: "https://operator.example/check"
         })
 
       draw = execute_draw(draw, test_seed(), api_key)

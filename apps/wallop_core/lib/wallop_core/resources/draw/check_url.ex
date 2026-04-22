@@ -22,14 +22,21 @@ defmodule WallopCore.Resources.Draw.CheckUrl do
 
   @spec validate(term()) :: :ok | {:error, String.t()}
   def validate(url) when is_binary(url) do
-    if String.length(url) > @max_length do
-      {:error, "must be at most #{@max_length} characters"}
-    else
-      parse_and_check(url)
+    cond do
+      String.length(url) > @max_length ->
+        {:error, "must be at most #{@max_length} characters"}
+
+      contains_whitespace?(url) ->
+        {:error, "must not contain whitespace"}
+
+      true ->
+        parse_and_check(url)
     end
   end
 
   def validate(_), do: {:error, "must be a string"}
+
+  defp contains_whitespace?(url), do: String.contains?(url, [" ", "\t", "\n", "\r"])
 
   defp parse_and_check(url) do
     case URI.parse(url) do

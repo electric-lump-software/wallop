@@ -327,9 +327,9 @@ defmodule WallopWeb.ProofPdfHTML do
   defp winner_word(_), do: "winners"
 
   # Extract the operator-supplied check_url from draw.metadata. Returns
-  # the URL string if present, or nil. Validation happens upstream on
-  # create; this is purely a render-time lookup.
-  defp check_url(%{metadata: %{"check_url" => url}}) when is_binary(url), do: url
+  # Operator-supplied check_url, validated at Draw.create. Purely a
+  # render-time lookup.
+  defp check_url(%{check_url: url}) when is_binary(url), do: url
   defp check_url(_), do: nil
 
   defp entry_word(1), do: "entry"
