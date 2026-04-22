@@ -102,5 +102,17 @@ defmodule WallopCore.ProofTest do
       assert {:ok, %{found: false}} =
                Proof.check_entry(draw, "00000000-0000-4000-8000-000000000000")
     end
+
+    test "returns not found for a non-UUID input instead of crashing", %{draw: draw} do
+      # Bug: Entry.id is an Ecto UUID column, so Ash cast the input string
+      # through UUID validation before running the query. Non-UUID user input
+      # (e.g. someone typing "df" into the proof page self-check box) raised
+      # Ecto.Query.CastError with a 500 at the proof controller. The lookup
+      # should treat any non-UUID input as "not in this draw" rather than
+      # crashing.
+      for bad <- ["df", "", "not-a-uuid", "AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAAA"] do
+        assert {:ok, %{found: false}} = Proof.check_entry(draw, bad)
+      end
+    end
   end
 end
