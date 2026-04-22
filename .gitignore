@@ -33,3 +33,4 @@ CLAUDE.md
 
 # Git worktrees for isolated feature branches
 .worktrees/
+docs/superpowers/plans/
