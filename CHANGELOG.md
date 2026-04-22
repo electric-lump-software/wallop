@@ -7,6 +7,49 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### wallop_core 0.15.0 — BREAKING: entry identifier refactor
+
+This release replaces operator-chosen entry IDs with wallop-assigned
+UUIDs, adds an optional `operator_ref` sidecar, and rewrites the
+`entry_hash` canonical form. Lock receipt schema bumps v2 → v3. Every
+downstream consumer that reads entries, winners, or signed receipts
+needs to update.
+
+The previous scheme ("opaque operator IDs, masked on the public proof
+page") was cryptographically incoherent — unsalted SHA-256 made
+`entry_hash` brute-forceable against low-entropy IDs, and third
+parties couldn't actually verify a draw without the raw entry list.
+The new scheme publishes UUIDs + weights on the public proof page,
+keeps any operator-supplied reference strings private, and binds the
+`draw_id` into the hash to prevent cross-draw confusion.
+
+#### Canonical form
+
+`entry_hash = SHA-256(JCS({draw_id, entries: [{operator_ref?, uuid, weight} sorted by uuid]}))`. The `operator_ref` key is omitted when nil or empty; empty strings are normalised to nil at ingest. All UUIDs must be lowercase, hyphenated, 36-char RFC 4122. Weights must be positive integers. Refs must be ≤ 64 bytes (not codepoints — byte semantics are pinned) and must not contain control characters (U+0000–U+001F, U+007F, U+2028, U+2029). Violations raise at the Protocol boundary. See `spec/protocol.md` §2.1 and the eight edge-case vectors in `spec/vectors/entry-hash.json`.
+
+#### Entry resource
+
+The `entry_id` column is renamed to `operator_ref`, made nullable, and stripped of the old PII-reject regex and `(draw_id, entry_id)` unique index. The Ash primary key `id` is the public UUID — bound into `entry_hash`, returned in the API, published on the proof page. Entry rows remain immutable post-lock via the existing Postgres trigger.
+
+#### Ingest API
+
+`add_entries` now accepts `[%{ref, weight}]` (ref optional). The response includes the wallop-assigned UUID per entry, in submission order. **Capture the `uuid ↔ your customer` mapping immediately from the submit response — wallop cannot reconstruct it later.** `remove_entry` now takes an `entry_uuid` argument. The batch-dedup check is removed; `operator_ref` uniqueness is the operator's problem.
+
+#### Receipts
+
+Lock receipt schema v3 — same 16 fields as v2, new `schema_version` value signals the new `entry_hash` canonical form. Verifiers reject unknown `schema_version` values rather than attempting to reconstruct an older shape. `wallop_core_version` in the signed payload is the forensic anchor if a future canonical form ever ships. Execution receipt schema unchanged; its `results` field now holds entry UUIDs (was operator IDs).
+
+#### Proof page / PDF
+
+Entry-ID anonymisation is removed. `WinnerList`, PDF appendix, and proof bundle emit raw UUIDs. `operator_ref` is never rendered on any public surface. Any historical cached PDFs of locked draws will fail the fingerprint invariant on regeneration — **purge the PDF cache on deploy.**
+
+#### Migrating
+
+- Anyone reading `entry.entry_id` → `entry.operator_ref`.
+- Anyone reading winners: `results[n]["entry_id"]` is now a UUID.
+- Anyone submitting entries: send `%{ref: ..., weight: ...}`, store the returned `uuid` per entry alongside your own customer ID.
+- External verifiers (the published Rust verifier crate + WASM bindings) must bump to 0.5.0 and implement the new canonical form.
+
 ### wallop_core
 
 - **Pin AES-GCM IV length to 12 bytes.** Cloak defaults to 16 when `iv_length` is omitted, which differs from the NIST SP 800-38D recommendation of 96-bit (12-byte) IVs. Any service sharing the same database must use the same IV length — pinning it explicitly in all environments (dev, test, prod) prevents silent interop failures when decrypting at-rest signing keys and webhook secrets.
