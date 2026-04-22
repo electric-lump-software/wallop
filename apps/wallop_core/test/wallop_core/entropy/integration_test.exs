@@ -81,9 +81,9 @@ defmodule WallopCore.Entropy.IntegrationTest do
       draw =
         create_draw(api_key, %{
           entries: [
-            %{"id" => "alice", "weight" => 1},
-            %{"id" => "bob", "weight" => 1},
-            %{"id" => "charlie", "weight" => 3}
+            %{"ref" => "alice", "weight" => 1},
+            %{"ref" => "bob", "weight" => 1},
+            %{"ref" => "charlie", "weight" => 3}
           ],
           winner_count: 2,
           entropy: true
@@ -121,9 +121,10 @@ defmodule WallopCore.Entropy.IntegrationTest do
       assert length(completed.results) == 2
 
       # Verify results match FairPick.draw/3 directly
-      atom_entries = WallopCore.Entries.load_for_draw(completed.id)
+      entries = WallopCore.Entries.load_for_draw(completed.id)
+      fair_pick_entries = Enum.map(entries, &%{id: &1.uuid, weight: &1.weight})
       seed_bytes = Base.decode16!(completed.seed, case: :mixed)
-      expected_results = FairPick.draw(atom_entries, seed_bytes, completed.winner_count)
+      expected_results = FairPick.draw(fair_pick_entries, seed_bytes, completed.winner_count)
 
       expected_json =
         Enum.map(expected_results, fn %{position: pos, entry_id: id} ->
@@ -208,8 +209,11 @@ defmodule WallopCore.Entropy.IntegrationTest do
       assert completed.seed_json == expected_seed_json
 
       # Verify results match
-      atom_entries = WallopCore.Entries.load_for_draw(completed.id)
-      expected_results = FairPick.draw(atom_entries, expected_seed_bytes, completed.winner_count)
+      entries = WallopCore.Entries.load_for_draw(completed.id)
+      fair_pick_entries = Enum.map(entries, &%{id: &1.uuid, weight: &1.weight})
+
+      expected_results =
+        FairPick.draw(fair_pick_entries, expected_seed_bytes, completed.winner_count)
 
       expected_json =
         Enum.map(expected_results, fn %{position: pos, entry_id: id} ->

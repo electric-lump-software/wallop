@@ -1,31 +1,75 @@
 {
-  "description": "entry_hash canonicalization: sort entries by id, JCS-encode, SHA-256",
+  "description": "entry_hash canonical form: SHA-256(JCS({draw_id, entries[{uuid, weight} sorted by uuid]})). operator_ref is an operator-private sidecar on the Entry resource and is deliberately NOT committed in the hash — the canonical form must be reproducible from the public ProofBundle bytes alone. Fixtures below may carry an operator_ref field for documentation, but it does not influence the expected_jcs or expected_hash.",
   "vectors": [
     {
-      "name": "equal-weight entries",
+      "draw_id": "11111111-1111-4111-8111-111111111111",
       "entries": [
-        {"id": "ticket-47", "weight": 1},
-        {"id": "ticket-48", "weight": 1},
-        {"id": "ticket-49", "weight": 1}
+        {
+          "operator_ref": null,
+          "uuid": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+          "weight": 1
+        }
       ],
-      "expected_jcs": "{\"entries\":[{\"id\":\"ticket-47\",\"weight\":1},{\"id\":\"ticket-48\",\"weight\":1},{\"id\":\"ticket-49\",\"weight\":1}]}",
-      "expected_hash": "6056fbb6c98a0f04404adb013192d284bfec98975e2a7975395c3bcd4ad59577"
+      "expected_hash": "d6ab8f4c63c05739f87a3cdb0d9235c09b59f4fca558a1394022e673059087e0",
+      "expected_jcs": "{\"draw_id\":\"11111111-1111-4111-8111-111111111111\",\"entries\":[{\"uuid\":\"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa\",\"weight\":1}]}",
+      "name": "single entry"
     },
     {
-      "name": "weighted entries",
+      "draw_id": "11111111-1111-4111-8111-111111111111",
       "entries": [
-        {"id": "alpha", "weight": 10},
-        {"id": "bravo", "weight": 1},
-        {"id": "charlie", "weight": 5}
+        {
+          "operator_ref": "ticket-001",
+          "uuid": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+          "weight": 1
+        }
       ],
-      "expected_hash": "5616386cc36c680fed74464bc2e6eb940b07ba1353dd8aa971e16fb7463013c6"
+      "expected_hash": "d6ab8f4c63c05739f87a3cdb0d9235c09b59f4fca558a1394022e673059087e0",
+      "expected_jcs": "{\"draw_id\":\"11111111-1111-4111-8111-111111111111\",\"entries\":[{\"uuid\":\"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa\",\"weight\":1}]}",
+      "name": "operator_ref does not affect hash"
     },
     {
-      "name": "single entry",
+      "draw_id": "11111111-1111-4111-8111-111111111111",
       "entries": [
-        {"id": "solo", "weight": 1}
+        {
+          "operator_ref": null,
+          "uuid": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+          "weight": 2
+        },
+        {
+          "operator_ref": null,
+          "uuid": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+          "weight": 1
+        }
       ],
-      "expected_hash": "6df489f98b5dac2a004bdee59e589b4626c9f7c4126e5242c1989335f6dd5d13"
+      "expected_hash": "ca823c8814baae6a390f6f336b83584f8675aba80e0f2923963adc2511b0899c",
+      "expected_jcs": "{\"draw_id\":\"11111111-1111-4111-8111-111111111111\",\"entries\":[{\"uuid\":\"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa\",\"weight\":1},{\"uuid\":\"bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb\",\"weight\":2}]}",
+      "name": "two entries sorted by uuid"
+    },
+    {
+      "draw_id": "11111111-1111-4111-8111-111111111111",
+      "entries": [
+        {
+          "operator_ref": null,
+          "uuid": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+          "weight": 9007199254740991
+        }
+      ],
+      "expected_hash": "00fd41b5ee2a98cc96d3a44f4c3a9b999965821112504b647a467066198426d9",
+      "expected_jcs": "{\"draw_id\":\"11111111-1111-4111-8111-111111111111\",\"entries\":[{\"uuid\":\"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa\",\"weight\":9007199254740991}]}",
+      "name": "weight at 2^53-1 boundary"
+    },
+    {
+      "draw_id": "22222222-2222-4222-8222-222222222222",
+      "entries": [
+        {
+          "operator_ref": null,
+          "uuid": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+          "weight": 1
+        }
+      ],
+      "expected_hash": "94d00da138fc2ba5200d3b14f413da77834ffc8756eb8ee24f1399ac41438766",
+      "expected_jcs": "{\"draw_id\":\"22222222-2222-4222-8222-222222222222\",\"entries\":[{\"uuid\":\"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa\",\"weight\":1}]}",
+      "name": "same entries different draw_id"
     }
   ]
 }

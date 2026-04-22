@@ -8453,7 +8453,7 @@ removing illegal node: "${(childNode.outerHTML || childNode.nodeValue).trim()}"
     }
   });
 
-  // node_modules/animejs/lib/anime.es.js
+  // ../../../../../apps/wallop_web/assets/node_modules/animejs/lib/anime.es.js
   function minMax(val, min, max) {
     return Math.min(Math.max(val, min), max);
   }
@@ -9534,7 +9534,7 @@ removing illegal node: "${(childNode.outerHTML || childNode.nodeValue).trim()}"
   }
   var defaultInstanceSettings, defaultTweenSettings, validTransforms, cache, is, bezier, penner, setProgressValue, instanceID, activeInstances, engine, anime_es_default;
   var init_anime_es = __esm({
-    "node_modules/animejs/lib/anime.es.js"() {
+    "../../../../../apps/wallop_web/assets/node_modules/animejs/lib/anime.es.js"() {
       defaultInstanceSettings = {
         update: null,
         begin: null,
@@ -10000,7 +10000,8 @@ removing illegal node: "${(childNode.outerHTML || childNode.nodeValue).trim()}"
           let hash1 = this.addMono(line1.row);
           let computedEntryHashFull;
           try {
-            let ehResult = wasm.entry_hash_wasm(JSON.parse(d.entriesJson));
+            let ehEntries = JSON.parse(d.entriesJson).map((e) => ({ id: e.uuid, weight: e.weight }));
+            let ehResult = wasm.entry_hash_wasm(d.drawId, ehEntries);
             computedEntryHashFull = ehResult instanceof Map ? ehResult.get("hash") : ehResult.hash;
             await scrambleText(hash1, computedEntryHashFull.substring(0, 8), 1200);
             if (computedEntryHashFull !== d.entryHashFull) {
@@ -10048,10 +10049,10 @@ removing illegal node: "${(childNode.outerHTML || childNode.nodeValue).trim()}"
           let resultsJson = d.resultsJson;
           let mathOk;
           try {
-            let entries = JSON.parse(entriesJson);
+            let entries = JSON.parse(entriesJson).map((e) => ({ id: e.uuid, weight: e.weight }));
             let expectedResults = JSON.parse(resultsJson);
             let count = parseInt(winnerCount);
-            mathOk = wasm.verify_wasm(entries, d.drandRandomness, weatherValue || void 0, count, expectedResults);
+            mathOk = wasm.verify_wasm(d.drawId, entries, d.drandRandomness, weatherValue || void 0, count, expectedResults);
           } catch (e) {
             this.markFailed(line4);
             this.showError("Verification error: " + e.message);
@@ -10173,7 +10174,7 @@ removing illegal node: "${(childNode.outerHTML || childNode.nodeValue).trim()}"
                 d.executionReceiptJcs,
                 d.executionSignatureHex,
                 d.infraPublicKeyHex,
-                JSON.parse(entriesJson)
+                JSON.parse(entriesJson).map((e) => ({ id: e.uuid, weight: e.weight }))
               );
             } catch (e) {
               this.markFailed(line9);

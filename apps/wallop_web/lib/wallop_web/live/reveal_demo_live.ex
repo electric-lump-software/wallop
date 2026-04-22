@@ -11,9 +11,9 @@ defmodule WallopWeb.RevealDemoLive do
     id: "demo-00000000-0000-0000-0000-000000000000",
     status: :open,
     entries: [
-      %{"id" => "demo-alice", "weight" => 1},
-      %{"id" => "demo-bob", "weight" => 1},
-      %{"id" => "demo-charlie", "weight" => 2}
+      %{"ref" => "demo-alice", "weight" => 1},
+      %{"ref" => "demo-bob", "weight" => 1},
+      %{"ref" => "demo-charlie", "weight" => 2}
     ],
     entry_hash: nil,
     entry_canonical: nil,
@@ -48,9 +48,9 @@ defmodule WallopWeb.RevealDemoLive do
     id: "demo-00000000-0000-0000-0000-000000000000",
     status: :completed,
     entries: [
-      %{"id" => "demo-alice", "weight" => 1},
-      %{"id" => "demo-bob", "weight" => 1},
-      %{"id" => "demo-charlie", "weight" => 2}
+      %{"ref" => "demo-alice", "weight" => 1},
+      %{"ref" => "demo-bob", "weight" => 1},
+      %{"ref" => "demo-charlie", "weight" => 2}
     ],
     entry_hash: "abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890",
     entry_canonical: "{}",

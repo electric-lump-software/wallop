@@ -4,7 +4,7 @@ defmodule WallopCore.ProtocolReceiptTest do
   alias WallopCore.Protocol
 
   describe "build_receipt_payload/1" do
-    test "produces JCS-canonical bytes with sorted keys (schema v2)" do
+    test "produces JCS-canonical bytes with sorted keys (schema v3)" do
       payload =
         Protocol.build_receipt_payload(%{
           operator_id: "11111111-1111-1111-1111-111111111111",
@@ -37,7 +37,7 @@ defmodule WallopCore.ProtocolReceiptTest do
                "locked_at" => "2026-04-07T12:34:56.789012Z",
                "operator_id" => "11111111-1111-1111-1111-111111111111",
                "operator_slug" => "acme-prizes",
-               "schema_version" => "2",
+               "schema_version" => "3",
                "sequence" => 42,
                "signing_key_id" => "deadbeef",
                "wallop_core_version" => "0.11.2",
@@ -73,7 +73,7 @@ defmodule WallopCore.ProtocolReceiptTest do
       assert decoded["weather_station"] == nil
       assert decoded["weather_time"] == nil
       assert decoded["winner_count"] == 1
-      assert decoded["schema_version"] == "2"
+      assert decoded["schema_version"] == "3"
     end
   end
 

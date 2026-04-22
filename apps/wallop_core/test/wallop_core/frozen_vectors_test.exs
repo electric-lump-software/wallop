@@ -43,38 +43,60 @@ defmodule WallopCore.FrozenVectorsTest do
       %{vectors: load_vector("entry-hash.json")["vectors"]}
     end
 
-    test "equal-weight entries", %{vectors: vectors} do
-      v = Enum.find(vectors, &(&1["name"] == "equal-weight entries"))
+    @vector_names [
+      "single entry",
+      "operator_ref does not affect hash",
+      "two entries sorted by uuid",
+      "weight at 2^53-1 boundary",
+      "same entries different draw_id"
+    ]
 
-      entries = Enum.map(v["entries"], fn e -> %{id: e["id"], weight: e["weight"]} end)
-      {hash, jcs} = Protocol.entry_hash(entries)
+    for vector_name <- @vector_names do
+      @vector_name vector_name
 
-      assert jcs == v["expected_jcs"]
-      assert hash == v["expected_hash"]
-    end
+      test @vector_name, %{vectors: vectors} do
+        v = Enum.find(vectors, &(&1["name"] == @vector_name))
+        refute is_nil(v), "vector not found: #{@vector_name}"
 
-    test "weighted entries", %{vectors: vectors} do
-      v = Enum.find(vectors, &(&1["name"] == "weighted entries"))
+        entries =
+          Enum.map(v["entries"], fn e ->
+            %{uuid: e["uuid"], operator_ref: e["operator_ref"], weight: e["weight"]}
+          end)
 
-      entries = Enum.map(v["entries"], fn e -> %{id: e["id"], weight: e["weight"]} end)
-      {hash, _jcs} = Protocol.entry_hash(entries)
+        {hash, jcs} = Protocol.entry_hash({v["draw_id"], entries})
 
-      assert hash == v["expected_hash"]
-    end
-
-    test "single entry", %{vectors: vectors} do
-      v = Enum.find(vectors, &(&1["name"] == "single entry"))
-
-      entries = Enum.map(v["entries"], fn e -> %{id: e["id"], weight: e["weight"]} end)
-      {hash, _jcs} = Protocol.entry_hash(entries)
-
-      assert hash == v["expected_hash"]
+        assert jcs == v["expected_jcs"]
+        assert hash == v["expected_hash"]
+      end
     end
 
     test "input order does not affect output" do
-      a = [%{id: "z", weight: 2}, %{id: "a", weight: 1}]
-      b = [%{id: "a", weight: 1}, %{id: "z", weight: 2}]
-      assert Protocol.entry_hash(a) == Protocol.entry_hash(b)
+      draw_id = "11111111-1111-4111-8111-111111111111"
+      uuid_a = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+      uuid_z = "ffffffff-ffff-4fff-8fff-ffffffffffff"
+
+      a = [
+        %{uuid: uuid_z, operator_ref: nil, weight: 2},
+        %{uuid: uuid_a, operator_ref: nil, weight: 1}
+      ]
+
+      b = [
+        %{uuid: uuid_a, operator_ref: nil, weight: 1},
+        %{uuid: uuid_z, operator_ref: nil, weight: 2}
+      ]
+
+      assert Protocol.entry_hash({draw_id, a}) == Protocol.entry_hash({draw_id, b})
+    end
+
+    test "same entries in different draw_ids produce different hashes" do
+      entries = [
+        %{uuid: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", operator_ref: nil, weight: 1}
+      ]
+
+      {h1, _} = Protocol.entry_hash({"11111111-1111-4111-8111-111111111111", entries})
+      {h2, _} = Protocol.entry_hash({"22222222-2222-4222-8222-222222222222", entries})
+
+      refute h1 == h2
     end
   end
 
@@ -238,7 +260,7 @@ defmodule WallopCore.FrozenVectorsTest do
 
   # ── V-5: Lock receipt payload ─────────────────────────────────────
 
-  describe "V-5: lock receipt payload (schema v2)" do
+  describe "V-5: lock receipt payload (schema v3)" do
     setup do
       %{vector: load_vector("lock-receipt.json")}
     end
@@ -307,22 +329,27 @@ defmodule WallopCore.FrozenVectorsTest do
     end
 
     test "entries → hash → seed → winners", %{vector: v} do
-      entries =
-        Enum.map(v["input"]["entries"], fn e -> %{id: e["id"], weight: e["weight"]} end)
+      input = v["input"]
 
-      {entry_hash, _} = Protocol.entry_hash(entries)
+      entries =
+        Enum.map(input["entries"], fn e ->
+          %{uuid: e["uuid"], operator_ref: e["operator_ref"], weight: e["weight"]}
+        end)
+
+      {entry_hash, _} = Protocol.entry_hash({input["draw_id"], entries})
       assert entry_hash == v["expected"]["entry_hash"]
 
       {seed_bytes, _} =
         Protocol.compute_seed(
           entry_hash,
-          v["input"]["drand_randomness"],
-          v["input"]["weather_value"]
+          input["drand_randomness"],
+          input["weather_value"]
         )
 
       assert Base.encode16(seed_bytes, case: :lower) == v["expected"]["seed_hex"]
 
-      result = FairPick.draw(entries, seed_bytes, v["input"]["winner_count"])
+      fair_pick_entries = Enum.map(entries, &%{id: &1.uuid, weight: &1.weight})
+      result = FairPick.draw(fair_pick_entries, seed_bytes, input["winner_count"])
       assert Enum.map(result, & &1.entry_id) == v["expected"]["winners"]
     end
   end

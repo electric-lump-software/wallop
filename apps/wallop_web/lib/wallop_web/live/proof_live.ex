@@ -118,10 +118,10 @@ defmodule WallopWeb.ProofLive do
       # Lock transition: open → awaiting_entropy (animate stages 0-3).
       # Refresh the lock receipt — it didn't exist when the LiveView mounted
       # in :open state, but the lock action just wrote it. The reveal_complete
-      # redirect (PAM-750) masks the user-visible symptom by handing off to
-      # the static controller, but this assign refresh keeps the LiveView's
-      # internal state consistent — defense in depth for any future code path
-      # that renders the receipt panel from the LiveView itself.
+      # redirect masks the user-visible symptom by handing off to the static
+      # controller, but this assign refresh keeps the LiveView's internal
+      # state consistent — defense in depth for any future code path that
+      # renders the receipt panel from the LiveView itself.
       old_status == :open and new_status == :awaiting_entropy ->
         {_operator, lock_receipt, _exec} = WallopCore.OperatorInfo.for_draw(draw)
 
@@ -181,7 +181,7 @@ defmodule WallopWeb.ProofLive do
   defp load_verify_data(draw) do
     entries =
       WallopCore.Entries.load_for_draw(draw.id)
-      |> Enum.map(fn %{id: id, weight: weight} -> %{"id" => id, "weight" => weight} end)
+      |> Enum.map(fn %{uuid: uuid, weight: weight} -> %{"uuid" => uuid, "weight" => weight} end)
 
     {Jason.encode!(entries), Jason.encode!(draw.results || [])}
   end

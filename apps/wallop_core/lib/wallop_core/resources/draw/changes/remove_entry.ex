@@ -1,6 +1,7 @@
 defmodule WallopCore.Resources.Draw.Changes.RemoveEntry do
   @moduledoc """
-  Removes a single entry from an open draw by entry ID.
+  Removes a single entry from an open draw by its wallop-assigned UUID
+  (the Entry's `id` — the public identifier bound into `entry_hash`).
   """
   use Ash.Resource.Change
 
@@ -11,11 +12,11 @@ defmodule WallopCore.Resources.Draw.Changes.RemoveEntry do
   @impl true
   def change(changeset, _opts, _context) do
     draw = changeset.data
-    entry_id = Ash.Changeset.get_argument(changeset, :entry_id)
+    entry_uuid = Ash.Changeset.get_argument(changeset, :entry_uuid)
 
-    case find_entry(draw.id, entry_id) do
+    case find_entry(draw.id, entry_uuid) do
       nil ->
-        Ash.Changeset.add_error(changeset, field: :entry_id, message: "entry not found")
+        Ash.Changeset.add_error(changeset, field: :entry_uuid, message: "entry not found")
 
       entry ->
         new_count = max((draw.entry_count || 0) - 1, 0)
@@ -30,10 +31,9 @@ defmodule WallopCore.Resources.Draw.Changes.RemoveEntry do
     end
   end
 
-  @spec find_entry(String.t(), String.t()) :: Entry.t() | nil
-  defp find_entry(draw_id, entry_id) do
+  defp find_entry(draw_id, entry_uuid) do
     Entry
-    |> Ash.Query.filter(draw_id == ^draw_id and entry_id == ^entry_id)
+    |> Ash.Query.filter(draw_id == ^draw_id and id == ^entry_uuid)
     |> Ash.read_one!(authorize?: false)
   end
 end

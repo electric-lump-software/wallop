@@ -120,7 +120,7 @@ defmodule WallopCore.Resources.ExecutionReceiptTest do
       assert exec_receipt.lock_receipt_hash == expected_hash
     end
 
-    test "results are a flat list of entry_id strings in position order", %{draw: draw} do
+    test "results are a flat list of entry UUIDs in position order", %{draw: draw} do
       [receipt] =
         ExecutionReceipt
         |> Ash.Query.filter(draw_id == ^draw.id)
@@ -133,9 +133,11 @@ defmodule WallopCore.Resources.ExecutionReceiptTest do
       assert length(results) == draw.winner_count
       assert Enum.all?(results, &is_binary/1)
 
-      # Results should be entry IDs from our test entries
-      test_entry_ids = ["ticket-47", "ticket-48", "ticket-49"]
-      assert Enum.all?(results, fn r -> r in test_entry_ids end)
+      uuid_regex = ~r/\A[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\z/
+      assert Enum.all?(results, &String.match?(&1, uuid_regex))
+
+      entry_uuids = WallopCore.Entries.load_for_draw(draw.id) |> Enum.map(& &1.uuid)
+      assert Enum.all?(results, fn r -> r in entry_uuids end)
     end
 
     test "payload JCS keys are sorted (canonical JSON)" do
