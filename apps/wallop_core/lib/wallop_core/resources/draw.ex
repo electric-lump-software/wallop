@@ -31,7 +31,7 @@ defmodule WallopCore.Resources.Draw do
     defaults([:read])
 
     create :create do
-      accept([:name, :winner_count, :metadata, :callback_url])
+      accept([:name, :winner_count, :metadata, :callback_url, :check_url])
 
       validate({WallopCore.Resources.Draw.Validations.RequireOperator, []})
 
@@ -40,6 +40,7 @@ defmodule WallopCore.Resources.Draw do
       change({WallopCore.Resources.Draw.Changes.AssignOperatorSequence, []})
       change({WallopCore.Resources.Draw.Changes.IncrementApiKeyDrawCount, []})
       change({WallopCore.Resources.Draw.Changes.ValidateCallbackUrl, []})
+      change({WallopCore.Resources.Draw.Changes.ValidateCheckUrl, []})
       change({WallopCore.Resources.Draw.Changes.RecordStageTimestamp, key: "opened_at"})
       change({WallopCore.Resources.Draw.Changes.BroadcastUpdate, []})
     end
@@ -445,6 +446,25 @@ defmodule WallopCore.Resources.Draw do
       description(
         "Arbitrary JSON object stored with the draw. Not used in seed computation. Useful " <>
           "for storing external references (e.g. your internal draw ID)."
+      )
+
+      allow_nil?(true)
+      public?(true)
+    end
+
+    attribute :check_url, :string do
+      description(
+        "Optional HTTPS URL to the operator's own \"check your ticket\" page. " <>
+          "Rendered as an outbound link on the public proof page when a user " <>
+          "checks a non-winning UUID — lets operators offer richer-than-flat- " <>
+          "boolean lookup (e.g. confirm an entry was submitted, show position) " <>
+          "which wallop itself does not provide publicly. " <>
+          "Must be ≤ 2048 characters, must be `https://`, and must not " <>
+          "contain whitespace. `javascript:`, `data:`, `file:`, `vbscript:`, " <>
+          "and other non-https schemes are rejected. " <>
+          "Note: `check_url` is display metadata, not part of the signed " <>
+          "receipt or entry_hash — operators can point the URL's DNS " <>
+          "elsewhere later. Treat it as operator-mutable-in-effect."
       )
 
       allow_nil?(true)

@@ -91,7 +91,12 @@
 
   <div class="bg-white border border-cream-border rounded-xl">
     <div class="p-5">
-      <.entry_check check_result={@check_result} draw_status={@draw.status} checked_entry_id={@checked_entry_id} />
+      <.entry_check
+        check_result={@check_result}
+        draw_status={@draw.status}
+        checked_entry_id={@checked_entry_id}
+        check_url={@draw.check_url}
+      />
     </div>
   </div>
 
@@ -170,7 +175,12 @@
 
   <div class="bg-white border border-cream-border rounded-xl">
     <div class="p-5">
-      <.entry_check check_result={@check_result} draw_status={@draw.status} checked_entry_id={@checked_entry_id} />
+      <.entry_check
+        check_result={@check_result}
+        draw_status={@draw.status}
+        checked_entry_id={@checked_entry_id}
+        check_url={@draw.check_url}
+      />
     </div>
   </div>
 </div>
