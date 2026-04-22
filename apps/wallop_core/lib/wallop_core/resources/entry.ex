@@ -15,7 +15,8 @@ defmodule WallopCore.Resources.Entry do
     defaults([:read])
 
     create :create do
-      accept([:draw_id, :entry_id, :weight])
+      accept([:draw_id, :operator_ref, :weight])
+      validate(WallopCore.Resources.Entry.Validations.OperatorRef)
     end
 
     destroy :destroy do
@@ -50,21 +51,18 @@ defmodule WallopCore.Resources.Entry do
       public?(true)
     end
 
-    attribute :entry_id, :string do
+    attribute :operator_ref, :string do
       description(
-        "Opaque identifier for this entry, provided by the API consumer. " <>
-          "Must be unique within the draw. " <>
-          "Only alphanumeric characters, hyphens, underscores, dots, colons, and equals signs are allowed " <>
-          "(regex: `^[a-zA-Z0-9_\\-:.=]+$`).\n\n" <>
-          "**Do not use PII as entry IDs.** Entry IDs are hashed into a " <>
-          "permanent, public proof record that cannot be deleted. Email addresses, " <>
-          "phone numbers, and names will be rejected. Use opaque identifiers " <>
-          "(e.g. a UUID or numeric ID from your own system) and keep the " <>
-          "ID-to-person mapping in your own database, where it can be deleted " <>
-          "on a GDPR removal request without affecting the proof record."
+        "Optional operator-supplied reference for this entry. " <>
+          "Stored alongside the wallop-assigned UUID (the `id` field) but " <>
+          "NOT exposed on the public proof page. Operators use this to map " <>
+          "wallop UUIDs back to their own customer or ticket IDs. " <>
+          "Must be ≤ 64 bytes and contain no control characters " <>
+          "(U+0000–U+001F, U+007F, U+2028, U+2029). No uniqueness check — " <>
+          "the operator is responsible for deduplication if they want it."
       )
 
-      allow_nil?(false)
+      allow_nil?(true)
       public?(true)
     end
 
@@ -89,9 +87,5 @@ defmodule WallopCore.Resources.Entry do
       define_attribute?(false)
       source_attribute(:draw_id)
     end
-  end
-
-  identities do
-    identity(:unique_entry_per_draw, [:draw_id, :entry_id])
   end
 end
