@@ -50,6 +50,33 @@ defmodule WallopCore.Resources.Draw do
 
       argument :entries, {:array, :map} do
         allow_nil?(false)
+
+        # Map shape is documented here so it surfaces in the generated
+        # OpenAPI schema rather than appearing as a bare "array of objects".
+        # ValidateEntries and AddEntries enforce the same rules at runtime.
+        constraints(
+          items: [
+            fields: [
+              ref: [
+                type: :string,
+                allow_nil?: true,
+                description:
+                  "Optional operator-supplied reference string for this entry, " <>
+                    "stored as `operator_ref` on the Entry resource. " <>
+                    "Visible only to the operator via the authenticated entries " <>
+                    "endpoint; never on the public proof page. " <>
+                    "Must be ≤ 64 bytes and contain no control characters."
+              ],
+              weight: [
+                type: :integer,
+                allow_nil?: false,
+                description:
+                  "Weighting for this entry. Positive integer, max 1000. " <>
+                    "Higher weight increases selection probability proportionally."
+              ]
+            ]
+          ]
+        )
       end
 
       change({WallopCore.Resources.Draw.Changes.ValidateEntries, []})
