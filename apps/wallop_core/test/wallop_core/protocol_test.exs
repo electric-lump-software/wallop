@@ -25,21 +25,25 @@ defmodule WallopCore.ProtocolTest do
       assert String.match?(hash, ~r/^[0-9a-f]{64}$/)
     end
 
-    test "operator_ref present sorts alphabetically inside entry object" do
-      entries = [%{uuid: @uuid_a, operator_ref: "alice", weight: 1}]
+    test "operator_ref is ignored and does not affect the hash" do
+      # operator_ref is an operator-private sidecar on the Entry resource.
+      # The canonical entry_hash MUST NOT depend on it — otherwise a
+      # third-party verifier reading the public ProofBundle (which never
+      # exposes operator_ref) could not reproduce the committed hash.
+      # See the public-verifier invariant in ProofBundle tests.
+      without_ref = [%{uuid: @uuid_a, weight: 1}]
+      with_ref = [%{uuid: @uuid_a, operator_ref: "anything", weight: 1}]
+      with_nil = [%{uuid: @uuid_a, operator_ref: nil, weight: 1}]
+      with_empty = [%{uuid: @uuid_a, operator_ref: "", weight: 1}]
 
-      expected_jcs =
-        ~s({"draw_id":"#{@draw_id}","entries":[{"operator_ref":"alice","uuid":"#{@uuid_a}","weight":1}]})
+      assert Protocol.entry_hash({@draw_id, without_ref}) ==
+               Protocol.entry_hash({@draw_id, with_ref})
 
-      {_hash, jcs} = Protocol.entry_hash({@draw_id, entries})
-      assert jcs == expected_jcs
-    end
+      assert Protocol.entry_hash({@draw_id, without_ref}) ==
+               Protocol.entry_hash({@draw_id, with_nil})
 
-    test "empty-string operator_ref treated as nil (key omitted)" do
-      nil_ref = [%{uuid: @uuid_a, operator_ref: nil, weight: 1}]
-      empty = [%{uuid: @uuid_a, operator_ref: "", weight: 1}]
-
-      assert Protocol.entry_hash({@draw_id, nil_ref}) == Protocol.entry_hash({@draw_id, empty})
+      assert Protocol.entry_hash({@draw_id, without_ref}) ==
+               Protocol.entry_hash({@draw_id, with_empty})
     end
 
     test "same entries in different draw_ids produce different hashes" do
@@ -89,40 +93,6 @@ defmodule WallopCore.ProtocolTest do
       end
     end
 
-    test "operator_ref accepts exactly 64 bytes" do
-      sixty_four = String.duplicate("a", 64)
-      entries = [%{uuid: @uuid_a, operator_ref: sixty_four, weight: 1}]
-
-      assert {_, _} = Protocol.entry_hash({@draw_id, entries})
-    end
-
-    test "operator_ref limit is bytes, not codepoints" do
-      # 33 x "é" = 66 bytes, 33 codepoints — over the byte limit
-      over = String.duplicate("é", 33)
-      entries = [%{uuid: @uuid_a, operator_ref: over, weight: 1}]
-
-      assert_raise ArgumentError, ~r/operator_ref/i, fn ->
-        Protocol.entry_hash({@draw_id, entries})
-      end
-    end
-
-    test "rejects control chars in operator_ref" do
-      bad_refs = [
-        "\x00foo",
-        "foo\x1F",
-        "foo\x7Fbar",
-        "line1\u{2028}line2",
-        "para\u{2029}end"
-      ]
-
-      for bad <- bad_refs do
-        entries = [%{uuid: @uuid_a, operator_ref: bad, weight: 1}]
-
-        assert_raise ArgumentError, ~r/operator_ref/i, fn ->
-          Protocol.entry_hash({@draw_id, entries})
-        end
-      end
-    end
   end
 
   describe "compute_seed/3" do

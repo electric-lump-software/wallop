@@ -25,7 +25,9 @@ keeps any operator-supplied reference strings private, and binds the
 
 #### Canonical form
 
-`entry_hash = SHA-256(JCS({draw_id, entries: [{operator_ref?, uuid, weight} sorted by uuid]}))`. The `operator_ref` key is omitted when nil or empty; empty strings are normalised to nil at ingest. All UUIDs must be lowercase, hyphenated, 36-char RFC 4122. Weights must be positive integers. Refs must be ≤ 64 bytes (not codepoints — byte semantics are pinned) and must not contain control characters (U+0000–U+001F, U+007F, U+2028, U+2029). Violations raise at the Protocol boundary. See `spec/protocol.md` §2.1 and the eight edge-case vectors in `spec/vectors/entry-hash.json`.
+`entry_hash = SHA-256(JCS({draw_id, entries: [{uuid, weight} sorted by uuid]}))`. All UUIDs must be lowercase, hyphenated, 36-char RFC 4122. Weights must be positive integers. Violations raise at the Protocol boundary.
+
+**`operator_ref` is deliberately NOT committed in the hash.** It lives as an operator-private sidecar on the Entry resource, validated at ingest (≤ 64 bytes, no control codepoints U+0000–U+001F, U+007F, U+2028, U+2029), visible only to the operator via the authenticated entries endpoint, and never exposed on the public proof surface. The canonical form obeys a durable invariant: anything the hash commits must be derivable from the public ProofBundle bytes alone — so a third-party verifier can independently reproduce `entry_hash` without needing operator-only data. See `spec/protocol.md` §2.1 and the frozen vectors in `spec/vectors/entry-hash.json`.
 
 #### Entry resource
 
@@ -38,6 +40,10 @@ The `entry_id` column is renamed to `operator_ref`, made nullable, and stripped 
 #### Receipts
 
 Lock receipt schema v3 — same 16 fields as v2, new `schema_version` value signals the new `entry_hash` canonical form. Verifiers reject unknown `schema_version` values rather than attempting to reconstruct an older shape. `wallop_core_version` in the signed payload is the forensic anchor if a future canonical form ever ships. Execution receipt schema unchanged; its `results` field now holds entry UUIDs (was operator IDs).
+
+#### Public-verifier invariant
+
+The canonical `entry_hash` deliberately commits only fields present byte-identically in the public ProofBundle. A regression test (`ProofBundleTest`, "bundle entries reproduce the committed entry_hash") ensures any future change preserves this: it builds a draw with a mix of entries with and without `operator_ref`, emits the public bundle, and asserts the bundle's entries (without access to `operator_ref`) reproduce the signed lock receipt's `entry_hash`. The other commitments in the protocol (`compute_seed`, lock/execution receipt payload SHA-256, `lock_receipt_hash`, transparency anchor `merkle_root`) were audited and all satisfy the same invariant — their hashed inputs appear byte-identically in the public artifacts.
 
 #### Proof page / PDF
 

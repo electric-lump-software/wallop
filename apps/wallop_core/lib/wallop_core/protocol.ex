@@ -14,17 +14,28 @@ defmodule WallopCore.Protocol do
       SHA-256(JCS(%{
         "draw_id" => "<lowercase-hyphenated-uuidv4>",
         "entries" => [
-          %{"operator_ref" => ?, "uuid" => ..., "weight" => N},
+          %{"uuid" => "...", "weight" => N},
           ...
         ]
       }))
 
-  Entries are sorted ascending by `uuid` (binary lex). `operator_ref` is
-  omitted from the entry object when nil or the empty string. `weight` must
-  be a positive integer. All UUIDs must be lowercase, hyphenated RFC 4122
-  form (36 chars, no braces, no URN prefix). `operator_ref` must be ≤ 64
-  bytes and contain no control characters
-  (U+0000–U+001F, U+007F, U+2028, U+2029).
+  Entries are sorted ascending by `uuid` (binary lex). `weight` must be a
+  positive integer. All UUIDs must be lowercase, hyphenated RFC 4122 form
+  (36 chars, no braces, no URN prefix).
+
+  ## Durable invariant
+
+  **Anything this function hashes must be derivable from the public
+  ProofBundle bytes alone.** Do not add fields here that aren't also
+  present byte-identically in the public bundle — a third-party verifier
+  reading the public bundle must be able to reproduce this exact hash
+  without any authenticated operator-only data. `operator_ref` lives
+  on the Entry resource as an operator-private sidecar and is
+  deliberately NOT committed in the hash for this reason.
+
+  Input entries may carry extra keys (e.g. `:operator_ref` from
+  `Entries.load_for_draw/1`) — they are ignored. Only `uuid` and
+  `weight` influence the hash.
 
   Returns `{hex_hash, jcs_string}`:
   - `hex_hash` — 64-char lowercase hex SHA-256 of the JCS bytes
@@ -40,7 +51,9 @@ defmodule WallopCore.Protocol do
     encoded_entries =
       entries
       |> Enum.sort_by(& &1.uuid)
-      |> Enum.map(&encode_entry/1)
+      |> Enum.map(fn %{uuid: uuid, weight: weight} ->
+        %{"uuid" => uuid, "weight" => weight}
+      end)
 
     json_data = %{
       "draw_id" => draw_id,
@@ -55,8 +68,6 @@ defmodule WallopCore.Protocol do
 
   # lowercase, hyphenated, 36-char RFC 4122 (no braces, no URN prefix).
   @uuid_regex ~r/\A[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\z/
-  @ref_max_bytes 64
-  @ref_control_codepoints MapSet.new(Enum.concat([0x00..0x1F, [0x7F, 0x2028, 0x2029]]))
 
   defp validate_draw_id(draw_id) do
     if Regex.match?(@uuid_regex, draw_id) do
@@ -67,7 +78,7 @@ defmodule WallopCore.Protocol do
     end
   end
 
-  defp validate_entry(%{uuid: uuid, weight: weight} = entry) do
+  defp validate_entry(%{uuid: uuid, weight: weight}) do
     unless is_binary(uuid) and Regex.match?(@uuid_regex, uuid) do
       raise ArgumentError,
             "entry_hash: entry uuid must be a lowercase, hyphenated UUID, got: #{inspect(uuid)}"
@@ -78,51 +89,12 @@ defmodule WallopCore.Protocol do
             "entry_hash: weight must be a positive integer, got: #{inspect(weight)}"
     end
 
-    :ok = validate_operator_ref(Map.get(entry, :operator_ref))
     :ok
   end
 
   defp validate_entry(other) do
     raise ArgumentError,
           "entry_hash: entry must have :uuid and :weight, got: #{inspect(other)}"
-  end
-
-  defp validate_operator_ref(ref) when ref in [nil, ""], do: :ok
-
-  defp validate_operator_ref(ref) when is_binary(ref) do
-    cond do
-      byte_size(ref) > @ref_max_bytes ->
-        raise ArgumentError,
-              "entry_hash: operator_ref must be ≤ #{@ref_max_bytes} bytes, got #{byte_size(ref)}"
-
-      has_control_char?(ref) ->
-        raise ArgumentError,
-              "entry_hash: operator_ref must not contain control characters, got: #{inspect(ref)}"
-
-      true ->
-        :ok
-    end
-  end
-
-  defp validate_operator_ref(other) do
-    raise ArgumentError,
-          "entry_hash: operator_ref must be a string or nil, got: #{inspect(other)}"
-  end
-
-  defp has_control_char?(ref) do
-    ref
-    |> String.to_charlist()
-    |> Enum.any?(&MapSet.member?(@ref_control_codepoints, &1))
-  end
-
-  defp encode_entry(%{uuid: uuid, weight: weight} = entry) do
-    case Map.get(entry, :operator_ref) do
-      ref when ref in [nil, ""] ->
-        %{"uuid" => uuid, "weight" => weight}
-
-      ref ->
-        %{"operator_ref" => ref, "uuid" => uuid, "weight" => weight}
-    end
   end
 
   @doc """

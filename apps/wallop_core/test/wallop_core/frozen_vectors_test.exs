@@ -44,13 +44,10 @@ defmodule WallopCore.FrozenVectorsTest do
     end
 
     @vector_names [
-      "single entry no ref",
-      "empty-string ref omitted",
-      "two entries sorted by uuid both with refs",
-      "unicode in ref (emoji + quotes + backslash + accented)",
-      "ref at exactly 64 bytes",
+      "single entry",
+      "operator_ref does not affect hash",
+      "two entries sorted by uuid",
       "weight at 2^53-1 boundary",
-      "duplicate operator_refs distinct uuids (no dedup)",
       "same entries different draw_id"
     ]
 

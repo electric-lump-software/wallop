@@ -1,11 +1,11 @@
 {
   "description": "Full pipeline: entries → entry_hash → compute_seed → FairPick.draw → winners",
   "expected": {
-    "entry_hash": "cb784310ea87e2f9a21f5e2e48e81b107ca283bf73108af9722d5eb667b3fc22",
-    "seed_hex": "1e3f0ff367d91d35dedc3800dbfdef65bb262082dab2fc05dc2b15f6c28292a6",
+    "entry_hash": "75ba5f8fb545a427bb53f710c2f3ed29fb43fdea25425b27c07cff583cc2dd35",
+    "seed_hex": "0f1e986379f593c821acfb74e05cf836d52ef32678a49dc6fb1f9b2113f990fa",
     "winners": [
       "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
-      "cccccccc-cccc-4ccc-8ccc-cccccccccccc"
+      "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
     ]
   },
   "input": {

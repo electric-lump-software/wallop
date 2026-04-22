@@ -62,6 +62,51 @@ defmodule WallopCore.ProofBundleTest do
       assert {:error, :draw_not_completed} = ProofBundle.build(draw)
     end
 
+    test "bundle entries reproduce the committed entry_hash (public-verifier invariant)" do
+      # Durable invariant: anything a commitment hashes must be derivable
+      # from public bundle bytes alone. A third-party verifier reading the
+      # public ProofBundle and recomputing the canonical form MUST reproduce
+      # the entry_hash inside the signed lock receipt — otherwise the bundle
+      # is unverifiable by anyone outside wallop.
+      #
+      # Test fixture deliberately mixes entries with and without operator_ref.
+      # The previous bug manifested only when at least one ref was non-nil;
+      # all-nil draws would accidentally pass.
+      _infra_key = create_infrastructure_key()
+      operator = create_operator()
+      api_key = create_api_key_for_operator(operator)
+
+      draw =
+        create_draw(api_key, %{
+          entries: [
+            %{"ref" => "ticket-with-ref", "weight" => 1},
+            %{"ref" => nil, "weight" => 1},
+            %{"ref" => "another-ref", "weight" => 1}
+          ]
+        })
+
+      executed = execute_draw(draw, test_seed(), api_key)
+
+      {:ok, bundle_json} = ProofBundle.build(executed)
+      bundle = Jason.decode!(bundle_json)
+
+      # Reconstruct the entry_hash input from the public bundle bytes only.
+      bundle_entries =
+        Enum.map(bundle["entries"], fn e ->
+          %{uuid: e["uuid"], operator_ref: nil, weight: e["weight"]}
+        end)
+
+      {recomputed_hash, _jcs} =
+        WallopCore.Protocol.entry_hash({bundle["draw_id"], bundle_entries})
+
+      lock_payload = Jason.decode!(bundle["lock_receipt"]["payload_jcs"])
+      committed_hash = lock_payload["entry_hash"]
+
+      assert recomputed_hash == committed_hash,
+             "public bundle cannot reproduce committed entry_hash — " <>
+               "the canonical form depends on data not present in the public bundle"
+    end
+
     test "omits weather_value entirely for drand-only draws" do
       _infra_key = create_infrastructure_key()
       operator = create_operator()
