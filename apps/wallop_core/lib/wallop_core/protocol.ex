@@ -7,24 +7,122 @@ defmodule WallopCore.Protocol do
   """
 
   @doc """
-  Compute the entry hash for a list of entries.
+  Compute the entry hash for a draw.
 
-  Returns `{hex_hash, jcs_string}` where:
-  - `hex_hash` is the 64-char lowercase hex SHA256 of the JCS bytes
-  - `jcs_string` is the canonical JSON for verification/debugging
+  Canonical form:
+
+      SHA-256(JCS(%{
+        "draw_id" => "<lowercase-hyphenated-uuidv4>",
+        "entries" => [
+          %{"operator_ref" => ?, "uuid" => ..., "weight" => N},
+          ...
+        ]
+      }))
+
+  Entries are sorted ascending by `uuid` (binary lex). `operator_ref` is
+  omitted from the entry object when nil or the empty string. `weight` must
+  be a positive integer. All UUIDs must be lowercase, hyphenated RFC 4122
+  form (36 chars, no braces, no URN prefix). `operator_ref` must be ≤ 64
+  bytes and contain no control characters
+  (U+0000–U+001F, U+007F, U+2028, U+2029).
+
+  Returns `{hex_hash, jcs_string}`:
+  - `hex_hash` — 64-char lowercase hex SHA-256 of the JCS bytes
+  - `jcs_string` — the canonical JSON (for verification / debugging)
+
+  Violations raise `ArgumentError`. See `spec/protocol.md` §2.1.
   """
-  @spec entry_hash([%{id: String.t(), weight: pos_integer()}]) :: {String.t(), String.t()}
-  def entry_hash(entries) do
-    sorted = Enum.sort_by(entries, & &1.id)
+  @spec entry_hash({String.t(), [map()]}) :: {String.t(), String.t()}
+  def entry_hash({draw_id, entries}) when is_binary(draw_id) and is_list(entries) do
+    :ok = validate_draw_id(draw_id)
+    Enum.each(entries, &validate_entry/1)
+
+    encoded_entries =
+      entries
+      |> Enum.sort_by(& &1.uuid)
+      |> Enum.map(&encode_entry/1)
 
     json_data = %{
-      "entries" => Enum.map(sorted, fn e -> %{"id" => e.id, "weight" => e.weight} end)
+      "draw_id" => draw_id,
+      "entries" => encoded_entries
     }
 
     jcs_string = Jcs.encode(json_data)
     hash = :crypto.hash(:sha256, jcs_string) |> Base.encode16(case: :lower)
 
     {hash, jcs_string}
+  end
+
+  # lowercase, hyphenated, 36-char RFC 4122 (no braces, no URN prefix).
+  @uuid_regex ~r/\A[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\z/
+  @ref_max_bytes 64
+  @ref_control_codepoints MapSet.new(Enum.concat([0x00..0x1F, [0x7F, 0x2028, 0x2029]]))
+
+  defp validate_draw_id(draw_id) do
+    if Regex.match?(@uuid_regex, draw_id) do
+      :ok
+    else
+      raise ArgumentError,
+            "entry_hash: draw_id must be a lowercase, hyphenated UUID, got: #{inspect(draw_id)}"
+    end
+  end
+
+  defp validate_entry(%{uuid: uuid, weight: weight} = entry) do
+    unless is_binary(uuid) and Regex.match?(@uuid_regex, uuid) do
+      raise ArgumentError,
+            "entry_hash: entry uuid must be a lowercase, hyphenated UUID, got: #{inspect(uuid)}"
+    end
+
+    unless is_integer(weight) and weight > 0 do
+      raise ArgumentError,
+            "entry_hash: weight must be a positive integer, got: #{inspect(weight)}"
+    end
+
+    :ok = validate_operator_ref(Map.get(entry, :operator_ref))
+    :ok
+  end
+
+  defp validate_entry(other) do
+    raise ArgumentError,
+          "entry_hash: entry must have :uuid and :weight, got: #{inspect(other)}"
+  end
+
+  defp validate_operator_ref(ref) when ref in [nil, ""], do: :ok
+
+  defp validate_operator_ref(ref) when is_binary(ref) do
+    cond do
+      byte_size(ref) > @ref_max_bytes ->
+        raise ArgumentError,
+              "entry_hash: operator_ref must be ≤ #{@ref_max_bytes} bytes, got #{byte_size(ref)}"
+
+      has_control_char?(ref) ->
+        raise ArgumentError,
+              "entry_hash: operator_ref must not contain control characters, got: #{inspect(ref)}"
+
+      true ->
+        :ok
+    end
+  end
+
+  defp validate_operator_ref(other) do
+    raise ArgumentError,
+          "entry_hash: operator_ref must be a string or nil, got: #{inspect(other)}"
+  end
+
+  defp has_control_char?(ref) do
+    ref
+    |> String.to_charlist()
+    |> Enum.any?(&MapSet.member?(@ref_control_codepoints, &1))
+  end
+
+  defp encode_entry(%{uuid: uuid, weight: weight} = entry) do
+    case Map.get(entry, :operator_ref) do
+      ref when ref in [nil, ""] ->
+        %{"uuid" => uuid, "weight" => weight}
+
+      ref ->
+        %{"operator_ref" => ref, "uuid" => uuid, "weight" => weight}
+    end
   end
 
   @doc """

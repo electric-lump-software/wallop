@@ -61,12 +61,13 @@ defmodule WallopCore.Entropy.EntropyWorkerTest do
       assert length(completed.results) == draw.winner_count
 
       # Verify results match FairPick.draw directly
-      atom_entries = WallopCore.Entries.load_for_draw(draw.id)
+      entries = WallopCore.Entries.load_for_draw(draw.id)
+      fair_pick_entries = Enum.map(entries, &%{id: &1.uuid, weight: &1.weight})
 
       {seed_bytes, _seed_json} =
         WallopCore.Protocol.compute_seed(draw.entry_hash, @drand_randomness, "101340")
 
-      expected_results = FairPick.draw(atom_entries, seed_bytes, draw.winner_count)
+      expected_results = FairPick.draw(fair_pick_entries, seed_bytes, draw.winner_count)
 
       expected_string_results =
         Enum.map(expected_results, fn %{position: pos, entry_id: id} ->

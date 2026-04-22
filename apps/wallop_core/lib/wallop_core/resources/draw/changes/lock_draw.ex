@@ -36,8 +36,8 @@ defmodule WallopCore.Resources.Draw.Changes.LockDraw do
           [Ecto.UUID.dump!(draw.id)]
         )
 
-        atom_entries = WallopCore.Entries.load_for_draw(draw.id)
-        {hash, canonical} = WallopCore.Protocol.entry_hash(atom_entries)
+        entries = WallopCore.Entries.load_for_draw(draw.id)
+        {hash, canonical} = WallopCore.Protocol.entry_hash({draw.id, entries})
 
         changeset
         |> Ash.Changeset.force_change_attribute(:entry_hash, hash)

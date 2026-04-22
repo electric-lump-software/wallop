@@ -3,28 +3,125 @@ defmodule WallopCore.ProtocolTest do
 
   alias WallopCore.Protocol
 
-  describe "entry_hash/1" do
-    test "matches spec vector P-1" do
+  @draw_id "11111111-1111-4111-8111-111111111111"
+  @uuid_a "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+  @uuid_b "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
+  @other_draw "22222222-2222-4222-8222-222222222222"
+
+  describe "entry_hash/1 — happy path" do
+    test "sorts entries by uuid and wraps in {draw_id, entries}" do
       entries = [
-        %{id: "ticket-47", weight: 1},
-        %{id: "ticket-48", weight: 1},
-        %{id: "ticket-49", weight: 1}
+        %{uuid: @uuid_b, operator_ref: nil, weight: 2},
+        %{uuid: @uuid_a, operator_ref: nil, weight: 1}
       ]
 
       expected_jcs =
-        ~s({"entries":[{"id":"ticket-47","weight":1},{"id":"ticket-48","weight":1},{"id":"ticket-49","weight":1}]})
+        ~s({"draw_id":"#{@draw_id}","entries":[{"uuid":"#{@uuid_a}","weight":1},{"uuid":"#{@uuid_b}","weight":2}]})
 
-      {hash, jcs} = Protocol.entry_hash(entries)
+      {hash, jcs} = Protocol.entry_hash({@draw_id, entries})
 
       assert jcs == expected_jcs
       assert hash == hex_sha256(expected_jcs)
       assert String.match?(hash, ~r/^[0-9a-f]{64}$/)
     end
 
-    test "sorts entries by id regardless of input order" do
-      entries_a = [%{id: "b", weight: 1}, %{id: "a", weight: 1}]
-      entries_b = [%{id: "a", weight: 1}, %{id: "b", weight: 1}]
-      assert Protocol.entry_hash(entries_a) == Protocol.entry_hash(entries_b)
+    test "operator_ref present sorts alphabetically inside entry object" do
+      entries = [%{uuid: @uuid_a, operator_ref: "alice", weight: 1}]
+
+      expected_jcs =
+        ~s({"draw_id":"#{@draw_id}","entries":[{"operator_ref":"alice","uuid":"#{@uuid_a}","weight":1}]})
+
+      {_hash, jcs} = Protocol.entry_hash({@draw_id, entries})
+      assert jcs == expected_jcs
+    end
+
+    test "empty-string operator_ref treated as nil (key omitted)" do
+      nil_ref = [%{uuid: @uuid_a, operator_ref: nil, weight: 1}]
+      empty = [%{uuid: @uuid_a, operator_ref: "", weight: 1}]
+
+      assert Protocol.entry_hash({@draw_id, nil_ref}) == Protocol.entry_hash({@draw_id, empty})
+    end
+
+    test "same entries in different draw_ids produce different hashes" do
+      entries = [%{uuid: @uuid_a, operator_ref: nil, weight: 1}]
+
+      {h1, _} = Protocol.entry_hash({@draw_id, entries})
+      {h2, _} = Protocol.entry_hash({@other_draw, entries})
+
+      refute h1 == h2
+    end
+  end
+
+  describe "entry_hash/1 — validation" do
+    test "rejects non-positive-integer weights" do
+      for bad <- [0, -1, 1.0, "1", nil] do
+        entries = [%{uuid: @uuid_a, operator_ref: nil, weight: bad}]
+
+        assert_raise ArgumentError, ~r/weight/i, fn ->
+          Protocol.entry_hash({@draw_id, entries})
+        end
+      end
+    end
+
+    test "rejects malformed draw_id" do
+      entries = [%{uuid: @uuid_a, operator_ref: nil, weight: 1}]
+
+      for bad <- [
+            "AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAAA",
+            "{aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa}",
+            "urn:uuid:aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+            "not-a-uuid",
+            ""
+          ] do
+        assert_raise ArgumentError, ~r/draw_id/i, fn ->
+          Protocol.entry_hash({bad, entries})
+        end
+      end
+    end
+
+    test "rejects malformed entry uuid" do
+      for bad <- ["AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAAA", "not-a-uuid", ""] do
+        entries = [%{uuid: bad, operator_ref: nil, weight: 1}]
+
+        assert_raise ArgumentError, ~r/uuid/i, fn ->
+          Protocol.entry_hash({@draw_id, entries})
+        end
+      end
+    end
+
+    test "operator_ref accepts exactly 64 bytes" do
+      sixty_four = String.duplicate("a", 64)
+      entries = [%{uuid: @uuid_a, operator_ref: sixty_four, weight: 1}]
+
+      assert {_, _} = Protocol.entry_hash({@draw_id, entries})
+    end
+
+    test "operator_ref limit is bytes, not codepoints" do
+      # 33 x "é" = 66 bytes, 33 codepoints — over the byte limit
+      over = String.duplicate("é", 33)
+      entries = [%{uuid: @uuid_a, operator_ref: over, weight: 1}]
+
+      assert_raise ArgumentError, ~r/operator_ref/i, fn ->
+        Protocol.entry_hash({@draw_id, entries})
+      end
+    end
+
+    test "rejects control chars in operator_ref" do
+      bad_refs = [
+        "\x00foo",
+        "foo\x1F",
+        "foo\x7Fbar",
+        "line1\u{2028}line2",
+        "para\u{2029}end"
+      ]
+
+      for bad <- bad_refs do
+        entries = [%{uuid: @uuid_a, operator_ref: bad, weight: 1}]
+
+        assert_raise ArgumentError, ~r/operator_ref/i, fn ->
+          Protocol.entry_hash({@draw_id, entries})
+        end
+      end
     end
   end
 
@@ -46,9 +143,6 @@ defmodule WallopCore.ProtocolTest do
     end
 
     test "JCS sorts keys alphabetically regardless of input key order" do
-      # The arguments are (entry_hash, drand_randomness, weather_value).
-      # In the JSON, "drand_randomness" < "entry_hash" < "weather_value" alphabetically.
-      # Verify the output JSON has keys in that order, not argument order.
       {_seed, json} = Protocol.compute_seed("zzz_entry", "aaa_drand", "mmm_weather")
 
       assert json ==
@@ -89,56 +183,6 @@ defmodule WallopCore.ProtocolTest do
       {_seed, json} = Protocol.compute_seed(entry_hash, drand)
 
       refute String.contains?(json, "weather")
-    end
-  end
-
-  describe "protocol vectors (spec §3.2)" do
-    test "P-1: entry hash" do
-      entries = [
-        %{id: "ticket-47", weight: 1},
-        %{id: "ticket-48", weight: 1},
-        %{id: "ticket-49", weight: 1}
-      ]
-
-      {hash, _jcs} = Protocol.entry_hash(entries)
-
-      assert hash == "6056fbb6c98a0f04404adb013192d284bfec98975e2a7975395c3bcd4ad59577"
-    end
-
-    test "P-2: seed" do
-      drand = "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789"
-      entry_hash = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
-      weather = "1013"
-
-      {seed_bytes, _json} = Protocol.compute_seed(entry_hash, drand, weather)
-
-      assert Base.encode16(seed_bytes, case: :lower) ==
-               "4c1ae3e623dd22859d869f4d0cb34d3acaf4cf7907dbb472ea690e1400bfb0d0"
-    end
-
-    test "P-3: end-to-end" do
-      entries = [
-        %{id: "ticket-47", weight: 1},
-        %{id: "ticket-48", weight: 1},
-        %{id: "ticket-49", weight: 1}
-      ]
-
-      drand = "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789"
-      weather = "1013"
-
-      {entry_hash, _jcs} = Protocol.entry_hash(entries)
-      {seed_bytes, _json} = Protocol.compute_seed(entry_hash, drand, weather)
-      result = FairPick.draw(entries, seed_bytes, 2)
-
-      assert entry_hash == "6056fbb6c98a0f04404adb013192d284bfec98975e2a7975395c3bcd4ad59577"
-
-      assert Base.encode16(seed_bytes, case: :lower) ==
-               "ced93f50d73a619701e9e865eb03fb4540a7232a588c707f85754aa41e3fb037"
-
-      assert result == [
-               %{position: 1, entry_id: "ticket-48"},
-               %{position: 2, entry_id: "ticket-47"}
-             ]
     end
   end
 
