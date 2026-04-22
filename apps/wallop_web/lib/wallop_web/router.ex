@@ -42,6 +42,7 @@ defmodule WallopWeb.Router do
     live("/", HomeLive)
     get("/proof/:id/pdf", ProofPdfController, :show)
     get("/proof/:id/json", ProofBundleController, :show)
+    get("/proof/:id/entries", ProofController, :entries_index)
     get("/proof/:id/:entry_id", ProofController, :show)
     get("/proof/:id", ProofController, :show)
     live("/live/proof/:id/:entry_id", ProofLive)
