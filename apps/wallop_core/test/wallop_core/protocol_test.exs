@@ -92,7 +92,6 @@ defmodule WallopCore.ProtocolTest do
         end
       end
     end
-
   end
 
   describe "compute_seed/3" do
