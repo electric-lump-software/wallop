@@ -166,7 +166,7 @@ defmodule WallopCore.Protocol do
     {seed_bytes, jcs_string}
   end
 
-  @receipt_schema_version "2"
+  @receipt_schema_version "3"
 
   @doc """
   Build the canonical JCS payload bytes for an operator commitment receipt.
@@ -184,6 +184,14 @@ defmodule WallopCore.Protocol do
     `fair_pick_version`). Closes the receipt completeness gaps where
     outcome-influencing fields were trigger-frozen but not
     cryptographically committed.
+  - **v3** — same 16 fields as v2. The bump signals that `entry_hash`
+    is now computed from the wallop-assigned UUID canonical form
+    (draw_id binding, operator_ref sidecar) rather than the legacy
+    operator-supplied-id form. There is only one live canonical form
+    — verifiers reject any `schema_version` they do not recognise
+    rather than attempting to reconstruct an older shape.
+    `wallop_core_version` in the payload is the forensic anchor if
+    a future canonical form ever ships.
 
   `locked_at` must be a `DateTime` with microsecond precision; the caller is
   responsible for capturing it once at lock time and not re-stamping.

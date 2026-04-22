@@ -263,7 +263,7 @@ defmodule WallopCore.FrozenVectorsTest do
 
   # ── V-5: Lock receipt payload ─────────────────────────────────────
 
-  describe "V-5: lock receipt payload (schema v2)" do
+  describe "V-5: lock receipt payload (schema v3)" do
     setup do
       %{vector: load_vector("lock-receipt.json")}
     end
