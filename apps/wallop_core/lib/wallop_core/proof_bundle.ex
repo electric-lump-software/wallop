@@ -70,15 +70,17 @@ defmodule WallopCore.ProofBundle do
     end
   end
 
-  # Entries are sorted by id for deterministic bundle bytes — Entries.load_for_draw/1
+  # Entries are sorted by uuid for deterministic bundle bytes. Entries.load_for_draw/1
   # has no ORDER BY, so two calls for the same draw could return different orders,
   # which would produce different JCS-encoded bundle bytes for the same logical
   # draw. Third-party verifiers caching bundle hashes depend on byte stability.
+  # operator_ref is deliberately NOT included — it is operator-private and
+  # never appears on the public proof bundle.
   defp entries_for(draw) do
     draw.id
     |> WallopCore.Entries.load_for_draw()
-    |> Enum.sort_by(& &1.id)
-    |> Enum.map(fn e -> %{"id" => e.id, "weight" => e.weight} end)
+    |> Enum.sort_by(& &1.uuid)
+    |> Enum.map(fn e -> %{"uuid" => e.uuid, "weight" => e.weight} end)
   end
 
   # Results are sorted by position defensively. The execution receipt's results

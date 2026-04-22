@@ -181,7 +181,7 @@ defmodule WallopWeb.ProofLive do
   defp load_verify_data(draw) do
     entries =
       WallopCore.Entries.load_for_draw(draw.id)
-      |> Enum.map(fn %{id: id, weight: weight} -> %{"id" => id, "weight" => weight} end)
+      |> Enum.map(fn %{uuid: uuid, weight: weight} -> %{"uuid" => uuid, "weight" => weight} end)
 
     {Jason.encode!(entries), Jason.encode!(draw.results || [])}
   end

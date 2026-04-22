@@ -57,7 +57,9 @@ defmodule WallopWeb.ProofController do
 
   defp entries_to_json(entries) do
     entries
-    |> Enum.map(fn %{id: id, weight: weight} -> %{"id" => id, "weight" => weight} end)
+    |> Enum.map(fn %{uuid: uuid, weight: weight} ->
+      %{"uuid" => uuid, "weight" => weight}
+    end)
     |> Jason.encode!()
   end
 

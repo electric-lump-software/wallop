@@ -111,7 +111,7 @@ defmodule WallopWeb.ProofPdf do
   defp generate_with_fingerprint(draw, _fingerprint) do
     entries = WallopCore.Entries.load_for_draw(draw.id)
     {operator, receipt, _execution_receipt} = WallopCore.OperatorInfo.for_draw(draw)
-    winners = WallopCore.Proof.anonymise_results(draw.results || [])
+    winners = draw.results || []
 
     assigns = %{
       draw: draw,
