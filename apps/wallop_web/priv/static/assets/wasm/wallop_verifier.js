@@ -177,13 +177,20 @@ export function draw_wasm(entries_js, seed_js, count) {
 
 /**
  * WASM entry point for entry_hash.
+ *
+ * Takes `draw_id` (the public draw UUID) and an entries array. Each
+ * entry's `id` field is interpreted as the public UUID at this
+ * boundary. See `protocol::entry_hash` for the canonical form.
+ * @param {string} draw_id
  * @param {any} entries_js
  * @returns {any}
  */
-export function entry_hash_wasm(entries_js) {
+export function entry_hash_wasm(draw_id, entries_js) {
     try {
         const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
-        wasm.entry_hash_wasm(retptr, addHeapObject(entries_js));
+        const ptr0 = passStringToWasm0(draw_id, wasm.__wbindgen_export, wasm.__wbindgen_export2);
+        const len0 = WASM_VECTOR_LEN;
+        wasm.entry_hash_wasm(retptr, ptr0, len0, addHeapObject(entries_js));
         var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
         var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
         var r2 = getDataViewMemory0().getInt32(retptr + 4 * 2, true);
@@ -378,6 +385,7 @@ export function verify_receipt_wasm(payload_jcs, signature_hex, public_key_hex) 
 
 /**
  * WASM entry point for full verification pipeline.
+ * @param {string} draw_id
  * @param {any} entries_js
  * @param {string} drand_randomness
  * @param {string | null | undefined} weather_value
@@ -385,14 +393,16 @@ export function verify_receipt_wasm(payload_jcs, signature_hex, public_key_hex) 
  * @param {any} expected_results_js
  * @returns {boolean}
  */
-export function verify_wasm(entries_js, drand_randomness, weather_value, count, expected_results_js) {
+export function verify_wasm(draw_id, entries_js, drand_randomness, weather_value, count, expected_results_js) {
     try {
         const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
-        const ptr0 = passStringToWasm0(drand_randomness, wasm.__wbindgen_export, wasm.__wbindgen_export2);
+        const ptr0 = passStringToWasm0(draw_id, wasm.__wbindgen_export, wasm.__wbindgen_export2);
         const len0 = WASM_VECTOR_LEN;
-        var ptr1 = isLikeNone(weather_value) ? 0 : passStringToWasm0(weather_value, wasm.__wbindgen_export, wasm.__wbindgen_export2);
-        var len1 = WASM_VECTOR_LEN;
-        wasm.verify_wasm(retptr, addHeapObject(entries_js), ptr0, len0, ptr1, len1, count, addHeapObject(expected_results_js));
+        const ptr1 = passStringToWasm0(drand_randomness, wasm.__wbindgen_export, wasm.__wbindgen_export2);
+        const len1 = WASM_VECTOR_LEN;
+        var ptr2 = isLikeNone(weather_value) ? 0 : passStringToWasm0(weather_value, wasm.__wbindgen_export, wasm.__wbindgen_export2);
+        var len2 = WASM_VECTOR_LEN;
+        wasm.verify_wasm(retptr, ptr0, len0, addHeapObject(entries_js), ptr1, len1, ptr2, len2, count, addHeapObject(expected_results_js));
         var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
         var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
         var r2 = getDataViewMemory0().getInt32(retptr + 4 * 2, true);
