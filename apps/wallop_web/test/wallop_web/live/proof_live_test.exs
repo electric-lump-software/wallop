@@ -81,7 +81,7 @@ defmodule WallopWeb.ProofLiveTest do
       conn = get(conn, "/proof/#{draw.id}?entry_id=#{winning_id}")
       html = html_response(conn, 200)
 
-      assert html =~ "won"
+      assert html =~ "in the winner list"
     end
 
     test "reports not found for unknown entry", %{conn: conn} do
@@ -93,7 +93,7 @@ defmodule WallopWeb.ProofLiveTest do
       conn = get(conn, "/proof/#{draw.id}?entry_id=#{unknown_uuid}")
       html = html_response(conn, 200)
 
-      assert html =~ "not found"
+      assert html =~ "Not in the winner list"
     end
   end
 
@@ -108,7 +108,7 @@ defmodule WallopWeb.ProofLiveTest do
       conn = get(conn, "/proof/#{draw.id}/#{winning_id}")
       html = html_response(conn, 200)
 
-      assert html =~ "won"
+      assert html =~ "in the winner list"
     end
 
     test "auto-checks a non-winning entry via path", %{conn: conn} do
@@ -123,7 +123,7 @@ defmodule WallopWeb.ProofLiveTest do
       conn = get(conn, "/proof/#{draw.id}/#{losing_uuid}")
       html = html_response(conn, 200)
 
-      assert html =~ "did not win"
+      assert html =~ "Not in the winner list"
     end
 
     test "pre-fills the entry ID input", %{conn: conn} do
