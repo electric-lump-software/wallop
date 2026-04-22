@@ -140,6 +140,67 @@ defmodule WallopWeb.ProofLiveTest do
     end
   end
 
+  describe "check_url passthrough on the static proof page" do
+    test "renders the operator's check_url when a non-winner is checked", %{conn: conn} do
+      api_key = create_api_key()
+
+      draw =
+        create_draw(api_key, %{
+          check_url: "https://operator.example/check-your-ticket"
+        })
+
+      draw = execute_draw(draw, test_seed(), api_key)
+
+      winning_uuids = Enum.map(draw.results, & &1["entry_id"])
+      all_uuids = Enum.map(WallopCore.Entries.load_for_draw(draw.id), & &1.uuid)
+      losing_uuid = Enum.find(all_uuids, fn u -> u not in winning_uuids end)
+
+      conn = get(conn, "/proof/#{draw.id}/#{losing_uuid}")
+      html = html_response(conn, 200)
+
+      assert html =~ "Not in the winner list"
+      assert html =~ "https://operator.example/check-your-ticket"
+      assert html =~ ~s|rel="noopener noreferrer"|
+      assert html =~ ~s|target="_blank"|
+    end
+
+    test "does not render check_url when draw has none", %{conn: conn} do
+      api_key = create_api_key()
+      draw = create_draw(api_key, %{})
+      draw = execute_draw(draw, test_seed(), api_key)
+
+      winning_uuids = Enum.map(draw.results, & &1["entry_id"])
+      all_uuids = Enum.map(WallopCore.Entries.load_for_draw(draw.id), & &1.uuid)
+      losing_uuid = Enum.find(all_uuids, fn u -> u not in winning_uuids end)
+
+      conn = get(conn, "/proof/#{draw.id}/#{losing_uuid}")
+      html = html_response(conn, 200)
+
+      assert html =~ "Not in the winner list"
+      refute html =~ "check-your-ticket"
+      refute html =~ "ticket-check page"
+    end
+
+    test "does not render check_url on winner response", %{conn: conn} do
+      api_key = create_api_key()
+
+      draw =
+        create_draw(api_key, %{
+          check_url: "https://operator.example/check"
+        })
+
+      draw = execute_draw(draw, test_seed(), api_key)
+
+      winning_id = List.first(draw.results)["entry_id"]
+      conn = get(conn, "/proof/#{draw.id}/#{winning_id}")
+      html = html_response(conn, 200)
+
+      assert html =~ "in the winner list"
+      # check_url is a fallback for non-winners — not shown for winners
+      refute html =~ "https://operator.example/check"
+    end
+  end
+
   describe "in-progress draw (LiveView redirect)" do
     test "redirects to LiveView for in-progress draw", %{conn: conn} do
       api_key = create_api_key()
