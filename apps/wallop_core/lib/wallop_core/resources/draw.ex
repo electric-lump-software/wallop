@@ -40,6 +40,7 @@ defmodule WallopCore.Resources.Draw do
       change({WallopCore.Resources.Draw.Changes.AssignOperatorSequence, []})
       change({WallopCore.Resources.Draw.Changes.IncrementApiKeyDrawCount, []})
       change({WallopCore.Resources.Draw.Changes.ValidateCallbackUrl, []})
+      change({WallopCore.Resources.Draw.Changes.ValidateCheckUrl, []})
       change({WallopCore.Resources.Draw.Changes.RecordStageTimestamp, key: "opened_at"})
       change({WallopCore.Resources.Draw.Changes.BroadcastUpdate, []})
     end
@@ -444,7 +445,13 @@ defmodule WallopCore.Resources.Draw do
     attribute :metadata, :map do
       description(
         "Arbitrary JSON object stored with the draw. Not used in seed computation. Useful " <>
-          "for storing external references (e.g. your internal draw ID)."
+          "for storing external references (e.g. your internal draw ID).\n\n" <>
+          "**Recognised key: `check_url`.** If present, must be an `https://` URL " <>
+          "(≤ 2048 chars). The public proof page renders it as an outbound link " <>
+          "inviting users to visit the operator's own \"check your ticket\" page. Used " <>
+          "to gate richer-than-flat-boolean entry lookup (e.g. position, entered-but- " <>
+          "did-not-win) which wallop itself does not provide publicly. `javascript:`, " <>
+          "`data:`, `file:`, and other non-https schemes are rejected."
       )
 
       allow_nil?(true)

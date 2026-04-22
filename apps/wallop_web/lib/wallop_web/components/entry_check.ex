@@ -18,6 +18,11 @@ defmodule WallopWeb.Components.EntryCheck do
   attr(:draw_status, :atom, default: :completed)
   attr(:checked_entry_id, :string, default: nil)
 
+  attr(:check_url, :string,
+    default: nil,
+    doc: "Optional operator-supplied link to their own ticket-check page."
+  )
+
   def entry_check(assigns) do
     ~H"""
     <div>
@@ -55,8 +60,19 @@ defmodule WallopWeb.Components.EntryCheck do
           :if={@draw_status == :completed && !@check_result.winner}
           class="bg-yellow-50 border border-yellow-200 text-yellow-800 rounded-lg px-4 py-3 text-sm"
         >
-          Not in the winner list. To check whether your entry was submitted,
-          contact the operator of this draw.
+          <p>
+            Not in the winner list. To check whether your entry was submitted,
+            contact the operator of this draw.
+          </p>
+          <p :if={@check_url} class="mt-2">
+            The operator provides a ticket-check page at:
+            <a
+              href={@check_url}
+              target="_blank"
+              rel="noopener noreferrer"
+              class="underline break-all"
+            >{@check_url}</a>
+          </p>
         </div>
       </div>
     </div>

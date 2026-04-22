@@ -271,6 +271,13 @@ defmodule WallopWeb.ProofPdfHTML do
         Full protocol details: <span class="mono">github.com/electric-lump-software/wallop</span>
       </p>
 
+      <p :if={check_url(@draw)} class="hint">
+        The operator provides a ticket-check page at
+        <span class="mono">{check_url(@draw)}</span>.
+        Visit it to confirm whether your entry was submitted, see your
+        position, or follow the operator's own post-draw process.
+      </p>
+
       <div class="auditor">
         <p class="auditor-title">Verified by an auditor or witness</p>
         <div class="signature-grid">
@@ -318,6 +325,12 @@ defmodule WallopWeb.ProofPdfHTML do
 
   defp winner_word(1), do: "winner"
   defp winner_word(_), do: "winners"
+
+  # Extract the operator-supplied check_url from draw.metadata. Returns
+  # the URL string if present, or nil. Validation happens upstream on
+  # create; this is purely a render-time lookup.
+  defp check_url(%{metadata: %{"check_url" => url}}) when is_binary(url), do: url
+  defp check_url(_), do: nil
 
   defp entry_word(1), do: "entry"
   defp entry_word(_), do: "entries"
