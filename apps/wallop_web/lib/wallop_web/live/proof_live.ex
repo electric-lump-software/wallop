@@ -14,7 +14,9 @@ defmodule WallopWeb.ProofLive do
   import WallopWeb.Components.OperatorPanel
   import WallopWeb.Components.VerifyBlock
 
+  alias Phoenix.LiveView, as: LV
   alias WallopCore.Proof
+  alias WallopWeb.Plugs.SelfCheckRateLimit
 
   @poll_interval_ms 30_000
 
@@ -27,6 +29,8 @@ defmodule WallopWeb.ProofLive do
         {:ok, redirect(socket, to: path)}
 
       {:ok, draw} ->
+        peer_ip = peer_ip_from(socket)
+
         if connected?(socket) do
           Phoenix.PubSub.subscribe(WallopCore.PubSub, "draw:#{id}")
           schedule_poll_if_live(draw)
@@ -44,6 +48,7 @@ defmodule WallopWeb.ProofLive do
            draw_id: id,
            check_result: check_result,
            checked_entry_id: entry_id,
+           peer_ip: peer_ip,
            verify_result: nil,
            revealing: false,
            reveal_from: nil,
@@ -96,8 +101,24 @@ defmodule WallopWeb.ProofLive do
   end
 
   def handle_event("check_entry", %{"entry_id" => entry_id}, socket) do
-    {:ok, result} = Proof.check_entry(socket.assigns.draw, entry_id)
-    {:noreply, assign(socket, check_result: result, checked_entry_id: entry_id)}
+    # Mirror the HTTP-side rate limit on the LiveView channel, keyed off
+    # the same per-IP ETS table so budgets unify across transports. Without
+    # this, an attacker holding one socket open could fire handle_event
+    # faster than the HTTP plug's 60/min would allow.
+    case SelfCheckRateLimit.check_rate(socket.assigns.peer_ip) do
+      :ok ->
+        {:ok, result} = Proof.winner?(socket.assigns.draw, entry_id)
+        {:noreply, assign(socket, check_result: result, checked_entry_id: entry_id)}
+
+      :rate_limited ->
+        # Same response shape as a non-winner to avoid leaking rate-limit
+        # state itself as an enumeration signal.
+        {:noreply,
+         assign(socket,
+           check_result: %{winner: false},
+           checked_entry_id: entry_id
+         )}
+    end
   end
 
   def handle_event("reveal_complete", _params, socket) do
@@ -174,7 +195,7 @@ defmodule WallopWeb.ProofLive do
   defp auto_check_entry(_draw, nil), do: nil
 
   defp auto_check_entry(draw, entry_id) do
-    {:ok, result} = Proof.check_entry(draw, entry_id)
+    {:ok, result} = Proof.winner?(draw, entry_id)
     result
   end
 
@@ -185,6 +206,36 @@ defmodule WallopWeb.ProofLive do
 
     {Jason.encode!(entries), Jason.encode!(draw.results || [])}
   end
+
+  # Extract the client IP for rate limiting. On a live WebSocket socket,
+  # `connect_info` carries `:peer_data`; on a disconnected mount (first
+  # render, before WebSocket upgrade) we fall back to `:x_headers` or to
+  # a placeholder. The placeholder is only ever rate-limited during the
+  # brief window between HTTP render and socket connect, which in
+  # practice means zero real user impact.
+  defp peer_ip_from(socket) do
+    case LV.get_connect_info(socket, :peer_data) do
+      %{address: address} when is_tuple(address) ->
+        address |> :inet.ntoa() |> List.to_string()
+
+      _ ->
+        socket |> LV.get_connect_info(:x_headers) |> ip_from_forwarded_for()
+    end
+  end
+
+  defp ip_from_forwarded_for(headers) when is_list(headers) do
+    headers
+    |> Enum.find_value(fn
+      {"x-forwarded-for", val} -> val |> String.split(",") |> List.first()
+      _ -> nil
+    end)
+    |> case do
+      nil -> "unknown"
+      ip -> String.trim(ip)
+    end
+  end
+
+  defp ip_from_forwarded_for(_), do: "unknown"
 
   defp load_draw(id) do
     case Ash.get(WallopCore.Resources.Draw, id,

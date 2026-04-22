@@ -10,6 +10,11 @@ defmodule WallopWeb.ProofController do
 
   alias WallopCore.Proof
 
+  # Rate-limit the public self-check when an `entry_id` path param is
+  # present. The plug is a no-op on the plain `/proof/:id` view, so
+  # legitimate proof page loads aren't throttled.
+  plug(WallopWeb.Plugs.SelfCheckRateLimit when action in [:show])
+
   @terminal_statuses [:completed, :failed, :expired]
   @default_entries_limit 100
   @max_entries_limit 1000
@@ -215,7 +220,7 @@ defmodule WallopWeb.ProofController do
   end
 
   defp check_entry(draw, entry_id) do
-    {:ok, result} = Proof.check_entry(draw, entry_id)
+    {:ok, result} = Proof.winner?(draw, entry_id)
     result
   end
 

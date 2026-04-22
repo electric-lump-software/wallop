@@ -60,7 +60,13 @@ defmodule WallopCore.ProofTest do
     end
   end
 
-  describe "check_entry/2 (legacy)" do
+  describe "winner?/2 — byte-identical responses for non-winner cases" do
+    # The self-check endpoint collapses three distinct non-winner cases
+    # into one response shape: "UUID entered but didn't win", "UUID never
+    # entered", and "malformed input" all produce identical bytes. This
+    # prevents the endpoint from becoming an enumeration oracle keyed by
+    # UUID. Pre-launch decision (confirmed with Colin).
+
     setup do
       api_key = create_api_key()
 
@@ -79,40 +85,25 @@ defmodule WallopCore.ProofTest do
       %{draw: draw, winner_uuids: winner_uuids}
     end
 
-    test "returns found + winner for a winning uuid", %{draw: draw, winner_uuids: winner_uuids} do
-      winning = List.first(winner_uuids)
-
-      assert {:ok, %{found: true, winner: true, position: pos}} =
-               Proof.check_entry(draw, winning)
-
-      assert is_integer(pos)
-    end
-
-    test "returns found + not winner for a non-winning uuid", %{
-      draw: draw,
-      winner_uuids: winner_uuids
-    } do
+    test "valid non-winning UUID, never-entered UUID, and malformed input produce identical bytes",
+         %{draw: draw, winner_uuids: winner_uuids} do
       all_uuids = Enum.map(WallopCore.Entries.load_for_draw(draw.id), & &1.uuid)
       loser = Enum.find(all_uuids, fn u -> u not in winner_uuids end)
 
-      assert {:ok, %{found: true, winner: false}} = Proof.check_entry(draw, loser)
-    end
+      never_entered = "00000000-0000-4000-8000-000000000000"
+      malformed = "df"
+      garbage = "not-a-uuid-at-all"
 
-    test "returns not found for unknown uuid", %{draw: draw} do
-      assert {:ok, %{found: false}} =
-               Proof.check_entry(draw, "00000000-0000-4000-8000-000000000000")
-    end
+      responses = [
+        Proof.winner?(draw, loser),
+        Proof.winner?(draw, never_entered),
+        Proof.winner?(draw, malformed),
+        Proof.winner?(draw, garbage),
+        Proof.winner?(draw, "")
+      ]
 
-    test "returns not found for a non-UUID input instead of crashing", %{draw: draw} do
-      # Bug: Entry.id is an Ecto UUID column, so Ash cast the input string
-      # through UUID validation before running the query. Non-UUID user input
-      # (e.g. someone typing "df" into the proof page self-check box) raised
-      # Ecto.Query.CastError with a 500 at the proof controller. The lookup
-      # should treat any non-UUID input as "not in this draw" rather than
-      # crashing.
-      for bad <- ["df", "", "not-a-uuid", "AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAAA"] do
-        assert {:ok, %{found: false}} = Proof.check_entry(draw, bad)
-      end
+      assert Enum.all?(responses, &(&1 == {:ok, %{winner: false}}))
+      assert Enum.uniq(responses) == [{:ok, %{winner: false}}]
     end
   end
 end

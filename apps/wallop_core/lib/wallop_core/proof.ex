@@ -6,15 +6,6 @@ defmodule WallopCore.Proof do
   `id`). `operator_ref` is NEVER exposed by anything in this module.
   """
 
-  require Ash.Query
-
-  alias WallopCore.Resources.Entry
-
-  # Lowercase hyphenated 36-char RFC 4122 form. Matches Protocol.entry_hash/1
-  # validation. Inputs that don't match are treated as "not in this draw"
-  # rather than cast-exploding inside the Ecto query.
-  @uuid_regex ~r/\A[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\z/
-
   @doc """
   Re-verify a completed draw by re-running the algorithm.
 
@@ -60,38 +51,5 @@ defmodule WallopCore.Proof do
       |> MapSet.new()
 
     {:ok, %{winner: MapSet.member?(winner_uuids, uuid)}}
-  end
-
-  @doc """
-  DEPRECATED — kept temporarily while the self-check flat-boolean
-  cutover lands. Use `winner?/2` for new code; this function will be
-  removed once all callers migrate.
-  """
-  @spec check_entry(map(), String.t()) ::
-          {:ok, %{found: boolean(), winner: boolean(), position: non_neg_integer() | nil}}
-  def check_entry(draw, uuid) when is_binary(uuid) do
-    in_entries? =
-      if Regex.match?(@uuid_regex, uuid) do
-        Entry
-        |> Ash.Query.filter(draw_id == ^draw.id and id == ^uuid)
-        |> Ash.exists?(authorize?: false)
-      else
-        false
-      end
-
-    if in_entries? do
-      winner =
-        Enum.find(draw.results || [], fn r ->
-          r["entry_id"] == uuid
-        end)
-
-      if winner do
-        {:ok, %{found: true, winner: true, position: winner["position"]}}
-      else
-        {:ok, %{found: true, winner: false}}
-      end
-    else
-      {:ok, %{found: false}}
-    end
   end
 end
