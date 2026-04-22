@@ -181,7 +181,7 @@ defmodule WallopCore.PolicyHardeningTest do
         Entry
         |> Ash.Changeset.for_create(:create, %{
           draw_id: draw.id,
-          entry_id: "stuffed",
+          operator_ref: "stuffed",
           weight: 1
         })
         |> Ash.create!()

@@ -55,7 +55,7 @@ defmodule WallopCore.Resources.DrawImmutabilityTest do
       assert_raise Postgrex.Error, ~r/Cannot modify entries on a/, fn ->
         SQL.query!(
           WallopCore.Repo,
-          "INSERT INTO entries (id, draw_id, entry_id, weight) VALUES (gen_random_uuid(), $1, 'sneaky', 1)",
+          "INSERT INTO entries (id, draw_id, operator_ref, weight) VALUES (gen_random_uuid(), $1, 'sneaky', 1)",
           [Ecto.UUID.dump!(draw.id)]
         )
       end
@@ -65,17 +65,17 @@ defmodule WallopCore.Resources.DrawImmutabilityTest do
       {:ok, result} =
         SQL.query(
           WallopCore.Repo,
-          "SELECT entry_id FROM entries WHERE draw_id = $1 LIMIT 1",
+          "SELECT id FROM entries WHERE draw_id = $1 LIMIT 1",
           [Ecto.UUID.dump!(draw.id)]
         )
 
-      [[entry_id]] = result.rows
+      [[entry_uuid]] = result.rows
 
       assert_raise Postgrex.Error, ~r/Cannot modify entries on a/, fn ->
         SQL.query!(
           WallopCore.Repo,
-          "DELETE FROM entries WHERE draw_id = $1 AND entry_id = $2",
-          [Ecto.UUID.dump!(draw.id), entry_id]
+          "DELETE FROM entries WHERE draw_id = $1 AND id = $2",
+          [Ecto.UUID.dump!(draw.id), entry_uuid]
         )
       end
     end

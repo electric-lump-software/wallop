@@ -130,7 +130,7 @@ defmodule WallopCore.Resources.DrawOpenTest do
         draw
         |> Ash.Changeset.for_update(
           :add_entries,
-          %{entries: [%{"id" => "a", "weight" => 1}, %{"id" => "b", "weight" => 1}]},
+          %{entries: [%{"ref" => "a", "weight" => 1}, %{"ref" => "b", "weight" => 1}]},
           actor: api_key
         )
         |> Ash.update!()
@@ -151,7 +151,7 @@ defmodule WallopCore.Resources.DrawOpenTest do
         draw
         |> Ash.Changeset.for_update(
           :add_entries,
-          %{entries: [%{"id" => "a", "weight" => 1}]},
+          %{entries: [%{"ref" => "a", "weight" => 1}]},
           actor: api_key
         )
         |> Ash.update!()
@@ -160,7 +160,7 @@ defmodule WallopCore.Resources.DrawOpenTest do
         draw
         |> Ash.Changeset.for_update(
           :add_entries,
-          %{entries: [%{"id" => "b", "weight" => 1}]},
+          %{entries: [%{"ref" => "b", "weight" => 1}]},
           actor: api_key
         )
         |> Ash.update!()
@@ -168,56 +168,9 @@ defmodule WallopCore.Resources.DrawOpenTest do
       assert draw.entry_count == 2
 
       table_entries = WallopCore.Entries.load_for_draw(draw.id)
-      ids = Enum.map(table_entries, & &1.id)
-      assert "a" in ids
-      assert "b" in ids
-    end
-
-    test "rejects duplicate IDs against existing entries" do
-      api_key = create_api_key()
-
-      draw =
-        WallopCore.Resources.Draw
-        |> Ash.Changeset.for_create(:create, %{winner_count: 1}, actor: api_key)
-        |> Ash.create!()
-
-      draw =
-        draw
-        |> Ash.Changeset.for_update(
-          :add_entries,
-          %{entries: [%{"id" => "a", "weight" => 1}]},
-          actor: api_key
-        )
-        |> Ash.update!()
-
-      assert_raise Ash.Error.Invalid, fn ->
-        draw
-        |> Ash.Changeset.for_update(
-          :add_entries,
-          %{entries: [%{"id" => "a", "weight" => 1}]},
-          actor: api_key
-        )
-        |> Ash.update!()
-      end
-    end
-
-    test "rejects duplicate IDs within a single batch" do
-      api_key = create_api_key()
-
-      draw =
-        WallopCore.Resources.Draw
-        |> Ash.Changeset.for_create(:create, %{winner_count: 1}, actor: api_key)
-        |> Ash.create!()
-
-      assert_raise Ash.Error.Invalid, ~r/duplicate entry IDs within batch/, fn ->
-        draw
-        |> Ash.Changeset.for_update(
-          :add_entries,
-          %{entries: [%{"id" => "x", "weight" => 1}, %{"id" => "x", "weight" => 2}]},
-          actor: api_key
-        )
-        |> Ash.update!()
-      end
+      refs = Enum.map(table_entries, & &1.operator_ref)
+      assert "a" in refs
+      assert "b" in refs
     end
 
     test "enforces 10K entry limit" do
@@ -228,8 +181,7 @@ defmodule WallopCore.Resources.DrawOpenTest do
         |> Ash.Changeset.for_create(:create, %{winner_count: 1}, actor: api_key)
         |> Ash.create!()
 
-      # Create 10001 entries
-      too_many = for i <- 1..10_001, do: %{"id" => "entry-#{i}", "weight" => 1}
+      too_many = for i <- 1..10_001, do: %{"ref" => "entry-#{i}", "weight" => 1}
 
       assert_raise Ash.Error.Invalid, ~r/must not exceed 10000/, fn ->
         draw
@@ -239,93 +191,8 @@ defmodule WallopCore.Resources.DrawOpenTest do
     end
   end
 
-  describe "entry ID format validation" do
-    test "accepts valid entry IDs (alphanumeric, hyphens, underscores, dots, colons)" do
-      api_key = create_api_key()
-
-      draw =
-        WallopCore.Resources.Draw
-        |> Ash.Changeset.for_create(:create, %{winner_count: 1}, actor: api_key)
-        |> Ash.create!()
-
-      entries = [
-        %{"id" => "abc123", "weight" => 1},
-        %{"id" => "550e8400-e29b-41d4-a716-446655440000", "weight" => 1},
-        %{"id" => "user_42", "weight" => 1},
-        %{"id" => "entry-7", "weight" => 1},
-        %{"id" => "ns:value", "weight" => 1},
-        %{"id" => "v1.2.3", "weight" => 1},
-        %{"id" => "dGVzdA==", "weight" => 1}
-      ]
-
-      draw =
-        draw
-        |> Ash.Changeset.for_update(:add_entries, %{entries: entries}, actor: api_key)
-        |> Ash.update!()
-
-      assert draw.entry_count == 7
-    end
-
-    test "rejects email addresses as entry IDs" do
-      api_key = create_api_key()
-
-      draw =
-        WallopCore.Resources.Draw
-        |> Ash.Changeset.for_create(:create, %{winner_count: 1}, actor: api_key)
-        |> Ash.create!()
-
-      assert_raise Ash.Error.Invalid, ~r/invalid characters/, fn ->
-        draw
-        |> Ash.Changeset.for_update(
-          :add_entries,
-          %{entries: [%{"id" => "user@example.com", "weight" => 1}]},
-          actor: api_key
-        )
-        |> Ash.update!()
-      end
-    end
-
-    test "rejects entry IDs with spaces" do
-      api_key = create_api_key()
-
-      draw =
-        WallopCore.Resources.Draw
-        |> Ash.Changeset.for_create(:create, %{winner_count: 1}, actor: api_key)
-        |> Ash.create!()
-
-      assert_raise Ash.Error.Invalid, ~r/invalid characters/, fn ->
-        draw
-        |> Ash.Changeset.for_update(
-          :add_entries,
-          %{entries: [%{"id" => "John Smith", "weight" => 1}]},
-          actor: api_key
-        )
-        |> Ash.update!()
-      end
-    end
-
-    test "rejects entry IDs with special characters" do
-      api_key = create_api_key()
-
-      draw =
-        WallopCore.Resources.Draw
-        |> Ash.Changeset.for_create(:create, %{winner_count: 1}, actor: api_key)
-        |> Ash.create!()
-
-      assert_raise Ash.Error.Invalid, ~r/invalid characters/, fn ->
-        draw
-        |> Ash.Changeset.for_update(
-          :add_entries,
-          %{entries: [%{"id" => "+44 7911 123456", "weight" => 1}]},
-          actor: api_key
-        )
-        |> Ash.update!()
-      end
-    end
-  end
-
   describe "remove_entry" do
-    test "removes an entry by ID" do
+    test "removes an entry by its wallop UUID" do
       api_key = create_api_key()
 
       draw =
@@ -337,21 +204,24 @@ defmodule WallopCore.Resources.DrawOpenTest do
         draw
         |> Ash.Changeset.for_update(
           :add_entries,
-          %{entries: [%{"id" => "a", "weight" => 1}, %{"id" => "b", "weight" => 1}]},
+          %{entries: [%{"ref" => "a", "weight" => 1}, %{"ref" => "b", "weight" => 1}]},
           actor: api_key
         )
         |> Ash.update!()
 
+      [to_remove, to_keep] =
+        WallopCore.Entries.load_for_draw(draw.id) |> Enum.sort_by(& &1.operator_ref)
+
       draw =
         draw
-        |> Ash.Changeset.for_update(:remove_entry, %{entry_id: "a"}, actor: api_key)
+        |> Ash.Changeset.for_update(:remove_entry, %{entry_uuid: to_remove.uuid}, actor: api_key)
         |> Ash.update!()
 
       assert draw.entry_count == 1
 
-      table_entries = WallopCore.Entries.load_for_draw(draw.id)
-      assert length(table_entries) == 1
-      assert hd(table_entries).id == "b"
+      remaining = WallopCore.Entries.load_for_draw(draw.id)
+      assert length(remaining) == 1
+      assert hd(remaining).uuid == to_keep.uuid
     end
 
     test "returns error if entry not found" do
@@ -366,14 +236,18 @@ defmodule WallopCore.Resources.DrawOpenTest do
         draw
         |> Ash.Changeset.for_update(
           :add_entries,
-          %{entries: [%{"id" => "a", "weight" => 1}]},
+          %{entries: [%{"ref" => "a", "weight" => 1}]},
           actor: api_key
         )
         |> Ash.update!()
 
       assert_raise Ash.Error.Invalid, ~r/entry not found/, fn ->
         draw
-        |> Ash.Changeset.for_update(:remove_entry, %{entry_id: "nonexistent"}, actor: api_key)
+        |> Ash.Changeset.for_update(
+          :remove_entry,
+          %{entry_uuid: "00000000-0000-4000-8000-000000000000"},
+          actor: api_key
+        )
         |> Ash.update!()
       end
     end
@@ -384,9 +258,13 @@ defmodule WallopCore.Resources.DrawOpenTest do
 
       assert draw.status == :awaiting_entropy
 
-      assert_raise Ash.Error.Forbidden, fn ->
+      assert_raise Ash.Error.Invalid, fn ->
         draw
-        |> Ash.Changeset.for_update(:remove_entry, %{entry_id: "ticket-47"}, actor: api_key)
+        |> Ash.Changeset.for_update(
+          :remove_entry,
+          %{entry_uuid: "00000000-0000-4000-8000-000000000000"},
+          actor: api_key
+        )
         |> Ash.update!()
       end
     end
@@ -436,7 +314,7 @@ defmodule WallopCore.Resources.DrawOpenTest do
         draw
         |> Ash.Changeset.for_update(
           :add_entries,
-          %{entries: [%{"id" => "a", "weight" => 1}, %{"id" => "b", "weight" => 1}]},
+          %{entries: [%{"ref" => "a", "weight" => 1}, %{"ref" => "b", "weight" => 1}]},
           actor: api_key
         )
         |> Ash.update!()
@@ -467,7 +345,7 @@ defmodule WallopCore.Resources.DrawOpenTest do
         draw
         |> Ash.Changeset.for_update(
           :add_entries,
-          %{entries: [%{"id" => "a", "weight" => 1}]},
+          %{entries: [%{"ref" => "a", "weight" => 1}]},
           actor: api_key
         )
         |> Ash.update!()
@@ -508,7 +386,7 @@ defmodule WallopCore.Resources.DrawOpenTest do
         draw
         |> Ash.Changeset.for_update(
           :add_entries,
-          %{entries: [%{"id" => "a", "weight" => 1}, %{"id" => "b", "weight" => 1}]},
+          %{entries: [%{"ref" => "a", "weight" => 1}, %{"ref" => "b", "weight" => 1}]},
           actor: api_key
         )
         |> Ash.update!()
@@ -543,7 +421,7 @@ defmodule WallopCore.Resources.DrawOpenTest do
         draw
         |> Ash.Changeset.for_update(
           :add_entries,
-          %{entries: [%{"id" => "extra", "weight" => 1}]},
+          %{entries: [%{"ref" => "extra", "weight" => 1}]},
           actor: api_key
         )
         |> Ash.update!()
