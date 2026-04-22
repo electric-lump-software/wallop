@@ -161,7 +161,7 @@ class VerifyRunner {
     let hash1 = this.addMono(line1.row)
     let computedEntryHashFull
     try {
-      let ehResult = wasm.entry_hash_wasm(JSON.parse(d.entriesJson))
+      let ehResult = wasm.entry_hash_wasm(d.drawId, JSON.parse(d.entriesJson))
       // serde_wasm_bindgen may return a Map instead of a plain object
       computedEntryHashFull = ehResult instanceof Map ? ehResult.get("hash") : ehResult.hash
       await scrambleText(hash1, computedEntryHashFull.substring(0, 8), 1200)
@@ -224,7 +224,7 @@ class VerifyRunner {
       let entries = JSON.parse(entriesJson)
       let expectedResults = JSON.parse(resultsJson)
       let count = parseInt(winnerCount)
-      mathOk = wasm.verify_wasm(entries, d.drandRandomness, weatherValue || undefined, count, expectedResults)
+      mathOk = wasm.verify_wasm(d.drawId, entries, d.drandRandomness, weatherValue || undefined, count, expectedResults)
     } catch (e) {
       this.markFailed(line4)
       this.showError("Verification error: " + e.message)
