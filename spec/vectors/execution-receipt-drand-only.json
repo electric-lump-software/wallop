@@ -6,7 +6,7 @@
     "weather_value_key_present": true
   },
   "description": "Drand-only execution receipt: null weather fields are present as JSON null, NOT omitted",
-  "expected_payload_sha256": "951d461569fd680dce387892ae3ca0a5d3ca4e8df9a3fc51f5aeff86d004032c",
+  "expected_payload_sha256": "43e7ac7cbc754330758db8dc5095ac985d2ed342e98533bde302b57ff3f53ecb",
   "input": {
     "drand_chain": "52db9ba70e0cc0f6eaf7803dd07447a1f5477735fd3f661792ba94600c84e971",
     "drand_randomness": "abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890",
@@ -16,7 +16,7 @@
     "entry_hash": "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789",
     "executed_at": "2026-04-09T12:05:00.000000Z",
     "fair_pick_version": "0.2.1",
-    "lock_receipt_hash": "756f7c0d8a7506f9dfb57d6ecba631ae3462872060e429c75f21562af931e135",
+    "lock_receipt_hash": "3fbacc9e2aa7e80593edcec4b64c89c791b776a9e3371af5e34bc8cdd4138fa3",
     "operator_id": "11111111-1111-1111-1111-111111111111",
     "operator_slug": "acme-prizes",
     "results": [

@@ -140,9 +140,26 @@ linkage_path = Path.join(vectors_dir, "cross-receipt-linkage.json")
 linkage = linkage_path |> File.read!() |> Jason.decode!()
 linkage_input = to_lock_input.(linkage["lock_receipt_input"])
 linkage_payload = Protocol.build_receipt_payload(linkage_input)
+new_linkage_hash = sha256_hex.(linkage_payload)
 
 linkage
-|> Map.put("expected_lock_payload_sha256", sha256_hex.(linkage_payload))
+|> Map.put("expected_lock_payload_sha256", new_linkage_hash)
 |> then(&write_json.(linkage_path, &1))
+
+# --- chain: the drand-only execution receipt references the linkage's
+#     lock_receipt_hash in its input. Re-point it so the v4 lock payload
+#     the linkage vector commits to matches the hash the drand-only
+#     execution receipt claims as its parent. Then regenerate the
+#     drand-only execution payload hash against the new chain.
+drand_only = drand_only_path |> File.read!() |> Jason.decode!()
+
+drand_only_input_map2 = Map.put(drand_only["input"], "lock_receipt_hash", new_linkage_hash)
+drand_only_input2 = to_exec_input.(drand_only_input_map2)
+drand_only_payload2 = Protocol.build_execution_receipt_payload(drand_only_input2)
+
+drand_only
+|> Map.put("input", drand_only_input_map2)
+|> Map.put("expected_payload_sha256", sha256_hex.(drand_only_payload2))
+|> then(&write_json.(drand_only_path, &1))
 
 IO.puts("\nDone. Re-run mix test to verify.")
