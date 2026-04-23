@@ -34,6 +34,14 @@ defmodule WallopWeb.Router do
     pipe_through([:api, :api_authenticated])
 
     get("/health", WallopWeb.ApiHealthController, :index)
+
+    # Custom handlers for draw entries — take precedence over the generic
+    # AshJsonApi route. `:create` returns `meta.inserted_entries` alongside
+    # the draw; `:index` is the authenticated readback endpoint for
+    # post-ingest UUID recovery and manifest construction.
+    patch("/draws/:id/entries", WallopWeb.DrawEntriesController, :create)
+    get("/draws/:id/entries", WallopWeb.DrawEntriesController, :index)
+
     forward("/", WallopWeb.AshJsonApiRouter)
   end
 

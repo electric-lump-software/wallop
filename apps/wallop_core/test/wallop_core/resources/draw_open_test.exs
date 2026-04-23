@@ -139,6 +139,39 @@ defmodule WallopCore.Resources.DrawOpenTest do
       assert draw.status == :open
     end
 
+    test "returned draw carries :inserted_entries metadata in submission order" do
+      api_key = create_api_key()
+
+      draw =
+        WallopCore.Resources.Draw
+        |> Ash.Changeset.for_create(:create, %{winner_count: 1}, actor: api_key)
+        |> Ash.create!()
+
+      # Give each submitted entry a unique weight so we can verify that the
+      # returned UUID at position i corresponds to the i-th submission.
+      submitted = for w <- [1, 7, 3, 4, 2], do: %{"weight" => w}
+
+      draw =
+        draw
+        |> Ash.Changeset.for_update(:add_entries, %{entries: submitted}, actor: api_key)
+        |> Ash.update!()
+
+      uuids = Ash.Resource.get_metadata(draw, :inserted_entries)
+
+      assert is_list(uuids)
+      assert length(uuids) == length(submitted)
+      assert Enum.all?(uuids, &String.match?(&1, ~r/^[0-9a-f-]{36}$/))
+
+      # Cross-check: load the actual rows by UUID and verify weight at each
+      # submission position matches what was submitted at that position.
+      rows = WallopCore.Entries.load_for_draw(draw.id)
+      by_uuid = Map.new(rows, &{&1.uuid, &1.weight})
+
+      for {uuid, i} <- Enum.with_index(uuids) do
+        assert Map.fetch!(by_uuid, uuid) == Enum.at(submitted, i)["weight"]
+      end
+    end
+
     test "appends multiple batches" do
       api_key = create_api_key()
 

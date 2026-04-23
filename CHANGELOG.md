@@ -7,19 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### wallop_core 0.16.0 — BREAKING: purge `operator_ref`
+### wallop_core 0.16.0 — BREAKING: purge `operator_ref`, add UUID capture
 
-Removes the operator-supplied `operator_ref` sidecar from `Entry` end-to-end. Callers that need `uuid ↔ their-own-id` mapping now capture the returned UUIDs from the `add_entries` response (already in submission order) and store the mapping in their own database. No operator-supplied reference data lives in wallop_core.
+Removes the operator-supplied `operator_ref` sidecar from `Entry` end-to-end and adds two HTTP capabilities so operators can capture wallop-assigned entry UUIDs at ingest time. Callers that need `uuid ↔ their-own-id` mapping now capture the returned UUIDs from the `add_entries` response (in submission order) and store the mapping in their own database. No operator-supplied reference data lives in wallop_core.
 
-#### What changes
+#### What changes — operator_ref purge
 
 The `operator_ref` attribute, validation module, and `entries.operator_ref` column are removed. The `add_entries` action's `entries` argument shape becomes `[%{weight: pos_integer()}]` — the optional `ref` field is gone. `Entries.load_for_draw/1` returns `[%{uuid, weight}]`. `entry_hash` was already shape-invariant to `operator_ref` (extra keys on entries are ignored), so the canonical bytes are unchanged — the v0.15.0 frozen vectors replay green against v0.16.0 code.
+
+#### What changes — entry UUID capture
+
+`PATCH /api/v1/draws/:id/entries` now returns a response of the form `%{data: <draw>, meta: %{inserted_entries: [%{uuid}]}}`. The `inserted_entries` array preserves the submission order of the request's entries, so caller[i] ↔ uuid[i] correlation is server-authoritative and zero-round-trip. Transaction-atomic — partial batch failure rolls back the whole batch.
+
+New `GET /api/v1/draws/:id/entries` endpoint. api_key-scoped, returns `{entries: [{uuid, weight}], next_after?: uuid}` sorted UUID-ascending, keyset-paginated via `?after=<uuid>&limit=<n>`. Works at any draw status (open, locked, terminal). At `:locked` status onward the response is byte-identical to the public `GET /proof/:id/entries`. Used for post-TTL recovery after a dropped response and as the canonical source for building the ticket manifest Merkle tree at lock time.
+
+Entry UUIDs remain **server-generated UUIDv4 from `:crypto.strong_rand_bytes/1`**. Operator-supplied UUIDs are not accepted — low-entropy operator input would reintroduce the brute-force surface the v0.15.0 UUID refactor killed.
 
 #### Migration
 
 Run `mix ecto.migrate` to drop the `entries.operator_ref` column. If any row data matters (it shouldn't — the field was write-only at the API surface), back it up first.
 
-Callers must stop sending `ref` on `add_entries`. The `add_entries` response still returns one `uuid` per entry in submission order — capture the `(uuid ↔ your-reference)` mapping at submit time in your own encrypted-at-rest table.
+Callers must stop sending `ref` on `add_entries`. The response now includes `meta.inserted_entries` with per-entry UUIDs in submission order. Capture the `(uuid ↔ your-reference)` mapping at submit time in your own encrypted-at-rest table. Use the new authenticated `GET /api/v1/draws/:id/entries` to recover UUIDs after a dropped response, or to read the canonical UUID-sorted set at lock time for manifest construction.
 
 ---
 

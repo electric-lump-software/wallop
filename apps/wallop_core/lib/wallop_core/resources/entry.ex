@@ -15,7 +15,14 @@ defmodule WallopCore.Resources.Entry do
     defaults([:read])
 
     create :create do
-      accept([:draw_id, :weight])
+      # `:id` is accepted so `AddEntries` can pre-generate the UUID in
+      # Elixir and pass it in, guaranteeing submission-order correlation
+      # in the `add_entries` response. Still server-generated
+      # (`:crypto.strong_rand_bytes/1` via `Ash.UUID.generate/0`) — no
+      # operator-chosen UUIDs. Policy on Entry `:create` is still
+      # `forbid_if(always())` for external callers; this path is
+      # `authorize?: false`.
+      accept([:id, :draw_id, :weight])
     end
 
     destroy :destroy do
@@ -43,7 +50,13 @@ defmodule WallopCore.Resources.Entry do
   end
 
   attributes do
-    uuid_primary_key(:id)
+    # Writable primary key so `AddEntries` can pre-generate the UUID in
+    # Elixir and pass it in, guaranteeing submission-order correlation
+    # in the `add_entries` HTTP response. Generator is
+    # `Ash.UUID.generate/0` which uses `:crypto.strong_rand_bytes/1` —
+    # still server-side entropy. Policy on `:create` is
+    # `forbid_if(always())` so external callers can never influence it.
+    uuid_primary_key(:id, writable?: true)
 
     attribute :draw_id, :uuid do
       allow_nil?(false)
