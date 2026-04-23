@@ -6,7 +6,7 @@
     "weather_value_key_present": true
   },
   "description": "Drand-only execution receipt: null weather fields are present as JSON null, NOT omitted",
-  "expected_payload_sha256": "3d4bb99c75f411d79f499c7b4cce4482189c8ce34f55e99c7f25bc435ec380b4",
+  "expected_payload_sha256": "951d461569fd680dce387892ae3ca0a5d3ca4e8df9a3fc51f5aeff86d004032c",
   "input": {
     "drand_chain": "52db9ba70e0cc0f6eaf7803dd07447a1f5477735fd3f661792ba94600c84e971",
     "drand_randomness": "abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890",
@@ -26,7 +26,7 @@
     "seed": "aaaa000000000000000000000000000000000000000000000000000000000000",
     "sequence": 1,
     "wallop_core_version": "0.14.1",
-    "weather_fallback_reason": "met_office_timeout",
+    "weather_fallback_reason": "unreachable",
     "weather_observation_time": null,
     "weather_station": null,
     "weather_value": null
