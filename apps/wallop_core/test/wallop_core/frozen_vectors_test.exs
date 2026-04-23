@@ -43,6 +43,22 @@ defmodule WallopCore.FrozenVectorsTest do
       %{vectors: load_vector("entry-hash.json")["vectors"]}
     end
 
+    # Zero-drift sentinel. This test pins the entry_hash byte output
+    # against the v0.15.0 baseline — any accidental change to the
+    # canonical form (sort order, JCS encoding, extra fields) breaks
+    # this test loudly rather than silently re-pinning. Do NOT regenerate
+    # entry-hash.json without a CHANGELOG BREAKING entry and a deliberate
+    # schema_version bump on every affected receipt.
+    test "single-entry canonical form is byte-pinned (v0.15.0 baseline)" do
+      entries = [%{uuid: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", weight: 1}]
+      draw_id = "11111111-1111-4111-8111-111111111111"
+
+      {hash, _jcs} = Protocol.entry_hash({draw_id, entries})
+
+      # Frozen against the v0.15.0 vector set.
+      assert hash == "d6ab8f4c63c05739f87a3cdb0d9235c09b59f4fca558a1394022e673059087e0"
+    end
+
     @vector_names [
       "single entry",
       "operator_ref does not affect hash",
@@ -258,7 +274,7 @@ defmodule WallopCore.FrozenVectorsTest do
 
   # ── V-5: Lock receipt payload ─────────────────────────────────────
 
-  describe "V-5: lock receipt payload (schema v3)" do
+  describe "V-5: lock receipt payload (schema v4)" do
     setup do
       %{vector: load_vector("lock-receipt.json")}
     end
@@ -289,7 +305,7 @@ defmodule WallopCore.FrozenVectorsTest do
 
   # ── V-6: Execution receipt payload ────────────────────────────────
 
-  describe "V-6: execution receipt payload (schema v1)" do
+  describe "V-6: execution receipt payload (schema v2)" do
     setup do
       %{vector: load_vector("execution-receipt.json")}
     end
@@ -302,12 +318,11 @@ defmodule WallopCore.FrozenVectorsTest do
       assert payload |> Jason.decode!() |> map_size() == v["expected_field_count"]
     end
 
-    test "execution_schema_version is correct", %{vector: v} do
+    test "schema_version is correct", %{vector: v} do
       input = to_exec_input(v["input"])
       payload = Protocol.build_execution_receipt_payload(input)
 
-      assert Jason.decode!(payload)["execution_schema_version"] ==
-               v["expected_execution_schema_version"]
+      assert Jason.decode!(payload)["schema_version"] == v["expected_schema_version"]
     end
 
     test "sign + verify round-trip with frozen key", %{vector: v} do
@@ -451,7 +466,7 @@ defmodule WallopCore.FrozenVectorsTest do
       assert decoded["weather_station"] == nil
       assert decoded["weather_observation_time"] == nil
       assert decoded["weather_value"] == nil
-      assert decoded["weather_fallback_reason"] == "met_office_timeout"
+      assert decoded["weather_fallback_reason"] == "unreachable"
     end
 
     test "payload SHA-256 is pinned", %{vector: v} do

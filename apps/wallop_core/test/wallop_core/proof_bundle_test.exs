@@ -117,7 +117,7 @@ defmodule WallopCore.ProofBundleTest do
           drand_randomness: test_drand_randomness(),
           drand_signature: "test-signature",
           drand_response: "{}",
-          weather_fallback_reason: "manual override for test"
+          weather_fallback_reason: "unreachable"
         })
         |> Ash.update!(domain: WallopCore.Domain, authorize?: false)
 

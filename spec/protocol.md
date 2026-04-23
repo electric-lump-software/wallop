@@ -271,6 +271,52 @@ available:
 The proof record is immutable after execution. No field may be modified or
 deleted.
 
+### 2.6 Signed receipts
+
+Two signed artefacts bind the proof record to cryptographic commitments:
+
+- **Lock receipt** — signed by the operator's `OperatorSigningKey` at
+  lock time. Commits `entry_hash` (bound to `draw_id`), declared
+  entropy sources, `winner_count`, `commitment_hash`, and the pinned
+  algorithm identity tags enumerated below. Current schema version:
+  `"4"`.
+- **Execution receipt** — signed by the wallop infrastructure key at
+  execution time. Links back to the lock receipt via
+  `lock_receipt_hash`, commits the realised entropy values
+  (`drand_randomness`, `drand_signature`, `weather_value`, …), the
+  computed `seed`, the ordered `results`, and the same algorithm
+  identity tags plus the drand signature scheme and the Merkle
+  construction used in downstream commitments. Current schema
+  version: `"2"`.
+
+Both receipts are JCS-canonicalised before signing. Verifiers MUST
+reject any receipt whose `schema_version` value does not match a known
+shape — historical receipts remain verifiable with older verifier
+versions; new receipts require current-version verifiers.
+
+#### Pinned algorithm identity tags
+
+The following tags are embedded verbatim in the signed payload and
+covered by the Ed25519 signature. Rotating any one of them requires a
+new tag value plus a schema version bump; the tag is how a verifier
+decides which rules to apply.
+
+| Tag | Value | Appears in |
+|-----|-------|-----------|
+| `jcs_version` | `"sha256-jcs-v1"` | Both |
+| `signature_algorithm` | `"ed25519"` | Both |
+| `entropy_composition` | `"drand-quicknet+openmeteo-v1"` | Both |
+| `drand_signature_algorithm` | `"bls12_381_g2"` | Execution |
+| `merkle_algorithm` | `"sha256-pairwise-v1"` | Execution |
+
+#### `weather_fallback_reason` enum (execution receipt)
+
+Accepted values: `"station_down"`, `"stale"`, `"unreachable"`, or
+`null`. Free-text values are rejected. A fifth value requires a
+schema version bump. Classification of raw weather-client errors
+into the enum is performed by the producer before signing;
+verifiers reject any value outside the four listed.
+
 ---
 
 ## 3. Test vectors

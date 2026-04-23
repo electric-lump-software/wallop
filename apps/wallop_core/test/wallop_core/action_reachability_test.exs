@@ -13,13 +13,13 @@ defmodule WallopCore.ActionReachabilityTest do
   alias WallopCore.Resources.SandboxDraw
 
   describe "Draw action inventory" do
-    test "exactly 12 actions exist (1 create + 10 update + 1 read)" do
+    test "exactly 11 actions exist (1 create + 9 update + 1 read)" do
       actions = Ash.Resource.Info.actions(Draw)
-      assert length(actions) == 12
+      assert length(actions) == 11
 
       by_type = Enum.group_by(actions, & &1.type)
       assert length(by_type[:create] || []) == 1
-      assert length(by_type[:update] || []) == 10
+      assert length(by_type[:update] || []) == 9
       assert length(by_type[:read] || []) == 1
     end
 
@@ -38,7 +38,6 @@ defmodule WallopCore.ActionReachabilityTest do
           :remove_entry,
           :update_name,
           :lock,
-          :execute,
           :transition_to_pending,
           :execute_with_entropy,
           :execute_drand_only,

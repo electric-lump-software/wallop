@@ -293,13 +293,16 @@ defmodule WallopCore.Entropy.EntropyWorker do
   end
 
   defp execute_drand_only(draw, drand, weather_error_reason) do
+    alias WallopCore.Entropy.WeatherFallback
+    classified = WeatherFallback.to_string(WeatherFallback.classify(weather_error_reason))
+
     Tracer.with_span "entropy_worker.execute_drand_only", attributes: %{"draw.id" => draw.id} do
       draw
       |> Ash.Changeset.for_update(:execute_drand_only, %{
         drand_randomness: drand.randomness,
         drand_signature: drand.signature,
         drand_response: drand.response,
-        weather_fallback_reason: weather_error_reason
+        weather_fallback_reason: classified
       })
       |> Ash.update(domain: WallopCore.Domain, authorize?: false)
       |> case do

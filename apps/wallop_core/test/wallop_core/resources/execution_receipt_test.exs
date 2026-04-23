@@ -75,11 +75,17 @@ defmodule WallopCore.Resources.ExecutionReceiptTest do
 
       decoded = Jason.decode!(receipt.payload_jcs)
 
-      # All 19 fields from the design doc §2.1
+      # Receipt shape v2 — 25 fields including algorithm tag pins.
       assert decoded["draw_id"] == draw.id
       assert decoded["operator_id"] == draw.operator_id
       assert is_integer(decoded["sequence"])
-      assert decoded["execution_schema_version"] == "1"
+      assert decoded["schema_version"] == "2"
+      refute Map.has_key?(decoded, "execution_schema_version")
+      assert decoded["jcs_version"] == "sha256-jcs-v1"
+      assert decoded["signature_algorithm"] == "ed25519"
+      assert decoded["entropy_composition"] == "drand-quicknet+openmeteo-v1"
+      assert decoded["drand_signature_algorithm"] == "bls12_381_g2"
+      assert decoded["merkle_algorithm"] == "sha256-pairwise-v1"
 
       # Entropy fields
       assert decoded["drand_randomness"] == test_drand_randomness()
@@ -372,7 +378,7 @@ defmodule WallopCore.Resources.ExecutionReceiptTest do
           drand_randomness: test_drand_randomness(),
           drand_signature: "test-bls-sig",
           drand_response: "{}",
-          weather_fallback_reason: "met_office_timeout"
+          weather_fallback_reason: "unreachable"
         })
         |> Ash.update!(domain: WallopCore.Domain, authorize?: false)
 
@@ -391,14 +397,15 @@ defmodule WallopCore.Resources.ExecutionReceiptTest do
       assert is_binary(decoded["weather_station"])
 
       # Fallback reason should be present
-      assert decoded["weather_fallback_reason"] == "met_office_timeout"
+      assert decoded["weather_fallback_reason"] == "unreachable"
 
       # Drand fields should be populated
       assert decoded["drand_randomness"] == test_drand_randomness()
       assert decoded["drand_signature"] == "test-bls-sig"
 
       # Schema version
-      assert decoded["execution_schema_version"] == "1"
+      assert decoded["schema_version"] == "2"
+      refute Map.has_key?(decoded, "execution_schema_version")
     end
   end
 end
