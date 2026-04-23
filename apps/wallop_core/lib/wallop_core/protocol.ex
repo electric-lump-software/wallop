@@ -135,7 +135,32 @@ defmodule WallopCore.Protocol do
     {seed_bytes, jcs_string}
   end
 
-  @receipt_schema_version "3"
+  @receipt_schema_version "4"
+
+  # Algorithm identity tags. Embedded verbatim into every signed receipt
+  # so the cryptographic choices are forensically anchored at commitment
+  # time. Rotating any algorithm requires a new tag value plus a schema
+  # version bump — the tag is how verifiers decide which rules to apply.
+  @jcs_version "sha256-jcs-v1"
+  @signature_algorithm "ed25519"
+  @entropy_composition "drand-quicknet+openmeteo-v1"
+  @drand_signature_algorithm "bls12_381_g2"
+  @merkle_algorithm "sha256-pairwise-v1"
+
+  @spec jcs_version() :: String.t()
+  def jcs_version, do: @jcs_version
+
+  @spec signature_algorithm() :: String.t()
+  def signature_algorithm, do: @signature_algorithm
+
+  @spec entropy_composition() :: String.t()
+  def entropy_composition, do: @entropy_composition
+
+  @spec drand_signature_algorithm() :: String.t()
+  def drand_signature_algorithm, do: @drand_signature_algorithm
+
+  @spec merkle_algorithm() :: String.t()
+  def merkle_algorithm, do: @merkle_algorithm
 
   @doc """
   Build the canonical JCS payload bytes for an operator commitment receipt.
@@ -187,13 +212,16 @@ defmodule WallopCore.Protocol do
       "draw_id" => draw_id,
       "drand_chain" => drand_chain,
       "drand_round" => drand_round,
+      "entropy_composition" => @entropy_composition,
       "entry_hash" => entry_hash,
       "fair_pick_version" => fair_pick_version,
+      "jcs_version" => @jcs_version,
       "locked_at" => DateTime.to_iso8601(locked_at),
       "operator_id" => operator_id,
       "operator_slug" => to_string(operator_slug),
       "schema_version" => @receipt_schema_version,
       "sequence" => sequence,
+      "signature_algorithm" => @signature_algorithm,
       "signing_key_id" => signing_key_id,
       "wallop_core_version" => wallop_core_version,
       "weather_station" => weather_station,
@@ -207,7 +235,23 @@ defmodule WallopCore.Protocol do
   defp maybe_iso8601(%DateTime{} = dt), do: DateTime.to_iso8601(dt)
   defp maybe_iso8601(nil), do: nil
 
-  @execution_receipt_schema_version "1"
+  # Frozen enum for the execution receipt's `weather_fallback_reason`
+  # field. Anything outside this set raises — the classifier in
+  # `WallopCore.Entropy.WeatherFallback` is the only permitted source.
+  # A fifth value is a schema bump, not a minor addition.
+  @valid_weather_fallback_reasons ["station_down", "stale", "unreachable", nil]
+
+  defp validate_weather_fallback_reason!(reason)
+       when reason in @valid_weather_fallback_reasons,
+       do: :ok
+
+  defp validate_weather_fallback_reason!(other) do
+    raise ArgumentError,
+          "weather_fallback_reason must be one of " <>
+            "#{inspect(@valid_weather_fallback_reasons)}, got: #{inspect(other)}"
+  end
+
+  @execution_receipt_schema_version "2"
 
   @doc """
   Build the canonical JCS payload bytes for an execution receipt.
@@ -240,22 +284,29 @@ defmodule WallopCore.Protocol do
         results: results,
         executed_at: %DateTime{} = executed_at
       }) do
+    validate_weather_fallback_reason!(weather_fallback_reason)
+
     Jcs.encode(%{
       "draw_id" => draw_id,
       "drand_chain" => drand_chain,
       "drand_randomness" => drand_randomness,
       "drand_round" => drand_round,
       "drand_signature" => drand_signature,
+      "drand_signature_algorithm" => @drand_signature_algorithm,
+      "entropy_composition" => @entropy_composition,
       "entry_hash" => entry_hash,
       "executed_at" => DateTime.to_iso8601(executed_at),
-      "execution_schema_version" => @execution_receipt_schema_version,
       "fair_pick_version" => fair_pick_version,
+      "jcs_version" => @jcs_version,
       "lock_receipt_hash" => lock_receipt_hash,
+      "merkle_algorithm" => @merkle_algorithm,
       "operator_id" => operator_id,
       "operator_slug" => to_string(operator_slug),
       "results" => results,
+      "schema_version" => @execution_receipt_schema_version,
       "seed" => seed,
       "sequence" => sequence,
+      "signature_algorithm" => @signature_algorithm,
       "wallop_core_version" => wallop_core_version,
       "weather_fallback_reason" => weather_fallback_reason,
       "weather_observation_time" => maybe_iso8601(weather_observation_time),

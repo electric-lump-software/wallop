@@ -104,27 +104,6 @@ defmodule WallopCore.Resources.Draw do
       change({WallopCore.Resources.Draw.Changes.SignAndStoreReceipt, []})
     end
 
-    update :execute do
-      require_atomic?(false)
-
-      argument :seed, :string do
-        allow_nil?(false)
-      end
-
-      validate match(:seed, ~r/^[0-9a-fA-F]{64}$/) do
-        message("must be a 64-character hex string")
-      end
-
-      validate({WallopCore.Resources.Draw.Validations.NoEntropyDeclared, []})
-
-      # Atomic filter: ensures the row is still :locked at UPDATE time,
-      # preventing race conditions with concurrent execute requests.
-      filter(expr(status == :locked))
-
-      change({WallopCore.Resources.Draw.Changes.ExecuteDraw, []})
-      change({WallopCore.Resources.Draw.Changes.SignAndStoreExecutionReceipt, []})
-    end
-
     update :transition_to_pending do
       require_atomic?(false)
       filter(expr(status == :awaiting_entropy))
@@ -218,11 +197,6 @@ defmodule WallopCore.Resources.Draw do
     policy action(:lock) do
       forbid_unless(actor_present())
       authorize_if(expr(api_key_id == ^actor(:id) and status == :open))
-    end
-
-    policy action(:execute) do
-      forbid_unless(actor_present())
-      authorize_if(expr(api_key_id == ^actor(:id) and status == :locked))
     end
 
     policy action(:read) do
