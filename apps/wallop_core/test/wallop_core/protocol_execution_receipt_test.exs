@@ -39,14 +39,20 @@ defmodule WallopCore.ProtocolExecutionReceiptTest do
       assert is_binary(payload)
       decoded = Jason.decode!(payload)
 
-      # Verify all 19 fields are present
-      # JCS sorts keys lexicographically; Jason.decode! preserves that order
+      # Verify all fields are present and keys are sorted.
+      # JCS sorts keys lexicographically; Jason.decode! preserves that order.
       decoded_keys = Map.keys(decoded)
       assert decoded_keys == Enum.sort(decoded_keys)
-      assert length(decoded_keys) == 20
+      assert length(decoded_keys) == 25
 
       # Spot-check key values
-      assert decoded["execution_schema_version"] == "1"
+      assert decoded["schema_version"] == "2"
+      refute Map.has_key?(decoded, "execution_schema_version")
+      assert decoded["jcs_version"] == "sha256-jcs-v1"
+      assert decoded["signature_algorithm"] == "ed25519"
+      assert decoded["entropy_composition"] == "drand-quicknet+openmeteo-v1"
+      assert decoded["drand_signature_algorithm"] == "bls12_381_g2"
+      assert decoded["merkle_algorithm"] == "sha256-pairwise-v1"
       assert decoded["draw_id"] == "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
       assert decoded["operator_slug"] == "acme-prizes"
       assert decoded["sequence"] == 42
@@ -110,7 +116,7 @@ defmodule WallopCore.ProtocolExecutionReceiptTest do
           weather_station: nil,
           weather_observation_time: nil,
           weather_value: nil,
-          weather_fallback_reason: "met_office_timeout"
+          weather_fallback_reason: "unreachable"
         })
 
       payload = Protocol.build_execution_receipt_payload(input)
@@ -119,7 +125,16 @@ defmodule WallopCore.ProtocolExecutionReceiptTest do
       assert decoded["weather_station"] == nil
       assert decoded["weather_observation_time"] == nil
       assert decoded["weather_value"] == nil
-      assert decoded["weather_fallback_reason"] == "met_office_timeout"
+      assert decoded["weather_fallback_reason"] == "unreachable"
+    end
+
+    test "raises on unknown weather_fallback_reason (enum freeze)" do
+      input =
+        Map.put(@frozen_payload_input, :weather_fallback_reason, "some_random_string")
+
+      assert_raise ArgumentError, ~r/weather_fallback_reason must be one of/, fn ->
+        Protocol.build_execution_receipt_payload(input)
+      end
     end
 
     test "results order is preserved exactly as given" do

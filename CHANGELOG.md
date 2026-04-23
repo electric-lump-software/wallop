@@ -7,9 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### wallop_core 0.16.0 — BREAKING: purge `operator_ref`, add UUID capture
+### wallop_core 0.16.0 — BREAKING: purge `operator_ref`, add UUID capture, receipt shape v4
 
-Removes the operator-supplied `operator_ref` sidecar from `Entry` end-to-end and adds two HTTP capabilities so operators can capture wallop-assigned entry UUIDs at ingest time. Callers that need `uuid ↔ their-own-id` mapping now capture the returned UUIDs from the `add_entries` response (in submission order) and store the mapping in their own database. No operator-supplied reference data lives in wallop_core.
+Three bundled breaking changes that together close the pre-1.0.0 receipt-hardening pass:
+
+1. Removes the operator-supplied `operator_ref` sidecar from `Entry` end-to-end.
+2. Adds two HTTP capabilities so operators can capture wallop-assigned entry UUIDs at ingest time.
+3. Tightens the receipt envelopes — lock receipt v3→v4, execution receipt v1→v2, algorithm identity tags pinned, `weather_fallback_reason` frozen as an enum, `:execute` action surface removed.
+
+Callers that need `uuid ↔ their-own-id` mapping capture the returned UUIDs from the `add_entries` response (in submission order) and store the mapping in their own database. No operator-supplied reference data lives in wallop_core.
 
 #### What changes — operator_ref purge
 
@@ -28,6 +34,25 @@ Entry UUIDs remain **server-generated UUIDv4 from `:crypto.strong_rand_bytes/1`*
 Run `mix ecto.migrate` to drop the `entries.operator_ref` column. If any row data matters (it shouldn't — the field was write-only at the API surface), back it up first.
 
 Callers must stop sending `ref` on `add_entries`. The response now includes `meta.inserted_entries` with per-entry UUIDs in submission order. Capture the `(uuid ↔ your-reference)` mapping at submit time in your own encrypted-at-rest table. Use the new authenticated `GET /api/v1/draws/:id/entries` to recover UUIDs after a dropped response, or to read the canonical UUID-sorted set at lock time for manifest construction.
+
+#### What changes — receipt shape v4 / execution v2
+
+Lock receipt `schema_version` bumps `"3"` → `"4"`. Execution receipt's `"execution_schema_version"` key is renamed to `"schema_version"` (symmetric with lock) and value bumps `"1"` → `"2"`. Verifiers reject unknown schema versions — historical receipts remain verifiable with older verifier versions; new receipts require a v4/v2-aware verifier.
+
+Both receipts now carry explicit algorithm identity tags inside the signed payload, so cryptographic choices are forensically anchored at commitment time:
+
+- Both receipts add: `jcs_version: "sha256-jcs-v1"`, `signature_algorithm: "ed25519"`, `entropy_composition: "drand-quicknet+openmeteo-v1"`.
+- Execution receipt also adds: `drand_signature_algorithm: "bls12_381_g2"`, `merkle_algorithm: "sha256-pairwise-v1"`.
+
+Rotating any algorithm requires a new tag value plus a schema version bump. Existing `wallop_core_version` and `fair_pick_version` remain as forensic code-identity anchors.
+
+**`weather_fallback_reason` is now a frozen enum**: `"station_down"`, `"stale"`, `"unreachable"`, or `null`. A new pure classifier at `WallopCore.Entropy.WeatherFallback.classify/1` maps raw weather-client errors to one of the four values (`:unreachable` is the catch-all). Receipt build raises on unknown values; verifier rejects unknown values. A fifth value requires a schema bump, not a minor addition.
+
+**`Entries.load_for_draw/1` sorts `(inserted_at ASC, id ASC)`**. `entry_hash` bytes unchanged (the protocol layer sorts by UUID before any commitment) — this stabilises every other iteration site (proof bundle, FairPick input, webhook payload, PDF render) against Postgres row-order drift.
+
+**Unreachable `:execute` action deleted**, along with the `NoEntropyDeclared` validation module and internal `ExecuteDraw` change. The `:locked` status enum value is retained (observers rely on it). If caller-seed lock-and-wait is ever wired up properly, it lands as a 1.x additive minor.
+
+Zero-drift proof: `entry-hash.json`, `compute-seed.json`, `fair-pick.json`, `merkle-root.json`, `ed25519.json`, `key-id.json`, `anchor-root.json` are byte-identical to v0.15.0 vectors. A pinned regression test in `frozen_vectors_test.exs` asserts `entry_hash` byte equality — any accidental change to the canonical form breaks loudly.
 
 ---
 

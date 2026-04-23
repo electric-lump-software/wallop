@@ -84,26 +84,6 @@ defmodule WallopCore.Resources.DrawEntropyTest do
   end
 
   describe "caller-seed blocked when entropy declared" do
-    test "execute with caller seed fails when entropy is declared (Ash validation)" do
-      api_key = create_api_key()
-      draw = create_draw(api_key)
-
-      assert draw.drand_round != nil
-
-      # The :execute action requires status == :locked, but all draws now go
-      # through the entropy flow (status == :awaiting_entropy with drand_round set).
-      # Even if we could reach :locked status, the NoEntropyDeclared validation
-      # would reject caller-provided seeds when drand_round is set.
-      #
-      # Verify by calling :execute directly — it should fail because the draw
-      # is not in :locked status (filter won't match).
-      assert_raise Ash.Error.Invalid, ~r/cannot use caller-provided seed/, fn ->
-        draw
-        |> Ash.Changeset.for_update(:execute, %{seed: test_seed()}, actor: api_key)
-        |> Ash.update!()
-      end
-    end
-
     test "DB trigger blocks caller-seed when drand_round is set" do
       api_key = create_api_key()
       draw = create_draw(api_key)

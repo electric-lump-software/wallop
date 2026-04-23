@@ -159,7 +159,7 @@ defmodule WallopCore.Entropy.EntropyWorkerTest do
       assert completed.seed_source == :entropy
       assert completed.drand_randomness != nil
       assert completed.weather_value == nil
-      assert completed.weather_fallback_reason =~ "unexpected_status"
+      assert completed.weather_fallback_reason == "unreachable"
 
       # Verify seed uses drand-only computation
       {expected_seed, _} =
@@ -224,7 +224,7 @@ defmodule WallopCore.Entropy.EntropyWorkerTest do
       completed = reload_draw(draw, api_key)
       assert completed.status == :completed
       assert completed.weather_value == nil
-      assert completed.weather_fallback_reason =~ "401"
+      assert completed.weather_fallback_reason == "unreachable"
     end
 
     test "weather 401 retries before threshold" do
