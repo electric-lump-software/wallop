@@ -60,9 +60,9 @@ defmodule WallopCore.TestHelpers do
     {_, params} = Map.pop(params, :skip_entropy)
 
     default_entries = [
-      %{"ref" => "ticket-47", "weight" => 1},
-      %{"ref" => "ticket-48", "weight" => 1},
-      %{"ref" => "ticket-49", "weight" => 1}
+      %{"weight" => 1},
+      %{"weight" => 1},
+      %{"weight" => 1}
     ]
 
     entries = entries || default_entries

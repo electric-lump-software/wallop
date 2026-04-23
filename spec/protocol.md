@@ -135,10 +135,10 @@ The `entry_hash` is a 64-character lowercase hexadecimal string.
 **Anything this hash commits must be derivable from the public
 ProofBundle bytes alone.** A third-party verifier reading the public
 proof bundle MUST be able to reproduce `entry_hash` exactly, without
-any authenticated operator-only data. This is why `operator_ref`
-(an optional operator-supplied sidecar stored on the Entry resource)
-is NOT part of the canonical form — it is operator-private and
-must not appear in the signed hash.
+any authenticated operator-only data. The canonical form is strictly
+`{draw_id, entries: [{uuid, weight} sorted by uuid]}`. No
+operator-supplied reference data of any kind is committed; wallop
+does not accept or store such data on the Entry resource.
 
 The invariant applies to all future protocol commitments. Before
 adding a field to any hashed blob, confirm the field is byte-
@@ -155,11 +155,14 @@ of the following, rather than silently normalising:
 - `weight` must be a positive integer. Reject `0`, negative values,
   floats, and strings.
 
-`operator_ref`, when stored on the Entry resource, has its own
-validation (≤ 64 bytes, no control codepoints U+0000–U+001F, U+007F,
-U+2028, U+2029) enforced at ingest. It is visible only to the
-operator via the authenticated `GET /api/v1/draws/:id/entries`
-endpoint and never on the public proof surface.
+Operators who need to map wallop-assigned UUIDs back to their own
+ticket or customer identifiers maintain that mapping in their own
+storage. The `add_entries` HTTP response carries the newly-assigned
+UUIDs as `meta.inserted_entries: [{uuid}]` in submission order, so
+operators can capture the correlation without a second round trip.
+The authenticated `GET /api/v1/draws/:id/entries` endpoint provides
+a keyset-paginated, UUID-sorted readback at any draw status for
+recovery or for canonical enumeration at lock time.
 
 #### Binding properties
 
@@ -170,13 +173,12 @@ endpoint and never on the public proof surface.
   operator who altered a committed `uuid` or `weight` post-lock would
   change the hash and break the signed lock receipt's signature
   verification.
-- `operator_ref` is NOT committed. Post-lock mutation of the column
-  is prevented at the database level by the `prevent_entry_mutation`
-  trigger; a malicious wallop controlling the database could however
-  rewrite refs without detection by the signed receipt. Operators who
-  require stronger-than-database-level assurance of ref immutability
-  should mirror the `(uuid, operator_ref)` mapping in their own
-  append-only store at submit time.
+- No operator-supplied reference data is ever committed or stored
+  on the Entry resource. Operators who need a `(uuid → their own id)`
+  mapping capture it from the `add_entries` response's
+  `meta.inserted_entries` field and hold it in their own store. This
+  removes an entire class of "was the stored ref tampered with?"
+  concerns at the protocol layer.
 
 ### 2.2 Entropy sources
 
@@ -372,9 +374,10 @@ expected_entry_hash: "ca823c8814baae6a390f6f336b83584f8675aba80e0f2923963adc2511
 ```
 
 Full vector set in `spec/vectors/entry-hash.json`: single entry;
-presence of `operator_ref` in the input has no effect on the hash;
-two entries sorted by uuid; weight at 2^53-1 boundary; same entries
-in a different draw_id produce a different hash.
+extra keys on entry maps have no effect on the hash (the canonical
+form reads only `uuid` and `weight`); two entries sorted by uuid;
+weight at 2^53-1 boundary; same entries in a different draw_id
+produce a different hash.
 
 #### Vector P-2: seed computation
 

@@ -11,8 +11,8 @@ defmodule WallopCore.ProtocolTest do
   describe "entry_hash/1 — happy path" do
     test "sorts entries by uuid and wraps in {draw_id, entries}" do
       entries = [
-        %{uuid: @uuid_b, operator_ref: nil, weight: 2},
-        %{uuid: @uuid_a, operator_ref: nil, weight: 1}
+        %{uuid: @uuid_b, weight: 2},
+        %{uuid: @uuid_a, weight: 1}
       ]
 
       expected_jcs =
@@ -25,29 +25,20 @@ defmodule WallopCore.ProtocolTest do
       assert String.match?(hash, ~r/^[0-9a-f]{64}$/)
     end
 
-    test "operator_ref is ignored and does not affect the hash" do
-      # operator_ref is an operator-private sidecar on the Entry resource.
-      # The canonical entry_hash MUST NOT depend on it — otherwise a
-      # third-party verifier reading the public ProofBundle (which never
-      # exposes operator_ref) could not reproduce the committed hash.
-      # See the public-verifier invariant in ProofBundle tests.
-      without_ref = [%{uuid: @uuid_a, weight: 1}]
-      with_ref = [%{uuid: @uuid_a, operator_ref: "anything", weight: 1}]
-      with_nil = [%{uuid: @uuid_a, operator_ref: nil, weight: 1}]
-      with_empty = [%{uuid: @uuid_a, operator_ref: "", weight: 1}]
+    test "extra keys on entries are ignored" do
+      # The canonical entry_hash depends only on `uuid` and `weight`.
+      # Any additional keys callers happen to pass in are discarded before
+      # hashing — the public ProofBundle must be reproducible from
+      # `{uuid, weight}` alone.
+      without_extras = [%{uuid: @uuid_a, weight: 1}]
+      with_extras = [%{uuid: @uuid_a, weight: 1, anything: "ignored"}]
 
-      assert Protocol.entry_hash({@draw_id, without_ref}) ==
-               Protocol.entry_hash({@draw_id, with_ref})
-
-      assert Protocol.entry_hash({@draw_id, without_ref}) ==
-               Protocol.entry_hash({@draw_id, with_nil})
-
-      assert Protocol.entry_hash({@draw_id, without_ref}) ==
-               Protocol.entry_hash({@draw_id, with_empty})
+      assert Protocol.entry_hash({@draw_id, without_extras}) ==
+               Protocol.entry_hash({@draw_id, with_extras})
     end
 
     test "same entries in different draw_ids produce different hashes" do
-      entries = [%{uuid: @uuid_a, operator_ref: nil, weight: 1}]
+      entries = [%{uuid: @uuid_a, weight: 1}]
 
       {h1, _} = Protocol.entry_hash({@draw_id, entries})
       {h2, _} = Protocol.entry_hash({@other_draw, entries})
@@ -59,7 +50,7 @@ defmodule WallopCore.ProtocolTest do
   describe "entry_hash/1 — validation" do
     test "rejects non-positive-integer weights" do
       for bad <- [0, -1, 1.0, "1", nil] do
-        entries = [%{uuid: @uuid_a, operator_ref: nil, weight: bad}]
+        entries = [%{uuid: @uuid_a, weight: bad}]
 
         assert_raise ArgumentError, ~r/weight/i, fn ->
           Protocol.entry_hash({@draw_id, entries})
@@ -68,7 +59,7 @@ defmodule WallopCore.ProtocolTest do
     end
 
     test "rejects malformed draw_id" do
-      entries = [%{uuid: @uuid_a, operator_ref: nil, weight: 1}]
+      entries = [%{uuid: @uuid_a, weight: 1}]
 
       for bad <- [
             "AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAAA",
@@ -85,7 +76,7 @@ defmodule WallopCore.ProtocolTest do
 
     test "rejects malformed entry uuid" do
       for bad <- ["AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAAA", "not-a-uuid", ""] do
-        entries = [%{uuid: bad, operator_ref: nil, weight: 1}]
+        entries = [%{uuid: bad, weight: 1}]
 
         assert_raise ArgumentError, ~r/uuid/i, fn ->
           Protocol.entry_hash({@draw_id, entries})

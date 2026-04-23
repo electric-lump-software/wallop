@@ -3,7 +3,7 @@ defmodule WallopCore.Proof do
   Proof verification and public-facing entry lookup.
 
   Entries are identified publicly by their wallop-assigned UUID (the Ash PK
-  `id`). `operator_ref` is NEVER exposed by anything in this module.
+  `id`).
   """
 
   @doc """
