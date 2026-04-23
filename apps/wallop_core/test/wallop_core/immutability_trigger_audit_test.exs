@@ -300,7 +300,7 @@ defmodule WallopCore.ImmutabilityTriggerAuditTest do
     test "cannot INSERT entry into locked draw", %{draw: draw} do
       assert_raise Postgrex.Error, ~r/Cannot modify entries/, fn ->
         WallopCore.Repo.query!(
-          "INSERT INTO entries (id, draw_id, operator_ref, weight, inserted_at) VALUES ($1, $2, 'injected', 1, NOW())",
+          "INSERT INTO entries (id, draw_id, weight, inserted_at) VALUES ($1, $2, 1, NOW())",
           [Ecto.UUID.dump!(Ecto.UUID.generate()), Ecto.UUID.dump!(draw.id)]
         )
       end

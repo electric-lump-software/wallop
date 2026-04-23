@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### wallop_core 0.16.0 — BREAKING: purge `operator_ref`
+
+Removes the operator-supplied `operator_ref` sidecar from `Entry` end-to-end. Callers that need `uuid ↔ their-own-id` mapping now capture the returned UUIDs from the `add_entries` response (already in submission order) and store the mapping in their own database. No operator-supplied reference data lives in wallop_core.
+
+#### What changes
+
+The `operator_ref` attribute, validation module, and `entries.operator_ref` column are removed. The `add_entries` action's `entries` argument shape becomes `[%{weight: pos_integer()}]` — the optional `ref` field is gone. `Entries.load_for_draw/1` returns `[%{uuid, weight}]`. `entry_hash` was already shape-invariant to `operator_ref` (extra keys on entries are ignored), so the canonical bytes are unchanged — the v0.15.0 frozen vectors replay green against v0.16.0 code.
+
+#### Migration
+
+Run `mix ecto.migrate` to drop the `entries.operator_ref` column. If any row data matters (it shouldn't — the field was write-only at the API surface), back it up first.
+
+Callers must stop sending `ref` on `add_entries`. The `add_entries` response still returns one `uuid` per entry in submission order — capture the `(uuid ↔ your-reference)` mapping at submit time in your own encrypted-at-rest table.
+
+---
+
 ### wallop_core 0.15.0 — BREAKING: entry identifier refactor
 
 This release replaces operator-chosen entry IDs with wallop-assigned

@@ -130,7 +130,7 @@ defmodule WallopCore.Resources.DrawOpenTest do
         draw
         |> Ash.Changeset.for_update(
           :add_entries,
-          %{entries: [%{"ref" => "a", "weight" => 1}, %{"ref" => "b", "weight" => 1}]},
+          %{entries: [%{"weight" => 1}, %{"weight" => 1}]},
           actor: api_key
         )
         |> Ash.update!()
@@ -151,7 +151,7 @@ defmodule WallopCore.Resources.DrawOpenTest do
         draw
         |> Ash.Changeset.for_update(
           :add_entries,
-          %{entries: [%{"ref" => "a", "weight" => 1}]},
+          %{entries: [%{"weight" => 1}]},
           actor: api_key
         )
         |> Ash.update!()
@@ -160,7 +160,7 @@ defmodule WallopCore.Resources.DrawOpenTest do
         draw
         |> Ash.Changeset.for_update(
           :add_entries,
-          %{entries: [%{"ref" => "b", "weight" => 1}]},
+          %{entries: [%{"weight" => 1}]},
           actor: api_key
         )
         |> Ash.update!()
@@ -168,9 +168,7 @@ defmodule WallopCore.Resources.DrawOpenTest do
       assert draw.entry_count == 2
 
       table_entries = WallopCore.Entries.load_for_draw(draw.id)
-      refs = Enum.map(table_entries, & &1.operator_ref)
-      assert "a" in refs
-      assert "b" in refs
+      assert length(table_entries) == 2
     end
 
     test "enforces 10K entry limit" do
@@ -181,7 +179,7 @@ defmodule WallopCore.Resources.DrawOpenTest do
         |> Ash.Changeset.for_create(:create, %{winner_count: 1}, actor: api_key)
         |> Ash.create!()
 
-      too_many = for i <- 1..10_001, do: %{"ref" => "entry-#{i}", "weight" => 1}
+      too_many = for _ <- 1..10_001, do: %{"weight" => 1}
 
       assert_raise Ash.Error.Invalid, ~r/must not exceed 10000/, fn ->
         draw
@@ -204,13 +202,13 @@ defmodule WallopCore.Resources.DrawOpenTest do
         draw
         |> Ash.Changeset.for_update(
           :add_entries,
-          %{entries: [%{"ref" => "a", "weight" => 1}, %{"ref" => "b", "weight" => 1}]},
+          %{entries: [%{"weight" => 1}, %{"weight" => 1}]},
           actor: api_key
         )
         |> Ash.update!()
 
       [to_remove, to_keep] =
-        WallopCore.Entries.load_for_draw(draw.id) |> Enum.sort_by(& &1.operator_ref)
+        WallopCore.Entries.load_for_draw(draw.id) |> Enum.sort_by(& &1.uuid)
 
       draw =
         draw
@@ -236,7 +234,7 @@ defmodule WallopCore.Resources.DrawOpenTest do
         draw
         |> Ash.Changeset.for_update(
           :add_entries,
-          %{entries: [%{"ref" => "a", "weight" => 1}]},
+          %{entries: [%{"weight" => 1}]},
           actor: api_key
         )
         |> Ash.update!()
@@ -314,7 +312,7 @@ defmodule WallopCore.Resources.DrawOpenTest do
         draw
         |> Ash.Changeset.for_update(
           :add_entries,
-          %{entries: [%{"ref" => "a", "weight" => 1}, %{"ref" => "b", "weight" => 1}]},
+          %{entries: [%{"weight" => 1}, %{"weight" => 1}]},
           actor: api_key
         )
         |> Ash.update!()
@@ -345,7 +343,7 @@ defmodule WallopCore.Resources.DrawOpenTest do
         draw
         |> Ash.Changeset.for_update(
           :add_entries,
-          %{entries: [%{"ref" => "a", "weight" => 1}]},
+          %{entries: [%{"weight" => 1}]},
           actor: api_key
         )
         |> Ash.update!()
@@ -386,7 +384,7 @@ defmodule WallopCore.Resources.DrawOpenTest do
         draw
         |> Ash.Changeset.for_update(
           :add_entries,
-          %{entries: [%{"ref" => "a", "weight" => 1}, %{"ref" => "b", "weight" => 1}]},
+          %{entries: [%{"weight" => 1}, %{"weight" => 1}]},
           actor: api_key
         )
         |> Ash.update!()
@@ -421,7 +419,7 @@ defmodule WallopCore.Resources.DrawOpenTest do
         draw
         |> Ash.Changeset.for_update(
           :add_entries,
-          %{entries: [%{"ref" => "extra", "weight" => 1}]},
+          %{entries: [%{"weight" => 1}]},
           actor: api_key
         )
         |> Ash.update!()

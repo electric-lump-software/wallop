@@ -29,13 +29,10 @@ defmodule WallopCore.Protocol do
   ProofBundle bytes alone.** Do not add fields here that aren't also
   present byte-identically in the public bundle — a third-party verifier
   reading the public bundle must be able to reproduce this exact hash
-  without any authenticated operator-only data. `operator_ref` lives
-  on the Entry resource as an operator-private sidecar and is
-  deliberately NOT committed in the hash for this reason.
+  without any authenticated operator-only data.
 
-  Input entries may carry extra keys (e.g. `:operator_ref` from
-  `Entries.load_for_draw/1`) — they are ignored. Only `uuid` and
-  `weight` influence the hash.
+  Input entries may carry extra keys — they are ignored. Only `uuid`
+  and `weight` influence the hash.
 
   Returns `{hex_hash, jcs_string}`:
   - `hex_hash` — 64-char lowercase hex SHA-256 of the JCS bytes
@@ -158,12 +155,11 @@ defmodule WallopCore.Protocol do
     cryptographically committed.
   - **v3** — same 16 fields as v2. The bump signals that `entry_hash`
     is now computed from the wallop-assigned UUID canonical form
-    (draw_id binding, operator_ref sidecar) rather than the legacy
-    operator-supplied-id form. There is only one live canonical form
-    — verifiers reject any `schema_version` they do not recognise
-    rather than attempting to reconstruct an older shape.
-    `wallop_core_version` in the payload is the forensic anchor if
-    a future canonical form ever ships.
+    (draw_id binding) rather than the legacy operator-supplied-id form.
+    There is only one live canonical form — verifiers reject any
+    `schema_version` they do not recognise rather than attempting to
+    reconstruct an older shape. `wallop_core_version` in the payload
+    is the forensic anchor if a future canonical form ever ships.
 
   `locked_at` must be a `DateTime` with microsecond precision; the caller is
   responsible for capturing it once at lock time and not re-stamping.

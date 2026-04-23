@@ -1,11 +1,8 @@
 defmodule WallopWeb.ProofEntriesControllerTest do
   @moduledoc """
   Tests for the public paginated entries endpoint
-  `GET /proof/:id/entries`.
-
-  Response MUST NOT include `operator_ref` — this is the public
-  surface; refs stay operator-private. Cache headers mark locked-draw
-  entries as immutable.
+  `GET /proof/:id/entries`. Cache headers mark locked-draw entries as
+  immutable.
   """
   use WallopWeb.ConnCase, async: true
 
@@ -16,16 +13,13 @@ defmodule WallopWeb.ProofEntriesControllerTest do
       api_key = create_api_key()
       _infra = create_infrastructure_key()
 
-      entries =
-        for i <- 1..25 do
-          %{"ref" => "ticket-#{i}", "weight" => 1}
-        end
+      entries = for _ <- 1..25, do: %{"weight" => 1}
 
       draw = create_draw(api_key, %{entries: entries, winner_count: 2})
       %{draw: draw, api_key: api_key}
     end
 
-    test "returns entries as {uuid, weight} without operator_ref", %{conn: conn, draw: draw} do
+    test "returns entries as {uuid, weight}", %{conn: conn, draw: draw} do
       conn = get(conn, "/proof/#{draw.id}/entries")
 
       body = json_response(conn, 200)
@@ -34,8 +28,6 @@ defmodule WallopWeb.ProofEntriesControllerTest do
       for e <- body["entries"] do
         assert Map.has_key?(e, "uuid")
         assert Map.has_key?(e, "weight")
-        refute Map.has_key?(e, "operator_ref")
-        refute Map.has_key?(e, "ref")
       end
     end
 

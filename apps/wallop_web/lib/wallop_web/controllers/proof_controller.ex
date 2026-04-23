@@ -112,9 +112,8 @@ defmodule WallopWeb.ProofController do
   the next page. Response includes `next_after` when more entries
   exist.
 
-  Never includes `operator_ref` — that is operator-private and visible
-  only via the authenticated API. This endpoint is the public surface
-  a third-party verifier uses to reproduce the committed `entry_hash`.
+  This endpoint is the public surface a third-party verifier uses to
+  reproduce the committed `entry_hash`.
 
   Cache headers:
   - Draw is locked (entries immutable): `max-age=31536000, immutable`.
@@ -207,7 +206,6 @@ defmodule WallopWeb.ProofController do
   end
 
   defp serialise_entry(entry) do
-    # uuid + weight ONLY. operator_ref is private and must never appear here.
     %{uuid: entry.id, weight: entry.weight}
   end
 

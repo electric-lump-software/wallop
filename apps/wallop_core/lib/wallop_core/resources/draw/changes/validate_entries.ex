@@ -2,12 +2,8 @@ defmodule WallopCore.Resources.Draw.Changes.ValidateEntries do
   @moduledoc """
   Validates a batch of entries being added to a draw.
 
-  Entry shape: `%{ref: String.t() | nil, weight: pos_integer()}`. Refs are
-  optional operator-supplied sidecars (stored as `operator_ref`). There is no
-  dedup on refs — duplicates are the operator's responsibility.
-
-  Byte-length + control-char validation of `ref` is enforced by
-  `WallopCore.Resources.Entry.Validations.OperatorRef` at insert time.
+  Entry shape: `%{weight: pos_integer()}`. Each entry gets a
+  wallop-assigned UUID on insert; the operator supplies only the weight.
   """
   use Ash.Resource.Change
 
@@ -46,18 +42,13 @@ defmodule WallopCore.Resources.Draw.Changes.ValidateEntries do
   defp validate_structure(entries) do
     valid? =
       Enum.all?(entries, fn entry ->
-        ref = entry["ref"] || entry[:ref]
         weight = entry["weight"] || entry[:weight]
-
-        ref_ok? = is_nil(ref) or is_binary(ref)
-        weight_ok? = is_integer(weight) and weight > 0
-
-        ref_ok? and weight_ok?
+        is_integer(weight) and weight > 0
       end)
 
     if valid?,
       do: :ok,
-      else: {:error, "each entry must have an optional string ref and a positive integer weight"}
+      else: {:error, "each entry must have a positive integer weight"}
   end
 
   defp validate_weights(entries) do
