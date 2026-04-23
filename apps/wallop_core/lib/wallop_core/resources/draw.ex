@@ -58,16 +58,6 @@ defmodule WallopCore.Resources.Draw do
         constraints(
           items: [
             fields: [
-              ref: [
-                type: :string,
-                allow_nil?: true,
-                description:
-                  "Optional operator-supplied reference string for this entry, " <>
-                    "stored as `operator_ref` on the Entry resource. " <>
-                    "Visible only to the operator via the authenticated entries " <>
-                    "endpoint; never on the public proof page. " <>
-                    "Must be ≤ 64 bytes and contain no control characters."
-              ],
               weight: [
                 type: :integer,
                 allow_nil?: false,

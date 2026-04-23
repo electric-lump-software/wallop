@@ -74,8 +74,6 @@ defmodule WallopCore.ProofBundle do
   # has no ORDER BY, so two calls for the same draw could return different orders,
   # which would produce different JCS-encoded bundle bytes for the same logical
   # draw. Third-party verifiers caching bundle hashes depend on byte stability.
-  # operator_ref is deliberately NOT included — it is operator-private and
-  # never appears on the public proof bundle.
   defp entries_for(draw) do
     draw.id
     |> WallopCore.Entries.load_for_draw()

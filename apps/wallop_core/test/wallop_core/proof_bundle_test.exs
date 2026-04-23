@@ -68,10 +68,6 @@ defmodule WallopCore.ProofBundleTest do
       # public ProofBundle and recomputing the canonical form MUST reproduce
       # the entry_hash inside the signed lock receipt — otherwise the bundle
       # is unverifiable by anyone outside wallop.
-      #
-      # Test fixture deliberately mixes entries with and without operator_ref.
-      # The previous bug manifested only when at least one ref was non-nil;
-      # all-nil draws would accidentally pass.
       _infra_key = create_infrastructure_key()
       operator = create_operator()
       api_key = create_api_key_for_operator(operator)
@@ -79,9 +75,9 @@ defmodule WallopCore.ProofBundleTest do
       draw =
         create_draw(api_key, %{
           entries: [
-            %{"ref" => "ticket-with-ref", "weight" => 1},
-            %{"ref" => nil, "weight" => 1},
-            %{"ref" => "another-ref", "weight" => 1}
+            %{"weight" => 1},
+            %{"weight" => 1},
+            %{"weight" => 1}
           ]
         })
 
@@ -93,7 +89,7 @@ defmodule WallopCore.ProofBundleTest do
       # Reconstruct the entry_hash input from the public bundle bytes only.
       bundle_entries =
         Enum.map(bundle["entries"], fn e ->
-          %{uuid: e["uuid"], operator_ref: nil, weight: e["weight"]}
+          %{uuid: e["uuid"], weight: e["weight"]}
         end)
 
       {recomputed_hash, _jcs} =

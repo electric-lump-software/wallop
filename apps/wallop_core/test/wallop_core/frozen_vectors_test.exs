@@ -60,7 +60,7 @@ defmodule WallopCore.FrozenVectorsTest do
 
         entries =
           Enum.map(v["entries"], fn e ->
-            %{uuid: e["uuid"], operator_ref: e["operator_ref"], weight: e["weight"]}
+            %{uuid: e["uuid"], weight: e["weight"]}
           end)
 
         {hash, jcs} = Protocol.entry_hash({v["draw_id"], entries})
@@ -76,22 +76,20 @@ defmodule WallopCore.FrozenVectorsTest do
       uuid_z = "ffffffff-ffff-4fff-8fff-ffffffffffff"
 
       a = [
-        %{uuid: uuid_z, operator_ref: nil, weight: 2},
-        %{uuid: uuid_a, operator_ref: nil, weight: 1}
+        %{uuid: uuid_z, weight: 2},
+        %{uuid: uuid_a, weight: 1}
       ]
 
       b = [
-        %{uuid: uuid_a, operator_ref: nil, weight: 1},
-        %{uuid: uuid_z, operator_ref: nil, weight: 2}
+        %{uuid: uuid_a, weight: 1},
+        %{uuid: uuid_z, weight: 2}
       ]
 
       assert Protocol.entry_hash({draw_id, a}) == Protocol.entry_hash({draw_id, b})
     end
 
     test "same entries in different draw_ids produce different hashes" do
-      entries = [
-        %{uuid: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", operator_ref: nil, weight: 1}
-      ]
+      entries = [%{uuid: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", weight: 1}]
 
       {h1, _} = Protocol.entry_hash({"11111111-1111-4111-8111-111111111111", entries})
       {h2, _} = Protocol.entry_hash({"22222222-2222-4222-8222-222222222222", entries})
@@ -333,7 +331,7 @@ defmodule WallopCore.FrozenVectorsTest do
 
       entries =
         Enum.map(input["entries"], fn e ->
-          %{uuid: e["uuid"], operator_ref: e["operator_ref"], weight: e["weight"]}
+          %{uuid: e["uuid"], weight: e["weight"]}
         end)
 
       {entry_hash, _} = Protocol.entry_hash({input["draw_id"], entries})
