@@ -130,7 +130,7 @@ defmodule WallopWeb.ProofPdf.Fingerprint do
   defp operator_id(%{id: id}), do: id
 
   defp iso8601(nil), do: nil
-  defp iso8601(%DateTime{} = dt), do: DateTime.to_iso8601(dt)
+  defp iso8601(%DateTime{} = dt), do: WallopCore.Time.to_rfc3339_usec(dt)
 
   defp normalise_winners(nil), do: []
 
