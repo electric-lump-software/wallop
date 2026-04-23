@@ -42,6 +42,53 @@ jobs:
             exit 1
           fi
 
+      - name: Verify wallop_rs vector submodule is current
+        working-directory: wallop
+        run: |
+          # Cross-language vector parity guard. wallop_rs pins this repo via
+          # a submodule at vendor/wallop. If someone updates spec/vectors/
+          # here without bumping that submodule pointer, wallop_rs CI keeps
+          # passing against the OLD vectors — silent drift.
+          #
+          # This step fails the wallop PR if wallop_rs's main-branch
+          # submodule points at a commit whose spec/vectors tree hash
+          # differs from this PR's spec/vectors tree hash.
+
+          WALLOP_VECTORS_SHA=$(git rev-parse HEAD:spec/vectors)
+
+          git clone --depth=1 --filter=blob:none --no-tags \
+            https://github.com/electric-lump-software/wallop_rs /tmp/wallop_rs
+          WALLOP_RS_REF=$(git -C /tmp/wallop_rs ls-tree refs/heads/main vendor/wallop | awk '{print $3}')
+
+          if [ -z "$WALLOP_RS_REF" ]; then
+            echo "ERROR: could not read vendor/wallop submodule pointer from wallop_rs main"
+            exit 2
+          fi
+
+          # Fetch the pinned commit so we can resolve its vectors tree hash.
+          git fetch --no-tags origin "$WALLOP_RS_REF" 2>/dev/null || true
+
+          if ! git cat-file -e "$WALLOP_RS_REF:spec/vectors" 2>/dev/null; then
+            echo "ERROR: wallop_rs pins commit $WALLOP_RS_REF but cannot resolve it"
+            echo "       from this wallop checkout. Run: git fetch origin $WALLOP_RS_REF"
+            exit 2
+          fi
+
+          PINNED_VECTORS_SHA=$(git rev-parse "$WALLOP_RS_REF:spec/vectors")
+
+          if [ "$WALLOP_VECTORS_SHA" != "$PINNED_VECTORS_SHA" ]; then
+            echo "DRIFT: cross-language vector parity is not guaranteed."
+            echo ""
+            echo "  wallop HEAD spec/vectors tree: $WALLOP_VECTORS_SHA"
+            echo "  wallop_rs main pins commit:    $WALLOP_RS_REF"
+            echo "  → that commit's spec/vectors:  $PINNED_VECTORS_SHA"
+            echo ""
+            echo "If vector changes in this PR are intentional, also bump wallop_rs's"
+            echo "vendor/wallop submodule pointer and land a matching PR there."
+            exit 1
+          fi
+
+          echo "OK: wallop_rs pins spec/vectors tree $PINNED_VECTORS_SHA (match)."
 
       - uses: erlef/setup-beam@v1
         id: beam
