@@ -2,7 +2,7 @@
   "name": "wallop_verifier",
   "type": "module",
   "description": "Independent verifier for the Wallop! provably fair draw protocol.",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "license": "MIT",
   "repository": {
     "type": "git",
