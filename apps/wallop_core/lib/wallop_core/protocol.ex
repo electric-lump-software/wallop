@@ -249,7 +249,7 @@ defmodule WallopCore.Protocol do
             "#{inspect(@valid_weather_fallback_reasons)}, got: #{inspect(other)}"
   end
 
-  @execution_receipt_schema_version "2"
+  @execution_receipt_schema_version "3"
 
   @doc """
   Build the canonical JCS payload bytes for an execution receipt.
@@ -280,7 +280,8 @@ defmodule WallopCore.Protocol do
         fair_pick_version: fair_pick_version,
         seed: seed,
         results: results,
-        executed_at: %DateTime{} = executed_at
+        executed_at: %DateTime{} = executed_at,
+        signing_key_id: signing_key_id
       }) do
     validate_weather_fallback_reason!(weather_fallback_reason)
 
@@ -305,6 +306,7 @@ defmodule WallopCore.Protocol do
       "seed" => seed,
       "sequence" => sequence,
       "signature_algorithm" => @signature_algorithm,
+      "signing_key_id" => signing_key_id,
       "wallop_core_version" => wallop_core_version,
       "weather_fallback_reason" => weather_fallback_reason,
       "weather_observation_time" =>

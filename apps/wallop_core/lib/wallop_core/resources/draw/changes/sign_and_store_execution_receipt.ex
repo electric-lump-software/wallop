@@ -66,7 +66,8 @@ defmodule WallopCore.Resources.Draw.Changes.SignAndStoreExecutionReceipt do
           fair_pick_version: app_version!(:fair_pick),
           seed: draw.seed,
           results: canonical_results,
-          executed_at: draw.executed_at
+          executed_at: draw.executed_at,
+          signing_key_id: infra_key.key_id
         })
 
       signature = Protocol.sign_receipt(payload, private_key)

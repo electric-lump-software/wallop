@@ -284,10 +284,13 @@ Two signed artefacts bind the proof record to cryptographic commitments:
   execution time. Links back to the lock receipt via
   `lock_receipt_hash`, commits the realised entropy values
   (`drand_randomness`, `drand_signature`, `weather_value`, …), the
-  computed `seed`, the ordered `results`, and the same algorithm
-  identity tags plus the drand signature scheme and the Merkle
-  construction used in downstream commitments. Current schema
-  version: `"2"`.
+  computed `seed`, the ordered `results`, the `signing_key_id`
+  fingerprint of the infrastructure key that produced the signature
+  (see §4.2.4 for the generic rule), and the same algorithm identity
+  tags plus the drand signature scheme and the Merkle construction
+  used in downstream commitments. Current schema version: `"3"`.
+  Historical `"2"` receipts (produced by wallop_core 0.16.x) remain
+  verifiable for the life of 1.x; see §4.3.
 
 Both receipts are JCS-canonicalised before signing. Verifiers MUST
 reject any receipt whose `schema_version` value does not match a known
@@ -471,7 +474,7 @@ The stability contract covers **the bytes that end up inside signed artefacts, t
 
 Any change to a frozen item after 1.0.0 is a **v2.0.0 release**. Additive changes to non-frozen surfaces ship in minor releases (1.x.0) and pass through the same review discipline that landed the 1.0.0 protocol in the first place.
 
-**"Additive" is not carte blanche.** A new endpoint, resource, attribute, or field that introduces identity, ticketing, payment, or buyer-facing capability is out of scope regardless of whether it touches signed bytes (see §4.7). The frozen / not-frozen split is about *change mechanism*, not *scope expansion*. Reviewers approving a minor release MUST answer both questions: "does this touch frozen bytes?" (if yes — v2.0.0) and "does this expand wallop's scope beyond a fairness service?" (if yes — reject regardless of version).
+**"Additive" is not carte blanche.** A new endpoint, resource, attribute, or field that introduces identity, ticketing, payment, or buyer-facing capability is out of scope regardless of whether it touches signed bytes (see §4.6). The frozen / not-frozen split is about *change mechanism*, not *scope expansion*. Reviewers approving a minor release MUST answer both questions: "does this touch frozen bytes?" (if yes — v2.0.0) and "does this expand wallop's scope beyond a fairness service?" (if yes — reject regardless of version).
 
 **Interpretive meta-rule.** Any change that weakens a normative word in §4 — `MUST` → `SHOULD`, `MUST NOT` → `SHOULD NOT`, `required` → `recommended`, or similar — is a v2.0.0 change, not a minor release. Downgrading a conformance level in this section is a silent attack vector; it is forbidden outside a major bump.
 
@@ -482,7 +485,9 @@ The following are committed byte-level forever in the 1.x series.
 #### 4.2.1 Receipt schemas
 
 - **Lock receipt schema version `"4"`**. Key set and key names per §2.6.
-- **Execution receipt schema version `"2"`**. Key set and key names per §2.6.
+- **Execution receipt schema version `"3"`**. Key set and key names per §2.6. The v3 shape is v2 plus the `signing_key_id` field identifying the wallop infrastructure signing key under §4.2.4. v0.16.x-era v2 receipts remain verifiable for the life of 1.x per §4.4; conforming verifiers MUST dispatch on `schema_version` first per §4.2.1 "older-schema rejection."
+- **Key-identity fields on receipts are closed-set.** The `signing_key_id` field is the sole permitted key-identity field on any wallop-produced signed receipt or anchor envelope. Fields describing key version, algorithm, issuance time, expiry, custodian, or provenance are out of scope for wallop_core and MUST NOT be added in 1.x. Key metadata beyond identity belongs in the published keyring artefact, not on individual receipts. Any proposal to add such a field is a v2.0.0 discussion.
+- **Anti-forgery binding vs identity disambiguation.** `lock_receipt_hash` on the execution receipt is the anti-forgery binding — it cryptographically commits the execution to the specific lock receipt signed by the operator, so an attacker cannot substitute an execution receipt onto a different lock without holding the operator key. `signing_key_id` is identity disambiguation — it tells the verifier which infrastructure public key to resolve from the keyring, closing the "try all historical keys" brute-force path after a rotation. Neither prevents compromise of a key an attacker already controls; together they localise any future key compromise to receipts signed after the compromise, without re-opening any pre-compromise receipt.
 - **Algorithm identity tags** inside every signed receipt (§2.6):
   - `jcs_version: "sha256-jcs-v1"`
   - `signature_algorithm: "ed25519"`
@@ -493,15 +498,15 @@ The following are committed byte-level forever in the 1.x series.
 - **`weather_station` charset**: `^[a-z0-9][a-z0-9_-]*[a-z0-9]$` — lowercase ASCII alphanumeric with internal hyphens or underscores allowed, no leading/trailing separator, minimum 2 characters, maximum 32. The 32-byte cap is deliberately tight: weather station identifiers in every sensible naming scheme (NOAA, METAR, MADIS, Met Office) fit comfortably, while the cap shuts the door on a bad-actor fork smuggling hashed identity data through an unconstrained free string. Conforming verifiers MUST reject receipts with non-matching `weather_station` values. Current production value: `"middle-wallop"`.
 - **Timestamp format** for every timestamp field in a signed payload (`locked_at`, `executed_at`, `weather_time`, `weather_observation_time`): RFC 3339 UTC, exactly 6 fractional digits, explicit `Z` suffix (never `+00:00`), matching the regex `^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{6}Z$` (anchored to the full string; no `^`/`$` multiline flag, equivalent to Rust `\A...\z`). This regex is the normative ingest acceptance test; conforming verifiers MUST gate on it *before* handing the string to a general-purpose RFC 3339 parser. Implementations MUST pad to 6 digits when the source has fewer and MUST reject any timestamp whose serialised form does not match the regex. Example: `"2026-04-23T14:22:17.123456Z"`. **Note (informative, as of 2026):** general-purpose RFC 3339 parsers (historically including Rust `chrono::DateTime::parse_from_rfc3339` and `time::OffsetDateTime`) accept variable fractional-digit counts and `+00:00` offsets and would silently admit non-canonical forms if not gated by the regex above.
 - **Verifiers MUST read `schema_version` first and dispatch on it.** Field-shape heuristics are not a substitute. A naive verifier that accepts any receipt whose fields look familiar will accept a future v5 (or v3 execution) receipt whose superset is a superset — that is a vulnerability, not a feature.
-- **Older-schema rejection.** A verifier pinned to lock v4 / execution v2 MUST reject receipts with any OTHER `schema_version` (including older values like `"3"` or `"1"`) with the same clarity as unknown-future values. Verifiers that silently accept older receipts by pattern-matching on familiar fields enable downgrade attacks.
+- **Older-schema rejection and dual-version support.** A verifier pinned to a single execution schema MUST reject receipts with any OTHER `schema_version` with the same clarity as unknown-future values. A verifier MAY simultaneously support BOTH `"2"` and `"3"` execution receipts for the life of 1.x (`wallop_verifier` ≥ 0.9.0 does this — see §4.5); in that case each version MUST be parsed under its own exact-field-set schema (no shared "loose" parser), and a payload whose declared `schema_version` does not match its actual field set MUST reject. In concrete terms: a v3 payload with `signing_key_id` stripped and relabelled as `"2"` fails the v2 parser's exact-field-set check; a v2 payload relabelled as `"3"` fails the v3 parser's "`signing_key_id` is required" check. Verifiers that silently accept older receipts by pattern-matching on familiar fields enable downgrade attacks.
 
 #### 4.2.2 Canonical forms
 
 - **JCS canonicalisation** per RFC 8785 — the serialisation applied before every hash and signature.
 - **`entry_hash` canonical form**: `SHA-256(JCS({draw_id, entries: [{uuid, weight} sorted by uuid]}))` (§2.1). The `entries[*]` objects contain exactly two fields — `uuid` and `weight`. Conforming **producers** MUST strip any additional keys before JCS encoding; only `uuid` and `weight` reach the encoder. Whether a producer additionally rejects input with extras is a local hardening choice and is not part of the wire contract. The wire contract is strictly about the bytes reaching JCS.
 - **UUID canonical form**: 36 characters, lowercase, hyphenated, RFC 4122 v4. Uppercase / braced / `urn:uuid:`-prefixed forms MUST reject at every ingest and validation point.
-- **Weight type**: positive integer. Canonical JSON MUST serialise as a JCS number per RFC 8785 §3.2.2.3 — no leading `+`, no leading zeros, no trailing `.0`, no exponent for integers ≤ 2^53-1. Floats, strings, `null`, negative values, and zero MUST reject. The current operational ingest cap (`weight ≤ 1000`) is behavioural, not protocol — see §4.4.
-- **Entry list size**: operational hard cap of 10,000 entries per draw at the `add_entries` layer. See §4.4 — this is a behavioural limit, not a protocol limit. Implementations MUST handle arbitrary-length entry lists for verification purposes even if they enforce a smaller cap at ingest.
+- **Weight type**: positive integer. Canonical JSON MUST serialise as a JCS number per RFC 8785 §3.2.2.3 — no leading `+`, no leading zeros, no trailing `.0`, no exponent for integers ≤ 2^53-1. Floats, strings, `null`, negative values, and zero MUST reject. The current operational ingest cap (`weight ≤ 1000`) is behavioural, not protocol — see §4.3.
+- **Entry list size**: operational hard cap of 10,000 entries per draw at the `add_entries` layer. See §4.3 — this is a behavioural limit, not a protocol limit. Implementations MUST handle arbitrary-length entry lists for verification purposes even if they enforce a smaller cap at ingest.
 
 - **`drand_randomness` normalisation**: lowercase 64-character hex, no `0x` prefix, no whitespace. The same rule applies to any `drand_signature` / `entry_hash` / `seed` / `commitment_hash` field serialised as hex in a signed payload — lowercase hex, no prefix, no whitespace, exact expected byte length.
 - **Empty-draw behaviour**: `entry_hash` over an empty entry list is undefined. Construction rejects.
@@ -555,20 +560,12 @@ The `transparency_anchors` table holds periodic epoch anchors — a batched Merk
 - **Anchor envelope (signed bytes).** The infrastructure signature is over `JCS({schema_version, anchor_root, op_root, exec_root, epoch_start, epoch_end, signing_key_id})`. `schema_version` is `"1"` for this anchor shape. Verifiers MUST reject anchors whose `schema_version` they do not recognise. `signing_key_id` identifies which infrastructure signing key issued this anchor under the generic key-identity rules in §4.2.4. The JCS canonicalisation is the same rule used for receipts.
 - **Signature.** The envelope above is signed with the wallop infrastructure Ed25519 key. The key's identity, resolution, and revocation semantics are covered by §4.2.4.
 
-### 4.3 Open commitments before 1.0.0 final
-
-This section enumerates protocol surfaces that are **not yet frozen at 1.0.0-rc but WILL be frozen at 1.0.0 final**. Each item names a schema bump, a wire-format addition, or a normative rule that must land before the final tag. Every bullet here has a clear closure condition; when closed, the bullet moves into §4.2 as a fresh freeze item and this subsection shrinks by one. When every bullet closes, this subsection is deleted — its existence is forcing function for the 1.0.0 final checklist.
-
-**Third-party verifier implementers: DO NOT build a 1.0.0-final-compatible verifier against 1.0.0-rc.** Build against an rc for feedback, but expect additive schema changes in the bullets below before the final tag freezes the wire contract.
-
-- **F2 — infrastructure signing-key identity on execution receipts.** Currently (v0.16.0) the execution receipt does NOT commit `signing_key_id` for the wallop infrastructure key. Only lock receipts commit `signing_key_id` (for the operator key). The generic rule in §4.2.4 applies to any wallop-verified key, but the execution-receipt payload does not yet carry the field. Without it, infra-key rotation would leave historical execution receipts unverifiable without trying every historical infra key in sequence — a goal-3 (no holes) violation. **Closure:** add `signing_key_id` to the execution receipt signed payload, bump execution schema version `"2"` → `"3"`, coordinate a `wallop_verifier` major release that understands both, regenerate frozen vectors. The transparency-anchor envelope in §4.2.6 already commits `signing_key_id` — closing F2 brings the execution receipt into parity.
-
-### 4.4 NOT frozen at 1.0.0
+### 4.3 NOT frozen at 1.0.0
 
 The following surfaces are explicitly **not** part of the 1.x stability contract. Consumers SHOULD NOT pin behaviour against them.
 
 - **HTTP response shapes on non-proof endpoints**. Operator-facing, authenticated, and LiveView responses can evolve additively in minor releases. The proof bundle is explicitly NOT in this class — it's frozen under §4.2.5.
-- **Internal `Draw` resource fields**. Fields returned inside the proof bundle are frozen (§4.2.5). Fields present on the Ash resource but not exposed in the public bundle are free to evolve *within scope* — new internal fields MUST NOT introduce identity, ticketing, payment, or buyer-facing semantics per §4.7, even if they live outside the signed-byte surface.
+- **Internal `Draw` resource fields**. Fields returned inside the proof bundle are frozen (§4.2.5). Fields present on the Ash resource but not exposed in the public bundle are free to evolve *within scope* — new internal fields MUST NOT introduce identity, ticketing, payment, or buyer-facing semantics per §4.6, even if they live outside the signed-byte surface.
 - **Operational knobs**. Rate limit thresholds, retry policies, entropy attempt caps, worker queue configuration, Oban pruning windows, weather fallback attempt budgets. None of these appear in signed bytes; none are protocol.
 - **Webhook payload schema**. Webhooks are operational. Additive changes in any 1.x release are permitted. The one protocol-adjacent commitment: **webhook payloads will not expose information beyond what is already in the proof bundle.** Webhooks are a push-notification convenience, not a second protocol surface.
 - **On-disk storage conventions** (database schema columns beyond what is surfaced in the proof bundle, filesystem layout, cache layouts). The bytes a verifier consumes are protocol; how those bytes are stored is not. **Separately**: wallop retains the raw inputs needed to reconstruct a proof bundle (weather API response, drand beacon payload) for at least the lifetime of the 1.x major. A proof bundle fetched two years post-draw still verifies against live wallop; operators requiring longer retention SHOULD archive bundles themselves.
@@ -576,27 +573,28 @@ The following surfaces are explicitly **not** part of the 1.x stability contract
 
 - **Observable side channels** on public proof endpoints (HTTP status codes, response timings, `Cache-Control` and `Server-Timing` headers, `ETag` values, rate-limit response headers). These SHOULD NOT differentiate between draw states in ways that reveal information absent from the public proof bundle. Specifically: a draw that exists but hasn't reached the stage a caller is asking about, and a draw that does not exist, SHOULD return the same status code and body shape to an unauthenticated caller. Timing oracles on entry-existence checks: response times on self-check endpoints SHOULD NOT materially vary with hit vs miss. A measurable version of this rule (e.g. "p99 differential ≤ Nms under a reference load harness") is follow-up work for the pre-1.0.0 infra-hardening audit; until that ships, implementations aim for indistinguishability in the qualitative sense and document any known oracle. **If that audit does not land before 1.0.0 final, this bullet stays qualitative; the qualitative form is the 1.x floor and a measurable form can only be introduced additively (never as a normative strengthening of existing SHOULDs — that would be a v2.0.0 under §4.1).**
 
-### 4.5 Historical verifiability
+### 4.4 Historical verifiability
 
 Every receipt ever produced by a wallop_core version **≥ 0.16.0** remains verifiable for the life of the 1.x series.
 
-- A verifier pinned to lock receipt v4 / execution receipt v2 continues to verify every draw locked from wallop_core 0.16.0 onwards.
-- Future 1.x verifier releases MAY add support for newer schema versions without removing support for v4/v2. `schema_version` is the discriminator.
+- A verifier that understands lock receipt v4 and execution receipts v2 **and** v3 continues to verify every draw locked from wallop_core 0.16.0 onwards. `wallop_verifier` ≥ 0.9.0 provides this dual-version support; earlier verifier versions that understand only v2 can verify v0.16.x-era receipts but MUST reject anything labelled `"3"` per §4.2.1.
+- Future 1.x verifier releases MAY add support for newer schema versions without removing support for previously-frozen versions. `schema_version` is the discriminator.
 - v0.15.x and earlier receipts are not covered by this contract. They exist only in pre-launch dev environments and are historical curiosities; no 1.x verifier is obliged to reproduce their bytes.
+- **Keyring retention trust assumption (operational, not cryptographic).** Historical verifiability for the life of 1.x requires the wallop operator to retain every infrastructure signing key used to sign any 1.x-era execution receipt or transparency anchor, for the duration of 1.x. A key that is rotated remains in the keyring (marked `revoked_at` per §4.2.4 revocation semantics), not removed. A verifier that encounters an unresolvable `signing_key_id` on a historical receipt MUST reject per §4.2.4 — this is what makes the retention commitment load-bearing for goal 3 (no holes). Operators who, for any reason, cannot meet this retention commitment for 1.x MUST declare that at deployment time; downstream verifiers have no way to distinguish "key rotated out" from "receipt tampered" if the keyring is incomplete.
 
-### 4.6 Reference implementations
+### 4.5 Reference implementations
 
 Three implementations are maintained in lockstep. A claim is only part of the protocol if it produces byte-identical output in all three against every frozen test vector:
 
 | Implementation | Repo | Language | 1.0.0 floor |
 |---|---|---|---|
 | `wallop_core` | `wallop` (this repo) | Elixir | v1.0.0 |
-| `wallop_verifier` | `wallop-verifier` | Rust (native + WASM) | v0.8.0 |
-| Reference CLI verifier | `wallop-verifier` | Rust binary (`wallop-verify`) | v0.8.0 |
+| `wallop_verifier` | `wallop-verifier` | Rust (native + WASM) | v0.9.0 |
+| Reference CLI verifier | `wallop-verifier` | Rust binary (`wallop-verify`) | v0.9.0 |
 
 Cross-language parity is enforced in CI via shared frozen vectors (wallop's `spec/vectors/`, vendored into `wallop_verifier` via git submodule). Any divergence between implementations is a bug in whichever one disagrees with the spec — not a new spec variant.
 
-### 4.7 What 1.0.0 is not trying to be
+### 4.6 What 1.0.0 is not trying to be
 
 For the avoidance of doubt, and for the future reviewer holding a clever idea: **no**.
 

@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### wallop_core 0.17.0 — BREAKING: execution receipt schema v3 adds `signing_key_id`
+
+Closes the last documented protocol-level hole before the 1.0.0 stability contract freeze.
+
+#### What changes
+
+- Execution receipt signed payload now commits `signing_key_id` — the 8-char hex fingerprint of the wallop infrastructure key that produced the signature. Schema version bumps `"2"` → `"3"`. Key set otherwise identical to v2.
+- `Protocol.build_execution_receipt_payload/1` now requires `:signing_key_id` in its input map. Calls without it raise `FunctionClauseError` at the producer boundary.
+- Frozen vectors for v3 are added alongside (`spec/vectors/execution-receipt-v3.json`, `spec/vectors/execution-receipt-drand-only-v3.json`). The existing v2 vector files are preserved as historical reference; verifiers that support both schemas exercise them against the v2 fixtures.
+- Spec §2.6 updated with the new field; §4.2.1 bumps the frozen execution schema to `"3"` and documents dual-version support. §4.2 adds a categorical refusal paragraph: `signing_key_id` is the sole permitted key-identity field on receipts — fields describing key version, algorithm, issuance time, expiry, custodian, or provenance are out of scope for 1.x. §4.2 also spells out the anti-forgery binding (`lock_receipt_hash`) vs identity disambiguation (`signing_key_id`) distinction so future readers don't confuse the two. §4.3 "Open commitments before 1.0.0 final" is collapsed — F2 was its sole entry and is now resolved; §4.4 through §4.6 renumber accordingly. §4.4 Historical verifiability gains a keyring retention trust assumption: operators commit to retaining every infrastructure signing key used to sign any 1.x-era receipt, for the life of 1.x. Unresolvable `signing_key_id` on a historical receipt is rejected per §4.2.4.
+- `wallop_verifier` v0.9.0 is required for consumers producing v3 receipts. v0.9.0 supports both v2 and v3 via exact-field-set `serde` deserialisation — `#[serde(deny_unknown_fields)]` on both struct shapes plus a required `signing_key_id` on v3 closes the downgrade/upgrade relabel attack by construction. A `parse_execution_receipt` dispatcher routes on `schema_version` and returns a terminal `UnknownSchemaVersion` error on anything outside `"2"` / `"3"` — verifiers MUST NOT retry on this error, they MUST upgrade.
+
+#### What consumers need to do
+
+Pin `wallop_verifier` to `>= 0.9.0`. Historical v0.16.x-era v2 receipts continue to verify under the v0.9.0 verifier. Any consumer that calls `Protocol.build_execution_receipt_payload/1` directly must now pass `signing_key_id`; the signing orchestrator inside `wallop_core` handles this automatically via the loaded infrastructure key.
+
+#### What does not change
+
+Lock receipt schema stays at v4. Transparency anchor envelope is unchanged. JCS canonicalisation, Ed25519 signing, drand BLS verification, `sha256-pairwise-v1` Merkle construction, and the `weather_fallback_reason` enum are all untouched. Cross-language frozen-vector parity for every pre-v3 vector is preserved byte-for-byte.
+
+#### Why this is the last 1.0.0 blocker
+
+Without `signing_key_id` on execution receipts, an infrastructure-key rotation would leave every historical execution receipt resolvable only by brute-forcing the infra keyring — the exact pattern §4.2.4 forbids for operator keys. Closing this brings the execution receipt to parity with the lock receipt and the transparency-anchor envelope, both of which already commit `signing_key_id` for their respective keys.
+
+---
+
 ### wallop_core 0.16.0 — BREAKING: purge `operator_ref`, add UUID capture, receipt shape v4
 
 Three bundled breaking changes that together close the pre-1.0.0 receipt-hardening pass:
