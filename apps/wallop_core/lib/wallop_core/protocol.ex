@@ -216,7 +216,7 @@ defmodule WallopCore.Protocol do
       "entry_hash" => entry_hash,
       "fair_pick_version" => fair_pick_version,
       "jcs_version" => @jcs_version,
-      "locked_at" => DateTime.to_iso8601(locked_at),
+      "locked_at" => WallopCore.Time.to_rfc3339_usec(locked_at),
       "operator_id" => operator_id,
       "operator_slug" => to_string(operator_slug),
       "schema_version" => @receipt_schema_version,
@@ -225,15 +225,13 @@ defmodule WallopCore.Protocol do
       "signing_key_id" => signing_key_id,
       "wallop_core_version" => wallop_core_version,
       "weather_station" => weather_station,
-      "weather_time" => maybe_iso8601(weather_time),
+      "weather_time" => WallopCore.Time.maybe_to_rfc3339_usec(weather_time),
       "winner_count" => winner_count
     }
 
+    assert_canonical_timestamps!(payload, ["locked_at", "weather_time"])
     Jcs.encode(payload)
   end
-
-  defp maybe_iso8601(%DateTime{} = dt), do: DateTime.to_iso8601(dt)
-  defp maybe_iso8601(nil), do: nil
 
   # Frozen enum for the execution receipt's `weather_fallback_reason`
   # field. Anything outside this set raises — the classifier in
@@ -251,7 +249,7 @@ defmodule WallopCore.Protocol do
             "#{inspect(@valid_weather_fallback_reasons)}, got: #{inspect(other)}"
   end
 
-  @execution_receipt_schema_version "2"
+  @execution_receipt_schema_version "3"
 
   @doc """
   Build the canonical JCS payload bytes for an execution receipt.
@@ -282,11 +280,12 @@ defmodule WallopCore.Protocol do
         fair_pick_version: fair_pick_version,
         seed: seed,
         results: results,
-        executed_at: %DateTime{} = executed_at
+        executed_at: %DateTime{} = executed_at,
+        signing_key_id: signing_key_id
       }) do
     validate_weather_fallback_reason!(weather_fallback_reason)
 
-    Jcs.encode(%{
+    payload = %{
       "draw_id" => draw_id,
       "drand_chain" => drand_chain,
       "drand_randomness" => drand_randomness,
@@ -295,7 +294,7 @@ defmodule WallopCore.Protocol do
       "drand_signature_algorithm" => @drand_signature_algorithm,
       "entropy_composition" => @entropy_composition,
       "entry_hash" => entry_hash,
-      "executed_at" => DateTime.to_iso8601(executed_at),
+      "executed_at" => WallopCore.Time.to_rfc3339_usec(executed_at),
       "fair_pick_version" => fair_pick_version,
       "jcs_version" => @jcs_version,
       "lock_receipt_hash" => lock_receipt_hash,
@@ -307,12 +306,37 @@ defmodule WallopCore.Protocol do
       "seed" => seed,
       "sequence" => sequence,
       "signature_algorithm" => @signature_algorithm,
+      "signing_key_id" => signing_key_id,
       "wallop_core_version" => wallop_core_version,
       "weather_fallback_reason" => weather_fallback_reason,
-      "weather_observation_time" => maybe_iso8601(weather_observation_time),
+      "weather_observation_time" =>
+        WallopCore.Time.maybe_to_rfc3339_usec(weather_observation_time),
       "weather_station" => weather_station,
       "weather_value" => weather_value
-    })
+    }
+
+    assert_canonical_timestamps!(payload, ["executed_at", "weather_observation_time"])
+    Jcs.encode(payload)
+  end
+
+  # Defence-in-depth: assert that every timestamp field in a signed payload
+  # matches the canonical RFC 3339 form pinned in `spec/protocol.md` §4.2.1.
+  # `to_rfc3339_usec/1` is the only path timestamps should take to get here —
+  # this check is a tripwire for a future refactor that accidentally inlines
+  # `DateTime.to_iso8601/1` at a call site and produces non-canonical bytes.
+  # Also catches years outside 0..9999 where the ISO-8601 string grows a
+  # fifth digit or a leading `-` sign and silently breaks the regex.
+  defp assert_canonical_timestamps!(payload, keys) do
+    Enum.each(keys, fn key ->
+      case WallopCore.Time.validate_rfc3339_usec(Map.fetch!(payload, key)) do
+        :ok ->
+          :ok
+
+        {:error, reason} ->
+          raise ArgumentError,
+                "signed-payload timestamp field #{inspect(key)} is not canonical: #{reason}"
+      end
+    end)
   end
 
   @doc """
