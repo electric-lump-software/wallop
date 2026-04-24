@@ -26,7 +26,7 @@ Single-draw verifiability — the commit-reveal protocol above — proves any *o
 
 - Every API key may belong to an `Operator`. Operators are public identities with a stable slug.
 - Every draw an operator locks gets a **gap-free per-operator sequence number**. Discarded, expired, and failed draws still occupy their slot — gaps are detectable.
-- At lock time, wallop_core signs an Ed25519 **commitment receipt** over the canonical JSON `{operator, sequence, draw_id, commitment_hash, entry_hash, locked_at, signing_key_id, schema_version}`. The receipt is inserted in the same transaction as the lock, so a draw cannot be locked without its receipt being committed atomically.
+- At lock time, wallop_core signs an Ed25519 **commitment receipt** (lock receipt, schema v4) over a canonical JSON payload that binds the operator, per-operator `sequence`, `draw_id`, `commitment_hash`, `entry_hash`, `locked_at`, `signing_key_id`, declared entropy sources (drand chain + round, weather station + time), `winner_count`, `wallop_core_version`, `fair_pick_version`, and the pinned algorithm identity tags (JCS version, signature algorithm, entropy composition). The receipt is inserted in the same transaction as the lock, so a draw cannot be locked without its receipt being committed atomically. The execution receipt (schema v3) is signed at draw-completion time and commits the realised entropy values, the computed seed, the ordered results, the `lock_receipt_hash` (binding execution to the specific lock receipt), and the `signing_key_id` of the wallop infrastructure key that produced the signature.
 - The operator's public registry lives at `/operator/:slug` and lists every draw they have ever locked, in sequence order, with status badges. Signed receipts are served as JSON at `/operator/:slug/receipts` and individually at `/operator/:slug/receipts/:n`. The current Ed25519 public key is at `/operator/:slug/key`.
 - A **transparency log** at `/transparency` publishes a daily Merkle root over all receipts, pinned to a drand round number. Mirroring the receipt log over time and recomputing the root lets a third party detect any retroactive tampering with operator receipts.
 
@@ -82,16 +82,19 @@ PubSub works across services automatically via Redis — draw updates broadcast 
 
 ## Entry IDs and GDPR
 
-Wallop never stores personally identifiable information. Entry IDs must be **opaque identifiers** — UUIDs, numeric IDs, or similar. Email addresses, phone numbers, and names are rejected by the API.
+Wallop never stores personally identifiable information. Entry identifiers are **wallop-assigned server-generated UUIDv4 values** — the operator does not supply any identifier at submission time. The `add_entries` API accepts only `%{weight: pos_integer()}` per entry; any other key on the payload is silently dropped.
 
 The recommended integration pattern:
 
-1. Your app holds the mapping from person to opaque ID (e.g. `user_id → "a1b2c3"`)
-2. Your app sends only the opaque ID to Wallop as the entry ID
-3. Wallop hashes the entry list into a permanent, immutable proof record
-4. On a GDPR deletion request, your app deletes the person's record and the ID mapping — the Wallop proof record remains intact because it contains no PII
+1. Your app submits a batch of entries via `PATCH /api/v1/draws/:id/entries` with only `weight` per entry.
+2. Wallop generates a UUID for each entry server-side using `:crypto.strong_rand_bytes/1`, inserts them atomically, and returns the UUIDs in submission order as `meta.inserted_entries: [{uuid}, ...]`. The i-th element corresponds to the i-th entry in your request.
+3. Your app captures those UUIDs and stores its own `(your_person_id → wallop_uuid)` mapping in your database. Wallop never learns who the person behind a UUID is.
+4. Wallop hashes the entry list (`{draw_id, entries: [{uuid, weight}]}`) into a permanent, immutable proof record.
+5. On a GDPR deletion request, your app deletes the person's record and the UUID mapping in its own database — the wallop proof record remains intact because it contains only the opaque UUIDs wallop itself generated.
 
-Entry IDs are restricted to `^[a-zA-Z0-9_\-:.=]+$` (alphanumeric, hyphens, underscores, dots, colons, equals). This blocks common PII patterns at the API level while allowing UUIDs, numeric IDs, and base64-encoded values.
+If your `add_entries` HTTP response is dropped before you can capture the UUIDs, you can recover them via the authenticated `GET /api/v1/draws/:id/entries` endpoint (api-key-scoped, keyset-paginated). It works at any draw status.
+
+Operator-supplied entry identifiers are NOT stored anywhere in wallop. Entry data in signed receipts and the public proof bundle contains only wallop UUIDs and weights. Any binding between a UUID and operator-side data (user account, payment, ticket number, etc.) lives in the operator's own system.
 
 ## Tech stack
 
