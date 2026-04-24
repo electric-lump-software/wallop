@@ -9,7 +9,7 @@ defmodule WallopCore.ProtocolCrossReceiptConsistencyTest do
   carries byte-identical values for the six cross-checked fields
   (`draw_id`, `operator_id`, `sequence`, `drand_chain`,
   `drand_round`, `weather_station`), and that `exec.weather_observation_time`
-  falls in the `[lock.weather_time, lock.weather_time + 3600s]`
+  falls in the `[lock.weather_time - 3600s, lock.weather_time]`
   window.
 
   These are Elixir-side property assertions, not splice-attack
@@ -33,7 +33,7 @@ defmodule WallopCore.ProtocolCrossReceiptConsistencyTest do
     drand_chain: "52db9ba70e0cc0f6eaf7803dd07447a1f5477735fd3f661792ba94600c84e971",
     drand_round: 12_345,
     weather_station: "middle-wallop",
-    weather_time: ~U[2026-04-09 13:00:00.000000Z],
+    weather_time: ~U[2026-04-09 13:41:57.000000Z],
     wallop_core_version: "0.17.0",
     fair_pick_version: "0.2.1"
   }
@@ -50,7 +50,7 @@ defmodule WallopCore.ProtocolCrossReceiptConsistencyTest do
     drand_randomness: String.duplicate("a", 64),
     drand_signature: "deadbeef",
     weather_station: "middle-wallop",
-    weather_observation_time: ~U[2026-04-09 13:15:00.000000Z],
+    weather_observation_time: ~U[2026-04-09 13:00:00.000000Z],
     weather_value: "1013",
     weather_fallback_reason: nil,
     wallop_core_version: "0.17.0",
@@ -79,7 +79,7 @@ defmodule WallopCore.ProtocolCrossReceiptConsistencyTest do
       end
     end
 
-    test "weather observation time falls within the 1-hour window after weather_time" do
+    test "weather observation time falls within the 1-hour window ending at weather_time" do
       lock = Protocol.build_receipt_payload(@lock_input) |> Jason.decode!()
       exec = Protocol.build_execution_receipt_payload(@exec_input) |> Jason.decode!()
 
@@ -88,10 +88,14 @@ defmodule WallopCore.ProtocolCrossReceiptConsistencyTest do
 
       delta = DateTime.diff(observation_time, lock_time, :second)
 
-      assert delta >= 0, "observation_time precedes weather_time (delta=#{delta}s)"
+      # Met Office publishes observations at hour boundaries; the entropy
+      # worker selects the most recent observation at or before the
+      # declared target. observation_time ∈ [weather_time - 3600s, weather_time].
+      assert delta <= 0,
+             "observation_time is after weather_time (delta=#{delta}s); expected <= 0"
 
-      assert delta <= 3600,
-             "observation_time is more than 1 hour after weather_time (delta=#{delta}s)"
+      assert delta >= -3600,
+             "observation_time is more than 1 hour before weather_time (delta=#{delta}s)"
     end
 
     test "signing_key_id is deliberately different across receipts" do
