@@ -220,6 +220,4 @@ defmodule WallopWeb.DrawEntriesController do
   end
 
   defp error_tag(%module{}), do: inspect(module)
-  defp error_tag(reason) when is_atom(reason), do: inspect(reason)
-  defp error_tag(_), do: "<unstructured>"
 end
