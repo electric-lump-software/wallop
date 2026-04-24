@@ -9,6 +9,7 @@ defmodule WallopCore.Entropy.ExpiryWorker do
   require OpenTelemetry.Tracer, as: Tracer
 
   alias WallopCore.Entropy.WebhookWorker
+  alias WallopCore.Log
 
   @max_age_days 90
 
@@ -29,11 +30,13 @@ defmodule WallopCore.Entropy.ExpiryWorker do
              |> Ash.Changeset.for_update(:expire, %{})
              |> Ash.update(domain: WallopCore.Domain, authorize?: false) do
           {:ok, expired_draw} ->
-            Logger.info("ExpiryWorker: expired draw #{draw.id}")
+            Logger.info("ExpiryWorker: expired draw #{Log.redact_id(draw.id)}")
             maybe_enqueue_webhook(expired_draw)
 
           {:error, reason} ->
-            Logger.warning("ExpiryWorker: failed to expire draw #{draw.id}: #{inspect(reason)}")
+            Logger.warning(
+              "ExpiryWorker: failed to expire draw #{Log.redact_id(draw.id)}: #{inspect(reason)}"
+            )
         end
       end)
 

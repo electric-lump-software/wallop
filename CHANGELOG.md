@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### wallop_core — security / observability: redact identifiers from logs and telemetry
+
+Addresses a side-channel leak flagged in the round 2 vulnerability audit. Entry UUIDs and draw UUIDs were previously emitted raw from entropy/webhook/expiry workers, the execution-receipt signing path, and the draw-entries controller — visible to anyone with access to `Logger` output or the OpenTelemetry span stream. Spec §4.3 forbids exactly this class of cross-run correlation vector.
+
+Every affected call site now routes identifiers through `WallopCore.Log.redact_id/1`, which applies `HMAC-SHA-256(per-BEAM salt, id)` truncated to 5 bytes / 10 hex chars. The salt is regenerated on every BEAM restart, so intra-run log correlation is preserved for on-call debugging while cross-restart and cross-tape correlation is broken. Salt generation emits a `[:wallop_core, :log, :salt_generated]` telemetry event so mid-run resets are visible in metrics rather than silently decohering log lines.
+
+A source-tree guard test (`log_leak_guard_test.exs`) fails CI if any new `Logger.*`, `:telemetry.execute`, or `Tracer.*` call interpolates an `*.id` / `*_id` variable without routing through the helper.
+
+No signed-byte change. No schema bump. No frozen-vector change. Historical proof verifiability is untouched.
+
 ### wallop_core 0.17.0 — BREAKING: execution receipt schema v3 adds `signing_key_id`
 
 Closes the last documented protocol-level hole before the 1.0.0 stability contract freeze.

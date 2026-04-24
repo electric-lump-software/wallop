@@ -23,6 +23,7 @@ defmodule WallopCore.Entropy.EntropyWorker do
   require OpenTelemetry.Tracer, as: Tracer
 
   alias WallopCore.Entropy.{DrandClient, WeatherClient, WebhookWorker}
+  alias WallopCore.Log
 
   # After this many attempts, fall back to drand-only if weather is unavailable
   @weather_attempt_threshold 5
@@ -72,7 +73,7 @@ defmodule WallopCore.Entropy.EntropyWorker do
   defp attempt_execution(draw, attempt, max_attempts) do
     Tracer.with_span "entropy_worker.attempt",
       attributes: %{
-        "draw.id" => draw.id,
+        "draw.id" => Log.redact_id(draw.id),
         "draw.status" => to_string(draw.status),
         "draw.weather_time" => DateTime.to_iso8601(draw.weather_time),
         "draw.drand_round" => draw.drand_round,
@@ -176,7 +177,7 @@ defmodule WallopCore.Entropy.EntropyWorker do
     })
 
     Logger.info(
-      "EntropyWorker: falling back to drand-only for draw #{draw.id} " <>
+      "EntropyWorker: falling back to drand-only for draw #{Log.redact_id(draw.id)} " <>
         "(weather failed after #{attempt} attempts: #{inspect(weather_err)})"
     )
 
@@ -246,14 +247,18 @@ defmodule WallopCore.Entropy.EntropyWorker do
   defp log_transient_errors(draw, drand_err, weather_err) do
     case {drand_err, weather_err} do
       {err, nil} when err != nil ->
-        Logger.warning("EntropyWorker: drand failed for draw #{draw.id}: #{inspect(err)}")
+        Logger.warning(
+          "EntropyWorker: drand failed for draw #{Log.redact_id(draw.id)}: #{inspect(err)}"
+        )
 
       {nil, err} when err != nil ->
-        Logger.warning("EntropyWorker: weather failed for draw #{draw.id}: #{inspect(err)}")
+        Logger.warning(
+          "EntropyWorker: weather failed for draw #{Log.redact_id(draw.id)}: #{inspect(err)}"
+        )
 
       {d_err, w_err} when d_err != nil and w_err != nil ->
         Logger.warning(
-          "EntropyWorker: both sources failed for draw #{draw.id}. " <>
+          "EntropyWorker: both sources failed for draw #{Log.redact_id(draw.id)}. " <>
             "drand=#{inspect(d_err)}, weather=#{inspect(w_err)}"
         )
 
@@ -263,7 +268,8 @@ defmodule WallopCore.Entropy.EntropyWorker do
   end
 
   defp execute_draw(draw, drand, weather) do
-    Tracer.with_span "entropy_worker.execute_draw", attributes: %{"draw.id" => draw.id} do
+    Tracer.with_span "entropy_worker.execute_draw",
+      attributes: %{"draw.id" => Log.redact_id(draw.id)} do
       draw
       |> Ash.Changeset.for_update(:execute_with_entropy, %{
         drand_randomness: drand.randomness,
@@ -284,7 +290,7 @@ defmodule WallopCore.Entropy.EntropyWorker do
           Tracer.set_attributes(%{"error" => true, "error.message" => inspect(reason)})
 
           Logger.warning(
-            "EntropyWorker: execution failed for draw #{draw.id}: #{inspect(reason)}"
+            "EntropyWorker: execution failed for draw #{Log.redact_id(draw.id)}: #{inspect(reason)}"
           )
 
           {:error, reason}
@@ -296,7 +302,8 @@ defmodule WallopCore.Entropy.EntropyWorker do
     alias WallopCore.Entropy.WeatherFallback
     classified = WeatherFallback.to_string(WeatherFallback.classify(weather_error_reason))
 
-    Tracer.with_span "entropy_worker.execute_drand_only", attributes: %{"draw.id" => draw.id} do
+    Tracer.with_span "entropy_worker.execute_drand_only",
+      attributes: %{"draw.id" => Log.redact_id(draw.id)} do
       draw
       |> Ash.Changeset.for_update(:execute_drand_only, %{
         drand_randomness: drand.randomness,
@@ -315,7 +322,7 @@ defmodule WallopCore.Entropy.EntropyWorker do
           Tracer.set_attributes(%{"error" => true, "error.message" => inspect(reason)})
 
           Logger.warning(
-            "EntropyWorker: drand-only execution failed for draw #{draw.id}: #{inspect(reason)}"
+            "EntropyWorker: drand-only execution failed for draw #{Log.redact_id(draw.id)}: #{inspect(reason)}"
           )
 
           {:error, reason}

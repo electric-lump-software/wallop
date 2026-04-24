@@ -208,10 +208,16 @@ defmodule WallopWeb.DrawEntriesController do
 
   defp internal_error(conn, reason) do
     require Logger
-    Logger.error("DrawEntriesController internal error: #{inspect(reason)}")
+    # Don't inspect raw Ash error structs — they carry UUIDs and field
+    # values. Log only the type/class so the failure is debuggable
+    # through structured error tracking without bleeding per-draw
+    # identifiers into the log stream (spec §4.3).
+    Logger.error("DrawEntriesController internal error: #{error_tag(reason)}")
 
     conn
     |> put_status(:internal_server_error)
     |> json(%{errors: [%{detail: "internal error"}]})
   end
+
+  defp error_tag(%module{}), do: inspect(module)
 end
