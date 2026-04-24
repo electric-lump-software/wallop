@@ -40,6 +40,10 @@ Execution receipts signed under wallop_core 0.16.x (schema `"2"`) remain verifia
 
 `spec/protocol.md` §4.4 documents an operational commitment that the wallop operator retains every infrastructure signing key used to sign any 1.x-era execution receipt or transparency anchor, for the duration of 1.x. A key that is rotated remains in the keyring (marked `revoked_at`), not removed. A verifier encountering an unresolvable `signing_key_id` on a historical receipt MUST reject per §4.2.4.
 
+### Browser-side verifier (WASM)
+
+The WASM bundle served from `/assets/wasm/` is updated in lockstep with the wallop_core release. When you deploy 0.17.0, returning visitors may have the 0.16.x bundle cached. A hard refresh (Cmd+Shift+R / Ctrl+Shift+R) clears it; no protocol concern — an older cached bundle fails on v3 receipts with an `UnknownSchemaVersion`-style error, which is the same terminal-reject behaviour any 0.8.x Rust verifier would produce.
+
 ---
 
 ## Earlier versions
