@@ -21,6 +21,7 @@ defmodule WallopCore.Resources.Draw.Changes.SignAndStoreExecutionReceipt do
   """
   use Ash.Resource.Change
 
+  alias WallopCore.Log
   alias WallopCore.Protocol
   alias WallopCore.Resources.{ExecutionReceipt, InfrastructureSigningKey, OperatorReceipt}
   alias WallopCore.Vault
@@ -78,7 +79,10 @@ defmodule WallopCore.Resources.Draw.Changes.SignAndStoreExecutionReceipt do
       end
     else
       {:error, :no_lock_receipt} ->
-        Logger.error("SignAndStoreExecutionReceipt: no lock receipt for draw #{draw.id}")
+        Logger.error(
+          "SignAndStoreExecutionReceipt: no lock receipt for draw #{Log.redact_id(draw.id)}"
+        )
+
         {:error, "draw has no lock receipt — cannot chain execution receipt"}
 
       {:error, :no_infra_key} ->
@@ -86,16 +90,22 @@ defmodule WallopCore.Resources.Draw.Changes.SignAndStoreExecutionReceipt do
         {:error, "no infrastructure signing key — run mix wallop.bootstrap_infrastructure_key"}
 
       {:error, :operator_not_found} ->
-        Logger.error("SignAndStoreExecutionReceipt: operator not found for draw #{draw.id}")
+        Logger.error(
+          "SignAndStoreExecutionReceipt: operator not found for draw #{Log.redact_id(draw.id)}"
+        )
+
         {:error, "operator not found — cannot sign execution receipt"}
 
       {:error, :no_results} ->
-        Logger.error("SignAndStoreExecutionReceipt: draw #{draw.id} has no results")
+        Logger.error(
+          "SignAndStoreExecutionReceipt: draw #{Log.redact_id(draw.id)} has no results"
+        )
+
         {:error, "draw has no results — cannot sign execution receipt"}
 
       {:error, reason} ->
         Logger.error(
-          "SignAndStoreExecutionReceipt: failed for draw #{draw.id}: #{inspect(reason)}"
+          "SignAndStoreExecutionReceipt: failed for draw #{Log.redact_id(draw.id)}: #{inspect(reason)}"
         )
 
         {:error, reason}

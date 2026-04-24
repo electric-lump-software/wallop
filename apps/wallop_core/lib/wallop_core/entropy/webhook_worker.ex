@@ -18,6 +18,8 @@ defmodule WallopCore.Entropy.WebhookWorker do
   require Logger
   require OpenTelemetry.Tracer, as: Tracer
 
+  alias WallopCore.Log
+
   @impl true
   def backoff(%Oban.Job{attempt: attempt}) do
     # Exponential backoff: ~30s, ~1m, ~2m, ~4m
@@ -26,7 +28,8 @@ defmodule WallopCore.Entropy.WebhookWorker do
 
   @impl true
   def perform(%Oban.Job{args: %{"draw_id" => draw_id, "api_key_id" => api_key_id}}) do
-    Tracer.with_span "webhook_worker.deliver", attributes: %{"draw.id" => draw_id} do
+    Tracer.with_span "webhook_worker.deliver",
+      attributes: %{"draw.id" => Log.redact_id(draw_id)} do
       with {:ok, draw} <- load_draw(draw_id),
            {:ok, api_key} <- load_api_key(api_key_id),
            {:ok, _response} <- deliver(draw, api_key) do
@@ -45,7 +48,7 @@ defmodule WallopCore.Entropy.WebhookWorker do
           })
 
           Logger.warning(
-            "Webhook delivery failed for draw #{draw_id}: #{inspect(reason)}, will retry"
+            "Webhook delivery failed for draw #{Log.redact_id(draw_id)}: #{inspect(reason)}, will retry"
           )
 
           {:error, reason}
@@ -57,7 +60,9 @@ defmodule WallopCore.Entropy.WebhookWorker do
             "error.message" => inspect(reason)
           })
 
-          Logger.warning("Webhook permanently failed for draw #{draw_id}: #{inspect(reason)}")
+          Logger.warning(
+            "Webhook permanently failed for draw #{Log.redact_id(draw_id)}: #{inspect(reason)}"
+          )
           {:cancel, inspect(reason)}
       end
     end
