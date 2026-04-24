@@ -1,0 +1,39 @@
+{
+  "assertions": {
+    "all_null_values_are_json_null_not_omitted": true,
+    "signing_key_id_key_present": true,
+    "weather_observation_time_key_present": true,
+    "weather_station_key_present": true,
+    "weather_value_key_present": true
+  },
+  "description": "Drand-only execution receipt (schema v3): null weather fields present as JSON null, signing_key_id committed for infra key",
+  "expected_payload_sha256": "f6df0f707f80d0bc587f3cf2637732883017efcd1cfb526cc8c2bb90fa37f30f",
+  "expected_schema_version": "3",
+  "expected_field_count": 26,
+  "input": {
+    "drand_chain": "52db9ba70e0cc0f6eaf7803dd07447a1f5477735fd3f661792ba94600c84e971",
+    "drand_randomness": "abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890",
+    "drand_round": 12345,
+    "drand_signature": "deadbeef-bls-signature",
+    "draw_id": "22222222-2222-2222-2222-222222222222",
+    "entry_hash": "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789",
+    "executed_at": "2026-04-09T12:05:00.000000Z",
+    "fair_pick_version": "0.2.1",
+    "lock_receipt_hash": "3fbacc9e2aa7e80593edcec4b64c89c791b776a9e3371af5e34bc8cdd4138fa3",
+    "operator_id": "11111111-1111-1111-1111-111111111111",
+    "operator_slug": "acme-prizes",
+    "results": [
+      "ticket-48",
+      "ticket-47"
+    ],
+    "seed": "aaaa000000000000000000000000000000000000000000000000000000000000",
+    "sequence": 1,
+    "signing_key_id": "cafebabe",
+    "wallop_core_version": "0.14.1",
+    "weather_fallback_reason": "unreachable",
+    "weather_observation_time": null,
+    "weather_station": null,
+    "weather_value": null
+  },
+  "note": "JCS includes null-valued keys. This is a classic cross-implementation divergence point. signing_key_id is required on v3."
+}

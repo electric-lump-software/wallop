@@ -75,11 +75,12 @@ defmodule WallopCore.Resources.ExecutionReceiptTest do
 
       decoded = Jason.decode!(receipt.payload_jcs)
 
-      # Receipt shape v2 — 25 fields including algorithm tag pins.
+      # Receipt shape v3 — 26 fields (v2's 25 + signing_key_id) including algorithm tag pins.
       assert decoded["draw_id"] == draw.id
       assert decoded["operator_id"] == draw.operator_id
       assert is_integer(decoded["sequence"])
-      assert decoded["schema_version"] == "2"
+      assert decoded["schema_version"] == "3"
+      assert is_binary(decoded["signing_key_id"])
       refute Map.has_key?(decoded, "execution_schema_version")
       assert decoded["jcs_version"] == "sha256-jcs-v1"
       assert decoded["signature_algorithm"] == "ed25519"
@@ -404,7 +405,8 @@ defmodule WallopCore.Resources.ExecutionReceiptTest do
       assert decoded["drand_signature"] == "test-bls-sig"
 
       # Schema version
-      assert decoded["schema_version"] == "2"
+      assert decoded["schema_version"] == "3"
+      assert is_binary(decoded["signing_key_id"])
       refute Map.has_key?(decoded, "execution_schema_version")
     end
   end

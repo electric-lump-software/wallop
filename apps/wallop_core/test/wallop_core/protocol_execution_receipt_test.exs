@@ -29,7 +29,8 @@ defmodule WallopCore.ProtocolExecutionReceiptTest do
     fair_pick_version: "0.2.1",
     seed: "deadbeef" <> String.duplicate("0", 56),
     results: ["ticket-47", "ticket-49"],
-    executed_at: ~U[2026-04-09 13:01:23.456789Z]
+    executed_at: ~U[2026-04-09 13:01:23.456789Z],
+    signing_key_id: "cafebabe"
   }
 
   describe "build_execution_receipt_payload/1" do
@@ -43,11 +44,13 @@ defmodule WallopCore.ProtocolExecutionReceiptTest do
       # JCS sorts keys lexicographically; Jason.decode! preserves that order.
       decoded_keys = Map.keys(decoded)
       assert decoded_keys == Enum.sort(decoded_keys)
-      assert length(decoded_keys) == 25
+      # v2 had 25 keys; v3 adds signing_key_id → 26.
+      assert length(decoded_keys) == 26
 
       # Spot-check key values
-      assert decoded["schema_version"] == "2"
+      assert decoded["schema_version"] == "3"
       refute Map.has_key?(decoded, "execution_schema_version")
+      assert decoded["signing_key_id"] == "cafebabe"
       assert decoded["jcs_version"] == "sha256-jcs-v1"
       assert decoded["signature_algorithm"] == "ed25519"
       assert decoded["entropy_composition"] == "drand-quicknet+openmeteo-v1"
@@ -61,6 +64,17 @@ defmodule WallopCore.ProtocolExecutionReceiptTest do
       assert decoded["executed_at"] == "2026-04-09T13:01:23.456789Z"
       assert decoded["weather_observation_time"] == "2026-04-09T13:00:00.000000Z"
       assert decoded["weather_fallback_reason"] == nil
+    end
+
+    test "raises on input missing signing_key_id (v3 requires it)" do
+      # Defence-in-depth: the v3 builder MUST fail on any input map lacking
+      # signing_key_id. The FunctionClauseError here is the Elixir-side
+      # mirror of the Rust verifier's deny-unknown-fields guarantee.
+      input = Map.delete(@frozen_payload_input, :signing_key_id)
+
+      assert_raise FunctionClauseError, fn ->
+        Protocol.build_execution_receipt_payload(input)
+      end
     end
 
     test "frozen vector — same input always produces identical JCS bytes" do

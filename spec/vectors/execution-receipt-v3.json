@@ -1,0 +1,31 @@
+{
+  "description": "Execution receipt JCS payload (schema v3), 26 fields, weather populated, signing_key_id committed",
+  "expected_field_count": 26,
+  "expected_payload_sha256": "bc53144ca29825c48e083e20f27a954ef5330149ec4c13f2d5168b6814eb329a",
+  "expected_schema_version": "3",
+  "input": {
+    "drand_chain": "52db9ba70e0cc0f6eaf7803dd07447a1f5477735fd3f661792ba94600c84e971",
+    "drand_randomness": "abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890",
+    "drand_round": 12345,
+    "drand_signature": "a]fake-bls-signature-hex",
+    "draw_id": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+    "entry_hash": "d7a8fbb307d7809469ca9abcb0082e4f8d5651e46d3cdb762d02d0bf37c9e592",
+    "executed_at": "2026-04-09T13:01:23.456789Z",
+    "fair_pick_version": "0.2.1",
+    "lock_receipt_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "operator_id": "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
+    "operator_slug": "acme-prizes",
+    "results": [
+      "ticket-47",
+      "ticket-49"
+    ],
+    "seed": "deadbeef00000000000000000000000000000000000000000000000000000000",
+    "sequence": 42,
+    "signing_key_id": "cafebabe",
+    "wallop_core_version": "0.12.0",
+    "weather_fallback_reason": null,
+    "weather_observation_time": "2026-04-09T13:00:00.000000Z",
+    "weather_station": "middle-wallop",
+    "weather_value": "1013"
+  }
+}

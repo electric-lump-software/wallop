@@ -305,9 +305,15 @@ defmodule WallopCore.FrozenVectorsTest do
 
   # ── V-6: Execution receipt payload ────────────────────────────────
 
-  describe "V-6: execution receipt payload (schema v2)" do
+  describe "V-6: execution receipt payload (schema v3)" do
+    # wallop_core 0.17.0+ produces execution receipts at schema v3, which
+    # adds `signing_key_id` for infra-key identity (F2 closure — spec
+    # §4.2). The historical v2 vector `execution-receipt.json` is
+    # preserved on disk and exercised by the Rust verifier's v2 parser
+    # for backwards compatibility (receipts signed under v0.16.x remain
+    # verifiable for the life of 1.x, per spec §4.5).
     setup do
-      %{vector: load_vector("execution-receipt.json")}
+      %{vector: load_vector("execution-receipt-v3.json")}
     end
 
     test "payload SHA-256 is pinned", %{vector: v} do
@@ -323,6 +329,13 @@ defmodule WallopCore.FrozenVectorsTest do
       payload = Protocol.build_execution_receipt_payload(input)
 
       assert Jason.decode!(payload)["schema_version"] == v["expected_schema_version"]
+    end
+
+    test "signing_key_id is committed in the signed payload", %{vector: v} do
+      input = to_exec_input(v["input"])
+      payload = Protocol.build_execution_receipt_payload(input)
+
+      assert Jason.decode!(payload)["signing_key_id"] == v["input"]["signing_key_id"]
     end
 
     test "sign + verify round-trip with frozen key", %{vector: v} do
@@ -450,9 +463,9 @@ defmodule WallopCore.FrozenVectorsTest do
 
   # ── V-12: drand-only execution receipt ─────────────────────────────
 
-  describe "V-12: drand-only execution receipt" do
+  describe "V-12: drand-only execution receipt (schema v3)" do
     setup do
-      %{vector: load_vector("execution-receipt-drand-only.json")}
+      %{vector: load_vector("execution-receipt-drand-only-v3.json")}
     end
 
     test "null weather fields are present as JSON null, not omitted", %{vector: v} do
@@ -523,7 +536,8 @@ defmodule WallopCore.FrozenVectorsTest do
       fair_pick_version: map["fair_pick_version"],
       seed: map["seed"],
       results: map["results"],
-      executed_at: parse_datetime!(map["executed_at"])
+      executed_at: parse_datetime!(map["executed_at"]),
+      signing_key_id: map["signing_key_id"]
     }
   end
 
