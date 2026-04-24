@@ -63,6 +63,7 @@ defmodule WallopCore.Entropy.WebhookWorker do
           Logger.warning(
             "Webhook permanently failed for draw #{Log.redact_id(draw_id)}: #{inspect(reason)}"
           )
+
           {:cancel, inspect(reason)}
       end
     end
