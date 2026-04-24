@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Spec — cross-receipt field consistency (§4.2.5) and weather observation window
+
+Documents two verifier obligations that close a splice-attack class named in the round 2 audit. These are spec requirements on verifiers; the Elixir producer already upholds them by construction (both receipts for a single draw read from the same underlying record).
+
+**Cross-receipt field consistency.** Every field duplicated across the lock receipt and the execution receipt MUST be byte-identical. Without this check, an infrastructure-level attacker signing a fraudulent execution receipt can pair it with a legitimate lock receipt from a different draw, operator, or entropy window — `lock_receipt_hash` binds the lock bytes into the exec but does not bind the exec's own duplicated fields back to the lock. Cross-checked fields: `draw_id`, `operator_id`, `sequence`, `drand_chain`, `drand_round`, `weather_station`. Bundle envelope `draw_id` also cross-checked. Explicitly excluded: `signing_key_id` (different keys by design — operator vs infra), `operator_slug` (derivative of `operator_id`), algorithm identity tags (already validated per-receipt).
+
+**Weather observation window.** The execution receipt's `weather_observation_time` MUST fall in `[lock.weather_time - 3600s, lock.weather_time]`. Bound direction reflects production behaviour — Met Office publishes observations at hour boundaries (`XX:00:00` UTC), and the entropy worker fetches the most recent observation at or before the declared target. Prevents an infrastructure-level attacker from fetching weather from any point in time and attributing it to the draw's declared window.
+
+No signed-byte change. No schema bump. Enforcement ships in `wallop_verifier` 0.10.0.
+
 ### wallop_core — security / observability: redact identifiers from logs and telemetry
 
 Addresses a side-channel leak flagged in the round 2 vulnerability audit. Entry UUIDs and draw UUIDs were previously emitted raw from entropy/webhook/expiry workers, the execution-receipt signing path, and the draw-entries controller — visible to anyone with access to `Logger` output or the OpenTelemetry span stream. Spec §4.3 forbids exactly this class of cross-run correlation vector.
