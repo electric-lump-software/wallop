@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Docs — MIGRATING.md restructured by consumer audience
+
+`MIGRATING.md` previously read as if pitched at Hex package consumers, leaving HTTP API consumers unsure which sections applied. Restructured with a top-level "which sections apply to me?" table separating HTTP API consumers, Hex package consumers, and verifier consumers; version sections subdivided into `### HTTP API surface`, `### Hex package surface`, and `### Verifier surface` blocks.
+
+The 0.15.x → 0.16.0 section is expanded from a one-line summary into a full HTTP-consumer guide covering the four code-affecting changes: capturing wallop-assigned UUIDs from the `add_entries` response (with the exact JSON path, field name, and order-guarantee contract); reading winning entries by `entry_id` in `GET /draws/:id` results after the completion webhook; the absence of server-side idempotency on `add_entries` retries (callers gate client-side; server-side idempotency-key support is post-1.0.0 roadmap); and removal of the `:execute` action surface.
+
+No code change. No spec change. Documentation-only.
+
 ### Spec — cross-receipt field consistency (§4.2.5) and weather observation window
 
 Documents two verifier obligations that close a splice-attack class named in the round 2 audit. These are spec requirements on verifiers; the Elixir producer already upholds them by construction (both receipts for a single draw read from the same underlying record).
