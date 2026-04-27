@@ -51,6 +51,16 @@ defmodule WallopCore.Resources.DrawImmutabilityTest do
       end
     end
 
+    test "cannot modify operator_sequence on a locked draw", %{draw: draw} do
+      assert_raise Postgrex.Error, ~r/Cannot modify committed entry fields/, fn ->
+        SQL.query!(
+          WallopCore.Repo,
+          "UPDATE draws SET operator_sequence = 99999 WHERE id = $1",
+          [Ecto.UUID.dump!(draw.id)]
+        )
+      end
+    end
+
     test "cannot insert entries into a locked draw via raw SQL", %{draw: draw} do
       assert_raise Postgrex.Error, ~r/Cannot modify entries on a/, fn ->
         SQL.query!(
