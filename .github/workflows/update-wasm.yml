@@ -13,6 +13,13 @@ jobs:
       pull-requests: write
     steps:
       - uses: actions/checkout@v4
+        with:
+          # Check out under the PAT so subsequent `git push` to a feature
+          # branch is attributed to the PAT user, not github-actions[bot].
+          # Required so the resulting auto-PR triggers the standard CI
+          # workflow (default GITHUB_TOKEN-pushed PRs do not — GitHub
+          # anti-loop policy).
+          token: ${{ secrets.PR_AUTOMATION_PAT }}
 
       - name: Download WASM release
         run: |
@@ -30,7 +37,7 @@ jobs:
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
         id: download
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.PR_AUTOMATION_PAT }}
 
       - name: Create PR
         run: |
@@ -58,4 +65,4 @@ jobs:
           EOF
           )"
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.PR_AUTOMATION_PAT }}
