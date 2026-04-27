@@ -183,23 +183,51 @@ defmodule WallopCore.Transparency.AnchorWorker do
   end
 
   defp sign_root(root) do
+    with {:ok, key} <- load_current_infra_key_or_log(),
+         {:ok, private_key} <- decrypt_or_log(key),
+         :ok <- check_key_consistency_or_log(key, private_key) do
+      signature = Protocol.sign_receipt(root, private_key)
+      {:ok, signature, key.key_id}
+    else
+      :error -> :error
+    end
+  end
+
+  defp load_current_infra_key_or_log do
     case load_current_infra_key() do
       {:ok, key} ->
-        case Vault.decrypt(key.private_key) do
-          {:ok, private_key} ->
-            signature = Protocol.sign_receipt(root, private_key)
-            {:ok, signature, key.key_id}
-
-          _error ->
-            Logger.error(
-              "AnchorWorker: vault decrypt failed for infra key #{key.key_id} — check VAULT_KEY and iv_length config"
-            )
-
-            :error
-        end
+        {:ok, key}
 
       :error ->
         Logger.error("AnchorWorker: no infrastructure signing key found")
+        :error
+    end
+  end
+
+  defp decrypt_or_log(key) do
+    case Vault.decrypt(key.private_key) do
+      {:ok, private_key} ->
+        {:ok, private_key}
+
+      _error ->
+        Logger.error(
+          "AnchorWorker: vault decrypt failed for infra key #{key.key_id} — check VAULT_KEY and iv_length config"
+        )
+
+        :error
+    end
+  end
+
+  defp check_key_consistency_or_log(key, private_key) do
+    case Protocol.assert_key_consistency(key.public_key, private_key, key.key_id) do
+      :ok ->
+        :ok
+
+      {:error, mismatch} ->
+        Logger.error(
+          "AnchorWorker: keyring row inconsistency (#{mismatch}) on infra key #{key.key_id} — refusing to sign"
+        )
+
         :error
     end
   end

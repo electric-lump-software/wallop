@@ -43,6 +43,12 @@ defmodule WallopCore.Resources.Draw.Changes.SignAndStoreExecutionReceipt do
     with {:ok, lock_receipt} <- load_lock_receipt(draw.id),
          {:ok, infra_key} <- load_current_infra_key(),
          {:ok, private_key} <- decrypt_private_key(infra_key.private_key),
+         :ok <-
+           Protocol.assert_key_consistency(
+             infra_key.public_key,
+             private_key,
+             infra_key.key_id
+           ),
          {:ok, operator_slug} <- load_operator_slug(draw.operator_id),
          {:ok, canonical_results} <- validate_results(draw.results) do
       lock_receipt_hash = hash_lock_receipt(lock_receipt.payload_jcs)
