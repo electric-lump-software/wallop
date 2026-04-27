@@ -2,13 +2,29 @@ defmodule WallopWeb.OperatorLive do
   @moduledoc """
   Public registry page for an operator.
 
-  Lists every draw the operator has ever locked, in sequence order, including
-  open, locked, completed, expired, and failed draws. Sequence gaps and
-  discarded slots are visible — that is the whole point.
+  Lists every draw the operator has ever **locked** — i.e. every draw whose
+  status is no longer `:open`. The listing therefore includes draws in
+  states `:locked`, `:awaiting_entropy`, `:pending_entropy`, `:completed`,
+  `:failed`, and `:expired`, regardless of subsequent outcome.
 
-  Server-side keyset paginated on `operator_sequence DESC`. The list grows by
-  appending pages as the user scrolls (intersection observer hook), or after
-  the user types in the search bar (which resets the list to page 1).
+  Open draws (`:open`) are operator working state — entries can still be
+  added, no signed lock receipt exists yet — and are NOT listed.
+  `operator_sequence` itself is assigned at create time (advisory-locked
+  `MAX+1`) and is therefore present even on `:open` draws, so the
+  status-based filter is what discriminates working state from committed
+  draws, not the presence of a sequence number.
+
+  The exclusion is necessary for the cross-draw transparency commitment in
+  `spec/protocol.md` §4.2.7 to mean what it says: every public sequence
+  slot corresponds to a draw the operator committed to, and any sequence
+  gap visible to an outside auditor is detectable as an attempted post-hoc
+  draw shopping (lock → see result → discard → re-lock with same entries
+  at same slot — the discarded slot is publicly visible and the auditor
+  can spot the gap).
+
+  Server-side keyset paginated on `operator_sequence DESC`. The list grows
+  by appending pages as the user scrolls (intersection observer hook), or
+  after the user types in the search bar (which resets the list to page 1).
   """
   use WallopWeb, :live_view
 
@@ -70,6 +86,13 @@ defmodule WallopWeb.OperatorLive do
   # one (no diff is pushed even though we just received a broadcast). Update
   # the single affected element directly so the list reference is provably
   # different.
+  defp apply_draw_update(socket, %{operator_id: operator_id, status: :open})
+       when is_binary(operator_id) do
+    # `:open` draws are operator working state and are intentionally
+    # excluded from the public listing per §4.2.7. Drop the broadcast.
+    socket
+  end
+
   defp apply_draw_update(socket, %{operator_id: operator_id} = draw)
        when is_binary(operator_id) do
     if operator_id == socket.assigns.operator.id and
@@ -145,9 +168,13 @@ defmodule WallopWeb.OperatorLive do
   # smallest operator_sequence in the page (used as the upper bound for the
   # next page) or nil when no more pages exist.
   defp list_draws(operator_id, query, cursor) do
+    # `status != :open` excludes operator working state (entries still
+    # being added, no signed lock receipt yet). The cross-draw transparency
+    # commitment in spec/protocol.md §4.2.7 covers every draw with a signed
+    # lock receipt, which is everything except `:open`.
     base =
       Draw
-      |> Ash.Query.filter(operator_id == ^operator_id)
+      |> Ash.Query.filter(operator_id == ^operator_id and status != :open)
       |> Ash.Query.sort(operator_sequence: :desc)
       |> Ash.Query.limit(@page_size + 1)
 
