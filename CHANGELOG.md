@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Spec — cross-draw transparency commitment (§4.2.7)
+
+Documents the public-listing property at `/operator/:slug` as a normative spec commitment: every draw with a signed lock receipt MUST appear in the operator's public registry regardless of subsequent state (locked, awaiting_entropy, pending_entropy, completed, failed, expired); only `:open` working-state draws are excluded. The commitment defends against post-hoc draw shopping (lock → see result → discard → re-lock with same entries at the same sequence slot — the discarded slot stays publicly visible and the auditor can spot the gap).
+
+This sits alongside the §4.2.6 transparency anchors as the public-listing complement to the anchor-based per-receipt tampering detection: anchors prove no receipt was retroactively altered or removed; the listing proves no sequence slot was ever quietly skipped. Six sub-rules pinned in §4.2.7: per-operator sequence numbers monotonically increasing with no gaps in the publicly listed (non-`:open`) subset (advisory-locked `MAX+1` at create time), every signed-lock-receipt draw publicly visible, `:open` draws excluded, sequence-slot immutability post-`:open` (the `prevent_draw_mutation` trigger already enforces this), lock-receipt persistence for the life of 1.x, and operator slug stability (the `operator_slug_immutability` trigger plus the slug appearing in every signed receipt's payload).
+
+### wallop_web — `/operator/:slug` listing scopes to non-`:open` draws
+
+Aligns the LiveView listing implementation with the §4.2.7 commitment. The base query gains `status != :open`, and the PubSub realtime update path drops broadcasts for `:open` draws so the two surfaces (initial paginated load + realtime updates) can't disagree. Three regression tests cover the property: locked draws appear, `:open` draws do not appear, PubSub updates for `:open` draws don't slip in.
+
+No producer-side change; signed bytes and frozen vectors are untouched. Public listing now reflects the spec commitment exactly.
+
 ### wallop_web — regression test for public router surface
 
 Two distinct surfaces can grow silently:
