@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### wallop_core — security: keyring temporal binding
+
+Closes a keyring backdating attack vector. `OperatorSigningKey.create` and `InfrastructureSigningKey.create` are append-only at the Ash policy level (`forbid_if(always())`), but any code path running with `authorize?: false` (mix tasks, seeds, future admin endpoints, compromised admin credentials) could insert a row with arbitrary `valid_from`. `SignAndStoreReceipt` picks the "current" key via `valid_from <= now ORDER BY valid_from DESC LIMIT 1`, so a back-dated insert with `valid_from = '2020-01-01'` immediately becomes the selected signer at any current time — letting a malicious admin forge new receipts claiming historical `locked_at` times.
+
+Two complementary mitigations land here. The producer-side change is a symmetric ±60 second `CHECK` constraint on `valid_from` vs `inserted_at` for both `operator_signing_keys` and `infrastructure_signing_keys` tables. Forward dating is rejected for the same reason backdating is — a 1.x append-only keyring should not have optionality around when a key starts being valid. The migration runs a pre-flight check on existing rows and aborts with the offending IDs if any current data violates the new constraint, so deployments with hand-written historical rows fail loudly rather than silently before the constraint attaches.
+
+The verifier-side complement is documented in `spec/protocol.md` §4.2.4 as a new "Temporal binding to first-existence timestamp" rule. Each receipt class is checked against its own binding timestamp: lock receipt against `operator_signing_key.inserted_at`, execution receipt against `infrastructure_signing_key.inserted_at` against `executed_at`, transparency anchor against `inserted_at` against `anchored_at`. Per-receipt comparison (rather than always against `lock.locked_at`) preserves legitimate infrastructure-key rotation between lock and execute. The verifier-side comparison has no skew tolerance — both timestamps are operator-produced and committed, so any drift is signal not noise. Spec text also covers forward compatibility for a future `revoked_at` field (1.x verifiers MUST ignore unknown keyring columns; 1.y verifiers MUST apply the symmetric `revoked_at > binding_timestamp` rule).
+
+The verifier-side enforcement and corresponding selftest scenarios (`signing_key_backdated_lock_receipt`, `signing_key_backdated_execution_receipt`, `signing_key_backdated_transparency_anchor`, plus boundary-equality and rotate-between-lock-and-execute positive guards) ship in a follow-up `wallop_verifier` release.
+
+No signed-byte change. No schema bump. The `inserted_at` field becomes the third pillar of keyring semantics joining `signing_key_id` (F2) and the retention obligation (§4.4).
+
 ### Docs — MIGRATING.md restructured by consumer audience
 
 `MIGRATING.md` previously read as if pitched at Hex package consumers, leaving HTTP API consumers unsure which sections applied. Restructured with a top-level "which sections apply to me?" table separating HTTP API consumers, Hex package consumers, and verifier consumers; version sections subdivided into `### HTTP API surface`, `### Hex package surface`, and `### Verifier surface` blocks.

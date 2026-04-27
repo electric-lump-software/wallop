@@ -86,7 +86,12 @@ defmodule WallopCore.Resources.InfrastructureSigningKeyTest do
     test "multiple keys ordered by valid_from desc gives current key first" do
       now = DateTime.utc_now()
 
-      for offset <- [-3600, -1800, -60] do
+      # Offsets must stay inside the ±60 second window from inserted_at
+      # (the keyring temporal binding CHECK constraint). The constraint
+      # means production rotation cadence can never insert historical keys
+      # with arbitrary valid_from anyway — this test is exercising the
+      # query pattern, not the insertion semantics.
+      for offset <- [-45, -15, 0] do
         {pub, priv} = :crypto.generate_key(:eddsa, :ed25519)
         {:ok, encrypted} = WallopCore.Vault.encrypt(priv)
 
@@ -113,8 +118,59 @@ defmodule WallopCore.Resources.InfrastructureSigningKeyTest do
       valid_froms = Enum.map(keys, & &1.valid_from)
       assert valid_froms == Enum.sort(valid_froms, {:desc, DateTime})
 
-      # The -60 second key should be the "current" key
-      assert newest.valid_from == DateTime.add(now, -60, :second)
+      # The 0-offset key should be the "current" key
+      assert newest.valid_from == DateTime.truncate(now, :microsecond)
+    end
+  end
+
+  describe "valid_from temporal binding (CHECK constraint)" do
+    test "rejects backdated valid_from outside ±60s window" do
+      {pub, priv} = :crypto.generate_key(:eddsa, :ed25519)
+      {:ok, encrypted} = WallopCore.Vault.encrypt(priv)
+
+      assert_raise Ash.Error.Unknown, ~r/valid_from_within_skew/, fn ->
+        InfrastructureSigningKey
+        |> Ash.Changeset.for_create(:create, %{
+          key_id: Protocol.key_id(pub),
+          public_key: pub,
+          private_key: encrypted,
+          valid_from: DateTime.add(DateTime.utc_now(), -120, :second)
+        })
+        |> Ash.create!(authorize?: false)
+      end
+    end
+
+    test "rejects forward-dated valid_from outside ±60s window" do
+      {pub, priv} = :crypto.generate_key(:eddsa, :ed25519)
+      {:ok, encrypted} = WallopCore.Vault.encrypt(priv)
+
+      assert_raise Ash.Error.Unknown, ~r/valid_from_within_skew/, fn ->
+        InfrastructureSigningKey
+        |> Ash.Changeset.for_create(:create, %{
+          key_id: Protocol.key_id(pub),
+          public_key: pub,
+          private_key: encrypted,
+          valid_from: DateTime.add(DateTime.utc_now(), 120, :second)
+        })
+        |> Ash.create!(authorize?: false)
+      end
+    end
+
+    test "accepts valid_from equal to current time (within skew window)" do
+      {pub, priv} = :crypto.generate_key(:eddsa, :ed25519)
+      {:ok, encrypted} = WallopCore.Vault.encrypt(priv)
+
+      {:ok, key} =
+        InfrastructureSigningKey
+        |> Ash.Changeset.for_create(:create, %{
+          key_id: Protocol.key_id(pub),
+          public_key: pub,
+          private_key: encrypted,
+          valid_from: DateTime.utc_now()
+        })
+        |> Ash.create(authorize?: false)
+
+      assert key.valid_from
     end
   end
 
