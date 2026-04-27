@@ -174,6 +174,20 @@ defmodule WallopCore.Resources.InfrastructureSigningKeyTest do
     end
   end
 
+  describe "Protocol.assert_key_consistency on a bootstrapped row" do
+    test "passes for a key emitted by the standard bootstrap path" do
+      key = create_infrastructure_key()
+      {:ok, private_key} = WallopCore.Vault.decrypt(key.private_key)
+
+      assert :ok =
+               Protocol.assert_key_consistency(
+                 key.public_key,
+                 private_key,
+                 key.key_id
+               )
+    end
+  end
+
   describe "sensitive private_key" do
     test "is not exposed in inspect output" do
       key = create_infrastructure_key()
