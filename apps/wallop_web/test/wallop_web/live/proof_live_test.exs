@@ -44,6 +44,27 @@ defmodule WallopWeb.ProofLiveTest do
       assert html =~ "data-infra-public-key-hex"
     end
 
+    test "renders verifier mode badge and disclosure text", %{conn: conn} do
+      api_key = create_api_key()
+      draw = create_draw(api_key, %{})
+      draw = execute_draw(draw, test_seed(), api_key)
+
+      conn = get(conn, "/proof/#{draw.id}")
+      html = html_response(conn, 200)
+
+      # The WASM verifier has no out-of-band key resolution yet, so
+      # every browser-side check is in self-consistency mode. The
+      # disclosure must say so plainly.
+      assert html =~ "Mode: local self-check only"
+
+      # The §4.2.4 caveat must be honestly disclosed: the browser-side
+      # check is internally consistent but does NOT defend against a
+      # tampered mirror.
+      assert html =~ "tampered mirror"
+      assert html =~ "What does this verify?"
+      assert html =~ "attributable verification"
+    end
+
     test "sets immutable cache headers", %{conn: conn} do
       api_key = create_api_key()
       draw = create_draw(api_key, %{})

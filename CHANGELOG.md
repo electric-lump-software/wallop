@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### wallop_web — proof page honestly discloses verifier mode
+
+The `verify_block` component now renders an explicit "Mode: local self-check only" badge alongside the verify button, plus an expandable disclosure paragraph describing what the browser-side WASM check does and does not prove. Closes the §4.2.4 caveat-mode-without-disclosure gap visitors had been seeing — green ticks alone read as full verification, but the WASM verifier today runs in self-consistency mode (no out-of-band key resolution yet) and the disclosure now says so plainly.
+
+The label and copy are static while the WASM verifier has only one constructable mode. When out-of-band key resolution lands and the verifier supports operator-hosted key pins ("attributable verification"), the badge becomes dynamic — the data attribute is in place; the JS side just needs a function that returns the active mode and an event that updates the badge text.
+
+The disclosure paragraph: "the browser-side check confirms the bundle's signatures and math agree with each other and with the keys embedded in the bundle itself. It catches accidents and casual tampering, but it does *not* defend against a tampered mirror or a compromised CDN — an attacker serving a forged bundle with their own keys would also pass every step. Verification cryptographically tied to a specific operator identity becomes available in a future 1.x release once operators can publish key pins (see spec §4.2.4)."
+
+One regression test in `proof_live_test.exs` covers the badge text and the caveat disclosure being present in the rendered HTML.
+
 ### wallop_core — defence-in-depth: assert keyring row consistency at sign time
 
 New `WallopCore.Protocol.assert_key_consistency/3` helper re-derives the public key from the (Vault-decrypted) Ed25519 private key and asserts it matches the row's `public_key`, plus asserts `Protocol.key_id(public_key) == key_id`. Returns `:ok` or `{:error, :public_key_mismatch | :key_id_mismatch}`. Wired into all three signing paths immediately after the private-key decrypt step:
