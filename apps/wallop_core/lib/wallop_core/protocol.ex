@@ -377,6 +377,39 @@ defmodule WallopCore.Protocol do
   end
 
   @doc """
+  Verify a keyring row is internally consistent before signing with it.
+
+  Re-derives the public key from the (already-decrypted) Ed25519 private
+  key, asserts it matches the row's `public_key`, and asserts
+  `key_id(public_key) == key_id`. Returns `:ok` on success, or
+  `{:error, :public_key_mismatch}` / `{:error, :key_id_mismatch}` on the
+  respective inconsistency.
+
+  Defence-in-depth on the producer side: catches a corrupted in-memory
+  key (e.g. truncated bytes after Vault decrypt), a row whose `key_id`
+  column drifted out of sync with `public_key`, or a row whose
+  `public_key` was rewritten without rotating `key_id`. Neither failure
+  mode should be reachable through the existing Ash policy + DB trigger
+  surface, but the check is cheap and runs on every sign.
+
+  Belongs in the signing path immediately after the private-key decrypt
+  step, before the bytes are passed to `sign_receipt/2`.
+  """
+  @spec assert_key_consistency(binary(), binary(), String.t()) ::
+          :ok | {:error, :public_key_mismatch | :key_id_mismatch}
+  def assert_key_consistency(public_key, private_key, key_id)
+      when byte_size(public_key) == 32 and byte_size(private_key) == 32 and
+             is_binary(key_id) and byte_size(key_id) > 0 do
+    {derived_pub, _priv} = :crypto.generate_key(:eddsa, :ed25519, private_key)
+
+    cond do
+      derived_pub != public_key -> {:error, :public_key_mismatch}
+      key_id(public_key) != key_id -> {:error, :key_id_mismatch}
+      true -> :ok
+    end
+  end
+
+  @doc """
   Compute the RFC 6962-style binary Merkle root over a list of leaves.
 
   - Empty list → `sha256(<<>>)` sentinel

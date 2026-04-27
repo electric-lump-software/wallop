@@ -42,6 +42,12 @@ defmodule WallopCore.Resources.Draw.Changes.SignAndStoreReceipt do
     with {:ok, operator} <- load_operator(operator_id),
          {:ok, signing_key} <- load_current_signing_key(operator_id, locked_at),
          {:ok, private_key} <- decrypt_private_key(signing_key.private_key),
+         :ok <-
+           Protocol.assert_key_consistency(
+             signing_key.public_key,
+             private_key,
+             signing_key.key_id
+           ),
          commitment_hash <- Ash.Changeset.get_attribute(changeset, :entry_hash) do
       payload =
         Protocol.build_receipt_payload(%{

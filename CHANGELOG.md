@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### wallop_core — defence-in-depth: assert keyring row consistency at sign time
+
+New `WallopCore.Protocol.assert_key_consistency/3` helper re-derives the public key from the (Vault-decrypted) Ed25519 private key and asserts it matches the row's `public_key`, plus asserts `Protocol.key_id(public_key) == key_id`. Returns `:ok` or `{:error, :public_key_mismatch | :key_id_mismatch}`. Wired into all three signing paths immediately after the private-key decrypt step:
+
+- `SignAndStoreReceipt` (operator-key signed lock receipts).
+- `SignAndStoreExecutionReceipt` (infra-key signed execution receipts).
+- `Transparency.AnchorWorker.sign_root/1` (infra-key signed transparency anchors).
+
+Catches a corrupted in-memory key (e.g. truncated bytes after Vault decrypt), a row whose `key_id` column drifted out of sync with `public_key`, or a row whose `public_key` was rewritten without rotating `key_id`. Neither failure mode should be reachable through the existing Ash policy + DB trigger surface, but the check is cheap and runs on every sign — defence-in-depth alongside the keyring temporal binding CHECK constraint.
+
+Anchor worker's `sign_root/1` refactored from nested `case` to a `with` chain (credo flagged the new nesting as too deep); each step now has its own `_or_log` helper preserving the existing per-failure log lines. Four new tests on the helper cover the consistent path, both mismatch errors, and function-clause guards on input sizes.
+
+No behaviour change for production paths — every signing flow today produces consistent keyring rows; the helper is a no-op in those cases.
+
 ### wallop_web — `/operator/:slug/keys` surfaces `inserted_at` and `key_class`
 
 Each entry in the keys array now includes `inserted_at` (RFC 3339 timestamp) and `key_class: "operator"`. Both fields are required by the spec §4.2.4 temporal binding rule (a verifier MUST reject when `key.inserted_at > receipt.binding_timestamp`), and `key_class` discriminates operator-class keys from infrastructure-class keys when a future verifier consumes both endpoints in the same resolution path.

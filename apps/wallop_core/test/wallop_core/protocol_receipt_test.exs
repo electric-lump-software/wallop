@@ -126,6 +126,49 @@ defmodule WallopCore.ProtocolReceiptTest do
     end
   end
 
+  describe "assert_key_consistency/3" do
+    test "returns :ok for a consistent (pub, priv, key_id) triple" do
+      {pub, priv} = :crypto.generate_key(:eddsa, :ed25519)
+      key_id = Protocol.key_id(pub)
+
+      assert :ok = Protocol.assert_key_consistency(pub, priv, key_id)
+    end
+
+    test "returns {:error, :public_key_mismatch} when private_key does not derive to public_key" do
+      {pub, _priv} = :crypto.generate_key(:eddsa, :ed25519)
+      {_other_pub, other_priv} = :crypto.generate_key(:eddsa, :ed25519)
+      key_id = Protocol.key_id(pub)
+
+      assert {:error, :public_key_mismatch} =
+               Protocol.assert_key_consistency(pub, other_priv, key_id)
+    end
+
+    test "returns {:error, :key_id_mismatch} when key_id does not match the public_key fingerprint" do
+      {pub, priv} = :crypto.generate_key(:eddsa, :ed25519)
+
+      assert {:error, :key_id_mismatch} =
+               Protocol.assert_key_consistency(pub, priv, "deadbeef")
+    end
+
+    test "rejects inputs of the wrong size at the function clause" do
+      assert_raise FunctionClauseError, fn ->
+        Protocol.assert_key_consistency(<<0::256>>, <<0::128>>, "deadbeef")
+      end
+
+      assert_raise FunctionClauseError, fn ->
+        Protocol.assert_key_consistency(<<0::128>>, <<0::256>>, "deadbeef")
+      end
+    end
+
+    test "rejects empty-string key_id at the function clause" do
+      {pub, priv} = :crypto.generate_key(:eddsa, :ed25519)
+
+      assert_raise FunctionClauseError, fn ->
+        Protocol.assert_key_consistency(pub, priv, "")
+      end
+    end
+  end
+
   describe "merkle_root/1" do
     test "empty list → sha256(<<>>)" do
       assert Protocol.merkle_root([]) == :crypto.hash(:sha256, <<>>)
