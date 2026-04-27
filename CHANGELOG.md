@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### wallop_core — defence-in-depth: protect `operator_sequence` post-lock
+
+The draw immutability trigger (`prevent_draw_mutation`) now forbids mutation of `operator_sequence` once status leaves `open`, alongside the existing `entry_hash` / `entry_canonical` protection. Closes a theoretical-but-currently-unreachable mutation window during the brief `locked → awaiting_entropy` transition: lock + sequence-assignment + receipt-signing all run inside one Ash transaction so the existing producer surface never exposed it, but any future code path that rewrites the column post-lock is now blocked at the storage layer.
+
+No behaviour change for production paths. New regression test under `draw_immutability_test.exs` asserts the constraint via raw SQL.
+
 ### wallop_core — security: keyring temporal binding
 
 Closes a keyring backdating attack vector. `OperatorSigningKey.create` and `InfrastructureSigningKey.create` are append-only at the Ash policy level (`forbid_if(always())`), but any code path running with `authorize?: false` (mix tasks, seeds, future admin endpoints, compromised admin credentials) could insert a row with arbitrary `valid_from`. `SignAndStoreReceipt` picks the "current" key via `valid_from <= now ORDER BY valid_from DESC LIMIT 1`, so a back-dated insert with `valid_from = '2020-01-01'` immediately becomes the selected signer at any current time — letting a malicious admin forge new receipts claiming historical `locked_at` times.
