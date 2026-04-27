@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### wallop_web — regression test for public router surface
+
+Two distinct surfaces can grow silently:
+
+1. **Phoenix top-level routes** — adding a new `scope`, route, or `forward(...)` to `WallopWeb.Router` extends the public HTTP surface.
+2. **AshJsonApi resource × action** — adding `json_api do` to any resource in `WallopCore.Domain` (or a new action inside an existing block) auto-mounts a new endpoint under the `forward("/", AshJsonApiRouter)` wildcard inside `/api/v1`. The Phoenix route table is invariant under this change, so a Phoenix-only allowlist would not catch it.
+
+New regression test (`router_routes_test.exs`) pins both: Phoenix routes via `WallopWeb.Router.__routes__/0`, AshJsonApi routes via `AshJsonApi.Domain.Info.routes/1` + `AshJsonApi.Resource.Info.routes/1` as `{resource, action, method, path}` tuples (format-stable across AshJsonApi versions). Any addition or removal in either surface fails the test with a clear diff, forcing the contributor to update the allowlist intentionally rather than letting routes appear by accident.
+
+The wildcard forward in the router gains an inline comment pointing at the test, so a reviewer following the wildcard lands on the tripwire.
+
+No behaviour change. Existing routes unchanged.
+
 ### wallop_core — defence-in-depth: protect `operator_sequence` post-lock
 
 The draw immutability trigger (`prevent_draw_mutation`) now forbids mutation of `operator_sequence` once status leaves `open`, alongside the existing `entry_hash` / `entry_canonical` protection. Closes a theoretical-but-currently-unreachable mutation window during the brief `locked → awaiting_entropy` transition: lock + sequence-assignment + receipt-signing all run inside one Ash transaction so the existing producer surface never exposed it, but any future code path that rewrites the column post-lock is now blocked at the storage layer.
