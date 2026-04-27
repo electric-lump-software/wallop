@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### wallop_web — `/operator/:slug/keys` surfaces `inserted_at` and `key_class`
+
+Each entry in the keys array now includes `inserted_at` (RFC 3339 timestamp) and `key_class: "operator"`. Both fields are required by the spec §4.2.4 temporal binding rule (a verifier MUST reject when `key.inserted_at > receipt.binding_timestamp`), and `key_class` discriminates operator-class keys from infrastructure-class keys when a future verifier consumes both endpoints in the same resolution path.
+
+Existing fields (`key_id`, `public_key_hex`, `valid_from`) are unchanged. Pure additive — existing consumers ignoring unknown JSON fields are unaffected.
+
+Four tests added in `operator_controller_test.exs` (new file): 404 on unknown slug; fields present and well-formed; `inserted_at` and `valid_from` match the spec §4.2.1 canonical RFC 3339 form (`YYYY-MM-DDTHH:MM:SS.ssssssZ`, 27 bytes — guards against a future schema migration silently dropping microsecond precision and breaking downstream verifiers); `inserted_at` matches the keyring row append time within seconds of test setup.
+
 ### Spec — cross-draw transparency commitment (§4.2.7)
 
 Documents the public-listing property at `/operator/:slug` as a normative spec commitment: every draw with a signed lock receipt MUST appear in the operator's public registry regardless of subsequent state (locked, awaiting_entropy, pending_entropy, completed, failed, expired); only `:open` working-state draws are excluded. The commitment defends against post-hoc draw shopping (lock → see result → discard → re-lock with same entries at the same sequence slot — the discarded slot stays publicly visible and the auditor can spot the gap).
