@@ -83,10 +83,20 @@ defmodule WallopWeb.OperatorController do
           operator: operator_summary(operator),
           keys:
             Enum.map(keys, fn k ->
+              # `inserted_at` is the keyring entry's first-existence timestamp
+              # — load-bearing for the spec §4.2.4 temporal binding rule
+              # (verifier MUST reject if `key.inserted_at > receipt.binding_timestamp`).
+              # `key_class` discriminates operator vs infrastructure keys per
+              # ADR-0009; this endpoint serves only :operator keys (infra keys
+              # live at /infrastructure/key) but the field is named explicitly so
+              # consumers can apply the per-receipt comparison rule without a
+              # second resolution step.
               %{
                 key_id: k.key_id,
                 public_key_hex: Base.encode16(k.public_key, case: :lower),
-                valid_from: k.valid_from
+                valid_from: k.valid_from,
+                inserted_at: k.inserted_at,
+                key_class: "operator"
               }
             end)
         })
