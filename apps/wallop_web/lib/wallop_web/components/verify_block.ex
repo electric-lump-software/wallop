@@ -52,6 +52,28 @@ defmodule WallopWeb.Components.VerifyBlock do
           >
           </div>
         </div>
+
+        <details class="text-[11px] text-[#666] border-t border-cream-border pt-3">
+          <summary class="cursor-pointer font-medium text-[#444]">
+            <span data-verify-mode-badge class="inline-flex items-center gap-1.5 bg-blue-50 text-blue-800 text-[10px] font-semibold px-2 py-0.5 rounded">
+              Mode: local self-check only
+            </span>
+            <span class="ml-2">What does this verify?</span>
+          </summary>
+          <p class="mt-2 leading-relaxed">
+            The browser-side check confirms the bundle's signatures and math
+            agree with each other and with the keys embedded in the bundle
+            itself. It catches accidents and casual tampering, but it does
+            <em>not</em> defend against a tampered mirror or a compromised
+            CDN — an attacker serving a forged bundle with their own keys
+            would also pass every step. Verification cryptographically tied
+            to a specific operator identity ("attributable verification")
+            becomes available in a future 1.x release once operators can
+            publish key pins (see
+            <code class="font-mono text-[10px]">spec/protocol.md</code>
+            §4.2.4).
+          </p>
+        </details>
       </div>
     </div>
     """
