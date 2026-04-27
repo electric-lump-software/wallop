@@ -160,7 +160,7 @@ defmodule WallopCore.TestHelpers do
         key_id: key_id,
         public_key: public_key,
         private_key: encrypted,
-        valid_from: DateTime.add(DateTime.utc_now(), -60, :second)
+        valid_from: DateTime.add(DateTime.utc_now(), -30, :second)
       })
       |> Ash.create(authorize?: false)
 
@@ -182,7 +182,7 @@ defmodule WallopCore.TestHelpers do
         key_id: key_id,
         public_key: public_key,
         private_key: encrypted,
-        valid_from: DateTime.add(DateTime.utc_now(), -60, :second)
+        valid_from: DateTime.add(DateTime.utc_now(), -30, :second)
       })
       |> Ash.create(authorize?: false)
 

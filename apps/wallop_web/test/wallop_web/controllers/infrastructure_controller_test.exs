@@ -30,7 +30,10 @@ defmodule WallopWeb.InfrastructureControllerTest do
     end
 
     test "returns the most recent key after rotation", %{conn: conn} do
-      # Create an old key
+      # Create an "older" key. The keyring temporal binding CHECK caps
+      # valid_from drift at ±60s from inserted_at, so the offset stays
+      # inside the window — what's being tested is the rotation pick logic
+      # (largest valid_from <= now), not arbitrary historical inserts.
       {old_pub, old_priv} = :crypto.generate_key(:eddsa, :ed25519)
       {:ok, old_encrypted} = WallopCore.Vault.encrypt(old_priv)
 
@@ -40,7 +43,7 @@ defmodule WallopWeb.InfrastructureControllerTest do
           key_id: Protocol.key_id(old_pub),
           public_key: old_pub,
           private_key: old_encrypted,
-          valid_from: DateTime.add(DateTime.utc_now(), -3600, :second)
+          valid_from: DateTime.add(DateTime.utc_now(), -45, :second)
         })
         |> Ash.create(authorize?: false)
 
@@ -55,6 +58,10 @@ defmodule WallopWeb.InfrastructureControllerTest do
     end
 
     test "does not return a key with valid_from in the future", %{conn: conn} do
+      # Future-dated rows beyond the ±60s skew window are rejected by the
+      # CHECK constraint at insert time. This test exercises the
+      # controller's `valid_from <= now` filter for a key whose valid_from
+      # sits inside the skew window but still ahead of now.
       {pub, priv} = :crypto.generate_key(:eddsa, :ed25519)
       {:ok, encrypted} = WallopCore.Vault.encrypt(priv)
 
@@ -64,7 +71,7 @@ defmodule WallopWeb.InfrastructureControllerTest do
           key_id: Protocol.key_id(pub),
           public_key: pub,
           private_key: encrypted,
-          valid_from: DateTime.add(DateTime.utc_now(), 3600, :second)
+          valid_from: DateTime.add(DateTime.utc_now(), 45, :second)
         })
         |> Ash.create(authorize?: false)
 

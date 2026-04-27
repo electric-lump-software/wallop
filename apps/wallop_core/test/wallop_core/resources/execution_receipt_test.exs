@@ -266,7 +266,10 @@ defmodule WallopCore.Resources.ExecutionReceiptTest do
 
   describe "execution receipt — key rotation" do
     test "uses the most recent infra key by valid_from" do
-      # Insert an old key
+      # Insert an "older" key. Offset stays inside the ±60s skew window
+      # enforced by the keyring temporal binding CHECK; the helper-created
+      # newer key (-30s) still has a strictly later valid_from than this
+      # one (-45s), which is what the rotation pick logic actually tests.
       {old_pub, old_priv} = :crypto.generate_key(:eddsa, :ed25519)
       old_key_id = Protocol.key_id(old_pub)
       {:ok, old_encrypted} = WallopCore.Vault.encrypt(old_priv)
@@ -277,7 +280,7 @@ defmodule WallopCore.Resources.ExecutionReceiptTest do
           key_id: old_key_id,
           public_key: old_pub,
           private_key: old_encrypted,
-          valid_from: DateTime.add(DateTime.utc_now(), -3600, :second)
+          valid_from: DateTime.add(DateTime.utc_now(), -45, :second)
         })
         |> Ash.create(authorize?: false)
 
@@ -306,7 +309,11 @@ defmodule WallopCore.Resources.ExecutionReceiptTest do
       # Insert a current key
       current_key = create_infrastructure_key()
 
-      # Insert a future key
+      # Insert a future-dated key. Offset stays inside the ±60s skew
+      # window enforced by the keyring temporal binding CHECK; what's
+      # being tested here is the rotation pick's `valid_from <= now`
+      # filter, not arbitrary forward-dating (which the CHECK rejects
+      # at insert time anyway).
       {future_pub, future_priv} = :crypto.generate_key(:eddsa, :ed25519)
       future_key_id = Protocol.key_id(future_pub)
       {:ok, future_encrypted} = WallopCore.Vault.encrypt(future_priv)
@@ -317,7 +324,7 @@ defmodule WallopCore.Resources.ExecutionReceiptTest do
           key_id: future_key_id,
           public_key: future_pub,
           private_key: future_encrypted,
-          valid_from: DateTime.add(DateTime.utc_now(), 3600, :second)
+          valid_from: DateTime.add(DateTime.utc_now(), 45, :second)
         })
         |> Ash.create(authorize?: false)
 
