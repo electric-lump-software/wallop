@@ -135,7 +135,7 @@ defmodule WallopCore.Protocol do
     {seed_bytes, jcs_string}
   end
 
-  @receipt_schema_version "4"
+  @receipt_schema_version "5"
 
   # Algorithm identity tags. Embedded verbatim into every signed receipt
   # so the cryptographic choices are forensically anchored at commitment
@@ -185,6 +185,15 @@ defmodule WallopCore.Protocol do
     `schema_version` they do not recognise rather than attempting to
     reconstruct an older shape. `wallop_core_version` in the payload
     is the forensic anchor if a future canonical form ever ships.
+  - **v4** — long-running shape; same field set as v3. Bundle wrapper
+    carries inline `operator_public_key_hex` for self-consistency.
+  - **v5** — coordination flag for resolver-driven verification. Field
+    set is byte-identical to v4 — the schema_version difference encodes
+    verifier behaviour, not receipt bytes. Producers MUST omit
+    `operator_public_key_hex` from the bundle's lock_receipt wrapper
+    (verifiers resolve operator keys via `KeyResolver` against
+    `/operator/:slug/keys` or an operator-published `.well-known` pin).
+    See spec §4.2.4.
 
   `locked_at` must be a `DateTime` with microsecond precision; the caller is
   responsible for capturing it once at lock time and not re-stamping.
@@ -249,7 +258,7 @@ defmodule WallopCore.Protocol do
             "#{inspect(@valid_weather_fallback_reasons)}, got: #{inspect(other)}"
   end
 
-  @execution_receipt_schema_version "3"
+  @execution_receipt_schema_version "4"
 
   @doc """
   Build the canonical JCS payload bytes for an execution receipt.
@@ -259,6 +268,17 @@ defmodule WallopCore.Protocol do
 
   `results` must be a flat list of entry_id strings in position order —
   derived from FairPick output via `Enum.map(results, & &1.entry_id)`.
+
+  ## Schema version history
+
+  - **v2** — pre-F2 shape; no `signing_key_id` on the signed payload.
+  - **v3** — adds `signing_key_id` (F2 closure). Bundle wrapper carries
+    inline `infrastructure_public_key_hex`.
+  - **v4** — coordination flag mirroring lock v5. Field set is
+    byte-identical to v3 — the schema_version difference encodes
+    verifier behaviour. Producers MUST omit
+    `infrastructure_public_key_hex` from the bundle's execution_receipt
+    wrapper. See spec §4.2.4.
   """
   @spec build_execution_receipt_payload(map()) :: binary()
   def build_execution_receipt_payload(%{
