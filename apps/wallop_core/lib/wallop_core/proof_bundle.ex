@@ -17,6 +17,16 @@ defmodule WallopCore.ProofBundle do
 
   @bundle_version 1
 
+  # Lock-receipt schema versions whose bundle wrapper MUST carry an inline
+  # `operator_public_key_hex` for self-consistency verification. v5 omits
+  # the inline key — verifiers resolve operator keys via `KeyResolver`
+  # against `/operator/:slug/keys` or an operator-published pin per
+  # spec §4.2.4. The verifier's `BundleShape` step rejects any mismatch
+  # (v5 + inline key as downgrade-relabel; legacy + missing key as
+  # upgrade-spoof).
+  @inline_lock_key_schemas ~w(4)
+  @inline_exec_key_schemas ~w(2 3)
+
   @doc """
   Build the proof bundle for a completed draw.
 
@@ -40,11 +50,14 @@ defmodule WallopCore.ProofBundle do
     {operator_pk_hex, infra_pk_hex} =
       OperatorInfo.signing_keys_hex(lock_receipt, execution_receipt)
 
+    lock_schema = receipt_schema_version(lock_receipt.payload_jcs)
+    exec_schema = receipt_schema_version(execution_receipt.payload_jcs)
+
     cond do
-      is_nil(operator_pk_hex) ->
+      lock_schema in @inline_lock_key_schemas and is_nil(operator_pk_hex) ->
         {:error, :missing_operator_key}
 
-      is_nil(infra_pk_hex) ->
+      exec_schema in @inline_exec_key_schemas and is_nil(infra_pk_hex) ->
         {:error, :missing_infrastructure_key}
 
       true ->
@@ -54,19 +67,48 @@ defmodule WallopCore.ProofBundle do
           "entries" => entries_for(draw),
           "results" => results_for(draw),
           "entropy" => entropy_for(draw),
-          "lock_receipt" => %{
-            "payload_jcs" => lock_receipt.payload_jcs,
-            "signature_hex" => Base.encode16(lock_receipt.signature, case: :lower),
-            "operator_public_key_hex" => operator_pk_hex
-          },
-          "execution_receipt" => %{
-            "payload_jcs" => execution_receipt.payload_jcs,
-            "signature_hex" => Base.encode16(execution_receipt.signature, case: :lower),
-            "infrastructure_public_key_hex" => infra_pk_hex
-          }
+          "lock_receipt" =>
+            receipt_block(
+              lock_receipt,
+              if(lock_schema in @inline_lock_key_schemas,
+                do: {"operator_public_key_hex", operator_pk_hex},
+                else: nil
+              )
+            ),
+          "execution_receipt" =>
+            receipt_block(
+              execution_receipt,
+              if(exec_schema in @inline_exec_key_schemas,
+                do: {"infrastructure_public_key_hex", infra_pk_hex},
+                else: nil
+              )
+            )
         }
 
         {:ok, Jcs.encode(bundle)}
+    end
+  end
+
+  defp receipt_block(receipt, key_pair) do
+    base = %{
+      "payload_jcs" => receipt.payload_jcs,
+      "signature_hex" => Base.encode16(receipt.signature, case: :lower)
+    }
+
+    case key_pair do
+      nil -> base
+      {key, value} -> Map.put(base, key, value)
+    end
+  end
+
+  # Pulls schema_version off a JCS-encoded receipt payload without
+  # re-implementing the parser. Returns nil if the payload is malformed —
+  # callers treat that as "no inline-key requirement" which fails any
+  # downstream signature check anyway.
+  defp receipt_schema_version(payload_jcs) when is_binary(payload_jcs) do
+    case Jason.decode(payload_jcs) do
+      {:ok, %{"schema_version" => v}} when is_binary(v) -> v
+      _ -> nil
     end
   end
 

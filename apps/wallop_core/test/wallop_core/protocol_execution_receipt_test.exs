@@ -48,7 +48,7 @@ defmodule WallopCore.ProtocolExecutionReceiptTest do
       assert length(decoded_keys) == 26
 
       # Spot-check key values
-      assert decoded["schema_version"] == "3"
+      assert decoded["schema_version"] == "4"
       refute Map.has_key?(decoded, "execution_schema_version")
       assert decoded["signing_key_id"] == "cafebabe"
       assert decoded["jcs_version"] == "sha256-jcs-v1"

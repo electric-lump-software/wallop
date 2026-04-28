@@ -274,9 +274,18 @@ defmodule WallopCore.FrozenVectorsTest do
 
   # ── V-5: Lock receipt payload ─────────────────────────────────────
 
-  describe "V-5: lock receipt payload (schema v4)" do
+  describe "V-5: lock receipt payload (schema v5)" do
+    # wallop_core 0.20.0+ produces lock receipts at schema v5, which omits
+    # the inline `operator_public_key_hex` from the bundle wrapper and
+    # signals to verifiers that operator keys MUST be resolved via
+    # `KeyResolver` (spec §4.2.4). Field set on the signed payload is
+    # byte-identical to v4 — the schema_version difference encodes
+    # verifier behaviour, not receipt bytes. The historical v4 vector
+    # `lock-receipt.json` is preserved on disk and exercised by the Rust
+    # verifier's v4 parser for backwards compatibility (receipts signed
+    # under v0.19.x remain verifiable for the life of 1.x).
     setup do
-      %{vector: load_vector("lock-receipt.json")}
+      %{vector: load_vector("lock-receipt-v5.json")}
     end
 
     test "payload SHA-256 is pinned", %{vector: v} do
@@ -305,15 +314,17 @@ defmodule WallopCore.FrozenVectorsTest do
 
   # ── V-6: Execution receipt payload ────────────────────────────────
 
-  describe "V-6: execution receipt payload (schema v3)" do
-    # wallop_core 0.17.0+ produces execution receipts at schema v3, which
-    # adds `signing_key_id` for infra-key identity (F2 closure — spec
-    # §4.2). The historical v2 vector `execution-receipt.json` is
-    # preserved on disk and exercised by the Rust verifier's v2 parser
-    # for backwards compatibility (receipts signed under v0.16.x remain
-    # verifiable for the life of 1.x, per spec §4.5).
+  describe "V-6: execution receipt payload (schema v4)" do
+    # wallop_core 0.20.0+ produces execution receipts at schema v4, which
+    # mirrors lock v5: the bundle wrapper omits `infrastructure_public_key_hex`
+    # and verifiers MUST resolve infra keys via `KeyResolver` (spec §4.2.4).
+    # Field set on the signed payload is byte-identical to v3 — the
+    # schema_version difference encodes verifier behaviour, not receipt
+    # bytes. The historical v3 and v2 vectors (`execution-receipt-v3.json`,
+    # `execution-receipt.json`) are preserved on disk and exercised by the
+    # Rust verifier's v3 / v2 parsers for backwards compatibility.
     setup do
-      %{vector: load_vector("execution-receipt-v3.json")}
+      %{vector: load_vector("execution-receipt-v4.json")}
     end
 
     test "payload SHA-256 is pinned", %{vector: v} do
@@ -449,7 +460,7 @@ defmodule WallopCore.FrozenVectorsTest do
 
   describe "V-11: cross-receipt linkage" do
     setup do
-      %{vector: load_vector("cross-receipt-linkage.json")}
+      %{vector: load_vector("cross-receipt-linkage-v5.json")}
     end
 
     test "lock receipt → SHA-256 → lock_receipt_hash", %{vector: v} do
@@ -463,9 +474,9 @@ defmodule WallopCore.FrozenVectorsTest do
 
   # ── V-12: drand-only execution receipt ─────────────────────────────
 
-  describe "V-12: drand-only execution receipt (schema v3)" do
+  describe "V-12: drand-only execution receipt (schema v4)" do
     setup do
-      %{vector: load_vector("execution-receipt-drand-only-v3.json")}
+      %{vector: load_vector("execution-receipt-drand-only-v4.json")}
     end
 
     test "null weather fields are present as JSON null, not omitted", %{vector: v} do

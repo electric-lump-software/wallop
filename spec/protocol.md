@@ -484,8 +484,9 @@ The following are committed byte-level forever in the 1.x series.
 
 #### 4.2.1 Receipt schemas
 
-- **Lock receipt schema version `"4"`**. Key set and key names per §2.6.
-- **Execution receipt schema version `"3"`**. Key set and key names per §2.6. The v3 shape is v2 plus the `signing_key_id` field identifying the wallop infrastructure signing key under §4.2.4. v0.16.x-era v2 receipts remain verifiable for the life of 1.x per §4.4; conforming verifiers MUST dispatch on `schema_version` first per §4.2.1 "older-schema rejection."
+- **Lock receipt schema version `"5"`**. Key set and key names per §2.6 — byte-identical to v4. The bump is a coordination flag, not a payload change: a v5 receipt signals that the bundle wrapper omits the inline `operator_public_key_hex` and the verifier MUST resolve the operator key via the rules in §4.2.4 (`KeyResolver` against `/operator/:slug/keys` or an operator-published `.well-known` pin). The historical v4 shape — same field set, with inline `operator_public_key_hex` on the bundle wrapper — remains verifiable for the life of 1.x per §4.4.
+- **Execution receipt schema version `"4"`**. Key set and key names per §2.6 — byte-identical to v3. Mirrors lock v5: a v4 execution receipt signals that the bundle wrapper omits the inline `infrastructure_public_key_hex` and the verifier MUST resolve the infrastructure key via §4.2.4. The v3 shape is v2 plus the `signing_key_id` field identifying the wallop infrastructure signing key. v0.16.x-era v2 receipts and v0.17.x-era v3 receipts remain verifiable for the life of 1.x per §4.4; conforming verifiers MUST dispatch on `schema_version` first per §4.2.1 "older-schema rejection."
+- **Bundle-wrapper / receipt-version consistency rule.** The bundle's `lock_receipt` and `execution_receipt` wrapper objects carry an inline `operator_public_key_hex` / `infrastructure_public_key_hex` only for receipt schemas that legacy-encode key identity inline (lock v4; execution v2 / v3). For lock v5 and execution v4 the wrapper MUST omit the inline key. A bundle whose receipt schema and wrapper shape disagree MUST reject as a downgrade-relabel attempt (v5 with inline key) or upgrade-spoof attempt (v4 / v3 / v2 missing inline key). Mirrors the v2 / v3 deny_unknown_fields defence one level out: producers cannot relabel one schema as another to elide or smuggle a field.
 - **Key-identity fields on receipts are closed-set.** The `signing_key_id` field is the sole permitted key-identity field on any wallop-produced signed receipt or anchor envelope. Fields describing key version, algorithm, issuance time, expiry, custodian, or provenance are out of scope for wallop_core and MUST NOT be added in 1.x. Key metadata beyond identity belongs in the published keyring artefact, not on individual receipts. Any proposal to add such a field is a v2.0.0 discussion.
 - **Anti-forgery binding vs identity disambiguation.** `lock_receipt_hash` on the execution receipt is the anti-forgery binding — it cryptographically commits the execution to the specific lock receipt signed by the operator, so an attacker cannot substitute an execution receipt onto a different lock without holding the operator key. `signing_key_id` is identity disambiguation — it tells the verifier which infrastructure public key to resolve from the keyring, closing the "try all historical keys" brute-force path after a rotation. Neither prevents compromise of a key an attacker already controls; together they localise any future key compromise to receipts signed after the compromise, without re-opening any pre-compromise receipt.
 - **Algorithm identity tags** inside every signed receipt (§2.6):
@@ -542,6 +543,54 @@ The rules in this subsection apply to every key whose signatures are verified by
   *Operational note (storage-side enforcement).* Producers MUST enforce that `valid_from` and `inserted_at` agree at row-write time, with a tolerance no greater than 60 seconds in either direction. This is a producer-side hardening rule; it bounds clock-skew exposure between the application and the database without affecting the verifier-side comparison above. The reference implementation enforces this via a `CHECK` constraint on each keyring table. Future scheduled-rotation use cases, if ever needed, get a dedicated action and audit trail rather than widening this tolerance.
 
   *Forward compatibility with revocation.* If a future 1.y release adds a `revoked_at` field on keyring rows, the symmetric rule is `revoked_at > artefact.binding_timestamp` (or unset) for the receipt to verify. 1.x verifiers MUST ignore unknown fields on keyring rows per the closed-set rule above; a 1.x verifier encountering a `revoked_at` column emitted by a 1.y producer MUST NOT reject on that field's presence alone.
+
+- **Verifier mode taxonomy.** A verifier reports the trust model it operated under. Three modes exist:
+
+  | Mode | Trust root | What it proves |
+  |---|---|---|
+  | **Attributable** | Operator-hosted `.well-known/wallop-keyring-pin.json` on a domain the operator controls independently of wallop | The bundle was signed by keys the operator publicly committed to via a trust root wallop cannot tamper with |
+  | **Attestable** | wallop's `/operator/:slug/keys` endpoint, no pin | The wallop endpoint says these keys signed; same-origin caveat — a CDN compromise can serve coherent forgeries |
+  | **Self-consistency only** | Bundle-embedded inline keys (legacy v3 / v4 receipts only) | The bundle is internally consistent; says nothing about who produced it |
+
+  Mode names are load-bearing: attestable is "the endpoint says so," not "attributable." Only attributable mode binds the verification to an out-of-band identity. Verifiers MUST surface the active mode in their report (CLI header, JSON top-level field, browser-side proof page UX). A verification that does not name its mode is non-conformant.
+
+- **Resolver failure is terminal.** When a verifier cannot resolve a `key_id` against its configured trust root — endpoint unreachable, key not in keyring, pin mismatch, malformed response, internal inconsistency — the receipt MUST reject. Verifiers MUST NOT fall back to inline receipt-block keys when resolution fails. Soft fallback is the canonical re-introduction of the same-origin caveat under another name.
+
+- **Verifier-side keyring-row consistency check.** After resolving a `key_id` against a trust root, the verifier MUST compute `key_id` locally from the resolved `public_key` (per the fingerprint rule above) and reject if it does not match the requested `key_id`. This is the verifier-side mirror of the producer's keyring-row consistency assertion at sign time; a buggy or hostile resolver answering for a request for `key_id=X` with a different key would otherwise pass the signature step against the wrong key.
+
+- **Pin file format (`.well-known/wallop-keyring-pin.json`).** Operator-hosted keyring pin used by attributable mode:
+
+  ```json
+  {
+    "schema_version": "1",
+    "operator_slug": "...",
+    "wallop_endpoint": "https://wallop.example/operator/<slug>/keys",
+    "keys": [
+      { "key_id": "...", "public_key_hex": "...", "key_class": "operator" }
+    ],
+    "published_at": "2026-04-26T12:34:56.789012Z"
+  }
+  ```
+
+  Verifiers in attributable mode fetch both the pin file and the live `/operator/:slug/keys` endpoint, and require every entry in the live response to be present in the pin. Forward-compat: the pin MAY list keys the live endpoint does not yet have (rotation in progress); the live endpoint MUST NOT list keys the pin does not have (would defeat the point of pinning). Mismatch rejects.
+
+- **`/operator/:slug/keys` response shape.** Same shape consumed by attestable and attributable modes:
+
+  ```json
+  {
+    "schema_version": "1",
+    "keys": [
+      {
+        "key_id": "...",
+        "public_key_hex": "...",
+        "inserted_at": "2026-04-26T12:34:56.789012Z",
+        "key_class": "operator"
+      }
+    ]
+  }
+  ```
+
+  Same shape applies to the infrastructure-key endpoint. `inserted_at` is load-bearing for the temporal-binding rule above; `key_class` discriminates operator from infrastructure keys.
 - **CLI-without-keyring caveat (attributable authenticity vs self-consistency).** A verifier that validates a bundle against keys **embedded in the bundle itself** — without independently resolving those keys from the operator keyring at `GET /operator/:slug/keys` (or from a locally-pinned trust root supplied out of band) — provides *self-consistency* only, not attributable authenticity. The bundle's signatures being valid under its embedded keys does not rule out substitution of both the bytes and the keys by a MITM or tampered mirror: an attacker serving a forged bundle can sign it with their own keypair and embed that keypair's public half, and every step of the verification pipeline will pass. Attributable authenticity requires an out-of-band binding between operator identity and the public key being verified against. Verifiers intended for third-party attribution (dashboards, publishing pipelines, audit tooling) MUST resolve keys from the operator keyring endpoint or a pinned trust root and MUST NOT silently fall back to bundle-embedded keys when that resolution fails. The reference CLI verifier's pinning mechanics are documented in its own CLI reference.
 
 #### 4.2.5 Public artefacts
