@@ -314,6 +314,46 @@ export function receipt_schema_version_wasm(payload_jcs) {
 }
 
 /**
+ * Verify a v5/v4 (resolver-driven) bundle in the browser. The JS side
+ * resolves keys out of band — from `/operator/:slug/keys` (attestable
+ * mode) or from a pinned `.well-known` document (attributable mode) —
+ * and passes them in as `resolved_keys_js`. The WASM verifier then runs
+ * `verify_bundle_with` against a synthetic resolver wrapping that array.
+ *
+ * The `mode` argument is recorded on the returned report and MUST match
+ * the trust root the JS side actually consulted. The verifier crate does
+ * not police this association — see `verify_bundle_with` doc.
+ *
+ * Returns `true` iff the bundle passes every reachable verification step
+ * under the supplied resolver and mode. Per-step diagnostics are not
+ * surfaced from this entry point yet — the WASM caller already runs its
+ * own UI; full report serialisation is a follow-up.
+ * @param {string} bundle_json
+ * @param {any} resolved_keys_js
+ * @param {string} mode
+ * @returns {boolean}
+ */
+export function verify_bundle_with_resolved_keys_wasm(bundle_json, resolved_keys_js, mode) {
+    try {
+        const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
+        const ptr0 = passStringToWasm0(bundle_json, wasm.__wbindgen_export, wasm.__wbindgen_export2);
+        const len0 = WASM_VECTOR_LEN;
+        const ptr1 = passStringToWasm0(mode, wasm.__wbindgen_export, wasm.__wbindgen_export2);
+        const len1 = WASM_VECTOR_LEN;
+        wasm.verify_bundle_with_resolved_keys_wasm(retptr, ptr0, len0, addHeapObject(resolved_keys_js), ptr1, len1);
+        var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
+        var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
+        var r2 = getDataViewMemory0().getInt32(retptr + 4 * 2, true);
+        if (r2) {
+            throw takeObject(r1);
+        }
+        return r0 !== 0;
+    } finally {
+        wasm.__wbindgen_add_to_stack_pointer(16);
+    }
+}
+
+/**
  * WASM entry point for verify_full.
  *
  * `winner_count` is extracted from the signed lock receipt, not passed externally.
