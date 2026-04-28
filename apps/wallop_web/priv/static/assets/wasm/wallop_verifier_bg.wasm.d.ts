@@ -12,6 +12,7 @@ export const key_id_wasm: (a: number, b: number, c: number) => void;
 export const lock_receipt_hash_wasm: (a: number, b: number, c: number) => void;
 export const merkle_root_wasm: (a: number, b: number) => void;
 export const receipt_schema_version_wasm: (a: number, b: number, c: number) => void;
+export const verify_bundle_with_resolved_keys_wasm: (a: number, b: number, c: number, d: number, e: number, f: number) => void;
 export const verify_full_wasm: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number, m: number, n: number) => void;
 export const verify_receipt_wasm: (a: number, b: number, c: number, d: number, e: number, f: number, g: number) => void;
 export const verify_wasm: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number) => void;
