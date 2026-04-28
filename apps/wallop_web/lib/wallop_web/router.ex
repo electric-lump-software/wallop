@@ -69,6 +69,7 @@ defmodule WallopWeb.Router do
   scope "/infrastructure", WallopWeb do
     pipe_through(:api)
     get("/key", InfrastructureController, :key_pub)
+    get("/keys", InfrastructureController, :keys_index)
   end
 
   scope "/operator", WallopWeb do
