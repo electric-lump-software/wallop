@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### wallop_core 0.19.0 — emit lock v5 / execution v4 receipts (resolver-driven verification)
+
+Producer-side schemas bump: lock receipt `schema_version` `"4"` → `"5"`, execution receipt `"3"` → `"4"`. Field set on both signed payloads is byte-identical to predecessors — the bump is a coordination flag for verifier behaviour, not a payload change. v5 lock and v4 execution receipts MUST be paired with bundle wrappers that **omit** the inline `operator_public_key_hex` / `infrastructure_public_key_hex`. Verifiers resolve those keys via `KeyResolver` against `/operator/:slug/keys` (attestable mode) or an operator-published `.well-known/wallop-keyring-pin.json` (attributable mode) per spec §4.2.4.
+
+**Backwards compatibility.** Historical draws keep their inline wrapper keys. `WallopCore.ProofBundle.build/1` reads each receipt's signed `schema_version` and emits the wrapper conditionally — old receipts (lock v4, execution v2 / v3) continue to ship inline keys; new receipts (lock v5, execution v4) omit them. Receipt bytes in the database are immutable, so historical proofs remain verifiable indefinitely under the existing wallop_verifier paths. The verifier crate's `BundleShape` step (shipped in `wallop_verifier 0.12.0`) enforces the consistency rule and rejects mismatches as downgrade-relabel or upgrade-spoof attempts.
+
+**Cross-language vectors.** Four new frozen vectors land alongside the preserved v4 / v3 / v2 fossils: `spec/vectors/lock-receipt-v5.json`, `execution-receipt-v4.json`, `execution-receipt-drand-only-v4.json`, `cross-receipt-linkage-v5.json`. Inputs reuse the existing v4 / v3 vector inputs verbatim — only `expected_schema_version` and `expected_payload_sha256` differ. Existing v4 / v3 / v2 vectors are preserved on disk verbatim; once pinned, frozen vectors are immutable. New `apps/wallop_core/test/wallop_core/vectors_regenerator_v5.exs` regenerates the new files; the existing `vectors_regenerator.exs` is unchanged and remains the regeneration tool for legacy vectors.
+
+**Spec updates.** `spec/protocol.md` §4.2.1 enumerates the new schemas and the bundle-wrapper / receipt-version consistency rule. §4.2.4 expanded with the verifier mode taxonomy (attributable / attestable / self-consistency only), resolver failure semantics (terminal — no soft fallback), the verifier-side keyring-row consistency check, the `.well-known` pin file format, and the canonical `/operator/:slug/keys` response shape.
+
+**What this does NOT change.** The HTML proof page continues to verify in the browser via the existing `verify_full_wasm` path because keys are passed to the WASM verifier from `OperatorInfo` (the receipts table) rather than read from the bundle wrapper. The static "local self-check only" mode badge stays accurate. A follow-up will switch the proof page to `verify_bundle_with_resolved_keys_wasm` so verification is genuinely resolver-driven; the static badge keeps reading correctly until then.
+
+**Sequencing note.** `wallop_verifier 0.12.0` (which has the v5/v4 parser support, the `KeyResolver` trait, and the `BundleShape` consistency rule) was published to crates.io on 2026-04-28, before this commit. Third-party verifiers consuming the bundle JSON at `/proof/:id.json` need to be on `wallop_verifier ≥ 0.12.0` to verify v5/v4 bundles. The wallop_rs `vendor/wallop` submodule pointer was bumped to this branch's HEAD in wallop-verifier PR #38 to keep cross-language frozen-vector parity.
+
 ### wallop_web — proof page honestly discloses verifier mode
 
 The `verify_block` component now renders an explicit "Mode: local self-check only" badge alongside the verify button, plus an expandable disclosure paragraph describing what the browser-side WASM check does and does not prove. Closes the §4.2.4 caveat-mode-without-disclosure gap visitors had been seeing — green ticks alone read as full verification, but the WASM verifier today runs in self-consistency mode (no out-of-band key resolution yet) and the disclosure now says so plainly.
