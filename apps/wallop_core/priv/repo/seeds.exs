@@ -1,2 +1,2 @@
 # Seeds for development
-# API keys are now managed via wallop-app.
+# API keys are managed via the consumer application.

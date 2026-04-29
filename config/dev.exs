@@ -33,9 +33,10 @@ config :phoenix_live_view,
   enable_expensive_runtime_checks: true
 
 # WallopCore.Vault is configured at runtime in config/runtime.exs so the
-# key can come from .env (VAULT_KEY). This must match the value used by
-# wallop-app because both projects share the same local Postgres and
-# encrypt/decrypt each other's rows.
+# key can come from .env (VAULT_KEY). If you run another consumer of
+# wallop_core against the same local Postgres, both projects share the
+# same DB and encrypt/decrypt each other's rows — they must use the same
+# VAULT_KEY value.
 
 config :wallop_core, :met_office_api_key, System.get_env("MET_OFFICE_API_KEY", "dev-placeholder")
 

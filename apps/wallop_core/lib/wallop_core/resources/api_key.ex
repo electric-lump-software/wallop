@@ -36,7 +36,7 @@ defmodule WallopCore.Resources.ApiKey do
       change(set_attribute(:deactivated_at, &DateTime.utc_now/0))
     end
 
-    # Updates tier metadata. Called by wallop-app on subscription changes.
+    # Updates tier metadata. Called by a consumer application on subscription changes.
     update :update_tier do
       accept([:tier, :monthly_draw_limit, :count_reset_at])
     end
@@ -71,10 +71,10 @@ defmodule WallopCore.Resources.ApiKey do
     end
 
     # All admin/management actions are forbidden via Ash policies. Legitimate
-    # callers (mix wallop.gen.api_key, wallop-app admin endpoints, internal
-    # change modules) MUST pass `authorize?: false`. PAM-689: without this,
-    # any caller could mint an api key for any operator and impersonate them
-    # under the operator's REAL signing key.
+    # callers (mix wallop.gen.api_key, consumer-app admin endpoints, internal
+    # change modules) MUST pass `authorize?: false`. Without this policy any
+    # caller could mint an api key for any operator and impersonate them under
+    # the operator's REAL signing key.
     policy action([
              :create,
              :set_operator,
@@ -124,13 +124,13 @@ defmodule WallopCore.Resources.ApiKey do
     end
 
     attribute :tier, :string do
-      description("Subscription tier name (e.g. 'free', 'starter', 'pro'). Set by wallop-app.")
+      description("Subscription tier name (e.g. 'free', 'starter', 'pro'). Set by the consumer application.")
       allow_nil?(true)
       public?(false)
     end
 
     attribute :monthly_draw_limit, :integer do
-      description("Maximum draws per month. Null means unlimited. Set by wallop-app.")
+      description("Maximum draws per month. Null means unlimited. Set by the consumer application.")
       allow_nil?(true)
       public?(false)
     end

@@ -3,8 +3,7 @@ defmodule WallopWeb.ApiHealthController do
   Authenticated API health check endpoint.
 
   Returns 200 with {"status": "ok"} if the API key is valid and
-  the service is healthy. Used by integrators (e.g. PAM) as a
-  liveness probe.
+  the service is healthy. Used by integrators as a liveness probe.
   """
   use WallopWeb, :controller
 

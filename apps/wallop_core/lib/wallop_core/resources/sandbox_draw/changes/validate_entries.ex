@@ -3,10 +3,10 @@ defmodule WallopCore.Resources.SandboxDraw.Changes.ValidateEntries do
   Validates the entries supplied to a sandbox draw create.
 
   Forked deliberately from `WallopCore.Resources.Draw.Changes.ValidateEntries`
-  rather than shared via a flag — per Colin's review on PAM-670, sharing a
-  validator between real and sandbox draws is exactly the kind of seam that
-  lets the two concepts re-merge. Sandbox validation must never reach into
-  real-draw state (entry counts, existing weight queries, etc).
+  rather than shared via a flag — sharing a validator between real and
+  sandbox draws is exactly the kind of seam that lets the two concepts
+  re-merge. Sandbox validation must never reach into real-draw state
+  (entry counts, existing weight queries, etc).
 
   Rules (a subset of the real Draw validator, sandbox-only):
     * structure: each entry has a non-empty string id and positive integer weight

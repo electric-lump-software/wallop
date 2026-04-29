@@ -75,7 +75,7 @@ Your app also needs `MET_OFFICE_API_KEY` and `HONEYCOMB_API_KEY` environment var
 ```elixir
 # In your app's runtime.exs
 config :opentelemetry,
-  resource: [service: [name: "wallop-app"]]
+  resource: [service: [name: "your-app-name"]]
 ```
 
 PubSub works across services automatically via Redis — draw updates broadcast from either service are received by both.
@@ -135,9 +135,9 @@ openssl rand -base64 32 | awk '{print "VAULT_KEY=" $0}' >> .env
 
 Keep this key stable across restarts — rotating it will make any previously-encrypted row in your local database undecryptable. If you ever want to start fresh: delete the key from `.env`, generate a new one, and run `mix reset`.
 
-If you run `wallop-app` (or any other consumer of `wallop_core`) against the same local Postgres database, you **must use the same `VAULT_KEY` value in both projects' `.env` files**. Both BEAMs encrypt and decrypt rows in the shared `wallop_dev` DB, and a mismatch will produce `Cloak.MissingCipher` errors at runtime for any row written by the other project.
+If you run another consumer of `wallop_core` against the same local Postgres database, you **must use the same `VAULT_KEY` value in both projects' `.env` files**. Both BEAMs encrypt and decrypt rows in the shared `wallop_dev` DB, and a mismatch will produce `Cloak.MissingCipher` errors at runtime for any row written by the other project.
 
-Production sets the same variable via the platform's env var mechanism (Railway).
+Production sets the same variable via the hosting platform's env var mechanism.
 
 ## Status
 

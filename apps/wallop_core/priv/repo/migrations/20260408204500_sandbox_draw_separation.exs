@@ -1,6 +1,6 @@
-defmodule WallopCore.Repo.Migrations.Pam670SandboxDrawSeparation do
+defmodule WallopCore.Repo.Migrations.SandboxDrawSeparation do
   @moduledoc """
-  PAM-670: structurally separate sandbox draws from real draws.
+  Structurally separate sandbox draws from real draws.
 
   The previous design had sandbox execution as an `execute_sandbox` update
   action on the `Draw` resource, gated only by a runtime config flag
@@ -9,9 +9,9 @@ defmodule WallopCore.Repo.Migrations.Pam670SandboxDrawSeparation do
   receipt did NOT commit to `seed_source`, which meant:
 
     1. Any consumer of `wallop_core` that set `allow_sandbox_execution: true`
-       in prod (wallop-app, self-hosters, misconfigured staging envs) could
-       divert a real locked draw to sandbox execution before the entropy
-       worker ran.
+       in prod (downstream consumer apps, self-hosters, misconfigured
+       staging envs) could divert a real locked draw to sandbox execution
+       before the entropy worker ran.
     2. The resulting draw would sit in the operator's public registry as
        a terminal row, and nothing cryptographic would contradict the
        operator's later claim of "that was only a test."
@@ -113,9 +113,9 @@ defmodule WallopCore.Repo.Migrations.Pam670SandboxDrawSeparation do
         IF OLD.status = 'locked' AND NEW.status NOT IN ('locked', 'awaiting_entropy', 'completed') THEN
           RAISE EXCEPTION 'Invalid state transition from locked to %', NEW.status;
         END IF;
-        -- PAM-670: awaiting_entropy → completed is NOT a valid transition
-        -- for real draws. The sandbox carve-out that used to sit here is
-        -- gone; sandbox draws live in `sandbox_draws`, not `draws`.
+        -- awaiting_entropy → completed is NOT a valid transition for real
+        -- draws. The sandbox carve-out that used to sit here is gone;
+        -- sandbox draws live in `sandbox_draws`, not `draws`.
         IF OLD.status = 'awaiting_entropy' AND NEW.status NOT IN ('awaiting_entropy', 'pending_entropy', 'failed') THEN
           RAISE EXCEPTION 'Invalid state transition from awaiting_entropy to %', NEW.status;
         END IF;
@@ -123,10 +123,9 @@ defmodule WallopCore.Repo.Migrations.Pam670SandboxDrawSeparation do
           RAISE EXCEPTION 'Invalid state transition from pending_entropy to %', NEW.status;
         END IF;
 
-        -- PAM-670: reject any attempt to write seed_source = 'sandbox'
-        -- on a draws row. The value is no longer part of the Ash enum,
-        -- and we belt-and-brace it here so direct SQL can't reintroduce
-        -- it either.
+        -- Reject any attempt to write seed_source = 'sandbox' on a draws
+        -- row. The value is no longer part of the Ash enum, and we
+        -- belt-and-brace it here so direct SQL can't reintroduce it either.
         IF NEW.seed_source = 'sandbox' THEN
           RAISE EXCEPTION 'seed_source = sandbox is not permitted on draws — use sandbox_draws';
         END IF;

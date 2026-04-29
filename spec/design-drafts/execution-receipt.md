@@ -3,10 +3,10 @@
 > **Status:** Approved, 2026-04-09. Colin sign-off received with two
 > adjustments (both incorporated below).
 >
-> **Implements:** PAM-699 (Finding C from the receipt completeness audit).
-> **Depends on:** PAM-697 + PAM-698 landing first (lock-time receipt schema
-> v2 with `winner_count` and declared entropy sources). This design assumes
-> lock receipts are already v2.
+> **Implements:** Finding C from the receipt completeness audit.
+> **Depends on:** lock-time receipt schema v2 (with `winner_count` and
+> declared entropy sources) landing first. This design assumes lock
+> receipts are already v2.
 
 ## 1. Problem
 
@@ -291,7 +291,7 @@ This is a **major protocol change**. Recommendation: bump `wallop_core` to
 version."
 
 The receipt schema versions:
-- Lock receipt: `schema_version: "2"` (after PAM-697 + PAM-698 land)
+- Lock receipt: `schema_version: "2"` (after the lock-receipt v2 changes land)
 - Execution receipt: `execution_schema_version: "1"` (new, independent)
 
 ## 9. Verification flow (what a third-party verifier does)

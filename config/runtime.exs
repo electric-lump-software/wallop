@@ -13,14 +13,14 @@ if config_env() in [:dev, :test] do
         raise """
         VAULT_KEY environment variable is not set.
 
-        The same VAULT_KEY must be used across wallop-app and wallop
-        because both connect to the same local Postgres database and
-        encrypt/decrypt each other's rows via WallopCore.Vault.
+        If you run another consumer of wallop_core against the same local
+        Postgres database, both projects encrypt/decrypt each other's
+        rows via WallopCore.Vault and MUST share the same VAULT_KEY.
 
-        Copy the value from wallop-app/.env into wallop/.env — do not
-        generate a fresh one. To mint a new one from scratch for both
-        projects, use `openssl rand -base64 32` (not mix phx.gen.secret,
-        which produces a double-encoded value).
+        Copy the value from your other project's .env into this one — do
+        not generate a fresh one for each. To mint a new one from scratch
+        for both projects, use `openssl rand -base64 32` (not
+        mix phx.gen.secret, which produces a double-encoded value).
         """
 
     config :wallop_core, WallopCore.Vault,

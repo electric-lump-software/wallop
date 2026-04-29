@@ -4,10 +4,10 @@ defmodule WallopCore.PolicyConventionTest do
   declare `Ash.Policy.Authorizer` in its authorizers list.
 
   Without an authorizer, Ash skips policy enforcement entirely and every
-  action succeeds regardless of actor. PAM-685..691 were a sweep of findings
-  caused by exactly this — six out of nine resources had no authorizer at
-  all, and the missing authorization was invisible by inspection because the
-  resources had no `policies do ... end` block to draw the eye.
+  action succeeds regardless of actor. An earlier audit sweep found six out
+  of nine resources had no authorizer at all, and the missing authorization
+  was invisible by inspection because the resources had no
+  `policies do ... end` block to draw the eye.
 
   This test fails loudly if a future resource is added without an authorizer.
   Don't delete it — file an `authorize_if(always())` exception for any
@@ -16,9 +16,9 @@ defmodule WallopCore.PolicyConventionTest do
   use ExUnit.Case, async: true
 
   # AshPaperTrail generates version resources at compile time and they
-  # don't accept the standard `authorizers:` option directly. Tracking
-  # this via PAM-692 — for now, exempt with this allowlist so the
-  # convention test still catches every other resource.
+  # don't accept the standard `authorizers:` option directly. Exempt with
+  # this allowlist so the convention test still catches every other
+  # resource.
   @paper_trail_exempt [
     WallopCore.Resources.Operator.Version
   ]
@@ -49,8 +49,6 @@ defmodule WallopCore.PolicyConventionTest do
            intentionally publicly-accessible, document that explicitly with
            `policy action(...) do authorize_if(always()) end` rather than
            leaving the authorizer off.
-
-           See PAM-685..691 for the precedent.
            """
   end
 end

@@ -8,8 +8,8 @@ defmodule WallopWeb.Plugs.TierLimit do
   upgrade URL.
 
   API keys without a `monthly_draw_limit` (nil) are unlimited and pass
-  through. wallop-app is responsible for setting tier metadata on keys
-  via the `update_tier` action when subscriptions change.
+  through. The consumer application is responsible for setting tier
+  metadata on keys via the `update_tier` action when subscriptions change.
   """
 
   import Plug.Conn

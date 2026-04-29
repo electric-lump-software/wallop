@@ -96,7 +96,7 @@ A form on the proof page where a participant can verify their own entry:
 
 This does NOT reveal other entries — only confirms the submitted ID.
 
-**Rate limiting:** 10 checks per minute per draw per IP. Prevents brute-force enumeration of entry lists. API consumers (e.g. PAM) should use non-guessable entry IDs (UUIDs preferred) as an additional safeguard.
+**Rate limiting:** 10 checks per minute per draw per IP. Prevents brute-force enumeration of entry lists. API consumers should use non-guessable entry IDs (UUIDs preferred) as an additional safeguard.
 
 ## Real-Time Updates
 

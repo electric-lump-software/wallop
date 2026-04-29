@@ -58,7 +58,7 @@ defmodule WallopCore.Application do
         end
 
       _ ->
-        # Allow consumers (e.g. wallop-app) to provide full PubSub config
+        # Allow downstream consumers to provide full PubSub config
         case Application.get_env(:wallop_core, :pubsub) do
           opts when is_list(opts) ->
             {Phoenix.PubSub, Keyword.put_new(opts, :name, WallopCore.PubSub)}

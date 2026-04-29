@@ -8,8 +8,8 @@ Upgrade notes for `wallop_core` consumers. Listed newest-first. Each section is 
 
 | Consumer type | Description | Sections that apply |
 |---|---|---|
-| **HTTP API consumer** | You call `wallop_core` over its HTTP API (`POST /api/v1/draws`, `PATCH /draws/:id/entries`, etc.) and consume webhooks. You don't depend on the `wallop_core` Hex package. (e.g. PAM, third-party integrators.) | "HTTP API surface" subsection only. |
-| **Hex package consumer** | You include `wallop_core` as an Elixir dependency in your `mix.exs` and call its modules directly. (e.g. `wallop-app`.) | Both "HTTP API surface" and "Hex package surface" subsections — Hex consumers see everything HTTP consumers see, plus the Elixir-level changes. |
+| **HTTP API consumer** | You call `wallop_core` over its HTTP API (`POST /api/v1/draws`, `PATCH /draws/:id/entries`, etc.) and consume webhooks. You don't depend on the `wallop_core` Hex package. | "HTTP API surface" subsection only. |
+| **Hex package consumer** | You include `wallop_core` as an Elixir dependency in your `mix.exs` and call its modules directly. | Both "HTTP API surface" and "Hex package surface" subsections — Hex consumers see everything HTTP consumers see, plus the Elixir-level changes. |
 | **Verifier consumer** | You run `wallop_verifier` (Rust crate, WASM package, or CLI) to verify proof bundles. May or may not also be an HTTP / Hex consumer. | "Verifier surface" subsection. |
 
 Within each version section below, look for the `### HTTP API surface`, `### Hex package surface`, and `### Verifier surface` headings. If a section is absent for your consumer type, that version had nothing breaking on that surface — no action needed.
