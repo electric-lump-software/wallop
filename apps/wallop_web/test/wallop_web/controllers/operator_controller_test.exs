@@ -89,5 +89,36 @@ defmodule WallopWeb.OperatorControllerTest do
       assert delta_seconds >= 0
       assert delta_seconds < 60
     end
+
+    test "response envelope is closed-set under schema_version 1 (only `schema_version` and `keys`)",
+         %{conn: conn} do
+      # Spec §4.2.4 pins the keys-list envelope as exactly
+      # `{schema_version, keys}` under `schema_version: "1"`.
+      # Conforming verifiers (`wallop_verifier ≥ 0.14.0`) reject any
+      # extra top-level field via `deny_unknown_fields` — so emitting a
+      # friendly extension here breaks tier-2 attestable verification
+      # for everyone. This regression test pins the closed-set
+      # discipline server-side; without it the next "harmless" friendly
+      # field lands the same way.
+      operator = create_operator("closed-set")
+
+      response =
+        conn
+        |> get("/operator/#{operator.slug}/keys")
+        |> json_response(200)
+
+      actual_top_level_keys = response |> Map.keys() |> Enum.sort()
+
+      assert actual_top_level_keys == ["keys", "schema_version"],
+             "spec §4.2.4 envelope is closed-set under schema_version=1; " <>
+               "got #{inspect(actual_top_level_keys)}, expected [\"keys\", \"schema_version\"]"
+
+      [key] = response["keys"]
+      actual_row_keys = key |> Map.keys() |> Enum.sort()
+
+      assert actual_row_keys == ["inserted_at", "key_class", "key_id", "public_key_hex"],
+             "spec §4.2.4 row is closed-set; got #{inspect(actual_row_keys)}, " <>
+               "expected [\"inserted_at\", \"key_class\", \"key_id\", \"public_key_hex\"]"
+    end
   end
 end

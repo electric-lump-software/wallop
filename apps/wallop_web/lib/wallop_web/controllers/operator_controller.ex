@@ -82,11 +82,24 @@ defmodule WallopWeb.OperatorController do
       {:ok, operator} ->
         keys = list_keys(operator.id)
 
+        # Closed-set response shape per spec §4.2.4: exactly
+        # `{schema_version, keys}` and nothing else under
+        # `schema_version: "1"`. The previous response also carried
+        # an `operator` block (`{id, name, slug}`) as a friendly
+        # extension; that block is operator-identity decoration and
+        # belongs above the verifier protocol surface, not on a
+        # signed-key endpoint. Conforming verifiers
+        # (`wallop_verifier ≥ 0.14.0`) reject any extra envelope
+        # field per `deny_unknown_fields`. Same precedent as the
+        # `operator_ref` deletion in v0.16.0 and the v0.17.0
+        # ticket-manifest reversal: surface area on a protocol
+        # endpoint is non-negotiable, even when the extra field
+        # looks harmless. Consumers needing operator metadata fetch
+        # `GET /operator/:slug` (LiveView, unsigned, free to evolve).
         conn
         |> put_resp_header("cache-control", "public, max-age=300")
         |> json(%{
           schema_version: @keys_response_schema_version,
-          operator: operator_summary(operator),
           keys:
             Enum.map(keys, fn k ->
               # `inserted_at` is the keyring entry's first-existence timestamp

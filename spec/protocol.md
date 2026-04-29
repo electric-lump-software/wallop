@@ -592,6 +592,8 @@ The rules in this subsection apply to every key whose signatures are verified by
 
   Same shape applies to the infrastructure-key endpoint at `GET /infrastructure/keys`. `inserted_at` is load-bearing for the temporal-binding rule above; `key_class` discriminates operator from infrastructure keys.
 
+  **The envelope is closed-set under `schema_version: "1"`.** The response object MUST contain exactly the top-level members `schema_version` and `keys`, and no others. Each row in `keys` MUST contain exactly `key_id`, `public_key_hex`, `inserted_at`, and `key_class`, and no others. A future producer that wants to add a field MUST bump `schema_version` to a new exact value; conforming verifiers will reject the new shape until updated. This composes with the row-level closed-set discipline applied to receipts in §4.2.1.
+
   **`schema_version` is a JSON string with exact-match semantics.** Verifiers MUST reject any keys-list response whose top-level `schema_version` is anything other than the literal string `"1"` — no semver coercion, no prefix matching, no numeric comparison, no implicit forward compatibility. A future shape bump is a coordinated wallop_verifier release; the new value is a different exact match. This is the same closed-set rule applied to receipt `schema_version` in §4.2.1.
 
   **Producer-side state is not on the wire.** The keyring holds a `valid_from` field (the producer's signing-eligibility timestamp, held within ±60 seconds of `inserted_at` by a CHECK constraint). It is deliberately omitted from the response shape: emitting it would invite resolver implementations to compare it against the receipt's binding timestamp instead of `inserted_at`, reopening the temporal-binding window. The four fields above are the canonical pin row.
