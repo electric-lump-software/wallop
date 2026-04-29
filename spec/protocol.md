@@ -707,7 +707,7 @@ Cross-language parity is enforced in CI via shared frozen vectors (wallop's `spe
 
 For the avoidance of doubt, and for the future reviewer holding a clever idea: **no**.
 
-- wallop_core is a **fairness service**. It does not know about payments, buyers, tickets, sale channels, prices, refunds, or customer identity. Any binding between an entry UUID and any of those lives in a consumer layer (wallop-app, or whichever integration sits above).
+- wallop_core is a **fairness service**. It does not know about payments, buyers, tickets, sale channels, prices, refunds, or customer identity. Any binding between an entry UUID and any of those lives in a consumer layer above wallop.
 - **No reserved-for-future-use fields.** No `manifest_ext_hash`, no `extensions`, no `reserved_for_later`. If a future consumer has a real use case that demands a new signed commitment, they design it, justify it against the six goals in `CLAUDE.md`, and it gets a 2.0.0. Reserving slots is scope creep disguised as foresight.
 - **No per-draw operator-supplied metadata**: no tags, no labels, no display descriptions, no external-system references, no notes field. `operator_ref` was the last one of these and we purged it in 0.16.0 for a reason.
 - **No buyer-facing endpoints.** No "find my entry" lookup, no self-service "was I in this draw," no "tell me my odds." Buyers are the operator's customers; wallop serves operators.
