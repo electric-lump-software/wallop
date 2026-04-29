@@ -299,4 +299,4 @@ These are additions to the current mix.exs files (which already have `fair_pick`
 
 - Sub-project 2: Entropy layer (drand client, Met Office client, `pending_entropy` status, automatic seed computation)
 - Sub-project 3: Proof pages (public verification, re-verify button)
-- Deployment: Dockerfile + railway.toml (same pattern as existing projects)
+- Deployment: Dockerfile + platform-specific config (same pattern as existing projects)

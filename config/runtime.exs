@@ -94,7 +94,7 @@ if config_env() == :prod do
 
   # Proof PDF storage. If AWS_S3_BUCKET_NAME is set we use the S3
   # backend, otherwise fall back to the local filesystem (useful for
-  # self-hosters). Name matches Railway's convention.
+  # self-hosters). Env-var name follows the AWS convention.
   if bucket = System.get_env("AWS_S3_BUCKET_NAME") do
     config :wallop_web, :proof_storage,
       backend: WallopWeb.ProofStorage.S3,
@@ -111,9 +111,9 @@ if config_env() == :prod do
       secret_access_key: System.get_env("AWS_SECRET_ACCESS_KEY"),
       region: region
 
-    # Railway and other S3-compatible providers expose the endpoint as a
-    # full URL (e.g. https://bucket.region.provider.example:443). ex_aws
-    # wants it split into scheme + host + port, so parse it.
+    # Some S3-compatible providers expose the endpoint as a full URL
+    # (e.g. https://bucket.region.provider.example:443). ex_aws wants
+    # it split into scheme + host + port, so parse it.
     endpoint_url =
       System.get_env("AWS_ENDPOINT_URL") || System.get_env("AWS_S3_ENDPOINT")
 

@@ -462,8 +462,8 @@ New WASM exports for third-party verification:
 - `qpdf` installed in the wallop runtime Docker image (~5MB) — used to attach `proof.json` to the Gotenberg-rendered PDF via a one-shot `System.cmd/3` call.
 - Frozen test vector for the canonical JSON encoding so any future change to the fingerprint shape breaks loudly.
 
-- **Proof PDF** — certificate-style downloadable proof artifact for completed draws at `GET /proof/:id/pdf`. Rendered from a dedicated HEEx template with print-specific CSS, POSTed as HTML to a sidecar Gotenberg service (https://gotenberg.dev — headless Chromium wrapped in a stateless HTTP API, deployed separately on Railway), returned as PDF bytes. Contains a certificate front page (logo, title, operator, summary, hashes), a verification chain (drand + weather + seed + signed operator receipt), a full anonymised entries appendix, and a verification recipe. Lazy-generated on first request, cached via a pluggable storage backend (filesystem in dev, S3-compatible in production — configured via `AWS_S3_BUCKET_NAME` and friends), served with `Cache-Control: public, max-age=31536000, immutable`.
-- `WallopWeb.ProofStorage` behaviour with `Filesystem` and `S3` backends. The S3 backend works against any S3-compatible endpoint (Railway volumes, AWS S3, Cloudflare R2, MinIO).
+- **Proof PDF** — certificate-style downloadable proof artifact for completed draws at `GET /proof/:id/pdf`. Rendered from a dedicated HEEx template with print-specific CSS, POSTed as HTML to a sidecar Gotenberg service (https://gotenberg.dev — headless Chromium wrapped in a stateless HTTP API, deployed as a separate process), returned as PDF bytes. Contains a certificate front page (logo, title, operator, summary, hashes), a verification chain (drand + weather + seed + signed operator receipt), a full anonymised entries appendix, and a verification recipe. Lazy-generated on first request, cached via a pluggable storage backend (filesystem in dev, S3-compatible in production — configured via `AWS_S3_BUCKET_NAME` and friends), served with `Cache-Control: public, max-age=31536000, immutable`.
+- `WallopWeb.ProofStorage` behaviour with `Filesystem` and `S3` backends. The S3 backend works against any S3-compatible endpoint (AWS S3, Cloudflare R2, MinIO, etc.).
 - "Download PDF certificate" button on terminal proof pages (both the live LiveView and the cached static renderer).
 - `eqrcode`, `ex_aws`, `ex_aws_s3`, `hackney`, `sweet_xml` deps on wallop_web. No Chromium in the wallop image — that lives in the sibling Gotenberg service.
 - In-progress draws (open / locked / awaiting_entropy / pending_entropy) return 404 with a clear "PDF is only available once the draw has completed" message.
@@ -471,9 +471,9 @@ New WASM exports for third-party verification:
 
 ### Deployment notes
 
-- Deploy `gotenberg/gotenberg:8` as a second Railway service in the same project
-- **Remove Gotenberg's public domain** — it has no built-in auth, keep it on the internal network only
-- Set `GOTENBERG_URL` on the wallop service to the internal URL (e.g. `http://gotenberg.railway.internal:3000`)
+- Deploy `gotenberg/gotenberg:8` as a sidecar service alongside the wallop service
+- **Keep Gotenberg off any public network** — it has no built-in auth; reach it on an internal network only
+- Set `GOTENBERG_URL` on the wallop service to the Gotenberg internal URL (port 3000 by default)
 - For local dev: `docker run --rm -p 3000:3000 gotenberg/gotenberg:8`, defaults to `http://localhost:3000`
 
 ### Notes

@@ -124,13 +124,19 @@ defmodule WallopCore.Resources.ApiKey do
     end
 
     attribute :tier, :string do
-      description("Subscription tier name (e.g. 'free', 'starter', 'pro'). Set by the consumer application.")
+      description(
+        "Subscription tier name (e.g. 'free', 'starter', 'pro'). Set by the consumer application."
+      )
+
       allow_nil?(true)
       public?(false)
     end
 
     attribute :monthly_draw_limit, :integer do
-      description("Maximum draws per month. Null means unlimited. Set by the consumer application.")
+      description(
+        "Maximum draws per month. Null means unlimited. Set by the consumer application."
+      )
+
       allow_nil?(true)
       public?(false)
     end
