@@ -83,4 +83,99 @@ defmodule WallopWeb.InfrastructureControllerTest do
       assert response == %{"error" => "not found"}
     end
   end
+
+  describe "GET /infrastructure/keys" do
+    test "returns the canonical keys-list shape (spec §4.2.4) for an empty keyring",
+         %{conn: conn} do
+      response =
+        conn
+        |> get("/infrastructure/keys")
+        |> json_response(200)
+
+      assert response["schema_version"] == "1"
+      assert response["keys"] == []
+    end
+
+    test "returns the active key with all required fields", %{conn: conn} do
+      infra_key = create_infrastructure_key()
+
+      response =
+        conn
+        |> get("/infrastructure/keys")
+        |> json_response(200)
+
+      assert response["schema_version"] == "1"
+      assert length(response["keys"]) == 1
+
+      [key] = response["keys"]
+      assert key["key_id"] == infra_key.key_id
+      assert key["public_key_hex"] == Base.encode16(infra_key.public_key, case: :lower)
+      assert key["key_class"] == "infrastructure"
+
+      # Spec §4.2.1 canonical RFC 3339: `YYYY-MM-DDTHH:MM:SS.<6 digits>Z`,
+      # exactly 27 bytes. The verifier's `chrono_parse_canonical` regex
+      # requires this precise form — anything else (no fractional seconds,
+      # different precision, `+00:00` instead of `Z`) rejects.
+      canonical = ~r/\A\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{6}Z\z/
+
+      assert key["inserted_at"] =~ canonical,
+             "inserted_at #{inspect(key["inserted_at"])} must match canonical RFC 3339 form"
+
+      # `valid_from` is deliberately NOT on the wire — see the infra
+      # controller comment for the V-02 backdating-window rationale.
+      refute Map.has_key?(key, "valid_from")
+    end
+
+    test "includes rotated keys so historical receipts stay verifiable",
+         %{conn: conn} do
+      # Older rotation slot — within ±60s skew window so the keyring
+      # CHECK constraint accepts the row.
+      {old_pub, old_priv} = :crypto.generate_key(:eddsa, :ed25519)
+      {:ok, old_encrypted} = WallopCore.Vault.encrypt(old_priv)
+
+      {:ok, _old} =
+        WallopCore.Resources.InfrastructureSigningKey
+        |> Ash.Changeset.for_create(:create, %{
+          key_id: Protocol.key_id(old_pub),
+          public_key: old_pub,
+          private_key: old_encrypted,
+          valid_from: DateTime.add(DateTime.utc_now(), -45, :second)
+        })
+        |> Ash.create(authorize?: false)
+
+      _new = create_infrastructure_key()
+
+      response =
+        conn
+        |> get("/infrastructure/keys")
+        |> json_response(200)
+
+      assert length(response["keys"]) == 2
+
+      # Sorted ascending by inserted_at (which mirrors valid_from within
+      # the ±60s keyring CHECK skew window).
+      [first, second] = response["keys"]
+      assert first["inserted_at"] < second["inserted_at"]
+
+      # Every entry carries the canonical fields including key_class.
+      canonical = ~r/\A\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{6}Z\z/
+
+      Enum.each(response["keys"], fn k ->
+        assert is_binary(k["key_id"])
+        assert is_binary(k["public_key_hex"])
+        assert k["key_class"] == "infrastructure"
+        assert k["inserted_at"] =~ canonical
+        refute Map.has_key?(k, "valid_from")
+      end)
+    end
+
+    test "sets cache-control public, max-age=300", %{conn: conn} do
+      _ = create_infrastructure_key()
+
+      resp = get(conn, "/infrastructure/keys")
+
+      assert resp.status == 200
+      assert get_resp_header(resp, "cache-control") == ["public, max-age=300"]
+    end
+  end
 end

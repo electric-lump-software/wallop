@@ -42,6 +42,7 @@ defmodule WallopWeb.RouterRoutesTest do
     {:get, "/health"},
     {:get, "/how-verification-works"},
     {:get, "/infrastructure/key"},
+    {:get, "/infrastructure/keys"},
     {:get, "/live/proof/:id"},
     {:get, "/live/proof/:id/:entry_id"},
     {:get, "/operator/:slug"},

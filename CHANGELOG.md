@@ -7,6 +7,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### wallop_core 0.20.0 — `/infrastructure/keys` JSON endpoint + `schema_version` on `/operator/:slug/keys`
+
+Adds the JSON keys-list endpoint for infrastructure signing keys, mirroring the existing `/operator/:slug/keys` shape. Resolver-driven verifiers (the forthcoming `EndpointResolver` and `PinnedResolver` in `wallop_verifier`) consume both endpoints to look up infrastructure keys for execution-receipt verification.
+
+**New endpoint:** `GET /infrastructure/keys` — returns the **full** infrastructure key history (current + rotated) as JSON in the canonical shape per spec §4.2.4:
+
+```json
+{
+  "schema_version": "1",
+  "keys": [
+    {
+      "key_id": "...",
+      "public_key_hex": "...",
+      "inserted_at": "2026-04-26T12:34:56.789012Z",
+      "key_class": "infrastructure"
+    }
+  ]
+}
+```
+
+The existing `GET /infrastructure/key` (singular, raw 32-byte response) is preserved for callers that already consume it (the wallop-verify CLI's belt-and-suspenders pin path, third-party scripts).
+
+Rotated keys are included in the JSON list so historical execution receipts and transparency anchors remain verifiable for the life of 1.x per spec §4.4. The list is sorted ascending by `valid_from` (oldest rotation first). The `current_key/0` filter on the singular endpoint is unchanged — it still returns only the active rotation slot.
+
+**Wire-shape changes on `/operator/:slug/keys`:**
+- The response now includes a top-level `schema_version: "1"` field, matching the spec §4.2.4 canonical shape and the new infrastructure endpoint. The previous response didn't have one. Additive — existing consumers that ignore unknown fields are unaffected.
+- The per-key `valid_from` field is **removed** from the response. Producer-side signing-eligibility state held within ±60 s of `inserted_at` by the keyring CHECK constraint; emitting it on the wire would invite resolver implementations to use it as the temporal-binding comparison point instead of `inserted_at`, reopening the backdating window. Pre-launch breaking change — no published verifier consumed this field. The canonical pin row is now `{key_id, public_key_hex, inserted_at, key_class}`.
+
+The `schema_version` is pinned per controller via the `@keys_response_schema_version` module attribute on each controller. A bump is a coordinated wallop_verifier release.
+
 ### wallop_core 0.19.0 — emit lock v5 / execution v4 receipts (resolver-driven verification)
 
 Producer-side schemas bump: lock receipt `schema_version` `"4"` → `"5"`, execution receipt `"3"` → `"4"`. Field set on both signed payloads is byte-identical to predecessors — the bump is a coordination flag for verifier behaviour, not a payload change. v5 lock and v4 execution receipts MUST be paired with bundle wrappers that **omit** the inline `operator_public_key_hex` / `infrastructure_public_key_hex`. Verifiers resolve those keys via `KeyResolver` against `/operator/:slug/keys` (attestable mode) or an operator-published `.well-known/wallop-keyring-pin.json` (attributable mode) per spec §4.2.4.
