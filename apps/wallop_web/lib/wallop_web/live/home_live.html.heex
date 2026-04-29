@@ -156,8 +156,8 @@
           <h3 class="text-xl font-bold mb-3">For developers</h3>
           <p class="text-sm text-[#555] leading-[1.7] mb-4">
             A clean JSON API with an OpenAPI spec, built on commit-reveal cryptography.
-            The <code class="font-mono text-xs bg-cream-dark px-1 rounded">fair_pick</code>
-            algorithm is open source and published on Hex.pm.
+            The <a href="https://github.com/search?q=org%3Aelectric-lump-software+fair_pick&type=repositories" target="_blank" rel="noopener" class="font-mono text-xs underline decoration-[#ccc] hover:decoration-[#1a1a1a]">fair_pick</a>
+            algorithm is open source and published on Hex.pm &amp; crates.io.
           </p>
           <p class="text-sm text-[#555] leading-[1.7] mb-4">
             Every signed receipt is published as queryable JSON — mirror your operator log,
@@ -285,8 +285,8 @@
           <div class="w-9 h-9 rounded-full bg-[#1a1a1a] text-white flex items-center justify-center text-sm font-bold shrink-0">5</div>
           <div>
             <h4 class="text-[15px] font-bold mb-1.5">Dual-signed proof chain</h4>
-            <p class="text-sm text-[#555] leading-relaxed">Two Ed25519-signed receipts form a cryptographic chain. The <strong>lock receipt</strong> (signed by the operator's key at lock time) commits to the entry hash. The <strong>execution receipt</strong> (signed by the infrastructure key after execution) commits to the entropy, seed, and results — and embeds a SHA-256 hash of the lock receipt, linking them cryptographically. The <a href="https://wallop.run/proof/286838f2-c6d7-49a8-acdb-7b60bce69f35" target="_blank" rel="noopener" class="underline decoration-[#ccc] hover:decoration-[#1a1a1a]">full proof record</a> is stored permanently. No UPDATE or DELETE.</p>
-            <code class="mt-2 inline-block font-mono text-[11px] text-[#999] bg-cream-dark px-2.5 py-1.5 rounded">lock_receipt → SHA256 → execution_receipt.lock_receipt_hash · chain verified</code>
+            <p class="text-sm text-[#555] leading-relaxed">Two Ed25519-signed receipts form a cryptographic chain. The <strong>lock receipt</strong> (signed by the operator's key at lock time) commits to the entry hash. The <strong>execution receipt</strong> (signed by the infrastructure key after execution) commits to the entropy, seed, and results — and embeds a SHA-256 hash of the lock receipt, linking them cryptographically. Each signing key is also temporally bound: the verifier checks that the key existed in the operator&#39;s keyring before the receipt that uses it, so a key minted after the fact cannot retroactively sign an earlier draw. The <a href="https://wallop.run/proof/286838f2-c6d7-49a8-acdb-7b60bce69f35" target="_blank" rel="noopener" class="underline decoration-[#ccc] hover:decoration-[#1a1a1a]">full proof record</a> is stored permanently. No UPDATE or DELETE.</p>
+            <code class="mt-2 inline-block font-mono text-[11px] text-[#999] bg-cream-dark px-2.5 py-1.5 rounded">lock_receipt → SHA256 → execution_receipt.lock_receipt_hash · key.inserted_at ≤ receipt.binding_timestamp · chain verified</code>
           </div>
         </div>
       </div>
@@ -320,7 +320,7 @@
             Every proof page has a verify button that independently recomputes the draw,
             checks both Ed25519 receipt signatures, verifies the cryptographic chain between them,
             and runs a full pipeline double-check — all in your browser via WebAssembly.
-            No server round-trip. No trust required.
+            Open code. Your machine. Your call.
           </p>
         </div>
         <div class="p-6 rounded-xl border border-cream-border bg-white">
@@ -333,20 +333,6 @@
           </p>
         </div>
         <div class="p-6 rounded-xl border border-cream-border bg-white">
-          <h3 class="text-sm font-bold mb-2">Immutable proof records</h3>
-          <p class="text-xs text-[#555] leading-relaxed">
-            Once a draw completes, the proof record is locked at the database level and cached
-            globally. Not even we can change it. Save the page — it works offline.
-          </p>
-        </div>
-        <div class="p-6 rounded-xl border border-cream-border bg-white">
-          <h3 class="text-sm font-bold mb-2">Committed before the draw</h3>
-          <p class="text-xs text-[#555] leading-relaxed">
-            Entries are locked and hashed before the entropy sources are known. The seed
-            is computed afterwards. Nobody — including us — can influence the outcome.
-          </p>
-        </div>
-        <div class="p-6 rounded-xl border border-cream-border bg-white">
           <h3 class="text-sm font-bold mb-2">Multiple implementations</h3>
           <p class="text-xs text-[#555] leading-relaxed">
             The protocol is implemented independently in
@@ -355,6 +341,26 @@
             <a href="https://github.com/electric-lump-software/fair_pick_rs" target="_blank" rel="noopener" class="underline hover:text-[#1a1a1a]">Rust</a>,
             tested against shared frozen vectors that both must agree on.
             The Rust version compiles to WebAssembly for in-browser verification.
+          </p>
+        </div>
+        <div class="p-6 rounded-xl border border-cream-border bg-white">
+          <h3 class="text-sm font-bold mb-2">Daily transparency anchors</h3>
+          <p class="text-xs text-[#555] leading-relaxed">
+            Every 24 hours, all receipts from every operator are hashed into a single Merkle root,
+            signed with our infrastructure key, and pinned to a
+            <a href="https://drand.love" target="_blank" rel="noopener" class="underline hover:text-[#1a1a1a]">drand</a>
+            round. The full anchor chain is on
+            <a href="/transparency" class="underline hover:text-[#1a1a1a] whitespace-nowrap">/transparency</a>
+            — quietly delete a draw after the fact and the anchor breaks for everyone.
+          </p>
+        </div>
+        <div class="p-6 rounded-xl border border-cream-border bg-white">
+          <h3 class="text-sm font-bold mb-2">Locked before, sealed after</h3>
+          <p class="text-xs text-[#555] leading-relaxed">
+            Entries are committed and hashed before the randomness is known — the seed is
+            computed afterwards, so nobody (including us) can influence the outcome. Once
+            the draw runs, the proof record is locked at the database level and cached globally.
+            Save the page — it works offline.
           </p>
         </div>
       </div>
@@ -566,17 +572,33 @@
   </section>
 
   <%!-- FOOTER --%>
-  <footer class="flex flex-col md:flex-row md:items-center md:justify-between gap-4 px-6 md:px-12 py-8 border-t border-cream-border bg-cream">
-    <div class="flex flex-wrap gap-4 md:gap-6">
-      <span class="text-xs text-[#ccc] cursor-default">Pricing</span>
-      <a href="/how-verification-works" class="text-xs text-[#999] hover:text-[#555]">How verification works</a>
-      <a href="/api/docs" class="text-xs text-[#999] hover:text-[#555]">API docs</a>
-      <a href="/api/open_api" class="text-xs text-[#999] hover:text-[#555]">OpenAPI</a>
-      <a href="https://nether.wallop.run/legal/privacy" class="text-xs text-[#999] hover:text-[#555]">Privacy</a>
-      <a href="https://nether.wallop.run/legal/terms" class="text-xs text-[#999] hover:text-[#555]">Terms</a>
-      <a href="https://nether.wallop.run/legal/acceptable-use" class="text-xs text-[#999] hover:text-[#555]">Acceptable Use</a>
+  <footer class="px-6 md:px-12 py-10 border-t border-cream-border bg-cream">
+    <div class="grid grid-cols-2 md:grid-cols-3 gap-8 md:gap-12 mb-8">
+      <div>
+        <h4 class="text-[10px] font-bold tracking-[2px] uppercase text-[#aaa] mb-3">Product</h4>
+        <ul class="flex flex-col gap-2">
+          <li><span class="text-xs text-[#ccc] cursor-default">Pricing</span></li>
+          <li><a href="/how-verification-works" class="text-xs text-[#999] hover:text-[#555]">How verification works</a></li>
+          <li><a href="/transparency" class="text-xs text-[#999] hover:text-[#555]">Transparency log</a></li>
+        </ul>
+      </div>
+      <div>
+        <h4 class="text-[10px] font-bold tracking-[2px] uppercase text-[#aaa] mb-3">Developers</h4>
+        <ul class="flex flex-col gap-2">
+          <li><a href="/api/docs" class="text-xs text-[#999] hover:text-[#555]">API docs</a></li>
+          <li><a href="/api/open_api" class="text-xs text-[#999] hover:text-[#555]">OpenAPI</a></li>
+        </ul>
+      </div>
+      <div>
+        <h4 class="text-[10px] font-bold tracking-[2px] uppercase text-[#aaa] mb-3">Legal</h4>
+        <ul class="flex flex-col gap-2">
+          <li><a href="https://nether.wallop.run/legal/privacy" class="text-xs text-[#999] hover:text-[#555]">Privacy</a></li>
+          <li><a href="https://nether.wallop.run/legal/terms" class="text-xs text-[#999] hover:text-[#555]">Terms</a></li>
+          <li><a href="https://nether.wallop.run/legal/acceptable-use" class="text-xs text-[#999] hover:text-[#555]">Acceptable Use</a></li>
+        </ul>
+      </div>
     </div>
-    <p class="text-xs text-[#bbb]">
+    <p class="text-xs text-[#bbb] pt-6 border-t border-cream-border">
       &copy; 2026 Electric Lump Software &middot; Made in Britain
     </p>
   </footer>
