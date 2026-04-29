@@ -177,5 +177,33 @@ defmodule WallopWeb.InfrastructureControllerTest do
       assert resp.status == 200
       assert get_resp_header(resp, "cache-control") == ["public, max-age=300"]
     end
+
+    test "response envelope is closed-set under schema_version 1 (only `schema_version` and `keys`)",
+         %{conn: conn} do
+      # Spec §4.2.4 pins the keys-list envelope as exactly
+      # `{schema_version, keys}` under `schema_version: "1"`.
+      # Conforming verifiers reject any extra top-level field. This
+      # regression test pins the discipline so a future friendly
+      # extension cannot quietly break tier-2 / tier-1 verification
+      # in the field. Mirrors the operator-endpoint test.
+      _ = create_infrastructure_key()
+
+      response =
+        conn
+        |> get("/infrastructure/keys")
+        |> json_response(200)
+
+      actual_top_level_keys = response |> Map.keys() |> Enum.sort()
+
+      assert actual_top_level_keys == ["keys", "schema_version"],
+             "spec §4.2.4 envelope is closed-set under schema_version=1; " <>
+               "got #{inspect(actual_top_level_keys)}"
+
+      [key] = response["keys"]
+      actual_row_keys = key |> Map.keys() |> Enum.sort()
+
+      assert actual_row_keys == ["inserted_at", "key_class", "key_id", "public_key_hex"],
+             "spec §4.2.4 row is closed-set; got #{inspect(actual_row_keys)}"
+    end
   end
 end
