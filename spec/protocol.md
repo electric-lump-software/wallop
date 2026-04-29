@@ -548,7 +548,7 @@ The rules in this subsection apply to every key whose signatures are verified by
 
   | Mode | Trust root | What it proves |
   |---|---|---|
-  | **Attributable** | Operator-hosted `.well-known/wallop-keyring-pin.json` on a domain the operator controls independently of wallop | The bundle was signed by keys the operator publicly committed to via a trust root wallop cannot tamper with |
+  | **Attributable** | Wallop infrastructure-key fingerprint compiled into the verifier the user is running (or supplied out-of-band via a verifier-side anchor flag); the trust root is therefore the verifier binary's supply chain, not any URL fetched at verify time | The keys listed in this draw's keyring were published by wallop's infrastructure under a signing key whose fingerprint the verifier user has committed to accepting, and the live keyring is a subset of that commitment |
   | **Attestable** | wallop's `/operator/:slug/keys` endpoint, no pin | The wallop endpoint says these keys signed; same-origin caveat — a CDN compromise can serve coherent forgeries |
   | **Self-consistency only** | Bundle-embedded inline keys (legacy v3 / v4 receipts only) | The bundle is internally consistent; says nothing about who produced it |
 
@@ -558,21 +558,38 @@ The rules in this subsection apply to every key whose signatures are verified by
 
 - **Verifier-side keyring-row consistency check.** After resolving a `key_id` against a trust root, the verifier MUST compute `key_id` locally from the resolved `public_key` (per the fingerprint rule above) and reject if it does not match the requested `key_id`. This is the verifier-side mirror of the producer's keyring-row consistency assertion at sign time; a buggy or hostile resolver answering for a request for `key_id=X` with a different key would otherwise pass the signature step against the wrong key.
 
-- **Pin file format (`.well-known/wallop-keyring-pin.json`).** Operator-hosted keyring pin used by attributable mode:
+- **Pin file format (`.well-known/wallop-keyring-pin.json` and `GET /operator/:slug/keyring-pin.json`).** The keyring pin used by attributable mode is **signed by the wallop infrastructure key**. An unsigned pin would sit in the same trust domain as the live `/operator/:slug/keys` endpoint and add no cryptographic substance over attestable mode; the wallop infrastructure signature is what makes the pin a cacheable, mirrorable cryptographic commitment that does not require TLS to the operator's domain at verify time. See ADR-0011.
 
   ```json
   {
     "schema_version": "1",
     "operator_slug": "...",
-    "wallop_endpoint": "https://wallop.example/operator/<slug>/keys",
     "keys": [
       { "key_id": "...", "public_key_hex": "...", "key_class": "operator" }
     ],
-    "published_at": "2026-04-26T12:34:56.789012Z"
+    "published_at": "2026-04-26T12:34:56.789012Z",
+    "infrastructure_signature": "ed25519:..."
   }
   ```
 
-  Verifiers in attributable mode fetch both the pin file and the live `/operator/:slug/keys` endpoint, and require every entry in the live response to be present in the pin. Forward-compat: the pin MAY list keys the live endpoint does not yet have (rotation in progress); the live endpoint MUST NOT list keys the pin does not have (would defeat the point of pinning). Mismatch rejects.
+  - **`schema_version` is the literal string `"1"`** — verifiers MUST reject any other value with the same exact-match discipline applied to the keys-list endpoint above.
+  - **`keys[]` MUST be sorted by `key_id` ascending at sign time.** Each row contains exactly `key_id`, `public_key_hex`, and `key_class`; `inserted_at` is deliberately absent from the pin (it lives on the live keys-list endpoint per the temporal-binding rule above and would be redundant on the pin).
+  - **`infrastructure_signature`** is an Ed25519 signature over the JCS canonicalisation of `{schema_version, operator_slug, keys[], published_at}` (the `infrastructure_signature` field itself is excluded from the pre-image), with the byte-prefix `"wallop-pin-v1\n"` (14 ASCII bytes including the trailing line feed: `0x77 0x61 0x6c 0x6c 0x6f 0x70 0x2d 0x70 0x69 0x6e 0x2d 0x76 0x31 0x0a`) prepended to the canonical bytes before signing. The prefix is a frozen domain separator that prevents a pin signature from being replayable against any other signed wallop artefact.
+  - **Verifier obligations.** A verifier in attributable mode MUST:
+    1. Validate the pin envelope structurally before any signature work: `schema_version` exact-match, `keys[]` ordering, timestamp regex on `published_at`. Failure is `PinSchemaMismatch`.
+    2. Apply the freshness rule below.
+    3. Verify `infrastructure_signature` against an anchor in its trusted-anchor set (see "Bundled-anchor trust root" below). Failure to find a verifying anchor is `AnchorNotFound`.
+    4. Apply temporal binding to the verifying anchor: the anchor's `inserted_at` and `revoked_at` (or unset) MUST contain `pin.published_at`. Out-of-window → `PinSignatureInvalid` (the anchor was not authorised to sign at that moment).
+    5. Verify `pin.operator_slug == bundle.operator_slug` (`PinSchemaMismatch` on mismatch).
+    6. Resolve the requested `key_id` via the live `/operator/:slug/keys` endpoint (delegated to attestable-mode resolution).
+    7. Apply `key_class` cross-role discipline: an `operator`-class entry MUST NOT be used to verify an `infrastructure`-class signature, and vice versa (`PinSchemaMismatch`).
+    8. Assert that the resolved `(key_id, public_key_hex)` tuple is present in `pin.keys[]`. Strict per-resolution equality; **no forward-compat tolerance** for keys the pin does not list. `PinMismatch` on absence.
+  - **Pin freshness.** Verifiers MUST reject a pin whose `published_at` is greater than the verifier's clock plus 60 seconds (clock-skew tolerance). Distinct error variant: `PinPublishedInFuture`. Verifiers MUST emit a warning, but accept, a pin whose `published_at` is more than 24 hours before the verifier's clock; the warning is suppressed by an explicit verifier-side opt-out (e.g. `--no-stale-warn`). Both thresholds are documented constants and are not configurable on the wire.
+
+- **Bundled-anchor trust root for attributable mode.** A verifier in attributable mode MUST hold an out-of-band trust anchor for wallop's infrastructure signing key(s); without one it MUST refuse `--mode attributable` and exit non-zero, never silently downgrading to attestable. The reference verifier embeds the current trusted-anchor set at compile time in a code-committed, OSS-auditable artefact (see `wallop_verifier/src/anchors.rs`). Verifier users MAY override the bundled set via a CLI flag (the reference verifier exposes `--infra-key-pin <hex>`, repeatable); the override **replaces** the bundled set, never extends it. Live `/infrastructure/keys` payloads MUST NOT be consulted to verify the pin's signature; the live endpoint exists to discover candidate `key_id`s for receipt verification, which is then re-anchored via the pin.
+
+  - **Anchor-set cadence.** The bundled set holds at most two entries: the current wallop infrastructure key plus at most one previous key retained for a 90-day grace window post-rotation. After the grace window elapses, the previous anchor is removed in the next verifier crate release. Pins signed by an anchor that has aged out of the bundled set become unverifiable in the current verifier; verifier users with a need to re-verify historical bundles obtain an older crate version (or supply the historical anchor via `--infra-key-pin`).
+  - **Compromise.** A wallop infrastructure key discovered to be compromised is removed **immediately** from the bundled set in a new verifier crate release; pins it signed become unverifiable in the new crate. There is no "previously-signed pins remain valid" carve-out for compromise: a verifier cannot distinguish honest pre-compromise signatures from forged ones once the key material is in adversary hands.
 
 - **`/operator/:slug/keys` response shape.** Same shape consumed by attestable and attributable modes:
 
