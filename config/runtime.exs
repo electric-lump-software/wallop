@@ -13,14 +13,14 @@ if config_env() in [:dev, :test] do
         raise """
         VAULT_KEY environment variable is not set.
 
-        The same VAULT_KEY must be used across wallop-app and wallop
-        because both connect to the same local Postgres database and
-        encrypt/decrypt each other's rows via WallopCore.Vault.
+        If you run another consumer of wallop_core against the same local
+        Postgres database, both projects encrypt/decrypt each other's
+        rows via WallopCore.Vault and MUST share the same VAULT_KEY.
 
-        Copy the value from wallop-app/.env into wallop/.env — do not
-        generate a fresh one. To mint a new one from scratch for both
-        projects, use `openssl rand -base64 32` (not mix phx.gen.secret,
-        which produces a double-encoded value).
+        Copy the value from your other project's .env into this one — do
+        not generate a fresh one for each. To mint a new one from scratch
+        for both projects, use `openssl rand -base64 32` (not
+        mix phx.gen.secret, which produces a double-encoded value).
         """
 
     config :wallop_core, WallopCore.Vault,
@@ -94,7 +94,7 @@ if config_env() == :prod do
 
   # Proof PDF storage. If AWS_S3_BUCKET_NAME is set we use the S3
   # backend, otherwise fall back to the local filesystem (useful for
-  # self-hosters). Name matches Railway's convention.
+  # self-hosters). Env-var name follows the AWS convention.
   if bucket = System.get_env("AWS_S3_BUCKET_NAME") do
     config :wallop_web, :proof_storage,
       backend: WallopWeb.ProofStorage.S3,
@@ -111,9 +111,9 @@ if config_env() == :prod do
       secret_access_key: System.get_env("AWS_SECRET_ACCESS_KEY"),
       region: region
 
-    # Railway and other S3-compatible providers expose the endpoint as a
-    # full URL (e.g. https://bucket.region.provider.example:443). ex_aws
-    # wants it split into scheme + host + port, so parse it.
+    # Some S3-compatible providers expose the endpoint as a full URL
+    # (e.g. https://bucket.region.provider.example:443). ex_aws wants
+    # it split into scheme + host + port, so parse it.
     endpoint_url =
       System.get_env("AWS_ENDPOINT_URL") || System.get_env("AWS_S3_ENDPOINT")
 

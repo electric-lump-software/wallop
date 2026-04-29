@@ -12,8 +12,8 @@ defmodule WallopWeb.ProofStorage do
     Useful for dev, test, and self-hosters who don't want to run an S3
     server.
   - `WallopWeb.ProofStorage.S3` — writes to any S3-compatible object
-    store (Railway volumes, AWS S3, Cloudflare R2, MinIO). Configured
-    via `AWS_*` env vars in production.
+    store (AWS S3, Cloudflare R2, MinIO, etc.). Configured via `AWS_*`
+    env vars in production.
 
   The backend is chosen via application config at startup:
 

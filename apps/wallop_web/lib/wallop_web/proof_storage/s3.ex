@@ -2,8 +2,8 @@ defmodule WallopWeb.ProofStorage.S3 do
   @moduledoc """
   S3-compatible backend for `WallopWeb.ProofStorage`.
 
-  Works against any S3-compatible endpoint: Railway volumes, AWS S3,
-  Cloudflare R2, MinIO. Configure via application env and the `AWS_*`
+  Works against any S3-compatible endpoint: AWS S3, Cloudflare R2,
+  MinIO, and similar. Configure via application env and the `AWS_*`
   env vars picked up by `ex_aws` in `runtime.exs`.
   """
   @behaviour WallopWeb.ProofStorage

@@ -51,11 +51,10 @@ defmodule WallopWeb.ProofPdfControllerTest do
 
       # Force the draw into a terminal state via direct SQL. The
       # immutability trigger forbids awaiting_entropy → completed
-      # directly (PAM-670 closed that transition), so we bypass the
-      # trigger with session_replication_role = replica for this one
-      # test-only UPDATE. session_replication_role is a session-level
-      # setting, so both statements must run on the same connection —
-      # wrapping in a transaction guarantees that.
+      # directly, so we bypass the trigger with session_replication_role
+      # = replica for this one test-only UPDATE. session_replication_role
+      # is a session-level setting, so both statements must run on the
+      # same connection — wrapping in a transaction guarantees that.
       WallopCore.Repo.transaction(fn ->
         WallopCore.Repo.query!("SET LOCAL session_replication_role = 'replica'")
 

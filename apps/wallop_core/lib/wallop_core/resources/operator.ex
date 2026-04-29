@@ -98,14 +98,14 @@ defmodule WallopCore.Resources.Operator do
     end
 
     # Operator creation is admin-only — must go through `mix wallop.gen.operator`
-    # or another bootstrap path with `authorize?: false`. PAM-688: without this,
+    # or another bootstrap path with `authorize?: false`. Without this policy,
     # anyone could squat slugs or create rogue operators.
     policy action(:create) do
       forbid_if(always())
     end
 
     # Only an api_key belonging to an operator can rename that operator. Other
-    # admin paths must use `authorize?: false`. PAM-688: without this, anyone
+    # admin paths must use `authorize?: false`. Without this policy, anyone
     # could rename any operator.
     policy action(:update_name) do
       forbid_unless(actor_present())

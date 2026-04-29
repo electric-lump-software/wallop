@@ -5,8 +5,9 @@ defmodule WallopCore.Resources.SandboxDraw.Changes.ExecuteWithSandboxSeed do
   same transaction the row is created in.
 
   There is no separate execute action. Sandbox draws are born complete —
-  the attack surface in PAM-670 was precisely the window between "create"
-  and "execute" that real draws have. Sandbox has no such window.
+  the attack surface the previous design exposed was precisely the window
+  between "create" and "execute" that real draws have. Sandbox has no
+  such window.
   """
   use Ash.Resource.Change
 

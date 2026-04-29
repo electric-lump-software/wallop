@@ -37,8 +37,8 @@ defmodule WallopCore.Resources.OperatorSigningKey do
     end
 
     # Creation must go through internal bootstrap code (mix wallop.gen.operator,
-    # admin endpoints) with `authorize?: false`. PAM-686: without this policy,
-    # any caller could substitute an operator's signing key.
+    # admin endpoints) with `authorize?: false`. Without this policy, any
+    # caller could substitute an operator's signing key.
     policy action(:create) do
       forbid_if(always())
     end

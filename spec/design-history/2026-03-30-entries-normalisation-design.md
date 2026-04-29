@@ -63,7 +63,7 @@ Returns entries sorted by `entry_id` (matching the hash computation order). This
 
 No change to the protocol. `LockDraw` queries all entries from the table, converts to the atom-keyed format, and passes them to `Protocol.entry_hash/1` which sorts by `id` and computes `SHA-256(JCS(entries))`.
 
-For the initial implementation, all entries are loaded into memory for hashing. At 1M entries (~50MB), this is manageable. Streaming hash computation can be added later (see PAM-435) without changing the canonical format.
+For the initial implementation, all entries are loaded into memory for hashing. At 1M entries (~50MB), this is manageable. Streaming hash computation can be added later without changing the canonical format.
 
 ### Concurrency: row-level locking
 
@@ -209,7 +209,7 @@ If we later need full-text search on entry IDs or more exotic indexing, `pg_trgm
 - `entry_count` on draw
 - Tests for all of the above
 
-**Out of scope (see PAM-435):**
+**Out of scope:**
 - Bulk entry download endpoint for verification
 - Streaming hash computation for very large draws
 - Entry count denormalisation trade-offs

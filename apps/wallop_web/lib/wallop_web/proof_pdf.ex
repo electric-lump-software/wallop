@@ -13,9 +13,9 @@ defmodule WallopWeb.ProofPdf do
   and returns the bytes. Subsequent requests are served from the cache
   via `WallopWeb.ProofStorage.get/1`.
 
-  Gotenberg runs as a separate Railway service (or `docker run` locally).
-  wallop reaches it via `GOTENBERG_URL` (e.g.
-  `http://gotenberg.railway.internal:3000`) on the internal network.
+  Gotenberg runs as a separate sidecar service (or `docker run` locally).
+  wallop reaches it via `GOTENBERG_URL` on the internal network (port
+  3000 by default).
   """
 
   require Logger

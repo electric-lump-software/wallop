@@ -2,7 +2,7 @@ defmodule WallopCore.Resources.SandboxDraw do
   @moduledoc """
   A dev/test "try it out" draw executed against a publicly-known seed.
 
-  Sandbox draws are structurally separate from real draws (see PAM-670):
+  Sandbox draws are structurally separate from real draws:
 
   - Own table (`sandbox_draws`), own primary key, no foreign key to `draws`
   - No `operator_sequence` — sandbox draws are NOT part of the operator's
