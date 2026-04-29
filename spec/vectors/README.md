@@ -49,3 +49,7 @@ the current protocol.
 
 - `merkle-root.json` — Merkle construction `sha256-pairwise-v1` (0x00 leaf prefix, 0x01 node prefix, Bitcoin-style odd-level duplication, empty-list sentinel `SHA-256(<<>>)`)
 - `anchor-root.json` — dual sub-tree combined root (`SHA-256("wallop-anchor-v1" || op_root || exec_root)`)
+
+### Keyring pin
+
+- `pin/v1/valid.json` — signed keyring pin (§4.2.4): JCS pre-image, 14-byte domain separator (`wallop-pin-v1\n`), Ed25519 signature, and a one-byte-mutation negative case

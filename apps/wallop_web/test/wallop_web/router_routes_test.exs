@@ -50,6 +50,7 @@ defmodule WallopWeb.RouterRoutesTest do
     {:get, "/operator/:slug/executions/:sequence"},
     {:get, "/operator/:slug/key"},
     {:get, "/operator/:slug/keys"},
+    {:get, "/operator/:slug/keyring-pin.json"},
     {:get, "/operator/:slug/receipts"},
     {:get, "/operator/:slug/receipts/:sequence"},
     {:get, "/proof/:id"},

@@ -3,6 +3,9 @@ defmodule WallopWeb.OperatorControllerTest do
 
   import WallopCore.TestHelpers
 
+  require Ash.Query
+  alias WallopCore.Protocol.Pin
+
   describe "GET /operator/:slug/keys" do
     test "returns 404 for an unknown slug", %{conn: conn} do
       response =
@@ -120,5 +123,162 @@ defmodule WallopWeb.OperatorControllerTest do
              "spec §4.2.4 row is closed-set; got #{inspect(actual_row_keys)}, " <>
                "expected [\"inserted_at\", \"key_class\", \"key_id\", \"public_key_hex\"]"
     end
+  end
+
+  describe "GET /operator/:slug/keyring-pin.json" do
+    test "returns 404 for an unknown slug", %{conn: conn} do
+      ensure_infrastructure_key()
+
+      response =
+        conn
+        |> get("/operator/does-not-exist/keyring-pin.json")
+        |> json_response(404)
+
+      assert response == %{"error" => "not found"}
+    end
+
+    test "returns a valid signed pin envelope", %{conn: conn} do
+      operator = create_operator("pin-roundtrip")
+      infra_key = ensure_get_infrastructure_key()
+
+      response =
+        conn
+        |> get("/operator/#{operator.slug}/keyring-pin.json")
+        |> json_response(200)
+
+      assert response["schema_version"] == "1"
+      assert response["operator_slug"] == to_string(operator.slug)
+      assert is_list(response["keys"])
+      assert response["keys"] != []
+      assert is_binary(response["published_at"])
+      assert is_binary(response["infrastructure_signature"])
+
+      # Reconstruct the pre-image per spec §4.2.4 verifier obligation:
+      # parse, drop infrastructure_signature, JCS-canonicalise.
+      preimage =
+        response
+        |> Map.delete("infrastructure_signature")
+        |> Jcs.encode()
+
+      sig = Base.decode16!(response["infrastructure_signature"], case: :lower)
+
+      assert Pin.verify(preimage, sig, infra_key.public_key),
+             "Ed25519 signature MUST verify against the infrastructure public key " <>
+               "with the wallop-pin-v1 domain separator prepended"
+    end
+
+    test "envelope is closed-set under schema_version 1", %{conn: conn} do
+      # Spec §4.2.4 pin shape is exactly five top-level fields. Any extra
+      # field on the wire breaks third-party verifier conformance and is
+      # subject to the same closed-set discipline as the keys-list endpoint.
+      operator = create_operator("pin-closed-set")
+      ensure_infrastructure_key()
+
+      response =
+        conn
+        |> get("/operator/#{operator.slug}/keyring-pin.json")
+        |> json_response(200)
+
+      actual_top_level_keys = response |> Map.keys() |> Enum.sort()
+
+      assert actual_top_level_keys ==
+               [
+                 "infrastructure_signature",
+                 "keys",
+                 "operator_slug",
+                 "published_at",
+                 "schema_version"
+               ],
+             "spec §4.2.4 pin envelope is closed-set under schema_version=1; " <>
+               "got #{inspect(actual_top_level_keys)}"
+
+      [first_row | _] = response["keys"]
+      actual_row_keys = first_row |> Map.keys() |> Enum.sort()
+
+      assert actual_row_keys == ["key_class", "key_id", "public_key_hex"],
+             "spec §4.2.4 pin row is closed-set; got #{inspect(actual_row_keys)}, " <>
+               "expected [\"key_class\", \"key_id\", \"public_key_hex\"]"
+    end
+
+    test "every keys[] row is operator-class only", %{conn: conn} do
+      operator = create_operator("pin-class")
+      ensure_infrastructure_key()
+
+      response =
+        conn
+        |> get("/operator/#{operator.slug}/keyring-pin.json")
+        |> json_response(200)
+
+      Enum.each(response["keys"], fn row ->
+        assert row["key_class"] == "operator"
+      end)
+    end
+
+    test "keys[] is sorted ascending by key_id (byte-order, lowercase hex)", %{conn: conn} do
+      operator = create_operator("pin-sort")
+      ensure_infrastructure_key()
+
+      # Mint two extra operator keys so sort order is non-trivially observable.
+      add_extra_operator_key(operator)
+      add_extra_operator_key(operator)
+
+      response =
+        conn
+        |> get("/operator/#{operator.slug}/keyring-pin.json")
+        |> json_response(200)
+
+      key_ids = Enum.map(response["keys"], & &1["key_id"])
+      assert key_ids == Enum.sort(key_ids), "keys[] must be sorted ascending by key_id"
+    end
+
+    test "published_at matches the spec §4.2.1 canonical RFC 3339 form", %{conn: conn} do
+      operator = create_operator("pin-timestamp")
+      ensure_infrastructure_key()
+
+      response =
+        conn
+        |> get("/operator/#{operator.slug}/keyring-pin.json")
+        |> json_response(200)
+
+      canonical = ~r/\A\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{6}Z\z/
+      assert response["published_at"] =~ canonical
+    end
+
+    test "Cache-Control header is public, max-age=60", %{conn: conn} do
+      operator = create_operator("pin-cache")
+      ensure_infrastructure_key()
+
+      conn = get(conn, "/operator/#{operator.slug}/keyring-pin.json")
+      assert get_resp_header(conn, "cache-control") == ["public, max-age=60"]
+    end
+  end
+
+  defp ensure_get_infrastructure_key do
+    ensure_infrastructure_key()
+
+    [key] =
+      WallopCore.Resources.InfrastructureSigningKey
+      |> Ash.Query.sort(valid_from: :desc)
+      |> Ash.Query.limit(1)
+      |> Ash.read!(authorize?: false)
+
+    key
+  end
+
+  defp add_extra_operator_key(operator) do
+    {public_key, private_key} = :crypto.generate_key(:eddsa, :ed25519)
+    key_id = WallopCore.Protocol.key_id(public_key)
+    {:ok, encrypted} = WallopCore.Vault.encrypt(private_key)
+
+    {:ok, _} =
+      WallopCore.Resources.OperatorSigningKey
+      |> Ash.Changeset.for_create(:create, %{
+        operator_id: operator.id,
+        key_id: key_id,
+        public_key: public_key,
+        private_key: encrypted,
+        valid_from: DateTime.add(DateTime.utc_now(), -1, :second)
+      })
+      |> Ash.create(authorize?: false)
   end
 end
