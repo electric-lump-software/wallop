@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### wallop_core 0.21.0 — scope correction: `/operator/:slug/keys` removes the `operator` block
+
+**BREAKING.** The `/operator/:slug/keys` response no longer includes a top-level `operator` block. The new shape is the spec §4.2.4 canonical envelope and nothing else:
+
+```json
+{
+  "schema_version": "1",
+  "keys": [
+    { "key_id": "...", "public_key_hex": "...", "inserted_at": "...", "key_class": "operator" }
+  ]
+}
+```
+
+**Why now.** The `operator` block was a wallop-side friendly extension predating the spec freeze: `{id, name, slug}`. None of those fields are load-bearing for `winner = fair_pick(entries, seed)` or for trust-root key resolution. They are operator-identity decoration that belongs above the verifier protocol surface, not on a signed-key endpoint.
+
+A live smoke test against `wallop_verifier 0.15.0` (which adds `#[serde(deny_unknown_fields)]` to `KeysResponse` per spec §4.2.4 closed-set discipline) caught the divergence: the verifier rejects the operator response as `MalformedResponse` because of the extra envelope field. Loosening the verifier would have re-opened the wire-drift hole the closed-set rule explicitly closes; codifying the friendly extension into the spec would have baked operator-identity decoration into the protocol surface forever. Both alternatives lose the discipline. Removing the field on the producer side is the only fix that preserves it.
+
+**Precedent.** Same shape as the `operator_ref` deletion in v0.16.0 and the v0.17.0 ticket-manifest reversal: surface area on a protocol endpoint is non-negotiable, even when the extra field looks harmless. Each one was caught and removed because allowing the friendly extension would have walked the protocol toward operator-identity / ticketing concerns the goals (1, 4, 5) tell us belong above wallop. This is the same trap dressed differently.
+
+**Migration.** Consumers needing operator metadata should use `GET /operator/:slug` (the LiveView page; unsigned, free to evolve). The verifier endpoint remains minimal.
+
+**Spec text tightened.** §4.2.4 now states the envelope is closed-set under `schema_version: "1"` explicitly: "The response object MUST contain exactly the top-level members `schema_version` and `keys`, and no others." Without this sentence the closed-set rule was implicit; the next reviewer hits the same trap.
+
+**Server-side regression test.** Both `/operator/:slug/keys` and `/infrastructure/keys` now have a controller test pinning the envelope to exactly `{schema_version, keys}` and the row to exactly `{key_id, public_key_hex, inserted_at, key_class}`. The next friendly extension fails CI before it reaches a smoke test.
+
 ### wallop_core 0.20.0 — `/infrastructure/keys` JSON endpoint + `schema_version` on `/operator/:slug/keys`
 
 Adds the JSON keys-list endpoint for infrastructure signing keys, mirroring the existing `/operator/:slug/keys` shape. Resolver-driven verifiers (the forthcoming `EndpointResolver` and `PinnedResolver` in `wallop_verifier`) consume both endpoints to look up infrastructure keys for execution-receipt verification.
