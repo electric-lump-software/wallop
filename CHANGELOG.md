@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### wallop_core 0.22.0 — signed keyring pin producer (§4.2.4)
+
+**ADDED.** Producer-side implementation of tier-1 attributable verification per spec §4.2.4. New endpoint, new module, new cross-language conformance vector.
+
+- New endpoint: `GET /operator/:slug/keyring-pin.json` — unauth'd, public, lazy-signed per request from the current keyring snapshot. `Cache-Control: public, max-age=60`. Returns 404 for unknown slug, no operator keys yet, or no infrastructure key bootstrapped (all "outside attributable mode" per spec). Returns 503 on Vault decrypt or keyring-row inconsistency (genuine outage).
+- New module: `WallopCore.Protocol.Pin`. Sibling to `WallopCore.Protocol`, separate canonical-bytes producer for the pin envelope. Public surface: `schema_version/0`, `domain_separator/0` (the frozen 14-byte `"wallop-pin-v1\n"`), `build_payload/1`, `sign/2`, `verify/3`, `build_envelope/2`. Producer obligations enforced at the module boundary: `keys[]` non-empty, sorted ascending by `key_id`, `key_class == "operator"` on every row, no duplicate `key_id`s.
+- New cross-language conformance vector: `spec/vectors/pin/v1/valid.json`. Deterministic Ed25519 keypair, three operator keys, full signed envelope, JCS pre-image bytes, and four negative cases (one-byte preimage mutation, signature-byte mutation, wrong key, domain-separator-omitted) so a re-implementer cannot pass a broken consumer-side flow.
+
+The verifier-side consumer (`PinnedResolver` in `wallop_verifier`) lands separately and consumes this vector via the existing `vendor/wallop` submodule pin. No protocol-level wire change beyond what §4.2.4 already specified — this is the implementation that was pinned to the spec text in v0.21.0's release.
+
 ### wallop_core 0.21.0 — scope correction: `/operator/:slug/keys` removes the `operator` block
 
 **BREAKING.** The `/operator/:slug/keys` response no longer includes a top-level `operator` block. The new shape is the spec §4.2.4 canonical envelope and nothing else:

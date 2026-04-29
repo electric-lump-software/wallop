@@ -11,7 +11,18 @@ defmodule WallopWeb.OperatorController do
 
   require Ash.Query
 
-  alias WallopCore.Resources.{ExecutionReceipt, Operator, OperatorReceipt, OperatorSigningKey}
+  alias WallopCore.Protocol
+  alias WallopCore.Protocol.Pin
+
+  alias WallopCore.Resources.{
+    ExecutionReceipt,
+    InfrastructureSigningKey,
+    Operator,
+    OperatorReceipt,
+    OperatorSigningKey
+  }
+
+  alias WallopCore.Vault
 
   # Schema version for the JSON keys-list response shape (spec §4.2.4).
   # A bump here is a wire-contract change for resolver-driven verifiers
@@ -128,6 +139,65 @@ defmodule WallopWeb.OperatorController do
     end
   end
 
+  def keyring_pin(conn, %{"slug" => slug}) do
+    # Snapshot semantics: `list_keys/1` and `load_current_infra_key/0` are
+    # not in a single transaction. Between them, an operator-key rotation
+    # could insert a row that this snapshot misses; the resulting pin
+    # commits to a slightly stale keyring. Verifier rule is
+    # `key.inserted_at <= receipt.binding_timestamp`, which is a strictly
+    # stronger relation than `<= pin.published_at`, so this is not a
+    # soundness break — only an availability/freshness window bounded
+    # by the 60-second cache. Acceptable for 1.0; document over silence.
+    with {:ok, operator} <- load_operator(slug),
+         keys when keys != [] <- list_keys(operator.id),
+         {:ok, infra_key} <- load_current_infra_key(),
+         {:ok, private_key} <- decrypt_private_key(infra_key.private_key),
+         # Defence-in-depth, not load-bearing for the wire artefact:
+         # catches a corrupted in-memory key (truncated bytes after
+         # Vault decrypt) or a row whose stored `key_id` no longer
+         # matches its public key. A forged signature would fail the
+         # verifier-side signature step regardless; this guard prevents
+         # *publishing* an envelope that nobody can verify.
+         :ok <-
+           Protocol.assert_key_consistency(
+             infra_key.public_key,
+             private_key,
+             infra_key.key_id
+           ) do
+      published_at = DateTime.utc_now()
+
+      keyring_rows =
+        Enum.map(keys, fn k -> %{key_id: k.key_id, public_key: k.public_key} end)
+
+      {payload_jcs, envelope} =
+        Pin.build_payload(%{
+          operator_slug: to_string(operator.slug),
+          keys: keyring_rows,
+          published_at: published_at
+        })
+
+      signature = Pin.sign(payload_jcs, private_key)
+      wire = Pin.build_envelope(envelope, signature)
+
+      conn
+      |> put_resp_header("cache-control", "public, max-age=60")
+      |> json(wire)
+    else
+      # No operator with that slug, or operator has zero signing keys
+      # yet (greenfield). Both are "outside attributable mode" per
+      # spec §4.2.4 — surface as 404 (pin not available), not 503.
+      :error -> not_found(conn)
+      [] -> not_found(conn)
+      # No infrastructure key bootstrapped yet. Same shape as above:
+      # this is a deployment-not-yet-configured state, not an outage.
+      {:error, :no_infra_key} -> not_found(conn)
+      # Vault decrypt failure or keyring-row inconsistency — these
+      # ARE outages. The deployment thinks it has a key but cannot
+      # produce signed bytes from it.
+      {:error, _} -> conn |> send_resp(503, "") |> halt()
+    end
+  end
+
   def executions_index(conn, %{"slug" => slug}) do
     case load_operator(slug) do
       {:ok, operator} ->
@@ -210,6 +280,32 @@ defmodule WallopWeb.OperatorController do
     |> Ash.Query.filter(operator_id == ^operator_id)
     |> Ash.Query.sort(valid_from: :asc)
     |> Ash.read!(authorize?: false)
+  end
+
+  # Pin-signing helpers. The pin endpoint signs lazily on each request
+  # using the wallop infrastructure key, then serves the signed bytes
+  # with `Cache-Control: public, max-age=60`. No persistent
+  # `KeyringPin` resource — the keyring is the source of truth.
+  defp load_current_infra_key do
+    now = DateTime.utc_now()
+
+    InfrastructureSigningKey
+    |> Ash.Query.filter(valid_from <= ^now)
+    |> Ash.Query.sort(valid_from: :desc)
+    |> Ash.Query.limit(1)
+    |> Ash.read(authorize?: false)
+    |> case do
+      {:ok, [key]} -> {:ok, key}
+      {:ok, []} -> {:error, :no_infra_key}
+      {:error, e} -> {:error, e}
+    end
+  end
+
+  defp decrypt_private_key(encrypted) do
+    case Vault.decrypt(encrypted) do
+      {:ok, raw} -> {:ok, raw}
+      {:error, e} -> {:error, e}
+    end
   end
 
   defp list_execution_receipts(operator_id) do

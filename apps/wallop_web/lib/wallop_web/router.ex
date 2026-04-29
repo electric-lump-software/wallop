@@ -80,6 +80,7 @@ defmodule WallopWeb.Router do
     get("/:slug/executions/:sequence", OperatorController, :execution_show)
     get("/:slug/keys", OperatorController, :keys_index)
     get("/:slug/key", OperatorController, :key_pub)
+    get("/:slug/keyring-pin.json", OperatorController, :keyring_pin)
   end
 
   if Mix.env() == :dev do
