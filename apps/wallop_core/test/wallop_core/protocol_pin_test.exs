@@ -1,12 +1,9 @@
 defmodule WallopCore.ProtocolPinTest do
   use ExUnit.Case, async: true
 
-  alias WallopCore.Protocol.Pin
+  import Bitwise
 
-  # Deterministic 32-byte test private key. Public/key_id derived
-  # from it. NOT a real wallop infrastructure key.
-  @test_private_key :crypto.hash(:sha256, "wallop-pin-test-private-seed")
-  @test_public_key :crypto.generate_key(:eddsa, :ed25519, @test_private_key) |> elem(0)
+  alias WallopCore.Protocol.Pin
 
   @published_at ~U[2026-04-29T19:36:58.252939Z]
 
@@ -24,6 +21,13 @@ defmodule WallopCore.ProtocolPinTest do
       public_key: :crypto.hash(:sha256, "operator-key-3") |> binary_part(0, 32)
     }
   ]
+
+  # Deterministic test keypair. NOT a real wallop infrastructure key.
+  setup_all do
+    private_key = :crypto.hash(:sha256, "wallop-pin-test-private-seed")
+    {public_key, ^private_key} = :crypto.generate_key(:eddsa, :ed25519, private_key)
+    {:ok, private_key: private_key, public_key: public_key}
+  end
 
   describe "constants" do
     test "schema_version is the literal string '1'" do
@@ -121,6 +125,22 @@ defmodule WallopCore.ProtocolPinTest do
       end
     end
 
+    test "raises on duplicate key_id (corrupt keyring)" do
+      pk = :crypto.hash(:sha256, "k") |> binary_part(0, 32)
+      pk2 = :crypto.hash(:sha256, "k2") |> binary_part(0, 32)
+
+      assert_raise ArgumentError, ~r/duplicate key_id/, fn ->
+        Pin.build_payload(%{
+          operator_slug: "acme-prizes",
+          keys: [
+            %{key_id: "deadbeef", public_key: pk},
+            %{key_id: "deadbeef", public_key: pk2}
+          ],
+          published_at: @published_at
+        })
+      end
+    end
+
     test "produces byte-identical JCS for the same input regardless of map order" do
       same_keys_diff_order =
         Enum.map(@keys, fn k ->
@@ -148,7 +168,10 @@ defmodule WallopCore.ProtocolPinTest do
   end
 
   describe "sign/2 and verify/3" do
-    test "round-trip succeeds with the matching public key" do
+    test "round-trip succeeds with the matching public key", %{
+      private_key: private_key,
+      public_key: public_key
+    } do
       {jcs, _envelope} =
         Pin.build_payload(%{
           operator_slug: "acme-prizes",
@@ -156,12 +179,15 @@ defmodule WallopCore.ProtocolPinTest do
           published_at: @published_at
         })
 
-      sig = Pin.sign(jcs, @test_private_key)
+      sig = Pin.sign(jcs, private_key)
       assert byte_size(sig) == 64
-      assert Pin.verify(jcs, sig, @test_public_key)
+      assert Pin.verify(jcs, sig, public_key)
     end
 
-    test "verify rejects a one-byte mutation of the pre-image" do
+    test "verify rejects a one-byte mutation of the pre-image", %{
+      private_key: private_key,
+      public_key: public_key
+    } do
       {jcs, _envelope} =
         Pin.build_payload(%{
           operator_slug: "acme-prizes",
@@ -169,15 +195,15 @@ defmodule WallopCore.ProtocolPinTest do
           published_at: @published_at
         })
 
-      sig = Pin.sign(jcs, @test_private_key)
+      sig = Pin.sign(jcs, private_key)
 
       <<head::binary-size(10), b, tail::binary>> = jcs
       mutated = head <> <<bxor(b, 1)>> <> tail
 
-      refute Pin.verify(mutated, sig, @test_public_key)
+      refute Pin.verify(mutated, sig, public_key)
     end
 
-    test "verify rejects with a different public key" do
+    test "verify rejects with a different public key", %{private_key: private_key} do
       {jcs, _envelope} =
         Pin.build_payload(%{
           operator_slug: "acme-prizes",
@@ -185,7 +211,7 @@ defmodule WallopCore.ProtocolPinTest do
           published_at: @published_at
         })
 
-      sig = Pin.sign(jcs, @test_private_key)
+      sig = Pin.sign(jcs, private_key)
 
       other_priv = :crypto.hash(:sha256, "different-private-seed")
       {other_pub, _} = :crypto.generate_key(:eddsa, :ed25519, other_priv)
@@ -193,7 +219,8 @@ defmodule WallopCore.ProtocolPinTest do
       refute Pin.verify(jcs, sig, other_pub)
     end
 
-    test "domain separator is part of the signed bytes (raw JCS without prefix does NOT verify)" do
+    test "domain separator is part of the signed bytes (raw JCS without prefix does NOT verify)",
+         %{private_key: private_key, public_key: public_key} do
       {jcs, _envelope} =
         Pin.build_payload(%{
           operator_slug: "acme-prizes",
@@ -201,12 +228,12 @@ defmodule WallopCore.ProtocolPinTest do
           published_at: @published_at
         })
 
-      sig = Pin.sign(jcs, @test_private_key)
+      sig = Pin.sign(jcs, private_key)
 
       # Verify against the raw JCS WITHOUT the domain separator using
       # crypto directly. Should fail because sign() prepended the
       # separator.
-      refute :crypto.verify(:eddsa, :none, jcs, sig, [@test_public_key, :ed25519])
+      refute :crypto.verify(:eddsa, :none, jcs, sig, [public_key, :ed25519])
     end
   end
 
@@ -232,7 +259,8 @@ defmodule WallopCore.ProtocolPinTest do
   end
 
   describe "verifier-style pre-image reconstruction" do
-    test "stripping infrastructure_signature from a parsed envelope and re-canonicalising reproduces the signed bytes" do
+    test "stripping infrastructure_signature from a parsed envelope and re-canonicalising reproduces the signed bytes",
+         %{private_key: private_key, public_key: public_key} do
       {jcs, envelope} =
         Pin.build_payload(%{
           operator_slug: "acme-prizes",
@@ -240,7 +268,7 @@ defmodule WallopCore.ProtocolPinTest do
           published_at: @published_at
         })
 
-      sig = Pin.sign(jcs, @test_private_key)
+      sig = Pin.sign(jcs, private_key)
       wire = Pin.build_envelope(envelope, sig)
 
       # Round-trip through JSON to mimic a verifier parsing the wire
@@ -249,9 +277,7 @@ defmodule WallopCore.ProtocolPinTest do
       reconstructed = Map.delete(parsed, "infrastructure_signature") |> Jcs.encode()
 
       assert reconstructed == jcs
-      assert Pin.verify(reconstructed, sig, @test_public_key)
+      assert Pin.verify(reconstructed, sig, public_key)
     end
   end
-
-  defp bxor(a, b), do: Bitwise.bxor(a, b)
 end

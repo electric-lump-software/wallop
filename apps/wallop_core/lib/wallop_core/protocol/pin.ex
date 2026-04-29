@@ -10,7 +10,7 @@ defmodule WallopCore.Protocol.Pin do
 
   This module is the canonical-bytes producer. It does not load anything
   from the database; callers pass in the keyring rows and the signing
-  key. The HTTP endpoint sits in `WallopWeb.OperatorController`.
+  key.
 
   ## Wire envelope
 
@@ -150,13 +150,20 @@ defmodule WallopCore.Protocol.Pin do
     Map.put(envelope, "infrastructure_signature", Base.encode16(signature, case: :lower))
   end
 
-  # Validate every keyring row, normalise to wire shape, sort ascending
-  # by key_id (ASCII byte-order, equivalent to lexicographic on lowercase
-  # hex per the §4.2.4 fingerprint rule).
+  # Validate every keyring row, normalise to wire shape, assert
+  # uniqueness on key_id, sort ascending (ASCII byte-order, equivalent
+  # to lexicographic on lowercase hex per the §4.2.4 fingerprint rule).
   defp serialise_keys(keys) do
-    keys
-    |> Enum.map(&serialise_key/1)
-    |> Enum.sort_by(& &1["key_id"])
+    serialised = Enum.map(keys, &serialise_key/1)
+    key_ids = Enum.map(serialised, & &1["key_id"])
+
+    if length(key_ids) != length(Enum.uniq(key_ids)) do
+      raise ArgumentError,
+            "Pin.build_payload: keys[] contains duplicate key_id (corrupt keyring); " <>
+              "got #{inspect(key_ids)}"
+    end
+
+    Enum.sort_by(serialised, & &1["key_id"])
   end
 
   defp serialise_key(%{key_id: key_id, public_key: public_key})

@@ -137,6 +137,43 @@ defmodule WallopWeb.OperatorControllerTest do
       assert response == %{"error" => "not found"}
     end
 
+    test "returns 404 (not 503) when the operator has no signing keys yet (greenfield)",
+         %{conn: conn} do
+      # Create an operator directly, WITHOUT minting a signing key.
+      # `create_operator/1` always seeds a key, so we go around it.
+      {:ok, operator} =
+        WallopCore.Resources.Operator
+        |> Ash.Changeset.for_create(:create, %{slug: "no-keys-yet", name: "Greenfield Op"})
+        |> Ash.create(authorize?: false)
+
+      ensure_infrastructure_key()
+
+      response =
+        conn
+        |> get("/operator/#{operator.slug}/keyring-pin.json")
+        |> json_response(404)
+
+      assert response == %{"error" => "not found"}
+    end
+
+    test "returns 404 (not 503) when no infrastructure key has been bootstrapped yet",
+         %{conn: conn} do
+      operator = create_operator("pin-no-infra-key")
+
+      # Forcibly delete any infrastructure keys that exist in the
+      # test sandbox so we can exercise the greenfield-no-infra path.
+      WallopCore.Resources.InfrastructureSigningKey
+      |> Ash.read!(authorize?: false)
+      |> Enum.each(&Ash.destroy!(&1, authorize?: false))
+
+      response =
+        conn
+        |> get("/operator/#{operator.slug}/keyring-pin.json")
+        |> json_response(404)
+
+      assert response == %{"error" => "not found"}
+    end
+
     test "returns a valid signed pin envelope", %{conn: conn} do
       operator = create_operator("pin-roundtrip")
       infra_key = ensure_get_infrastructure_key()
