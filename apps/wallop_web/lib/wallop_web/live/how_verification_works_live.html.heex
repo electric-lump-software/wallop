@@ -155,11 +155,11 @@
             </div>
           </div>
           <p class="text-sm text-[#555] leading-relaxed mb-4">
-            Both receipts are published permanently. Every draw gets a gap-free sequence number
+            Both receipts are published permanently. Every draw gets a sequence number
             on the operator&#39;s
             <a href="https://wallop.run/operator/daves-demo-draws" target="_blank" rel="noopener" class="underline decoration-[#ccc] hover:decoration-[#1a1a1a]">public page</a>
-            — completed, failed, or abandoned. Nothing disappears. Discard a draw and the gap
-            in the sequence tells the story. The
+            — completed, failed, or abandoned. Nothing disappears. Discarded draws keep their slot
+            and publicly show as discarded. The
             <a href="https://wallop.run/transparency" class="underline decoration-[#ccc] hover:decoration-[#1a1a1a]">transparency log</a>
             pins daily Merkle roots across all operators, anchored to drand.
           </p>
@@ -185,36 +185,48 @@
         Pick whichever suits you.
       </p>
 
-      <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div class="p-6 rounded-xl border border-cream-border bg-white">
-          <h3 class="text-sm font-bold mb-2">In your browser</h3>
-          <p class="text-xs text-[#555] leading-relaxed mb-3">
-            Every proof page has a &#34;Verify independently&#34; button. It downloads the
-            Rust verifier as WebAssembly and reruns every check — entry hash, seed derivation,
-            algorithm, receipt signatures, chain integrity — right in your browser.
-          </p>
-          <p class="text-xs text-[#777] italic">
-            No server round-trip. No trust required.
-          </p>
+      <div class="flex flex-col gap-4">
+        <div class="p-6 rounded-xl border border-cream-border bg-white flex gap-6">
+          <div class="w-9 h-9 rounded-full bg-[#1a1a1a] text-white flex items-center justify-center text-sm font-bold shrink-0">1</div>
+          <div class="flex-1 min-w-0">
+            <h3 class="text-sm font-bold mb-2">In your browser</h3>
+            <p class="text-sm text-[#555] leading-relaxed mb-3">
+              Every proof page has a &#34;Verify independently&#34; button. It downloads the
+              Rust verifier as WebAssembly and reruns every check — entry hash, seed derivation,
+              algorithm, receipt signatures, chain integrity — right in your browser.
+            </p>
+            <p class="text-sm text-[#777] italic">
+              Open code. Your machine. Your call.
+            </p>
+          </div>
         </div>
-        <div class="p-6 rounded-xl border border-cream-border bg-white">
-          <h3 class="text-sm font-bold mb-2">With the CLI</h3>
-          <p class="text-xs text-[#555] leading-relaxed mb-3">
-            Download the
-            <a href="https://github.com/electric-lump-software/wallop-verifier" target="_blank" rel="noopener" class="underline decoration-[#ccc] hover:decoration-[#1a1a1a]">wallop-verify</a>
-            command-line tool. Point it at a proof bundle JSON file and it runs every verification
-            step, including BLS signature verification on the drand beacon value.
-          </p>
-          <code class="inline-block font-mono text-[10px] text-[#999] bg-cream-dark px-2 py-1 rounded">wallop-verify proof-bundle.json</code>
+        <div class="p-6 rounded-xl border border-cream-border bg-white flex gap-6">
+          <div class="w-9 h-9 rounded-full bg-[#1a1a1a] text-white flex items-center justify-center text-sm font-bold shrink-0">2</div>
+          <div class="flex-1 min-w-0">
+            <h3 class="text-sm font-bold mb-2">With the CLI</h3>
+            <p class="text-sm text-[#555] leading-relaxed mb-3">
+              Install
+              <a href="https://crates.io/crates/wallop_verifier" target="_blank" rel="noopener" class="underline decoration-[#ccc] hover:decoration-[#1a1a1a]">wallop_verifier</a>
+              from crates.io. Point it at a proof bundle JSON file and it runs every verification
+              step, including BLS signature verification on the drand beacon value and direct key
+              resolution from the operator&#39;s published endpoints.
+            </p>
+            <pre class="bg-[#1a1a1a] text-[#e2e8f0] p-3 rounded font-mono text-[11px] leading-[1.8] overflow-x-auto"><span class="text-[#777]">$</span> cargo install wallop_verifier
+<span class="text-[#777]">$</span> wallop-verify proof-bundle.json</pre>
+          </div>
         </div>
-        <div class="p-6 rounded-xl border border-cream-border bg-white">
-          <h3 class="text-sm font-bold mb-2">From the JSON</h3>
-          <p class="text-xs text-[#555] leading-relaxed mb-3">
-            Every proof page has a JSON endpoint. Download the bundle, read the inputs, and
-            replay the draw yourself using fair_pick in any language. The algorithm is
-            deterministic — same inputs, same winners, every time.
-          </p>
-          <code class="inline-block font-mono text-[10px] text-[#999] bg-cream-dark px-2 py-1 rounded">GET /proof/:id/json</code>
+        <div class="p-6 rounded-xl border border-cream-border bg-white flex gap-6">
+          <div class="w-9 h-9 rounded-full bg-[#1a1a1a] text-white flex items-center justify-center text-sm font-bold shrink-0">3</div>
+          <div class="flex-1 min-w-0">
+            <h3 class="text-sm font-bold mb-2">From the JSON</h3>
+            <p class="text-sm text-[#555] leading-relaxed mb-3">
+              Every proof page has a JSON endpoint. Download the bundle, read the inputs, and
+              replay the draw yourself using
+              <a href="https://github.com/search?q=org%3Aelectric-lump-software+fair_pick&type=repositories" target="_blank" rel="noopener" class="font-mono text-xs underline decoration-[#ccc] hover:decoration-[#1a1a1a]">fair_pick</a>
+              in any language. The algorithm is deterministic — same inputs, same winners, every time.
+            </p>
+            <code class="inline-block font-mono text-xs text-[#999] bg-cream-dark px-2 py-1 rounded">GET /proof/:id/json</code>
+          </div>
         </div>
       </div>
     </div>
@@ -270,15 +282,31 @@
   </section>
 
   <%!-- FOOTER --%>
-  <footer class="flex flex-col md:flex-row md:items-center md:justify-between gap-4 px-6 md:px-12 py-8 border-t border-cream-border bg-cream">
-    <div class="flex flex-wrap gap-4 md:gap-6">
-      <a href={~p"/"} class="text-xs text-[#999] hover:text-[#555]">Home</a>
-      <a href="/api/docs" class="text-xs text-[#999] hover:text-[#555]">API docs</a>
-      <a href="/api/open_api" class="text-xs text-[#999] hover:text-[#555]">OpenAPI</a>
-      <a href="https://nether.wallop.run/legal/privacy" class="text-xs text-[#999] hover:text-[#555]">Privacy</a>
-      <a href="https://nether.wallop.run/legal/terms" class="text-xs text-[#999] hover:text-[#555]">Terms</a>
+  <footer class="px-6 md:px-12 py-10 border-t border-cream-border bg-cream">
+    <div class="grid grid-cols-2 md:grid-cols-3 gap-8 md:gap-12 mb-8">
+      <div>
+        <h4 class="text-[10px] font-bold tracking-[2px] uppercase text-[#aaa] mb-3">Product</h4>
+        <ul class="flex flex-col gap-2">
+          <li><a href={~p"/"} class="text-xs text-[#999] hover:text-[#555]">Home</a></li>
+          <li><a href="/transparency" class="text-xs text-[#999] hover:text-[#555]">Transparency log</a></li>
+        </ul>
+      </div>
+      <div>
+        <h4 class="text-[10px] font-bold tracking-[2px] uppercase text-[#aaa] mb-3">Developers</h4>
+        <ul class="flex flex-col gap-2">
+          <li><a href="/api/docs" class="text-xs text-[#999] hover:text-[#555]">API docs</a></li>
+          <li><a href="/api/open_api" class="text-xs text-[#999] hover:text-[#555]">OpenAPI</a></li>
+        </ul>
+      </div>
+      <div>
+        <h4 class="text-[10px] font-bold tracking-[2px] uppercase text-[#aaa] mb-3">Legal</h4>
+        <ul class="flex flex-col gap-2">
+          <li><a href="https://nether.wallop.run/legal/privacy" class="text-xs text-[#999] hover:text-[#555]">Privacy</a></li>
+          <li><a href="https://nether.wallop.run/legal/terms" class="text-xs text-[#999] hover:text-[#555]">Terms</a></li>
+        </ul>
+      </div>
     </div>
-    <p class="text-xs text-[#bbb]">
+    <p class="text-xs text-[#bbb] pt-6 border-t border-cream-border">
       &copy; 2026 Electric Lump Software &middot; Made in Britain
     </p>
   </footer>
