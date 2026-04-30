@@ -206,13 +206,22 @@
             <h3 class="text-sm font-bold mb-2">With the CLI</h3>
             <p class="text-sm text-[#555] leading-relaxed mb-3">
               Install
-              <a href="https://crates.io/crates/wallop_verifier" target="_blank" rel="noopener" class="underline decoration-[#ccc] hover:decoration-[#1a1a1a]">wallop_verifier</a>
-              from crates.io. Point it at a proof bundle JSON file and it runs every verification
-              step, including BLS signature verification on the drand beacon value and direct key
-              resolution from the operator&#39;s published endpoints.
+              <a href="https://crates.io/crates/wallop_verifier" target="_blank" rel="noopener" class="font-mono text-xs underline decoration-[#ccc] hover:decoration-[#1a1a1a]">wallop_verifier</a>
+              from crates.io and point it at a proof bundle. In
+              <strong>attributable mode</strong>, it proves that every key in the
+              draw&#39;s keyring was published by wallop&#39;s infrastructure under a
+              signing key whose fingerprint is compiled into the verifier you
+              installed. The trust decision happens at install time, not at verify
+              time. Trust comes from the signature, not the source.
             </p>
             <pre class="bg-[#1a1a1a] text-[#e2e8f0] p-3 rounded font-mono text-[11px] leading-[1.8] overflow-x-auto"><span class="text-[#777]">$</span> cargo install wallop_verifier
-<span class="text-[#777]">$</span> wallop-verify proof-bundle.json</pre>
+<span class="text-[#777]">$</span> wallop-verify --mode attributable \
+    --wallop-base-url https://wallop.run \
+    --pin-from-url https://wallop.run/operator/&lt;slug&gt;/keyring-pin.json \
+    proof-bundle.json</pre>
+            <p class="text-xs text-[#777] italic mt-3">
+              The trust root is the binary you installed, not the network you&#39;re talking to.
+            </p>
           </div>
         </div>
         <div class="p-6 rounded-xl border border-cream-border bg-white flex gap-6">
