@@ -53,3 +53,7 @@ the current protocol.
 ### Keyring pin
 
 - `pin/v1/valid.json` — signed keyring pin (§4.2.4): JCS pre-image, 14-byte domain separator (`wallop-pin-v1\n`), Ed25519 signature, and a one-byte-mutation negative case
+
+### Key rotation
+
+- `key-rotation-bidirectional.json` — operator key rotation (§4.2.4): two deterministic keypairs with non-overlapping active windows, two lock-receipt v5 payloads each signed by its corresponding key, and four cross-key verification cases (historical-receipt-with-original-key passes; new-receipt-with-new-key passes; both wrong-key cases fail). Pins `key_id` derivation byte-for-byte across implementations.
