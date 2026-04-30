@@ -1,0 +1,95 @@
+{
+  "description": "Bidirectional key rotation regression vector. Two operator signing keys with non-overlapping active windows; lock-receipt schema v5 (frozen at vector creation) payloads each signed by its corresponding key. Verification cases assert: pre-rotation receipt verifies with its original key (historical receipts remain valid forever per spec §4.2.4); post-rotation receipt verifies with the new key; cross-key verifications fail; Ed25519 verify itself has no forward lower bound (pipeline-level temporal binding is a separate enforcement layer). Used by both wallop_core (Elixir) and wallop_verifier (Rust) to confirm cross-language Ed25519 + JCS parity holds across rotation.",
+  "key_id_derivation": {
+    "checks": [
+      {
+        "expected_key_id": "1fdca419",
+        "public_key_hex": "7719deb012e72adc3299d9b5d293bab8afa677f3b7c7d4e8c6f6cddf2e76e344"
+      },
+      {
+        "expected_key_id": "1afef8ba",
+        "public_key_hex": "49fe73dbcb6b544befe8443cf4dbb255cf9bc2d86d8729aec5b300917857c006"
+      }
+    ],
+    "rule": "key_id is the first 4 bytes (8 lowercase hex chars) of SHA-256(public_key) per spec §4.2.4. This vector pins the rule across implementations: Elixir SHA-256 and Rust SHA-256 must produce byte-identical key_id values for the same public_key."
+  },
+  "keys": {
+    "op_key_post_rotation": {
+      "inserted_at": "2026-04-01T00:00:00.000000Z",
+      "key_id": "1afef8ba",
+      "note": "DETERMINISTIC TEST KEYPAIR — derived from the seed string \"wallop-key-rotation-vector-v1-post-rotation-seed\" via SHA-256. NOT a real operator signing key. Safe to publish; unsafe to trust for any production verification.",
+      "private_key_hex": "f4459aeab70dabb5a992065aa1e229d3061964bef0dbc00e2a70520a4285b3c1",
+      "public_key_hex": "49fe73dbcb6b544befe8443cf4dbb255cf9bc2d86d8729aec5b300917857c006"
+    },
+    "op_key_pre_rotation": {
+      "inserted_at": "2026-01-01T00:00:00.000000Z",
+      "key_id": "1fdca419",
+      "note": "DETERMINISTIC TEST KEYPAIR — derived from the seed string \"wallop-key-rotation-vector-v1-pre-rotation-seed\" via SHA-256. NOT a real operator signing key. Safe to publish; unsafe to trust for any production verification.",
+      "private_key_hex": "315d81c26dc6de49077b3325b6de631fddcce7a2178e66c17d8f641687d9d81b",
+      "public_key_hex": "7719deb012e72adc3299d9b5d293bab8afa677f3b7c7d4e8c6f6cddf2e76e344"
+    }
+  },
+  "payload_encoding": "JCS",
+  "receipts": {
+    "lock_backdated_post_key": {
+      "payload_jcs_hex": "7b22636f6d6d69746d656e745f68617368223a22393939222c226472616e645f636861696e223a22717569636b6e65742d636861696e2d68617368222c226472616e645f726f756e64223a31383030302c22647261775f6964223a2234343434343434342d343434342d343434342d343434342d343434343434343434343434222c22656e74726f70795f636f6d706f736974696f6e223a226472616e642d717569636b6e65742b6f70656e6d6574656f2d7631222c22656e7472795f68617368223a22393939222c22666169725f7069636b5f76657273696f6e223a22302e322e31222c226a63735f76657273696f6e223a227368613235362d6a63732d7631222c226c6f636b65645f6174223a22323032362d30332d31355431323a30303a30302e3030303030305a222c226f70657261746f725f6964223a2231313131313131312d313131312d313131312d313131312d313131313131313131313131222c226f70657261746f725f736c7567223a2261636d652d7072697a6573222c22736368656d615f76657273696f6e223a2235222c2273657175656e6365223a332c227369676e61747572655f616c676f726974686d223a2265643235353139222c227369676e696e675f6b65795f6964223a223161666566386261222c2277616c6c6f705f636f72655f76657273696f6e223a22302e32322e30222c22776561746865725f73746174696f6e223a226d6964646c652d77616c6c6f70222c22776561746865725f74696d65223a22323032362d30332d31355431333a30303a30302e3030303030305a222c2277696e6e65725f636f756e74223a317d",
+      "schema_version": "5",
+      "signature_hex": "bab25a4882a60562b925ad9f007269814b5f3da6fbd7e0025f355072c73680b1f115215efe1aebc995b657b46c0406b7678e387d56d63d69176215876612270c",
+      "signed_at": "2026-03-15T12:00:00.000000Z",
+      "signing_key": "op_key_post_rotation"
+    },
+    "lock_post_rotation": {
+      "payload_jcs_hex": "7b22636f6d6d69746d656e745f68617368223a22646566222c226472616e645f636861696e223a22717569636b6e65742d636861696e2d68617368222c226472616e645f726f756e64223a32323030302c22647261775f6964223a2233333333333333332d333333332d333333332d333333332d333333333333333333333333222c22656e74726f70795f636f6d706f736974696f6e223a226472616e642d717569636b6e65742b6f70656e6d6574656f2d7631222c22656e7472795f68617368223a22646566222c22666169725f7069636b5f76657273696f6e223a22302e322e31222c226a63735f76657273696f6e223a227368613235362d6a63732d7631222c226c6f636b65645f6174223a22323032362d30352d30315431323a30303a30302e3030303030305a222c226f70657261746f725f6964223a2231313131313131312d313131312d313131312d313131312d313131313131313131313131222c226f70657261746f725f736c7567223a2261636d652d7072697a6573222c22736368656d615f76657273696f6e223a2235222c2273657175656e6365223a322c227369676e61747572655f616c676f726974686d223a2265643235353139222c227369676e696e675f6b65795f6964223a223161666566386261222c2277616c6c6f705f636f72655f76657273696f6e223a22302e32322e30222c22776561746865725f73746174696f6e223a226d6964646c652d77616c6c6f70222c22776561746865725f74696d65223a22323032362d30352d30315431333a30303a30302e3030303030305a222c2277696e6e65725f636f756e74223a317d",
+      "schema_version": "5",
+      "signature_hex": "0326dfde8016bf4da505ebd3cc88f7e8b628ef91a5841d984c7eccf80ed534ae8f8c41bd7d0a64a0278e3422f1bf85e3efbe87a3cd5b112789b4e2b9084b450c",
+      "signed_at": "2026-05-01T12:00:00.000000Z",
+      "signing_key": "op_key_post_rotation"
+    },
+    "lock_pre_rotation": {
+      "payload_jcs_hex": "7b22636f6d6d69746d656e745f68617368223a22616263222c226472616e645f636861696e223a22717569636b6e65742d636861696e2d68617368222c226472616e645f726f756e64223a31323334352c22647261775f6964223a2232323232323232322d323232322d323232322d323232322d323232323232323232323232222c22656e74726f70795f636f6d706f736974696f6e223a226472616e642d717569636b6e65742b6f70656e6d6574656f2d7631222c22656e7472795f68617368223a22616263222c22666169725f7069636b5f76657273696f6e223a22302e322e31222c226a63735f76657273696f6e223a227368613235362d6a63732d7631222c226c6f636b65645f6174223a22323032362d30322d30315431323a30303a30302e3030303030305a222c226f70657261746f725f6964223a2231313131313131312d313131312d313131312d313131312d313131313131313131313131222c226f70657261746f725f736c7567223a2261636d652d7072697a6573222c22736368656d615f76657273696f6e223a2235222c2273657175656e6365223a312c227369676e61747572655f616c676f726974686d223a2265643235353139222c227369676e696e675f6b65795f6964223a223166646361343139222c2277616c6c6f705f636f72655f76657273696f6e223a22302e32322e30222c22776561746865725f73746174696f6e223a226d6964646c652d77616c6c6f70222c22776561746865725f74696d65223a22323032362d30322d30315431333a30303a30302e3030303030305a222c2277696e6e65725f636f756e74223a337d",
+      "schema_version": "5",
+      "signature_hex": "e7de1f6971e9c31a57e4ce5639988a762393913b6df41fbc0ad698855746fe934b3187caabd2e1d4d6eb28a576c2b5b2960e8ec2e793b2edbe1c73c3c5d0db05",
+      "signed_at": "2026-02-01T12:00:00.000000Z",
+      "signing_key": "op_key_pre_rotation"
+    }
+  },
+  "signature_scheme": "Ed25519",
+  "spec_section": "§4.2.4",
+  "verifications": [
+    {
+      "expect": "pass",
+      "name": "historical receipt continues to verify with original key",
+      "rationale": "Spec §4.2.4 revocation is forward-only. The pre-rotation key remains in the keyring after rotation; receipts signed during its active window continue to verify forever.",
+      "receipt": "lock_pre_rotation",
+      "verify_against_key": "op_key_pre_rotation"
+    },
+    {
+      "expect": "fail",
+      "name": "wrong-key — pre-rotation receipt against post-rotation key",
+      "rationale": "Receipt was signed by the pre-rotation private key; verifying against an unrelated public key MUST fail. Catches verifiers that drop the key_id check or mis-thread the public key.",
+      "receipt": "lock_pre_rotation",
+      "verify_against_key": "op_key_post_rotation"
+    },
+    {
+      "expect": "pass",
+      "name": "post-rotation receipt verifies with new key",
+      "rationale": "After rotation, new receipts are signed by the new active key; verifier resolves the new key_id and the signature checks out.",
+      "receipt": "lock_post_rotation",
+      "verify_against_key": "op_key_post_rotation"
+    },
+    {
+      "expect": "fail",
+      "name": "wrong-key — post-rotation receipt against pre-rotation key",
+      "rationale": "Receipt was signed by the post-rotation private key; verifying against the pre-rotation public key MUST fail. Catches resolver bugs that map a receipt to the wrong keyring row.",
+      "receipt": "lock_post_rotation",
+      "verify_against_key": "op_key_pre_rotation"
+    },
+    {
+      "expect": "pass",
+      "name": "Ed25519 verify itself has no forward lower bound",
+      "rationale": "Receipt locked_at (2026-03-15) is BEFORE op_key_post_rotation.inserted_at (2026-04-01). This is a structurally impossible state in production (you cannot have signed with a key that does not yet exist) but at the cryptographic primitive level the signature is valid. Pinning expect=pass here forecloses an implementation that silently adds a forward lower bound to Ed25519 verify itself; the pipeline-level temporal-binding step (spec §4.2.4) is the separate, higher layer that rejects such receipts.",
+      "receipt": "lock_backdated_post_key",
+      "verify_against_key": "op_key_post_rotation"
+    }
+  ]
+}
