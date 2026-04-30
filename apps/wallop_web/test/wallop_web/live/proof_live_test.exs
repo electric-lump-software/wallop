@@ -59,10 +59,11 @@ defmodule WallopWeb.ProofLiveTest do
 
       # The §4.2.4 caveat must be honestly disclosed: the browser-side
       # check is internally consistent but does NOT defend against a
-      # tampered mirror.
+      # tampered mirror, and the user is pointed at the CLI as the
+      # tier-1 path.
       assert html =~ "tampered mirror"
       assert html =~ "What does this verify?"
-      assert html =~ "attributable verification"
+      assert html =~ "wallop-verify --mode attributable"
     end
 
     test "sets immutable cache headers", %{conn: conn} do
