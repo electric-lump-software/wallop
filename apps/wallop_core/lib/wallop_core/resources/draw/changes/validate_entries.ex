@@ -62,10 +62,14 @@ defmodule WallopCore.Resources.Draw.Changes.ValidateEntries do
   end
 
   defp validate_total_count(draw, entries) do
-    current = draw.entry_count || 0
-    total = current + length(entries)
+    existing_count =
+      from(e in "entries",
+        where: e.draw_id == type(^draw.id, :binary_id),
+        select: count(e.id)
+      )
+      |> WallopCore.Repo.one!()
 
-    if total <= @max_entries do
+    if existing_count + length(entries) <= @max_entries do
       :ok
     else
       {:error, "total entries must not exceed #{@max_entries}"}
