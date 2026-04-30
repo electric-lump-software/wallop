@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Tests / vectors — operator key rotation regression (§4.2.4)
+
+**ADDED.** Cross-language regression test for operator key rotation, locking in the four cross-key cases byte-for-byte across implementations.
+
+- New cross-language conformance vector: `spec/vectors/key-rotation-bidirectional.json`. Two deterministic operator keypairs with non-overlapping active windows, three lock-receipt v5 payloads (pre-rotation, post-rotation, and a backdated-after-rotation case for the "Ed25519 verify has no forward lower bound" assertion), and five recorded verification cases: historical-receipt-with-original-key (pass), post-rotation-receipt-with-new-key (pass), pre-rotation-receipt-against-post-rotation-key (fail), post-rotation-receipt-against-pre-rotation-key (fail), and Ed25519-verify-has-no-forward-lower-bound (pass — pins that temporal binding is a pipeline-level concern, not a primitive concern). Plus a `key_id_derivation` block pinning the first-4-bytes-of-`SHA-256(public_key)` rule.
+- New Elixir consumer: `apps/wallop_core/test/wallop_core/protocol_key_rotation_test.exs`. Loads the same vector and asserts identical verdicts.
+- Verifier-side consumer (Rust) lands separately in `wallop_verifier` and consumes the vector via the existing `vendor/wallop` submodule pin.
+
+No spec text change (§4.2.4 already specs `key_id` derivation, `revoked_at` forward-only semantics, and temporal binding). No producer-side code change. No schema bump. Pure regression coverage for already-specced behaviour, providing forever-pinned cross-language parity going into 1.0.0.
+
 ### wallop_core 0.22.0 — signed keyring pin producer (§4.2.4)
 
 **ADDED.** Producer-side implementation of tier-1 attributable verification per spec §4.2.4. New endpoint, new module, new cross-language conformance vector.
