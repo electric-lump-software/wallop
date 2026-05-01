@@ -114,6 +114,9 @@ jobs:
       - name: Credo
         run: mix credo --strict
 
+      - name: Dependency advisory audit
+        run: mix deps.audit
+
       - name: Restore PLT cache
         id: plt_cache
         uses: actions/cache/restore@v4
