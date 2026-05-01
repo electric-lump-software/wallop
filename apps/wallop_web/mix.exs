@@ -35,6 +35,7 @@ defmodule WallopWeb.MixProject do
       {:phoenix_live_reload, "~> 1.2", only: :dev},
       {:ash_phoenix, "~> 2.0"},
       {:bandit, "~> 1.0"},
+      {:remote_ip, "~> 1.2"},
       {:ash_json_api, "~> 1.0"},
       {:open_api_spex, "~> 3.16"},
       {:phoenix_live_dashboard, "~> 0.8"},
