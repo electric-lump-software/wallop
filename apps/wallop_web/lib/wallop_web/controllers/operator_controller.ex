@@ -234,13 +234,25 @@ defmodule WallopWeb.OperatorController do
     end
   end
 
-  defp load_operator(slug) do
-    Operator
-    |> Ash.Query.filter(slug == ^slug)
-    |> Ash.read_one(authorize?: false)
-    |> case do
-      {:ok, %Operator{} = op} -> {:ok, op}
-      _ -> :error
+  # Operator slugs are constrained at the resource boundary to 2-63 chars
+  # (`Operator.validate_slug/1`). Reject longer inputs at the controller
+  # before issuing a Postgres round-trip; an unbounded query parameter
+  # would otherwise round-trip arbitrary-length strings before failing to
+  # match. Ash escapes parameters so this isn't a SQL injection vector,
+  # just wasted work.
+  @max_slug_length 63
+
+  defp load_operator(slug) when is_binary(slug) do
+    if String.length(slug) > @max_slug_length do
+      :error
+    else
+      Operator
+      |> Ash.Query.filter(slug == ^slug)
+      |> Ash.read_one(authorize?: false)
+      |> case do
+        {:ok, %Operator{} = op} -> {:ok, op}
+        _ -> :error
+      end
     end
   end
 
