@@ -39,8 +39,14 @@ config :wallop_web, WallopWeb.Endpoint,
 config :esbuild,
   version: "0.25.4",
   wallop: [
+    # `--minify` is part of the base profile so production deployments
+    # always emit a minified bundle even if the deploy command forgets
+    # to pass it explicitly. Dev's listener config appends `--watch
+    # --sourcemap=inline` (see config/dev.exs) which still works with
+    # minification — the inline sourcemap restores readable stack
+    # traces.
     args:
-      ~w(js/app.js --bundle --target=es2022 --outdir=../priv/static/assets --external:/fonts/* --external:/images/* --external:/assets/wasm/*),
+      ~w(js/app.js --bundle --target=es2022 --minify --outdir=../priv/static/assets --external:/fonts/* --external:/images/* --external:/assets/wasm/*),
     cd: Path.expand("../apps/wallop_web/assets", __DIR__),
     env: %{"NODE_PATH" => Path.expand("../deps", __DIR__)}
   ]
@@ -52,6 +58,7 @@ config :tailwind,
     args: ~w(
       --input=css/app.css
       --output=../priv/static/assets/app.css
+      --minify
     ),
     cd: Path.expand("../apps/wallop_web/assets", __DIR__)
   ]
