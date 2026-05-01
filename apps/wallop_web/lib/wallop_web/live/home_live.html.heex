@@ -3,7 +3,7 @@
   <%!-- NAV --%>
   <nav class={["sticky top-0 z-50 relative flex items-center justify-between px-6 md:px-12 py-3.5 bg-cream border-b", if(@menu_open, do: "border-transparent", else: "border-cream-border")]}>
     <a href={~p"/"} class="absolute bottom-0 left-6 md:left-12 translate-y-[35%] z-20">
-      <img src={~p"/images/logo.png"} alt="Wallop!" width="1024" height="1024" class="h-32" />
+      <img src={~p"/images/logo.png"} alt="Wallop!" width="1024" height="1024" class="h-32 w-auto" />
     </a>
     <div class="w-36"></div>
     <%!-- Desktop links --%>
@@ -55,7 +55,7 @@
         </p>
       </div>
       <div class="hidden md:block shrink-0 self-start mt-16">
-        <img src={~p"/images/dice.png"} alt="" width="788" height="264" class="w-60 rotate-[4deg]" />
+        <img src={~p"/images/dice.png"} alt="" width="788" height="264" class="w-60 h-auto rotate-[4deg]" />
       </div>
     </div>
 
@@ -427,7 +427,7 @@
             the Test Valley.
           </p>
           <div class="md:hidden rounded-xl overflow-hidden border border-[#d4c9b8] shadow-md mb-4 max-h-[140px]">
-            <img src={~p"/images/map.jpg"} alt="Middle Wallop, Hampshire" width="1518" height="1518" class="w-full object-cover" style="object-position: center 40%;" />
+            <img src={~p"/images/map.jpg"} alt="Middle Wallop, Hampshire" width="1518" height="1518" class="w-full h-auto object-cover" style="object-position: center 40%;" />
           </div>
           <p class="text-sm text-[#555] leading-[1.8] mb-4">
             We liked the name because it does two things at once: it sounds like something
@@ -444,7 +444,7 @@
           <p class="text-sm text-[#555] leading-[1.8] italic">Also, it&#39;s just a fun word to say.</p>
         </div>
         <div class="hidden md:block w-[280px] rounded-xl overflow-hidden border border-[#d4c9b8] shadow-md shrink-0 self-start">
-          <img src={~p"/images/map.jpg"} alt="Middle Wallop, Hampshire" width="1518" height="1518" class="w-full" />
+          <img src={~p"/images/map.jpg"} alt="Middle Wallop, Hampshire" width="1518" height="1518" class="w-full h-auto" />
         </div>
       </div>
     </div>
