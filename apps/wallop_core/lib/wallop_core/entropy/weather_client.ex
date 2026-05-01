@@ -27,7 +27,7 @@ defmodule WallopCore.Entropy.WeatherClient do
   returned as a string.
   """
   def fetch(latitude, longitude, target_time \\ nil) do
-    api_key = Application.get_env(:wallop_core, :met_office_api_key)
+    api_key = require_api_key!()
 
     params = [
       latitude: latitude,
@@ -140,6 +140,22 @@ defmodule WallopCore.Entropy.WeatherClient do
   defp base_url do
     Application.get_env(:wallop_core, __MODULE__, [])
     |> Keyword.get(:base_url, @base_url)
+  end
+
+  # `runtime.exs` raises if `MET_OFFICE_API_KEY` is unset in prod, but this
+  # function is the only consumer at runtime and can defend itself against
+  # a misconfigured release that boots without the application config
+  # provider applying. Without the guard, a nil `apikey` header silently
+  # 401s and the entropy worker falls back to drand-only — a degraded
+  # mode that is easy to miss in observability.
+  defp require_api_key! do
+    case Application.get_env(:wallop_core, :met_office_api_key) do
+      key when is_binary(key) and byte_size(key) > 0 ->
+        key
+
+      _ ->
+        raise "MET_OFFICE_API_KEY is not configured. Refusing to call the Met Office API with a nil key."
+    end
   end
 
   defp req_options(extra) do

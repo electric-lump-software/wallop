@@ -17,6 +17,11 @@ defmodule WallopCore.Entropy.IntegrationTest do
   @weather_pressure 101_350
 
   setup do
+    # Set the Met Office api key explicitly. test.exs sets a placeholder,
+    # but other tests in the entropy/ tree delete it on exit; this setup
+    # makes integration_test order-independent.
+    Application.put_env(:wallop_core, :met_office_api_key, "integration-test-placeholder")
+
     # Stub drand to return a known randomness value
     Req.Test.stub(DrandClient, fn conn ->
       round = conn.path_info |> List.last() |> String.to_integer()
