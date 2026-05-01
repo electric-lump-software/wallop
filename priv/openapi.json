@@ -32,13 +32,13 @@
             "type": "array"
           },
           "is_distinct_from": {
-            "type": "string"
+            "type": "object"
           },
           "is_nil": {
             "type": "boolean"
           },
           "is_not_distinct_from": {
-            "type": "string"
+            "type": "object"
           },
           "less_than": {
             "type": "object"
@@ -434,13 +434,13 @@
             "type": "array"
           },
           "is_distinct_from": {
-            "type": "string"
+            "type": "integer"
           },
           "is_nil": {
             "type": "boolean"
           },
           "is_not_distinct_from": {
-            "type": "string"
+            "type": "integer"
           },
           "less_than": {
             "type": "integer"
@@ -512,15 +512,11 @@
             "items": {},
             "type": "array"
           },
-          "is_distinct_from": {
-            "type": "string"
-          },
+          "is_distinct_from": {},
           "is_nil": {
             "type": "boolean"
           },
-          "is_not_distinct_from": {
-            "type": "string"
-          },
+          "is_not_distinct_from": {},
           "less_than": {},
           "less_than_or_equal": {},
           "not_eq": {}
@@ -696,12 +692,14 @@
             "type": "array"
           },
           "is_distinct_from": {
+            "format": "uuid",
             "type": "string"
           },
           "is_nil": {
             "type": "boolean"
           },
           "is_not_distinct_from": {
+            "format": "uuid",
             "type": "string"
           },
           "less_than": {
@@ -856,13 +854,13 @@
             "type": "array"
           },
           "is_distinct_from": {
-            "type": "string"
+            "type": "integer"
           },
           "is_nil": {
             "type": "boolean"
           },
           "is_not_distinct_from": {
-            "type": "string"
+            "type": "integer"
           },
           "less_than": {
             "type": "integer"
@@ -1064,13 +1062,13 @@
             "type": "array"
           },
           "is_distinct_from": {
-            "type": "string"
+            "type": "object"
           },
           "is_nil": {
             "type": "boolean"
           },
           "is_not_distinct_from": {
-            "type": "string"
+            "type": "object"
           },
           "less_than": {
             "type": "object"
@@ -1142,15 +1140,11 @@
             "items": {},
             "type": "array"
           },
-          "is_distinct_from": {
-            "type": "string"
-          },
+          "is_distinct_from": {},
           "is_nil": {
             "type": "boolean"
           },
-          "is_not_distinct_from": {
-            "type": "string"
-          },
+          "is_not_distinct_from": {},
           "less_than": {},
           "less_than_or_equal": {},
           "not_eq": {}
@@ -1466,13 +1460,13 @@
             "type": "array"
           },
           "is_distinct_from": {
-            "type": "string"
+            "type": "integer"
           },
           "is_nil": {
             "type": "boolean"
           },
           "is_not_distinct_from": {
-            "type": "string"
+            "type": "integer"
           },
           "less_than": {
             "type": "integer"
@@ -1496,15 +1490,11 @@
             "items": {},
             "type": "array"
           },
-          "is_distinct_from": {
-            "type": "string"
-          },
+          "is_distinct_from": {},
           "is_nil": {
             "type": "boolean"
           },
-          "is_not_distinct_from": {
-            "type": "string"
-          },
+          "is_not_distinct_from": {},
           "less_than": {},
           "less_than_or_equal": {},
           "not_eq": {}
@@ -1632,12 +1622,14 @@
             "type": "array"
           },
           "is_distinct_from": {
+            "format": "uuid",
             "type": "string"
           },
           "is_nil": {
             "type": "boolean"
           },
           "is_not_distinct_from": {
+            "format": "uuid",
             "type": "string"
           },
           "less_than": {
@@ -1852,15 +1844,11 @@
             "items": {},
             "type": "array"
           },
-          "is_distinct_from": {
-            "type": "string"
-          },
+          "is_distinct_from": {},
           "is_nil": {
             "type": "boolean"
           },
-          "is_not_distinct_from": {
-            "type": "string"
-          },
+          "is_not_distinct_from": {},
           "less_than": {},
           "less_than_or_equal": {},
           "not_eq": {}
@@ -1935,13 +1923,13 @@
             "type": "array"
           },
           "is_distinct_from": {
-            "type": "string"
+            "type": "integer"
           },
           "is_nil": {
             "type": "boolean"
           },
           "is_not_distinct_from": {
-            "type": "string"
+            "type": "integer"
           },
           "less_than": {
             "type": "integer"

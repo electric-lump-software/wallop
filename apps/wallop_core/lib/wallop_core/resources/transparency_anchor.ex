@@ -48,6 +48,8 @@ defmodule WallopCore.Resources.TransparencyAnchor do
         :infrastructure_signature,
         :signing_key_id
       ])
+
+      validate({WallopCore.Resources.TransparencyAnchor.Validations.VerifySignature, []})
     end
   end
 

@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+
+- Bump `ash` 3.21.3 → 3.24.4 to close GHSA-jjf9-w5vj-r6vp (atom exhaustion via unchecked `Module.concat` in `Ash.Type.Module.cast_input/2`, HIGH severity, vulnerable versions ≤ 3.21.3, first patched 3.22.0). Surfaced by the new `mix deps.audit` step in CI.
+
 ### Tests / vectors — operator key rotation regression (§4.2.4)
 
 **ADDED.** Cross-language regression test for operator key rotation, locking in the four cross-key cases byte-for-byte across implementations.
