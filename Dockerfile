@@ -34,8 +34,13 @@ RUN cd apps/wallop_web && mix tailwind.install --no-assets && mix esbuild.instal
 RUN mix tailwind wallop --minify
 RUN mix esbuild wallop --minify
 
-# Copy static assets (logo, fonts)
-COPY apps/wallop_web/priv/static apps/wallop_web/priv/static
+# (Static files like logo + fonts + images are already in place from
+# the earlier `COPY apps apps` step. The previous `COPY
+# apps/wallop_web/priv/static apps/wallop_web/priv/static` here was
+# destructive — it ran AFTER the tailwind/esbuild rebuild and replaced
+# the freshly-built minified app.css / app.js with the older versions
+# committed to git, so production was always serving the stale
+# committed bundle. Removed.)
 
 # Compile and build release
 RUN mix compile
