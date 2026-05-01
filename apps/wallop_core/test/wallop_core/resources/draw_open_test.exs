@@ -220,6 +220,38 @@ defmodule WallopCore.Resources.DrawOpenTest do
         |> Ash.update!()
       end
     end
+
+    test "enforces 10K entry limit across multiple batches against the same draw struct" do
+      # Regression: validate_total_count used to read draw.entry_count from
+      # the in-memory struct instead of the DB. Multiple add_entries calls
+      # against the same un-reloaded draw all saw entry_count = 0 and
+      # silently bypassed the cap.
+      api_key = create_api_key()
+
+      draw =
+        WallopCore.Resources.Draw
+        |> Ash.Changeset.for_create(:create, %{winner_count: 1}, actor: api_key)
+        |> Ash.create!()
+
+      # Build a batch of 5,000 entries with weight 1 each. Two batches put
+      # us at the 10K cap; a third (using the same un-reloaded draw struct)
+      # must reject.
+      batch = for _ <- 1..5_000, do: %{"weight" => 1}
+
+      draw
+      |> Ash.Changeset.for_update(:add_entries, %{entries: batch}, actor: api_key)
+      |> Ash.update!()
+
+      draw
+      |> Ash.Changeset.for_update(:add_entries, %{entries: batch}, actor: api_key)
+      |> Ash.update!()
+
+      assert_raise Ash.Error.Invalid, ~r/must not exceed 10000/, fn ->
+        draw
+        |> Ash.Changeset.for_update(:add_entries, %{entries: [%{"weight" => 1}]}, actor: api_key)
+        |> Ash.update!()
+      end
+    end
   end
 
   describe "remove_entry" do
