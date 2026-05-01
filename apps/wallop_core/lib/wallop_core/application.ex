@@ -9,6 +9,7 @@ defmodule WallopCore.Application do
   @impl true
   def start(_type, _args) do
     warn_if_default_oban_prefix()
+    assert_vault_key_present!()
 
     OpentelemetryOban.setup(plugin: :disabled)
     EctoHandler.setup([:wallop_core, :repo])
@@ -23,6 +24,56 @@ defmodule WallopCore.Application do
     opts = [strategy: :one_for_one, name: WallopCore.Supervisor]
     Supervisor.start_link(children, opts)
   end
+
+  # `runtime.exs` raises if `VAULT_KEY` is unset, but only on a release-
+  # bootstrap path that loads runtime.exs. A code path that constructs
+  # the Vault without going through `runtime.exs` (test, release task,
+  # mix command without `Mix.Tasks.Loadconfig`) would silently get
+  # whatever Cloak default is configured and produce ciphertext that
+  # decrypts to garbage on production reload.
+  #
+  # Crash the boot at supervisor start-up if the default cipher's key
+  # is not a 32-byte binary. Costs effectively nothing; eliminates the
+  # silent-fallback class.
+  defp assert_vault_key_present! do
+    config = Application.get_env(:wallop_core, WallopCore.Vault)
+
+    unless is_list(config) do
+      raise vault_misconfig_error(
+              "expected a keyword list under config :wallop_core, WallopCore.Vault",
+              config
+            )
+    end
+
+    case Keyword.get(Keyword.get(config, :ciphers, []), :default) do
+      {_module, opts} when is_list(opts) ->
+        assert_vault_key_bytes!(Keyword.get(opts, :key))
+
+      other ->
+        raise vault_misconfig_error(
+                "expected a default cipher entry under ciphers[:default]",
+                other
+              )
+    end
+  end
+
+  defp assert_vault_key_bytes!(key) when is_binary(key) and byte_size(key) == 32, do: :ok
+
+  defp assert_vault_key_bytes!(key) do
+    raise """
+    WallopCore.Vault is misconfigured. The default cipher requires a 32-byte key
+    but got #{inspect(key, limit: 8)} (#{inspect(byte_size_or_nil(key))} bytes).
+    Did the runtime config provider apply VAULT_KEY?
+    """
+  end
+
+  defp vault_misconfig_error(detail, value) do
+    "WallopCore.Vault is misconfigured. #{detail}, got #{inspect(value)}."
+  end
+
+  defp byte_size_or_nil(nil), do: nil
+  defp byte_size_or_nil(value) when is_binary(value), do: byte_size(value)
+  defp byte_size_or_nil(_), do: nil
 
   defp warn_if_default_oban_prefix do
     oban_config = Application.get_env(:wallop_core, Oban, [])
