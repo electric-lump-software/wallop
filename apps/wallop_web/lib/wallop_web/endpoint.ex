@@ -32,7 +32,13 @@ defmodule WallopWeb.Endpoint do
   plug(Plug.Parsers,
     parsers: [:urlencoded, :multipart, :json],
     pass: ["*/*"],
-    json_decoder: Jason
+    json_decoder: Jason,
+    # 1 MB ceiling on user-supplied request bodies. The largest legitimate
+    # body is `add_entries` at the per-draw entry cap (10 000 entries × ~80
+    # bytes ≈ 800 KB). Default Plug.Parsers limit is 8 MB, which lets a
+    # single legitimate api key wedge a worker on parse cost alone before
+    # any business validator fires.
+    length: 1_048_576
   )
 
   plug(Plug.MethodOverride)

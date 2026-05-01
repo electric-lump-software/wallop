@@ -77,7 +77,16 @@ if config_env() == :prod do
 
   config :wallop_web, WallopWeb.Endpoint,
     url: [host: host, port: 443, scheme: "https"],
-    http: [ip: {0, 0, 0, 0, 0, 0, 0, 0}, port: port],
+    http: [
+      ip: {0, 0, 0, 0, 0, 0, 0, 0},
+      port: port,
+      # Bandit / Thousand Island read timeout. Bandit defaults to 60 s of
+      # idle tolerance on a partial request body (slowloris); 10 s is the
+      # smallest figure that still leaves headroom for a slow legitimate
+      # uploader at the 1 MB body cap (Plug.Parsers limit) on a 100 kbps
+      # link. Defence-in-depth alongside per-IP rate limiting.
+      thousand_island_options: [read_timeout: 10_000]
+    ],
     secret_key_base: secret_key_base
 
   if gotenberg_url = System.get_env("GOTENBERG_URL") do
