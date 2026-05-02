@@ -482,6 +482,20 @@ Any change to a frozen item after 1.0.0 is a **v2.0.0 release**. Additive change
 
 The following are committed byte-level forever in the 1.x series.
 
+#### 4.2.0 Quick reference
+
+A third-party verifier author needs to know exactly what's frozen. The full contract follows in §4.2.1 through §4.2.7; this table is a navigation aid, not a substitute. Every item links into the normative subsection.
+
+| Frozen surface | Subsection |
+|---|---|
+| Receipt schemas (lock v4 / v5; execution v2 / v3 / v4); bundle-wrapper consistency rule; closed-set key-identity fields; algorithm identity tags; `weather_fallback_reason` enum; `weather_station` charset; canonical timestamp format; `schema_version` dispatch | §4.2.1 |
+| JCS canonicalisation per RFC 8785; `entry_hash` canonical form; UUID canonical form; weight type; hex normalisation; empty-draw rejection | §4.2.2 |
+| SHA-256; Ed25519 (RFC 8032 §5.1); BLS12-381-G2 over the pinned drand quicknet chain hash; Merkle `sha256-pairwise-v1` construction including empty-list sentinel | §4.2.3 |
+| `key_id` fingerprint rule; key-identity routing-not-security rule; revocation semantics; temporal binding to `inserted_at`; verifier mode taxonomy (Attributable / Attestable / Self-consistency only); resolver-failure-is-terminal rule; verifier-side keyring-row consistency check; signed pin file format and verifier obligations; bundled-anchor trust root for attributable mode; `/operator/:slug/keys` and `/infrastructure/keys` response shapes | §4.2.4 |
+| Proof bundle byte contents at `/proof/:id.json`; bundle field-set closed-set rule; verifier hash-recomputation obligations; cross-receipt field consistency; weather observation window | §4.2.5 |
+| Transparency anchor construction (`SHA-256("wallop-anchor-v1" || op_root || exec_root)`); domain-separator string; per-receipt leaf bytes with length prefix; deterministic leaf order; empty-epoch sub-root sentinel; anchor envelope JCS shape | §4.2.6 |
+| Cross-draw transparency commitment at `/operator/:slug`; per-operator monotonic sequence numbers; sequence-slot immutability post-lock; lock-receipt persistence; operator slug stability | §4.2.7 |
+
 #### 4.2.1 Receipt schemas
 
 - **Lock receipt schema version `"5"`**. Key set and key names per §2.6 — byte-identical to v4. The bump is a coordination flag, not a payload change: a v5 receipt signals that the bundle wrapper omits the inline `operator_public_key_hex` and the verifier MUST resolve the operator key via the rules in §4.2.4 (`KeyResolver` against `/operator/:slug/keys` or an operator-published `.well-known` pin). The historical v4 shape — same field set, with inline `operator_public_key_hex` on the bundle wrapper — remains verifiable for the life of 1.x per §4.4.
