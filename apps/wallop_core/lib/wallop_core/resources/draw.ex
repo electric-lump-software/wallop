@@ -93,6 +93,14 @@ defmodule WallopCore.Resources.Draw do
       change({WallopCore.Resources.Draw.Changes.BroadcastUpdate, []})
     end
 
+    update :update_winner_count do
+      require_atomic?(false)
+      filter(expr(status == :open))
+
+      accept([:winner_count])
+      change({WallopCore.Resources.Draw.Changes.BroadcastUpdate, []})
+    end
+
     update :lock do
       require_atomic?(false)
       filter(expr(status == :open))
@@ -190,6 +198,11 @@ defmodule WallopCore.Resources.Draw do
     end
 
     policy action(:update_name) do
+      forbid_unless(actor_present())
+      authorize_if(expr(api_key_id == ^actor(:id) and status == :open))
+    end
+
+    policy action(:update_winner_count) do
       forbid_unless(actor_present())
       authorize_if(expr(api_key_id == ^actor(:id) and status == :open))
     end

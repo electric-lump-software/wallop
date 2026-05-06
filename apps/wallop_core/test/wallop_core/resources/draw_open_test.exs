@@ -364,6 +364,67 @@ defmodule WallopCore.Resources.DrawOpenTest do
     end
   end
 
+  describe "update_winner_count" do
+    test "can update winner_count on an open draw" do
+      api_key = create_api_key()
+
+      draw =
+        WallopCore.Resources.Draw
+        |> Ash.Changeset.for_create(:create, %{winner_count: 1}, actor: api_key)
+        |> Ash.create!()
+
+      updated =
+        draw
+        |> Ash.Changeset.for_update(:update_winner_count, %{winner_count: 5}, actor: api_key)
+        |> Ash.update!()
+
+      assert updated.winner_count == 5
+    end
+
+    test "rejects winner_count = 0" do
+      api_key = create_api_key()
+
+      draw =
+        WallopCore.Resources.Draw
+        |> Ash.Changeset.for_create(:create, %{winner_count: 1}, actor: api_key)
+        |> Ash.create!()
+
+      assert_raise Ash.Error.Invalid, fn ->
+        draw
+        |> Ash.Changeset.for_update(:update_winner_count, %{winner_count: 0}, actor: api_key)
+        |> Ash.update!()
+      end
+    end
+
+    test "rejects winner_count above 10000 cap" do
+      api_key = create_api_key()
+
+      draw =
+        WallopCore.Resources.Draw
+        |> Ash.Changeset.for_create(:create, %{winner_count: 1}, actor: api_key)
+        |> Ash.create!()
+
+      assert_raise Ash.Error.Invalid, fn ->
+        draw
+        |> Ash.Changeset.for_update(:update_winner_count, %{winner_count: 10_001}, actor: api_key)
+        |> Ash.update!()
+      end
+    end
+
+    test "cannot update winner_count after locking" do
+      api_key = create_api_key()
+      draw = create_draw(api_key, %{entropy: true})
+
+      assert draw.status == :awaiting_entropy
+
+      assert_raise Ash.Error.Forbidden, fn ->
+        draw
+        |> Ash.Changeset.for_update(:update_winner_count, %{winner_count: 5}, actor: api_key)
+        |> Ash.update!()
+      end
+    end
+  end
+
   describe "lock" do
     test "computes entry hash and declares entropy" do
       api_key = create_api_key()
