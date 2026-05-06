@@ -276,6 +276,59 @@ defmodule WallopWeb.ProofLiveTest do
 
       assert redirected_to(conn) =~ "/live/proof/#{draw.id}"
     end
+
+    test "LiveView mounts and renders without crashing for an :open draw", %{conn: conn} do
+      # Regression: ProofPreLockView ships only a 9-field allowlist
+      # (id, name, status, winner_count, entry_count, opened_at,
+      # check_url, operator_sequence, operator). Components that
+      # render the :open branch must NOT bind to fields outside that
+      # set. Specifically: the timeline component used in :open must
+      # not try to read stage_timestamps, entry_hash, drand_round,
+      # weather_time, etc. — none of those exist on the pre-lock view.
+      #
+      # The pre-existing "redirects open draw to LiveView" test above
+      # only verified the HTTP redirect; it did not actually mount
+      # the LiveView. This one does.
+      api_key = create_api_key()
+
+      draw =
+        WallopCore.Resources.Draw
+        |> Ash.Changeset.for_create(:create, %{winner_count: 1}, actor: api_key)
+        |> Ash.create!()
+
+      {:ok, _view, html} = live(conn, "/live/proof/#{draw.id}")
+
+      assert html =~ "Draw Open"
+      # Every step in the timeline must render. If a downstream
+      # component reaches into a field outside the pre-lock allowlist,
+      # the live mount itself raises and this assertion never runs.
+      assert html =~ "Entries Open"
+      assert html =~ "Entries Locked"
+      assert html =~ "Entropy Declared"
+      assert html =~ "Fetching Entropy"
+      assert html =~ "Computing Seed"
+      assert html =~ "Winners Selected"
+    end
+
+    test "LiveView render is stable under PubSub update on an :open draw", %{conn: conn} do
+      # Symmetric guard for the handle_info path: when a PubSub
+      # broadcast arrives for an :open draw and the status is still
+      # :open afterwards, the re-render must not raise. Catches the
+      # case where `open_view_for/2` falls back to the full Draw
+      # struct or vice versa.
+      api_key = create_api_key()
+
+      draw =
+        WallopCore.Resources.Draw
+        |> Ash.Changeset.for_create(:create, %{winner_count: 1}, actor: api_key)
+        |> Ash.create!()
+
+      {:ok, view, _html} = live(conn, "/live/proof/#{draw.id}")
+
+      Phoenix.PubSub.broadcast(WallopCore.PubSub, "draw:#{draw.id}", {:draw_updated, draw})
+
+      assert render(view) =~ "Draw Open"
+    end
   end
 
   describe "nonexistent draw" do
