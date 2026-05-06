@@ -130,7 +130,7 @@ defmodule WallopCore.Resources.DrawOpenTest do
         draw
         |> Ash.Changeset.for_update(
           :add_entries,
-          %{entries: [%{"weight" => 1}, %{"weight" => 1}]},
+          %{entries: [%{"weight" => 1}, %{"weight" => 1}], client_ref: Ash.UUID.generate()},
           actor: api_key
         )
         |> Ash.update!()
@@ -153,7 +153,11 @@ defmodule WallopCore.Resources.DrawOpenTest do
 
       draw =
         draw
-        |> Ash.Changeset.for_update(:add_entries, %{entries: submitted}, actor: api_key)
+        |> Ash.Changeset.for_update(
+          :add_entries,
+          %{entries: submitted, client_ref: Ash.UUID.generate()},
+          actor: api_key
+        )
         |> Ash.update!()
 
       uuids = Ash.Resource.get_metadata(draw, :inserted_entries)
@@ -184,7 +188,7 @@ defmodule WallopCore.Resources.DrawOpenTest do
         draw
         |> Ash.Changeset.for_update(
           :add_entries,
-          %{entries: [%{"weight" => 1}]},
+          %{entries: [%{"weight" => 1}], client_ref: Ash.UUID.generate()},
           actor: api_key
         )
         |> Ash.update!()
@@ -193,7 +197,7 @@ defmodule WallopCore.Resources.DrawOpenTest do
         draw
         |> Ash.Changeset.for_update(
           :add_entries,
-          %{entries: [%{"weight" => 1}]},
+          %{entries: [%{"weight" => 1}], client_ref: Ash.UUID.generate()},
           actor: api_key
         )
         |> Ash.update!()
@@ -216,7 +220,11 @@ defmodule WallopCore.Resources.DrawOpenTest do
 
       assert_raise Ash.Error.Invalid, ~r/must not exceed 10000/, fn ->
         draw
-        |> Ash.Changeset.for_update(:add_entries, %{entries: too_many}, actor: api_key)
+        |> Ash.Changeset.for_update(
+          :add_entries,
+          %{entries: too_many, client_ref: Ash.UUID.generate()},
+          actor: api_key
+        )
         |> Ash.update!()
       end
     end
@@ -239,16 +247,28 @@ defmodule WallopCore.Resources.DrawOpenTest do
       batch = for _ <- 1..5_000, do: %{"weight" => 1}
 
       draw
-      |> Ash.Changeset.for_update(:add_entries, %{entries: batch}, actor: api_key)
+      |> Ash.Changeset.for_update(
+        :add_entries,
+        %{entries: batch, client_ref: Ash.UUID.generate()},
+        actor: api_key
+      )
       |> Ash.update!()
 
       draw
-      |> Ash.Changeset.for_update(:add_entries, %{entries: batch}, actor: api_key)
+      |> Ash.Changeset.for_update(
+        :add_entries,
+        %{entries: batch, client_ref: Ash.UUID.generate()},
+        actor: api_key
+      )
       |> Ash.update!()
 
       assert_raise Ash.Error.Invalid, ~r/must not exceed 10000/, fn ->
         draw
-        |> Ash.Changeset.for_update(:add_entries, %{entries: [%{"weight" => 1}]}, actor: api_key)
+        |> Ash.Changeset.for_update(
+          :add_entries,
+          %{entries: [%{"weight" => 1}], client_ref: Ash.UUID.generate()},
+          actor: api_key
+        )
         |> Ash.update!()
       end
     end
@@ -267,7 +287,7 @@ defmodule WallopCore.Resources.DrawOpenTest do
         draw
         |> Ash.Changeset.for_update(
           :add_entries,
-          %{entries: [%{"weight" => 1}, %{"weight" => 1}]},
+          %{entries: [%{"weight" => 1}, %{"weight" => 1}], client_ref: Ash.UUID.generate()},
           actor: api_key
         )
         |> Ash.update!()
@@ -299,7 +319,7 @@ defmodule WallopCore.Resources.DrawOpenTest do
         draw
         |> Ash.Changeset.for_update(
           :add_entries,
-          %{entries: [%{"weight" => 1}]},
+          %{entries: [%{"weight" => 1}], client_ref: Ash.UUID.generate()},
           actor: api_key
         )
         |> Ash.update!()
@@ -438,7 +458,7 @@ defmodule WallopCore.Resources.DrawOpenTest do
         draw
         |> Ash.Changeset.for_update(
           :add_entries,
-          %{entries: [%{"weight" => 1}, %{"weight" => 1}]},
+          %{entries: [%{"weight" => 1}, %{"weight" => 1}], client_ref: Ash.UUID.generate()},
           actor: api_key
         )
         |> Ash.update!()
@@ -469,7 +489,7 @@ defmodule WallopCore.Resources.DrawOpenTest do
         draw
         |> Ash.Changeset.for_update(
           :add_entries,
-          %{entries: [%{"weight" => 1}]},
+          %{entries: [%{"weight" => 1}], client_ref: Ash.UUID.generate()},
           actor: api_key
         )
         |> Ash.update!()
@@ -510,7 +530,7 @@ defmodule WallopCore.Resources.DrawOpenTest do
         draw
         |> Ash.Changeset.for_update(
           :add_entries,
-          %{entries: [%{"weight" => 1}, %{"weight" => 1}]},
+          %{entries: [%{"weight" => 1}, %{"weight" => 1}], client_ref: Ash.UUID.generate()},
           actor: api_key
         )
         |> Ash.update!()
@@ -545,7 +565,7 @@ defmodule WallopCore.Resources.DrawOpenTest do
         draw
         |> Ash.Changeset.for_update(
           :add_entries,
-          %{entries: [%{"weight" => 1}]},
+          %{entries: [%{"weight" => 1}], client_ref: Ash.UUID.generate()},
           actor: api_key
         )
         |> Ash.update!()

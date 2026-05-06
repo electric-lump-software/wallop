@@ -16,13 +16,13 @@ Within each version section, look for `### HTTP API surface`, `### Hex package s
 
 ---
 
-## 0.22.x → 1.0.0
+## 0.24.x → 1.0.0
 
 The 1.0.0 tag freezes the protocol. The complete frozen set is in `spec/protocol.md` §4 ("Stability contract"). Read that document if you need an authoritative answer to "is this part of the contract?" — anything not listed there remains free to evolve in 1.x.
 
 ### HTTP API surface
 
-**No breaking changes.** The protocol surface at 1.0.0 is byte-identical to 0.22.x. The bump exists to lock in the existing shape, not to change it.
+**No breaking changes.** The protocol surface at 1.0.0 is byte-identical to 0.24.x. The bump exists to lock in the existing shape, not to change it.
 
 ### Hex package surface
 
@@ -31,6 +31,50 @@ The 1.0.0 tag freezes the protocol. The complete frozen set is in `spec/protocol
 ### Verifier surface
 
 Pin `wallop_verifier >= 0.16.0` if you are not already there. Older 0.x verifiers continue to work against historical receipts (older schema versions remain verifiable for the life of 1.x per `spec/protocol.md` §4.4), but new bundles produced under 1.0.0 are best paired with 0.16.0 or later.
+
+---
+
+## 0.23.x → 0.24.0
+
+Idempotent `add_entries` retries via operator-supplied `client_ref` (ADR-0012).
+
+### HTTP API surface
+
+**BREAKING.** `PATCH /api/v1/draws/:id/entries` now requires a `client_ref` field alongside `entries`. Calls without it return HTTP 400.
+
+`client_ref` is an opaque idempotency token chosen by the caller — 1..256 bytes, generated fresh per batch. Use a UUID or other high-entropy random value. Do **not** use semantically meaningful or guessable identifiers; the value is hashed at the request boundary but the digest is persisted, and weak inputs are theoretically rainbow-table-able.
+
+Behaviour:
+
+- First request with a given `(draw_id, client_ref)` lands and stores the resulting entry UUIDs.
+- A retry with the **same** `(draw_id, client_ref)` and the **same multiset of entries** replays the original response (same `meta.inserted_entries[*].uuid`). No double-insert. Reordering entries between requests is fine — the comparison is over the canonical multiset, not byte-equality of the request body.
+- A retry with the same `client_ref` but a different multiset of entries returns **HTTP 409** with `code: "idempotency_conflict"`. Pick a fresh `client_ref` for each logically distinct batch.
+- Once the draw is locked, idempotency rows are pruned in the same transaction as the lock; `add_entries` itself is rejected unconditionally on locked draws.
+
+Migration cost is one new field per request. Recommended: generate `client_ref` at batch construction time alongside the entries you are about to send, store it on your side keyed by your retry-aware identifier (eg. the queue message id), and re-send the same value on retry.
+
+The flat `%{entries: [...]}` request shape and the JSON:API `{data: {attributes: {entries: [...]}}}` shape both accept `client_ref` at the same level as `entries`.
+
+### Hex package surface
+
+The `Draw.add_entries` action now takes a required `:client_ref` argument. Direct `Ash.Changeset.for_update/3` callers must pass it:
+
+```elixir
+draw
+|> Ash.Changeset.for_update(:add_entries, %{
+  entries: [%{"weight" => 1}],
+  client_ref: Ash.UUID.generate()
+}, actor: api_key)
+|> Ash.update!()
+```
+
+New module: `WallopCore.Protocol.ClientRef` with `client_ref_digest/2` and `payload_digest/2`. The constructions are documented for cross-language re-implementation; see ADR-0012. New error: `WallopCore.Errors.IdempotencyConflict` (mapped to HTTP 409 by `WallopWeb.DrawEntriesController`).
+
+New resource: `WallopCore.Resources.AddEntriesIdempotency` (internal-only; `forbid_if(always())` on every action). Operational table only — never read during receipt construction.
+
+### Verifier surface
+
+**No verifier change.** Idempotency state is operational, not protocol. No receipt schema bump, no signed-byte change, no frozen-vector regeneration. A wholesale wipe of the new table mid-flight produces zero bit-flip in any signed artefact.
 
 ---
 

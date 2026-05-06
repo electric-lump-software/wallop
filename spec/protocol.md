@@ -164,6 +164,20 @@ The authenticated `GET /api/v1/draws/:id/entries` endpoint provides
 a keyset-paginated, UUID-sorted readback at any draw status for
 recovery or for canonical enumeration at lock time.
 
+#### Idempotent retries
+
+`add_entries` requires a per-batch operator-supplied `client_ref`
+string (1..256 bytes, opaque, high-entropy). The plaintext is hashed
+at the request boundary and the digest stored alongside a canonical
+multiset hash of the proposed entries; the plaintext is never
+persisted. A retry with the same `(draw_id, client_ref)` and the
+same canonical entry multiset replays the cached `entry_ids`. A
+retry with the same `client_ref` against a different multiset
+returns HTTP 409. Implementation details and digest constructions
+are documented in ADR-0012; the storage layer is operational, never
+read during receipt construction, and thus carries no protocol
+weight in §4.
+
 #### Binding properties
 
 - `draw_id` is bound into the hash to prevent cross-draw confusion:
@@ -688,6 +702,7 @@ The following surfaces are explicitly **not** part of the 1.x stability contract
 
 - **HTTP response shapes on non-proof endpoints**. Operator-facing, authenticated, and LiveView responses can evolve additively in minor releases. The proof bundle is explicitly NOT in this class — it's frozen under §4.2.5.
 - **Internal `Draw` resource fields**. Fields returned inside the proof bundle are frozen (§4.2.5). Fields present on the Ash resource but not exposed in the public bundle are free to evolve *within scope* — new internal fields MUST NOT introduce identity, ticketing, payment, or buyer-facing semantics per §4.6, even if they live outside the signed-byte surface.
+- **Operational idempotency state for `add_entries`**. The `client_ref` argument and its associated dedup table (`client_ref_digest`, `payload_digest`, replay payload of entry UUIDs) exist outside the signed-byte surface entirely. They are HTTP-retry hygiene, not protocol. Implementations MAY change the digest construction across minor versions (subject to ADR-0012's rotation framing) and MAY remove or replace the side table without affecting protocol conformance. A wholesale wipe of the idempotency state mid-flight produces zero bit-flip in any signed artefact (regression-tested).
 - **Operational knobs**. Rate limit thresholds, retry policies, entropy attempt caps, worker queue configuration, Oban pruning windows, weather fallback attempt budgets. None of these appear in signed bytes; none are protocol.
 - **Webhook payload schema**. Webhooks are operational. Additive changes in any 1.x release are permitted. The one protocol-adjacent commitment: **webhook payloads will not expose information beyond what is already in the proof bundle.** Webhooks are a push-notification convenience, not a second protocol surface.
 - **On-disk storage conventions** (database schema columns beyond what is surfaced in the proof bundle, filesystem layout, cache layouts). The bytes a verifier consumes are protocol; how those bytes are stored is not. **Separately**: wallop retains the raw inputs needed to reconstruct a proof bundle (weather API response, drand beacon payload) for at least the lifetime of the 1.x major. A proof bundle fetched two years post-draw still verifies against live wallop; operators requiring longer retention SHOULD archive bundles themselves.

@@ -12,11 +12,11 @@
 | Action | Type | State filter | Policy | Writes | Change modules |
 |--------|------|-------------|--------|--------|----------------|
 | `create` | create | — | actor_present | status=open, api_key_id, name, winner_count, metadata, callback_url | AssignOperatorSequence, IncrementApiKeyDrawCount, ValidateCallbackUrl, RecordStageTimestamp(opened_at), BroadcastUpdate |
-| `add_entries` | update | open | owner (api_key_id == actor) | entries (via change), entry_count, entry_hash | ValidateEntries, AddEntries |
+| `add_entries` | update | open | owner (api_key_id == actor) | entries (via change), entry_count, add_entries_idempotency rows (insert-or-replay; ADR-0012) | ValidateEntries, HashAndClearClientRef, CheckIdempotency, AddEntries |
 | `remove_entry` | update | open | owner | entries (via change), entry_count, entry_hash | RemoveEntry |
 | `update_name` | update | open | owner | name | BroadcastUpdate |
 | `update_winner_count` | update | open | owner | winner_count | BroadcastUpdate |
-| `lock` | update | open | owner | entry_hash, entry_canonical, status→awaiting_entropy, drand_*/weather_* declarations, operator receipt | LockDraw, DeclareEntropy, RecordStageTimestamp(locked_at, entropy_declared_at), SignAndStoreReceipt |
+| `lock` | update | open | owner | entry_hash, entry_canonical, status→awaiting_entropy, drand_*/weather_* declarations, operator receipt; same-tx DELETE of add_entries_idempotency rows for this draw (ADR-0012) | LockDraw, DeclareEntropy, RecordStageTimestamp(locked_at, entropy_declared_at), SignAndStoreReceipt |
 | `execute` | update | locked | owner | seed (caller), seed_source=caller, results, status→completed, executed_at | ExecuteDraw (validates NoEntropyDeclared) |
 | `transition_to_pending` | update | awaiting_entropy | **internal only** | status→pending_entropy | — |
 | `execute_with_entropy` | update | pending_entropy | **internal only** | drand_randomness, drand_signature, drand_response, weather_value, weather_raw, weather_observation_time, seed, results, status→completed | ExecuteWithEntropy, SignAndStoreExecutionReceipt, BroadcastUpdate |

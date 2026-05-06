@@ -40,9 +40,15 @@ defmodule WallopWeb.DrawEntriesController do
     actor = conn.assigns[:api_key]
 
     with {:ok, entries} <- parse_entries(params),
+         {:ok, client_ref} <- parse_client_ref(params),
          {:ok, draw} <- load_draw_owned(id, actor),
          {:ok, updated} <-
-           Ash.Changeset.for_update(draw, :add_entries, %{entries: entries}, actor: actor)
+           Ash.Changeset.for_update(
+             draw,
+             :add_entries,
+             %{entries: entries, client_ref: client_ref},
+             actor: actor
+           )
            |> Ash.update() do
       inserted_uuids = Ash.Resource.get_metadata(updated, :inserted_entries) || []
 
@@ -53,18 +59,24 @@ defmodule WallopWeb.DrawEntriesController do
       {:error, :bad_entries} ->
         bad_request(conn, "entries must be a list")
 
+      {:error, :bad_client_ref} ->
+        bad_request(conn, "client_ref is required (1..256 byte string)")
+
       {:error, :not_found} ->
         not_found(conn)
 
       {:error, %Ash.Error.Invalid{errors: errors}} ->
-        bad_request(conn, format_errors(errors))
+        # Idempotency conflict is a structured 409, not a generic 400.
+        if Enum.any?(errors, &match?(%WallopCore.Errors.IdempotencyConflict{}, &1)) do
+          conflict(conn, format_errors(errors))
+        else
+          bad_request(conn, format_errors(errors))
+        end
 
       {:error, %Ash.Error.Forbidden{}} ->
         not_found(conn)
 
       {:error, other} ->
-        # Unexpected internal error — surface as 500, don't masquerade
-        # as a client fault.
         internal_error(conn, other)
     end
   end
@@ -99,6 +111,13 @@ defmodule WallopWeb.DrawEntriesController do
 
   defp parse_entries(%{"entries" => entries}) when is_list(entries), do: {:ok, entries}
   defp parse_entries(_), do: {:error, :bad_entries}
+
+  defp parse_client_ref(%{"data" => %{"attributes" => %{"client_ref" => ref}}})
+       when is_binary(ref),
+       do: {:ok, ref}
+
+  defp parse_client_ref(%{"client_ref" => ref}) when is_binary(ref), do: {:ok, ref}
+  defp parse_client_ref(_), do: {:error, :bad_client_ref}
 
   defp load_draw_owned(_id, nil), do: {:error, :not_found}
 
@@ -198,6 +217,12 @@ defmodule WallopWeb.DrawEntriesController do
     conn
     |> put_status(:bad_request)
     |> json(%{errors: [%{detail: msg}]})
+  end
+
+  defp conflict(conn, msg) do
+    conn
+    |> put_status(:conflict)
+    |> json(%{errors: [%{detail: msg, code: "idempotency_conflict"}]})
   end
 
   defp not_found(conn) do

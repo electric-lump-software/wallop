@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### wallop_core 0.24.0 — `client_ref` idempotent `add_entries` retries
+
+**ADDED.** Operator-supplied `client_ref` argument on `PATCH /api/v1/draws/:id/entries`, with hash-at-boundary digest construction and side-table conflict resolution. Lets operators safely retry batched entry pushes after a lost response without double-inserting.
+
+**BREAKING.** `client_ref` is now a required argument on `add_entries`. Calls without it return HTTP 400. This is a pre-launch break — all callers must pass an opaque high-entropy token (UUID or 128-bit random).
+
+- New resource `WallopCore.Resources.AddEntriesIdempotency`, internal-only (`forbid_if(always())` on every action; called with `authorize?: false` from `add_entries` and `lock`). Schema: `(draw_id, client_ref_digest bytea, payload_digest bytea, entry_ids uuid[], inserted_at)`. Unique index on `(draw_id, client_ref_digest)`. ON DELETE CASCADE on the draw FK.
+- New module `WallopCore.Protocol.ClientRef`. Two domain-separated SHA-256 constructions: `client_ref_digest = SHA-256("wallop-client-ref-v1\n" || draw_id_bytes || 0x00 || client_ref_bytes)` (16-byte big-endian UUID) and `payload_digest = SHA-256("wallop-client-ref-payload-v1\n" || JCS({"draw_id", "entries":[{"weight":N},...]}))` (entries sorted ascending as integers). Both stored as raw 32-byte `bytea`, never hex-encoded. 256-byte cap enforced before hashing. Re-implementers MUST NOT share code paths with `entry_hash`.
+- Three new `Draw.add_entries` change modules wired in order after `ValidateEntries`: `HashAndClearClientRef` (computes both digests, deletes plaintext from changeset arguments before any after-action telemetry), `CheckIdempotency` (INSERT…ON CONFLICT DO NOTHING RETURNING in same tx as entry inserts; conflict → re-read row, compare `payload_digest`, replay matching or 409 mismatching), `AddEntries` (existing flow + idempotency-row finalisation in the same after-action that inserts the entries).
+- New error `WallopCore.Errors.IdempotencyConflict` mapped to HTTP 409 in `DrawEntriesController`. The custom controller pipes `client_ref` through to the action and surfaces 409 with `code: "idempotency_conflict"` distinctly from generic 400.
+- `LockDraw` change now prunes idempotency rows for the draw in the **same transaction** as the `:open → :locked` state change. A crash between prune and lock-commit rolls both back atomically; no draw can be observed in a state where idempotency rows outlive their open phase.
+- Receipt invariance is permanent: the idempotency table is never read during entry-hash, seed, picker, or signing-input construction. Wholesale wipe of the table mid-flight produces zero bit-flip in any signed artefact (regression test pins this for both lock and execution receipts).
+
+Nine new sharp-edge regression tests pin the ADR commitments: 409 on payload mismatch, identical-payload replay returns same UUIDs (no double-insert), reordered entries replay correctly (byte-stable retry), plaintext absent from log capture, plaintext absent from stored row, prune-on-successful-lock, prune-rollback-on-failed-lock, lock receipt verifies after table wipe, execution receipt verifies after table wipe.
+
+Twenty new protocol-level vector tests pin `client_ref_digest` and `payload_digest` byte-for-byte against documented preimages, computed independently of the implementation. Cross-language conformance: any Rust/Go/JS re-implementer reproduces these exact bytes from the spec text.
+
+See ADR-0012 for the full design rationale, rejected alternatives (single-column-on-Draw, plaintext storage, HTTP-middleware idempotency), and operator-side guidance ("use a UUID or 128-bit random — do NOT use semantically meaningful identifiers").
+
 ### wallop_core 0.23.0 — update winner_count pre-lock
 
 **ADDED.** `PATCH /api/v1/draws/:id/winner_count` — updates `winner_count` on an
