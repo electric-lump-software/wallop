@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### wallop_core 0.26.1 — fix: `:open` proof page render
+
+**FIXED.** The public LiveView proof page on `:open` draws crashed with `KeyError: stage_timestamps` after 0.25.0. The pre-lock view's allowlist (introduced in 0.25.0) deliberately drops `stage_timestamps`, but the `:open` template branch was still passing the projected struct to `WallopWeb.Components.DrawTimeline`, which is strictly typed for the full `Draw` resource and reads several fields outside the allowlist.
+
+- New component `WallopWeb.Components.PreLockTimeline`. Binds only to `ProofPreLockView` fields. Renders six stages: "Entries Open" current, five placeholder pending. No path to read fields outside the allowlist — the structural firewall PR #193 intended.
+- `PreLockPanel` switched from `<.draw_timeline draw={@view} />` to `<.pre_lock_timeline view={@view} />`. `DrawTimeline` is unchanged and remains strictly typed for the post-lock shape.
+- Two new regression tests in `proof_live_test.exs`: LiveView mount + render on an `:open` draw, plus PubSub re-render on the same. The pre-existing "redirects open draw to LiveView" test only verified the HTTP redirect; it never mounted the LiveView, which is how this shipped.
+
+No protocol change, no signed-byte change. Patch release.
+
 ### wallop_core 0.26.0 — operator-supplied `weather_time` on `Draw.lock`
 
 **ADDED.** Optional `weather_time` argument on the `Draw.lock` action. When supplied, commits the entry set immediately while scheduling entropy execution for the operator's chosen future moment. Lock receipt v5 schema unchanged — `weather_time` is already a signed field; only the value is now operator-supplied. **No protocol change, no signed-byte change.**

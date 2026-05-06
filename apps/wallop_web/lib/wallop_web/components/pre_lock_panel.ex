@@ -16,7 +16,7 @@ defmodule WallopWeb.Components.PreLockPanel do
   """
   use WallopWeb, :html
 
-  import WallopWeb.Components.DrawTimeline
+  import WallopWeb.Components.PreLockTimeline
   import WallopWeb.Components.EntryCheck
 
   attr(:view, WallopWeb.ProofPreLockView, required: true)
@@ -45,7 +45,7 @@ defmodule WallopWeb.Components.PreLockPanel do
 
       <div class="bg-white border border-cream-border rounded-xl">
         <div class="p-5">
-          <.draw_timeline draw={@view} />
+          <.pre_lock_timeline view={@view} />
         </div>
       </div>
 
