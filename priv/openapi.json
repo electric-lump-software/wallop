@@ -2567,7 +2567,17 @@
                     "properties": {
                       "attributes": {
                         "additionalProperties": false,
-                        "properties": {},
+                        "properties": {
+                          "weather_time": {
+                            "anyOf": [
+                              {},
+                              {
+                                "type": "null"
+                              }
+                            ],
+                            "description": "Optional explicit weather observation time (UTC). When supplied, the entropy worker will fire at this moment and the supplied value is signed verbatim into the lock receipt. If omitted, defaults to a jittered 3-5 minutes from lock-time. Must have second precision (sub-second values rejected — what you supply is what gets signed). Must be at least 60 seconds in the future and within ~7 days. The drand round derivation flows from this value; supplying a far-future weather_time correctly schedules the drand reveal to align."
+                          }
+                        },
                         "type": "object"
                       },
                       "id": {

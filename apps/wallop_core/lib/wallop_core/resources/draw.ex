@@ -124,6 +124,24 @@ defmodule WallopCore.Resources.Draw do
       require_atomic?(false)
       filter(expr(status == :open))
 
+      argument :weather_time, :utc_datetime_usec do
+        allow_nil?(true)
+
+        description(
+          "Optional explicit weather observation time (UTC). When supplied, " <>
+            "the entropy worker will fire at this moment and the supplied " <>
+            "value is signed verbatim into the lock receipt. If omitted, " <>
+            "defaults to a jittered 3-5 minutes from lock-time. Must have " <>
+            "second precision (sub-second values rejected — what you supply " <>
+            "is what gets signed). Must be at least 60 seconds in the future " <>
+            "and within ~7 days. The drand round derivation flows from this " <>
+            "value; supplying a far-future weather_time correctly schedules " <>
+            "the drand reveal to align."
+        )
+      end
+
+      validate({WallopCore.Resources.Draw.Validations.WeatherTime, []})
+
       change({WallopCore.Resources.Draw.Changes.LockDraw, []})
       change({WallopCore.Resources.Draw.Changes.DeclareEntropy, []})
       change({WallopCore.Resources.Draw.Changes.RecordStageTimestamp, key: "locked_at"})
