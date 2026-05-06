@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### wallop_core 0.26.0 — operator-supplied `weather_time` on `Draw.lock`
+
+**ADDED.** Optional `weather_time` argument on the `Draw.lock` action. When supplied, commits the entry set immediately while scheduling entropy execution for the operator's chosen future moment. Lock receipt v5 schema unchanged — `weather_time` is already a signed field; only the value is now operator-supplied. **No protocol change, no signed-byte change.**
+
+Use case: consumers that close their sales window well before the actual draw execution time (e.g. a sale that closes 24h before the reveal). Without this, those consumers have to defer `lock` until just before execution, leaving wallop's draw in `:open` while the consumer treats it as closed — silent state drift if any delayed `add_entries` retry lands in the gap. Locking at sales-close with a future `weather_time` closes that gap atomically.
+
+- Action argument: `weather_time`, `:utc_datetime_usec`, optional. If omitted, jittered default of 3-5 minutes from lock-time (existing behaviour preserved).
+- New validator `WallopCore.Resources.Draw.Validations.WeatherTime`. Rejects sub-second precision (the supplied value is signed verbatim — silent rounding would surprise the operator). Rejects values < 60 seconds in the future (worker scheduling slack). Rejects values > 7 days in the future (= MAX_ROUND_DELTA of 201,600 quicknet rounds at 3s/round; cap is operational, drand chain re-key risk over long horizons).
+- `DeclareEntropy` now derives `drand_round` from `weather_time`, not from `now`. The drand round publishes ~30 seconds before `weather_time`, regardless of when lock fires. This is the load-bearing fairness invariant: with operator-supplied future `weather_time`, drand reveal and weather observation must remain coupled, otherwise drand bytes would be observable far before the weather observation, defeating the cross-source unpredictability. Default behaviour (no supplied `weather_time`) ends up at the same place — drand publishes ~30s before the jittered 3-5 minute weather observation.
+- spec/protocol.md §4.4 API-key compromise trust assumption clarifies: operators have no API surface to induce `:failed` state on an in-flight draw. Every `:failed` transition is driven by the entropy worker against infrastructure-attributable causes. Relevant for the longer wait windows this feature enables.
+
+Atomic invariant preserved: lock and entropy declaration remain in the same SQL UPDATE. The operator commits `weather_time` at lock-time and cannot revise it post-lock. Same atomic guarantee as today, just with operator control over the value.
+
+Breaking-change risk: none. Pure additive; existing callers omitting the argument get identical behaviour to 0.25.x. wallop-verifier consumes lock receipt v5 unchanged.
+
 ### wallop_core 0.25.0 — pre-lock proof page hardening
 
 **ADDED.** Build-side allowlist (`WallopWeb.ProofPreLockView`) for the public proof page on `:open` draws, plus a dedicated rate-limit bucket for pre-lock reads. Pinned cross-language via `spec/vectors/pre_lock_wide_gap_v1.json`. No protocol or signed-byte change.

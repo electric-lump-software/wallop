@@ -16,13 +16,13 @@ Within each version section, look for `### HTTP API surface`, `### Hex package s
 
 ---
 
-## 0.25.x → 1.0.0
+## 0.26.x → 1.0.0
 
 The 1.0.0 tag freezes the protocol. The complete frozen set is in `spec/protocol.md` §4 ("Stability contract"). Read that document if you need an authoritative answer to "is this part of the contract?" — anything not listed there remains free to evolve in 1.x.
 
 ### HTTP API surface
 
-**No breaking changes.** The protocol surface at 1.0.0 is byte-identical to 0.25.x. The bump exists to lock in the existing shape, not to change it.
+**No breaking changes.** The protocol surface at 1.0.0 is byte-identical to 0.26.x. The bump exists to lock in the existing shape, not to change it.
 
 ### Hex package surface
 
@@ -31,6 +31,46 @@ The 1.0.0 tag freezes the protocol. The complete frozen set is in `spec/protocol
 ### Verifier surface
 
 Pin `wallop_verifier >= 0.16.0` if you are not already there. Older 0.x verifiers continue to work against historical receipts (older schema versions remain verifiable for the life of 1.x per `spec/protocol.md` §4.4), but new bundles produced under 1.0.0 are best paired with 0.16.0 or later.
+
+---
+
+## 0.25.x → 0.26.0
+
+Optional operator-supplied `weather_time` on `Draw.lock`. **No HTTP breaking changes; no protocol or signed-byte changes.** Pure additive.
+
+### HTTP API surface
+
+`PATCH /api/v1/draws/:id/lock` now accepts an optional `weather_time` field (UTC datetime, ISO8601, second precision). When supplied, the entropy worker fires at this moment and the draw executes then. When omitted, defaults to the jittered 3-5 minutes from lock-time as before.
+
+Use case: commit the entry set at sales-close-time, schedule actual draw execution for later (e.g. lock at 5pm today, draw at 6pm tomorrow). Without `weather_time`, you'd have to defer the lock call until just before execution, leaving the draw in `:open` on wallop while you treat it as closed.
+
+Constraints (validated, errors return HTTP 400):
+
+- Second precision only — sub-second values are rejected, not silently truncated.
+- Must be at least 60 seconds in the future.
+- Must be within ~7 days (201,600 drand quicknet rounds at 3s/round).
+
+Atomic semantics preserved — `weather_time` is committed in the lock receipt at lock-time and cannot be revised. Cross-source binding maintained: the `drand_round` is derived from `weather_time`, so drand publishes ~30 seconds before the supplied moment regardless of when lock fires.
+
+### Hex package surface
+
+`Draw.lock` action gains an optional `:weather_time` argument (`:utc_datetime_usec`). Direct `Ash.Changeset.for_update/3` callers can supply it:
+
+```elixir
+target = DateTime.utc_now() |> DateTime.add(86_400, :second) |> DateTime.truncate(:second)
+
+draw
+|> Ash.Changeset.for_update(:lock, %{weather_time: target}, actor: api_key)
+|> Ash.update!()
+```
+
+Existing callers omitting the argument see identical behaviour to 0.25.x.
+
+New validator: `WallopCore.Resources.Draw.Validations.WeatherTime`. New constants on `DeclareEntropy`: `@drand_slack_seconds 30` (drand publishes this many seconds before `weather_time`).
+
+### Verifier surface
+
+**No verifier change.** Lock receipt v5 schema unchanged — `weather_time` was already a signed field. Only the value is now operator-controlled. Cross-language vectors unchanged.
 
 ---
 
