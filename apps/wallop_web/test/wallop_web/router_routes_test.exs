@@ -100,6 +100,7 @@ defmodule WallopWeb.RouterRoutesTest do
     {WallopCore.Resources.Draw, :read, :get, "/draws/:id"},
     {WallopCore.Resources.Draw, :create, :post, "/draws"},
     {WallopCore.Resources.Draw, :add_entries, :patch, "/draws/:id/entries"},
+    {WallopCore.Resources.Draw, :update_winner_count, :patch, "/draws/:id/winner_count"},
     {WallopCore.Resources.Draw, :lock, :patch, "/draws/:id/lock"}
   ]
 

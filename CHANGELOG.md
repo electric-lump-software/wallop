@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### wallop_core 0.23.0 — update winner_count pre-lock
+
+**ADDED.** `PATCH /api/v1/draws/:id/winner_count` — updates `winner_count` on an
+open draw. Rejected once the draw has left `:open` (Ash policy + DB trigger).
+Mirrors the shape of `:update_name`. No change to the lock receipt or execution
+receipt wire format.
+
 ### Security
 
 - Bump `ash` 3.21.3 → 3.24.4 to close GHSA-jjf9-w5vj-r6vp (atom exhaustion via unchecked `Module.concat` in `Ash.Type.Module.cast_input/2`, HIGH severity, vulnerable versions ≤ 3.21.3, first patched 3.22.0). Surfaced by the new `mix deps.audit` step in CI.

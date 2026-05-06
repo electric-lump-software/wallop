@@ -9,6 +9,7 @@ defmodule WallopCore.Domain do
         get(:read, route: "/:id")
         post(:create)
         patch(:add_entries, route: "/:id/entries")
+        patch(:update_winner_count, route: "/:id/winner_count")
         patch(:lock, route: "/:id/lock")
       end
     end
