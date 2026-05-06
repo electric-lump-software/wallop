@@ -15,6 +15,12 @@ defmodule WallopWeb.ProofController do
   # legitimate proof page loads aren't throttled.
   plug(WallopWeb.Plugs.SelfCheckRateLimit when action in [:show])
 
+  # Rate-limit raw `/proof/:id` GETs when the draw is in `:open` status.
+  # Distinct ETS table from SelfCheckRateLimit (different threat model,
+  # different cap). Fires only on :open draws — terminal/in-progress
+  # draws have their own caching story (immutable Cache-Control / LiveView).
+  plug(WallopWeb.Plugs.ProofPreLockRateLimit when action in [:show])
+
   @terminal_statuses [:completed, :failed, :expired]
   @default_entries_limit 100
   @max_entries_limit 1000

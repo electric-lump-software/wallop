@@ -148,42 +148,17 @@
   </div>
 </div>
 
-<%!-- Open draw (accepting entries) --%>
-<div :if={@draw.status == :open and not @revealing} class="space-y-6">
-  <div class="flex items-center gap-3">
-    <span class="inline-flex items-center gap-1.5 bg-blue-100 text-blue-800 text-xs font-semibold px-3 py-1 rounded-full">
-      Draw Open
-    </span>
-  </div>
-
-  <div class="text-sm text-[#555] space-y-3">
-    <div>
-      <div>Draw ID: <span class="font-mono">{@draw.id}</span></div>
-      <.operator_link operator={@operator} draw={@draw} />
-    </div>
-    <div>
-      <div>Drawing {@draw.winner_count} winner(s)</div>
-      <div>{@draw.entry_count || 0} entries so far</div>
-    </div>
-  </div>
-
-  <div class="bg-white border border-cream-border rounded-xl">
-    <div class="p-5">
-      <.draw_timeline draw={@draw} />
-    </div>
-  </div>
-
-  <div class="bg-white border border-cream-border rounded-xl">
-    <div class="p-5">
-      <.entry_check
-        check_result={@check_result}
-        draw_status={@draw.status}
-        checked_entry_id={@checked_entry_id}
-        check_url={@draw.check_url}
-      />
-    </div>
-  </div>
-</div>
+<%!-- Open draw (accepting entries) — rendered via PreLockPanel
+     against the build-side allowlist (ProofPreLockView). The
+     template here cannot reach into @draw at all in the :open
+     branch; only the allowlisted fields on @open_view are
+     available. See spec/protocol.md §4.3. --%>
+<.pre_lock_panel
+  :if={@draw.status == :open and not @revealing and @open_view}
+  view={@open_view}
+  check_result={@check_result}
+  checked_entry_id={@checked_entry_id}
+/>
 
 <%!-- Expired draw --%>
 <div :if={@draw.status == :expired} class="space-y-6">

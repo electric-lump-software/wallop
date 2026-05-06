@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### wallop_core 0.25.0 — pre-lock proof page hardening
+
+**ADDED.** Build-side allowlist (`WallopWeb.ProofPreLockView`) for the public proof page on `:open` draws, plus a dedicated rate-limit bucket for pre-lock reads. Pinned cross-language via `spec/vectors/pre_lock_wide_gap_v1.json`. No protocol or signed-byte change.
+
+The proof page on a draw in `:open` status now renders through a struct that enumerates the exact set of fields permitted on the public surface: `id`, `name`, `status`, `winner_count`, `entry_count`, `opened_at`, `check_url`, `operator_sequence`, and `operator: %{slug, name}`. A future PR adding a new field to the `Draw` resource cannot reach the public proof page until the allowlist is widened deliberately (one struct definition + one vector update + one spec note).
+
+- New module: `WallopWeb.ProofPreLockView` with `from_draw/2`. Hard-raises on non-`:open` input. Operator summary projects only `slug` and `name` — internal id, public_key, tier all dropped at projection time.
+- New component: `WallopWeb.Components.PreLockPanel`. Takes the view struct only; cannot reach the raw `Draw`. Replaces the inline `:open` template branch in `proof_live.html.heex` and serves as the structural firewall by construction.
+- New plug: `WallopWeb.Plugs.ProofPreLockRateLimit` (table `:wallop_proof_pre_lock_rate_limit`, 120/min per IP). Distinct ETS table and config from `SelfCheckRateLimit` so the buckets don't fight. Fires only on draws in `:open` status; non-existent draw IDs are not throttled (avoids enumeration oracle).
+- New cross-language vector: `spec/vectors/pre_lock_wide_gap_v1.json`. Pins three happy-path projections from fully-loaded inputs and one negative case (non-open status raises). Includes `forensic_strings_that_must_not_appear_in_view` for each happy-path vector — substrings that MUST NOT appear in the projected struct's inspect output. Re-implementations in any language reproduce these projections byte-identically.
+- Spec §4.3: pre-lock proof-page rendering + proof-page fingerprint pinned as **undefined for `:open` draws**. Verifiers MUST reject any fingerprint claim attached to a not-yet-locked draw.
+
 ### wallop_core 0.24.0 — `client_ref` idempotent `add_entries` retries
 
 **ADDED.** Operator-supplied `client_ref` argument on `PATCH /api/v1/draws/:id/entries`, with hash-at-boundary digest construction and side-table conflict resolution. Lets operators safely retry batched entry pushes after a lost response without double-inserting.

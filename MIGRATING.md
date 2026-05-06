@@ -16,13 +16,13 @@ Within each version section, look for `### HTTP API surface`, `### Hex package s
 
 ---
 
-## 0.24.x → 1.0.0
+## 0.25.x → 1.0.0
 
 The 1.0.0 tag freezes the protocol. The complete frozen set is in `spec/protocol.md` §4 ("Stability contract"). Read that document if you need an authoritative answer to "is this part of the contract?" — anything not listed there remains free to evolve in 1.x.
 
 ### HTTP API surface
 
-**No breaking changes.** The protocol surface at 1.0.0 is byte-identical to 0.24.x. The bump exists to lock in the existing shape, not to change it.
+**No breaking changes.** The protocol surface at 1.0.0 is byte-identical to 0.25.x. The bump exists to lock in the existing shape, not to change it.
 
 ### Hex package surface
 
@@ -31,6 +31,28 @@ The 1.0.0 tag freezes the protocol. The complete frozen set is in `spec/protocol
 ### Verifier surface
 
 Pin `wallop_verifier >= 0.16.0` if you are not already there. Older 0.x verifiers continue to work against historical receipts (older schema versions remain verifiable for the life of 1.x per `spec/protocol.md` §4.4), but new bundles produced under 1.0.0 are best paired with 0.16.0 or later.
+
+---
+
+## 0.24.x → 0.25.0
+
+Pre-lock proof page hardening. **No HTTP breaking changes; no protocol or signed-byte changes.** Internal-only structural firewall.
+
+### HTTP API surface
+
+**No breaking changes.** The public proof page at `/proof/:id` and `/live/proof/:id` continues to render the same fields it always has on `:open` draws: id, name, status, winner_count, entry_count, opened_at, check_url, operator_sequence, operator slug + name. Adding new fields to the page now requires a deliberate one-line change to the build-side allowlist (`WallopWeb.ProofPreLockView`) plus an update to `spec/vectors/pre_lock_wide_gap_v1.json`.
+
+A new rate-limit bucket fires on pre-lock reads (120/min per IP). Distinct from the existing self-check rate limit. Bots scraping pre-lock state at high frequency will see HTTP 429 sooner; legitimate viewers including LiveView polling are well under the cap.
+
+### Hex package surface
+
+New module `WallopWeb.ProofPreLockView` with `from_draw/2`. New component `WallopWeb.Components.PreLockPanel`. New plug `WallopWeb.Plugs.ProofPreLockRateLimit` (table `:wallop_proof_pre_lock_rate_limit`, separate from `:wallop_self_check_rate_limit`). No removals.
+
+### Verifier surface
+
+`spec/vectors/pre_lock_wide_gap_v1.json` is the cross-language vector for the pre-lock allowlist. Verifiers consuming the public proof page on `:open` draws MUST treat any field outside this vector's allowlist as out of contract.
+
+Spec §4.3 now pins the proof-page fingerprint as **undefined for pre-lock draws**. Verifiers MUST reject any fingerprint claim attached to a draw not yet locked.
 
 ---
 

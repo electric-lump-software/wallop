@@ -13,10 +13,12 @@ defmodule WallopWeb.ProofLive do
   import WallopWeb.Components.EntryCheck
   import WallopWeb.Components.OperatorPanel
   import WallopWeb.Components.VerifyBlock
+  import WallopWeb.Components.PreLockPanel
 
   alias Phoenix.LiveView, as: LV
   alias WallopCore.Proof
   alias WallopWeb.Plugs.SelfCheckRateLimit
+  alias WallopWeb.ProofPreLockView
 
   @poll_interval_ms 30_000
 
@@ -45,6 +47,7 @@ defmodule WallopWeb.ProofLive do
         {:ok,
          assign(socket,
            draw: draw,
+           open_view: open_view_for(draw, operator),
            draw_id: id,
            check_result: check_result,
            checked_entry_id: entry_id,
@@ -149,6 +152,7 @@ defmodule WallopWeb.ProofLive do
         {:noreply,
          assign(socket,
            draw: draw,
+           open_view: nil,
            receipt: lock_receipt,
            revealing: true,
            reveal_from: 0,
@@ -182,7 +186,11 @@ defmodule WallopWeb.ProofLive do
          )}
 
       true ->
-        {:noreply, assign(socket, :draw, draw)}
+        {:noreply,
+         assign(socket,
+           draw: draw,
+           open_view: open_view_for(draw, socket.assigns[:operator])
+         )}
     end
   end
 
@@ -198,6 +206,16 @@ defmodule WallopWeb.ProofLive do
     {:ok, result} = Proof.winner?(draw, entry_id)
     result
   end
+
+  # Build the pre-lock view ONLY for :open status. Any other status
+  # gets nil, and the template branches on that. This is the structural
+  # firewall — the :open template branch can only render fields the
+  # ProofPreLockView struct exposes.
+  defp open_view_for(%{status: :open} = draw, operator) do
+    ProofPreLockView.from_draw(draw, operator)
+  end
+
+  defp open_view_for(_draw, _operator), do: nil
 
   defp load_verify_data(draw) do
     entries =
