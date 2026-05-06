@@ -1,0 +1,193 @@
+{
+  "description": "Pre-lock proof page allowlist (see spec/protocol.md §4.3). Pins the build-side projection from a fully-loaded Draw resource to the public pre-lock view. The 'wide gap' is the difference between what the Draw resource carries and what the public proof page is permitted to expose during :open status. Input fixtures populate every field that exists on the resource — even fields that semantically cannot exist pre-lock — and the expected_view shows the projection MUST drop everything not in the allowlist. Cross-language: Elixir, Rust verifier, and any future implementation MUST produce byte-identical projections from this input.",
+  "version": "1",
+  "domain_separator_note": "No domain separator — this is not a hash. The vector pins a structural projection, not a cryptographic operation.",
+  "allowlist": [
+    "id",
+    "name",
+    "status",
+    "winner_count",
+    "entry_count",
+    "opened_at",
+    "check_url",
+    "operator_sequence",
+    "operator"
+  ],
+  "operator_allowlist": [
+    "slug",
+    "name"
+  ],
+  "vectors": [
+    {
+      "name": "wide gap — fully populated draw, fully populated operator, full projection drop test",
+      "draw_input": {
+        "id": "11111111-2222-3333-4444-555555555555",
+        "name": "Public Name",
+        "status": "open",
+        "winner_count": 2,
+        "entry_count": 17,
+        "check_url": "https://operator.example/draw-info",
+        "inserted_at": "2026-05-01T12:00:00.000000Z",
+        "stage_timestamps": {"opened_at": "2026-05-01T12:00:00.000000Z"},
+        "api_key_id": "secret-key-id",
+        "operator_id": "secret-op-id",
+        "operator_sequence": 42,
+        "metadata": {"internal": "data"},
+        "callback_url": "https://operator.example/cb",
+        "entry_hash": "fakehash-must-not-appear",
+        "entry_canonical": "fakecanonical-must-not-appear",
+        "seed": "fakeseed-must-not-appear",
+        "seed_source": "entropy",
+        "results": [{"position": 1, "uuid": "x"}],
+        "drand_round": 999,
+        "drand_chain": "leaked-must-not-appear",
+        "drand_randomness": "leaked",
+        "drand_signature": "leaked",
+        "drand_response": "leaked",
+        "weather_station": "leaked",
+        "weather_time": "2026-05-01T13:00:00Z",
+        "weather_value": "12.3",
+        "weather_raw": "leaked",
+        "weather_observation_time": "2026-05-01T13:00:00Z",
+        "weather_fallback_reason": null,
+        "executed_at": "2026-05-01T13:00:00Z",
+        "failed_at": null,
+        "failure_reason": null
+      },
+      "operator_input": {
+        "slug": "op-slug",
+        "name": "Op Name",
+        "id": "secret-op-id-must-not-appear",
+        "public_key": "secret-pubkey-must-not-appear",
+        "tier": "tier_1",
+        "api_key_id": "leaked-api-key-must-not-appear"
+      },
+      "expected_view": {
+        "id": "11111111-2222-3333-4444-555555555555",
+        "name": "Public Name",
+        "status": "open",
+        "winner_count": 2,
+        "entry_count": 17,
+        "opened_at": "2026-05-01T12:00:00.000000Z",
+        "check_url": "https://operator.example/draw-info",
+        "operator_sequence": 42,
+        "operator": {
+          "slug": "op-slug",
+          "name": "Op Name"
+        }
+      },
+      "forensic_strings_that_must_not_appear_in_view": [
+        "secret-key-id",
+        "secret-op-id",
+        "secret-op-id-must-not-appear",
+        "secret-pubkey-must-not-appear",
+        "leaked-api-key-must-not-appear",
+        "fakehash-must-not-appear",
+        "fakecanonical-must-not-appear",
+        "fakeseed-must-not-appear",
+        "leaked",
+        "leaked-must-not-appear",
+        "tier_1",
+        "internal"
+      ]
+    },
+    {
+      "name": "opened_at fallback — stage_timestamps absent, inserted_at is the source",
+      "note": "Frozen behaviour: when stage_timestamps['opened_at'] is not present, the projection uses inserted_at. A future refactor that 'simplifies' this fallback away must update both this vector and the spec note.",
+      "draw_input": {
+        "id": "22222222-3333-4444-5555-666666666666",
+        "status": "open",
+        "winner_count": 1,
+        "inserted_at": "2026-05-01T09:30:00.000000Z"
+      },
+      "operator_input": null,
+      "expected_view": {
+        "id": "22222222-3333-4444-5555-666666666666",
+        "name": null,
+        "status": "open",
+        "winner_count": 1,
+        "entry_count": 0,
+        "opened_at": "2026-05-01T09:30:00.000000Z",
+        "check_url": null,
+        "operator_sequence": null,
+        "operator": null
+      },
+      "forensic_strings_that_must_not_appear_in_view": []
+    },
+    {
+      "name": "opened_at — stage_timestamps['opened_at'] is the primary source when present",
+      "note": "Companion to the fallback test above. When stage_timestamps['opened_at'] IS present, it takes precedence over inserted_at. Both code paths are vector-frozen.",
+      "draw_input": {
+        "id": "55555555-6666-7777-8888-999999999999",
+        "status": "open",
+        "winner_count": 1,
+        "inserted_at": "2026-05-01T08:00:00.000000Z",
+        "stage_timestamps": {"opened_at": "2026-05-01T09:30:00.000000Z"}
+      },
+      "operator_input": null,
+      "expected_view": {
+        "id": "55555555-6666-7777-8888-999999999999",
+        "name": null,
+        "status": "open",
+        "winner_count": 1,
+        "entry_count": 0,
+        "opened_at": "2026-05-01T09:30:00.000000Z",
+        "check_url": null,
+        "operator_sequence": null,
+        "operator": null
+      },
+      "forensic_strings_that_must_not_appear_in_view": []
+    },
+    {
+      "name": "operator-only fields not on allowlist are dropped (slug + name only)",
+      "draw_input": {
+        "id": "33333333-4444-5555-6666-777777777777",
+        "status": "open",
+        "winner_count": 5,
+        "entry_count": 100,
+        "operator_sequence": 1,
+        "inserted_at": "2026-05-01T10:00:00.000000Z"
+      },
+      "operator_input": {
+        "slug": "minimal-op",
+        "name": "Minimal Op",
+        "id": "leaked-op-id",
+        "public_key": "leaked-key",
+        "tier": "tier_2"
+      },
+      "expected_view": {
+        "id": "33333333-4444-5555-6666-777777777777",
+        "name": null,
+        "status": "open",
+        "winner_count": 5,
+        "entry_count": 100,
+        "opened_at": "2026-05-01T10:00:00.000000Z",
+        "check_url": null,
+        "operator_sequence": 1,
+        "operator": {
+          "slug": "minimal-op",
+          "name": "Minimal Op"
+        }
+      },
+      "forensic_strings_that_must_not_appear_in_view": [
+        "leaked-op-id",
+        "leaked-key",
+        "tier_2"
+      ]
+    }
+  ],
+  "negative_vectors": [
+    {
+      "name": "non-open status must reject — projection only valid for :open",
+      "draw_input": {
+        "id": "44444444-5555-6666-7777-888888888888",
+        "status": "locked",
+        "winner_count": 1,
+        "entry_count": 5,
+        "inserted_at": "2026-05-01T11:00:00.000000Z"
+      },
+      "operator_input": null,
+      "expected_error": "non-open draw"
+    }
+  ]
+}
