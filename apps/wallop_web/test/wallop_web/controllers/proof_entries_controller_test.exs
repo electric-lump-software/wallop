@@ -95,7 +95,7 @@ defmodule WallopWeb.ProofEntriesControllerTest do
         Ash.Changeset.for_update(
           open_draw,
           :add_entries,
-          %{entries: [%{"ref" => "a", "weight" => 1}]},
+          %{entries: [%{"ref" => "a", "weight" => 1}], client_ref: Ash.UUID.generate()},
           actor: api_key
         )
         |> Ash.update!()

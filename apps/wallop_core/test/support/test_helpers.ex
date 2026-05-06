@@ -77,7 +77,11 @@ defmodule WallopCore.TestHelpers do
 
     draw =
       draw
-      |> Ash.Changeset.for_update(:add_entries, %{entries: entries}, actor: api_key)
+      |> Ash.Changeset.for_update(
+        :add_entries,
+        %{entries: entries, client_ref: Ash.UUID.generate()},
+        actor: api_key
+      )
       |> Ash.update!()
 
     # Lock computes hash and declares entropy

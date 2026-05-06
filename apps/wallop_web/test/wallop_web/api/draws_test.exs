@@ -109,7 +109,8 @@ defmodule WallopWeb.Api.DrawsTest do
             "entries" => [
               %{"ref" => "a", "weight" => 1},
               %{"ref" => "b", "weight" => 1}
-            ]
+            ],
+            "client_ref" => Ash.UUID.generate()
           }
         }
       }
@@ -148,7 +149,8 @@ defmodule WallopWeb.Api.DrawsTest do
               %{"weight" => 1},
               %{"weight" => 1},
               %{"weight" => 1}
-            ]
+            ],
+            "client_ref" => Ash.UUID.generate()
           }
         }
       }

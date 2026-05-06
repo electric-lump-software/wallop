@@ -70,7 +70,26 @@ defmodule WallopCore.Resources.Draw do
         )
       end
 
+      argument :client_ref, :string do
+        allow_nil?(false)
+
+        constraints(min_length: 1, max_length: 256)
+
+        description(
+          "Operator-supplied opaque idempotency token for this batch. " <>
+            "1..256 bytes. Use a UUID or other high-entropy random value. " <>
+            "Do NOT use semantically meaningful or guessable identifiers — " <>
+            "the value is hashed at the request boundary but the digest is " <>
+            "persisted, and weak inputs are theoretically rainbow-table-able. " <>
+            "Retrying with the same (draw_id, client_ref) replays the " <>
+            "original response. Re-using the same client_ref against a " <>
+            "different entry payload returns HTTP 409. See ADR-0012."
+        )
+      end
+
       change({WallopCore.Resources.Draw.Changes.ValidateEntries, []})
+      change({WallopCore.Resources.Draw.Changes.HashAndClearClientRef, []})
+      change({WallopCore.Resources.Draw.Changes.CheckIdempotency, []})
       change({WallopCore.Resources.Draw.Changes.AddEntries, []})
     end
 

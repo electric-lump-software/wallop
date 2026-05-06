@@ -82,17 +82,21 @@ PubSub works across services automatically via Redis — draw updates broadcast 
 
 ## Entry IDs and GDPR
 
-Wallop never stores personally identifiable information. Entry identifiers are **wallop-assigned server-generated UUIDv4 values** — the operator does not supply any identifier at submission time. The `add_entries` API accepts only `%{weight: pos_integer()}` per entry; any other key on the payload is silently dropped.
+Wallop! never stores personally identifiable information. Entry identifiers are **Wallop!-assigned server-generated UUIDv4 values** — the operator does not supply any identifier at submission time. The `add_entries` API accepts only `%{weight: pos_integer()}` per entry plus a per-batch `client_ref` idempotency token; any other key on the payload is silently dropped.
 
 The recommended integration pattern:
 
-1. Your app submits a batch of entries via `PATCH /api/v1/draws/:id/entries` with only `weight` per entry.
+1. Your app submits a batch of entries via `PATCH /api/v1/draws/:id/entries` with `weight` per entry and a fresh `client_ref` (an opaque high-entropy idempotency token — a UUID is fine).
 2. Wallop generates a UUID for each entry server-side using `:crypto.strong_rand_bytes/1`, inserts them atomically, and returns the UUIDs in submission order as `meta.inserted_entries: [{uuid}, ...]`. The i-th element corresponds to the i-th entry in your request.
 3. Your app captures those UUIDs and stores its own `(your_person_id → wallop_uuid)` mapping in your database. Wallop never learns who the person behind a UUID is.
 4. Wallop hashes the entry list (`{draw_id, entries: [{uuid, weight}]}`) into a permanent, immutable proof record.
 5. On a GDPR deletion request, your app deletes the person's record and the UUID mapping in its own database — the wallop proof record remains intact because it contains only the opaque UUIDs wallop itself generated.
 
-If your `add_entries` HTTP response is dropped before you can capture the UUIDs, you can recover them via the authenticated `GET /api/v1/draws/:id/entries` endpoint (api-key-scoped, keyset-paginated). It works at any draw status.
+If your `add_entries` HTTP response is dropped before you can capture the UUIDs, you have two recovery paths:
+- **Retry the same call with the same `client_ref`.** Identical retries replay the original response (same UUIDs in same order, no double-insert). A retry with the same `client_ref` against a different entry payload returns HTTP 409.
+- **Read back via the authenticated `GET /api/v1/draws/:id/entries` endpoint** (api-key-scoped, keyset-paginated). Works at any draw status.
+
+The `client_ref` is hashed at the request boundary; the plaintext is never persisted by Wallop!. Use a UUID or other high-entropy random value — do not use semantically meaningful or guessable identifiers.
 
 Operator-supplied entry identifiers are NOT stored anywhere in wallop. Entry data in signed receipts and the public proof bundle contains only wallop UUIDs and weights. Any binding between a UUID and operator-side data (user account, payment, ticket number, etc.) lives in the operator's own system.
 

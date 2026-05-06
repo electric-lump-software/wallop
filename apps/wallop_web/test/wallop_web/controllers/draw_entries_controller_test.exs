@@ -38,7 +38,10 @@ defmodule WallopWeb.DrawEntriesControllerTest do
 
   describe "PATCH /api/v1/draws/:id/entries" do
     test "returns 200 and meta.inserted_entries in submission order", %{conn: conn, draw: draw} do
-      body = %{entries: [%{weight: 1}, %{weight: 7}, %{weight: 3}]}
+      body = %{
+        entries: [%{weight: 1}, %{weight: 7}, %{weight: 3}],
+        client_ref: Ash.UUID.generate()
+      }
 
       conn = patch(conn, "/api/v1/draws/#{draw.id}/entries", body)
 
@@ -68,12 +71,22 @@ defmodule WallopWeb.DrawEntriesControllerTest do
     end
 
     test "rejects invalid payload shape", %{conn: conn, draw: draw} do
-      conn = patch(conn, "/api/v1/draws/#{draw.id}/entries", %{entries: "not a list"})
+      conn =
+        patch(conn, "/api/v1/draws/#{draw.id}/entries", %{
+          entries: "not a list",
+          client_ref: Ash.UUID.generate()
+        })
+
       assert json_response(conn, 400)
     end
 
     test "rejects malformed draw id", %{conn: conn} do
-      conn = patch(conn, "/api/v1/draws/not-a-uuid/entries", %{entries: [%{weight: 1}]})
+      conn =
+        patch(conn, "/api/v1/draws/not-a-uuid/entries", %{
+          entries: [%{weight: 1}],
+          client_ref: Ash.UUID.generate()
+        })
+
       assert json_response(conn, 404)
     end
 
@@ -89,7 +102,10 @@ defmodule WallopWeb.DrawEntriesControllerTest do
       # to patch the other operator's draw should be scoped to the caller
       # and return 404 (don't leak existence).
       conn =
-        patch(conn, "/api/v1/draws/#{other_draw.id}/entries", %{entries: [%{weight: 1}]})
+        patch(conn, "/api/v1/draws/#{other_draw.id}/entries", %{
+          entries: [%{weight: 1}],
+          client_ref: Ash.UUID.generate()
+        })
 
       assert json_response(conn, 404)
     end
@@ -100,7 +116,8 @@ defmodule WallopWeb.DrawEntriesControllerTest do
       # Seed 5 entries via the same path so uuids exist in the DB.
       conn =
         patch(conn, "/api/v1/draws/#{draw.id}/entries", %{
-          entries: for(w <- 1..5, do: %{weight: w})
+          entries: for(w <- 1..5, do: %{weight: w}),
+          client_ref: Ash.UUID.generate()
         })
 
       assert json_response(conn, 200)
