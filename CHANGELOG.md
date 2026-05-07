@@ -72,6 +72,9 @@ receipt wire format.
 
 ### Security
 
+- Bump `bandit` 1.10.3 → 1.11.0 to close two advisories surfaced by `mix deps.audit`:
+  - GHSA-pf94-94m9-536p (HIGH) — Bandit buffers unbounded WebSocket continuation frames, allowing unauthenticated memory exhaustion. Vulnerable versions: ≥ 0.5.0, < 1.11.0.
+  - GHSA-q6v9-r226-v65f (MODERATE) — Bandit HTTP/2 frame size limit bypass via late buffer check enables memory exhaustion. Vulnerable versions: ≥ 0.3.5, < 1.11.0.
 - Bump `ash` 3.21.3 → 3.24.4 to close GHSA-jjf9-w5vj-r6vp (atom exhaustion via unchecked `Module.concat` in `Ash.Type.Module.cast_input/2`, HIGH severity, vulnerable versions ≤ 3.21.3, first patched 3.22.0). Surfaced by the new `mix deps.audit` step in CI.
 
 ### Tests / vectors — operator key rotation regression (§4.2.4)
