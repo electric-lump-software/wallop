@@ -61,7 +61,7 @@ defmodule WallopWeb.Components.VerifyBlock do
             <span class="ml-2">What does this verify?</span>
           </summary>
           <p class="mt-2 leading-relaxed">
-            The browser-side check confirms the bundle's signatures and math
+            The browser-side check confirms the bundle's signatures and maths
             agree with each other and with the keys embedded in the bundle
             itself. It catches accidents and casual tampering, but it does
             <em>not</em> defend against a tampered mirror or a compromised
