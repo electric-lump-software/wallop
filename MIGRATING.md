@@ -16,6 +16,27 @@ Within each version section, look for `### HTTP API surface`, `### Hex package s
 
 ---
 
+## 0.26.x → 0.27.0
+
+Vault dual-key rotation capability (Wave A of ADR-0013). **No HTTP breaking changes; no protocol or signed-byte changes.** Pure additive.
+
+### HTTP API surface
+
+No changes.
+
+### Hex package surface
+
+- New module `WallopCore.Vault.Config` exposing `build_ciphers/2`, `current_tag/0`, `previous_tag/0`. Existing callers of `WallopCore.Vault` are unaffected.
+- New task `mix wallop.vault.verify_rotation` (read-only).
+- `WallopCore.VaultHealthCheck` now logs one INFO line per configured cipher at boot (existing single-key deployments see one OK line per boot — same as before).
+- New optional environment variable `VAULT_KEY_OLD`. **Leave it unset** unless you are deliberately starting a rotation per the procedure in `WallopCore.Vault.Config`. Unset is identical behaviour to pre-0.27.0.
+
+### Verifier surface
+
+No changes.
+
+---
+
 ## 0.26.x → 1.0.0
 
 The 1.0.0 tag freezes the protocol. The complete frozen set is in `spec/protocol.md` §4 ("Stability contract"). Read that document if you need an authoritative answer to "is this part of the contract?" — anything not listed there remains free to evolve in 1.x.

@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### wallop_core 0.27.0 — Vault dual-key rotation capability (Wave A of ADR-0013)
+
+**ADDED.** `WallopCore.Vault` can now boot with two ciphers — `:default` for new writes, `:retired` for decrypting rows under the previous master key — when `VAULT_KEY_OLD` is supplied alongside `VAULT_KEY`. Plus a read-only inspection task and an extended boot health check. **No protocol change, no signed-byte change, no on-disk shape change for existing single-key deployments.**
+
+The motivation is ADR-0013 (dual-key Cloak rotation capability). Previously, rotating the vault master key required a moment-T cutover where every encrypted row had to be re-written in lockstep with an environment-variable swap — a class of mistake we have already paid for once. Cloak's tag-prefix dispatch supports a two-cipher configuration where the old key remains decryptable while new writes use the new key; this wave introduces the capability without yet exercising it.
+
+- New module `WallopCore.Vault.Config`. `build_ciphers/2` returns a single-cipher list when `vault_key_old` is `nil` (production state — unchanged behaviour) or a two-cipher list when both keys are supplied. Pins `@current_tag "AES.GCM.V1"` and `@previous_tag "AES.GCM.V0"` as the single source of truth for tag generation. Raises if the keys are identical, if the tags collide, or if either key fails to base64-decode to 32 bytes. The single-cipher branch is byte-identical to what `runtime.exs` previously hardcoded — zero behavioural difference for current production.
+- `config/runtime.exs` now reads optional `VAULT_KEY_OLD` and delegates to the builder in both `:dev` and `:prod`. Backwards-compatible: a deployment with only `VAULT_KEY` set produces the same cipher list it always has.
+- New `Mix.Tasks.Wallop.Vault.VerifyRotation` (`mix wallop.vault.verify_rotation`). Read-only: SELECTs each encrypted column, parses the Cloak tag prefix in Elixir (no SQL prefix matching), and reports per-column counts grouped into `current` / `previous` / `unknown`. Exits with status 1 if any row still carries the previous tag (rotation incomplete) or any row's tag is unknown (corruption or foreign data). Touches no data. Safe to run on production.
+- `WallopCore.VaultHealthCheck` now round-trips every configured cipher at boot — not just `:default`. Catches a malformed `VAULT_KEY_OLD` at boot instead of at first decrypt of a legacy row. Logs an INFO line per cipher (`label`, `tag`) and a WARN when `:retired` is present so operators see "DUAL-KEY rotation active" in the boot logs. Existing single-cipher deployments emit one OK line as before plus no rotation warning.
+- `WallopCore.Vault.Config` moduledoc spells out the five-step rotation procedure: bump tags → deploy with both keys → run migration (Wave B) → run `verify_rotation` → drop `VAULT_KEY_OLD`. Step 3's migration task and the rest of the rotation runbook are Wave B, deferred until a staging environment exists; this PR ships the safe halves.
+
+What this PR is **not**: it does not migrate any storage, does not change which key encrypts new rows (still `VAULT_KEY`), and does not start a rotation. It introduces the infrastructure so that a future rotation can be a no-cutover sequence rather than a moment-T swap.
+
+Out of scope (Wave B, blocked on staging):
+
+- AshCloak retrofit of hand-rolled `Vault.encrypt`/`Vault.decrypt` call sites (3 mix tasks, 5 production paths).
+- `mix wallop.vault.migrate` (re-encrypt-to-current-tag bulk operation).
+- End-to-end rotation drill against a real second key.
+
+Wave A is reviewed by Alex (architecture) and Colin (crypto) per ADR-0013.
+
 ### wallop_core 0.26.1 — fix: `:open` proof page render
 
 **FIXED.** The public LiveView proof page on `:open` draws crashed with `KeyError: stage_timestamps` after 0.25.0. The pre-lock view's allowlist (introduced in 0.25.0) deliberately drops `stage_timestamps`, but the `:open` template branch was still passing the projected struct to `WallopWeb.Components.DrawTimeline`, which is strictly typed for the full `Draw` resource and reads several fields outside the allowlist.

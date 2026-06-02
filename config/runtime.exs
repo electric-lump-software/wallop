@@ -23,11 +23,16 @@ if config_env() in [:dev, :test] do
         mix phx.gen.secret, which produces a double-encoded value).
         """
 
+    # Optional retired-key slot for dual-key rotation (ADR-0013). When
+    # `VAULT_KEY_OLD` is supplied, rows encrypted under the old key
+    # remain decryptable while new writes go to the default cipher.
+    # When unset (current production state), the cipher list is
+    # identical to the previous single-key configuration — no
+    # observable behaviour change.
+    vault_key_old = env["VAULT_KEY_OLD"]
+
     config :wallop_core, WallopCore.Vault,
-      ciphers: [
-        default:
-          {Cloak.Ciphers.AES.GCM, tag: "AES.GCM.V1", key: Base.decode64!(vault_key), iv_length: 12}
-      ]
+      ciphers: WallopCore.Vault.Config.build_ciphers(vault_key, vault_key_old)
   end
 end
 
@@ -56,10 +61,13 @@ if config_env() == :prod do
     System.get_env("VAULT_KEY") || System.get_env("CLOAK_KEY") ||
       raise "VAULT_KEY environment variable is not set"
 
+  # Optional retired-key slot for dual-key rotation (ADR-0013). Unset in
+  # current production — `build_ciphers/2` then returns the same single-
+  # cipher list that was hardcoded here previously.
+  vault_key_old = System.get_env("VAULT_KEY_OLD")
+
   config :wallop_core, WallopCore.Vault,
-    ciphers: [
-      default: {Cloak.Ciphers.AES.GCM, tag: "AES.GCM.V1", key: Base.decode64!(vault_key), iv_length: 12}
-    ]
+    ciphers: WallopCore.Vault.Config.build_ciphers(vault_key, vault_key_old)
   database_url =
     System.get_env("DATABASE_URL") ||
       raise "DATABASE_URL environment variable is not set"
