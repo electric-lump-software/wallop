@@ -115,7 +115,14 @@ jobs:
         run: mix credo --strict
 
       - name: Dependency advisory audit
-        run: mix deps.audit
+        # GHSA-rhv4-8758-jx7v (decimal moderate DoS via Decimal.new
+        # with attacker-controlled exponent). Resolution requires
+        # decimal 3.x, but ash + ecto both pin `~> 2.0` upstream so
+        # we cannot bump until they release a 3.x-compatible version.
+        # Wallop never calls `Decimal.new` from user input — the dep
+        # is purely transitive — so the attack vector does not reach
+        # this codebase. Re-evaluate whenever ash/ecto loosen the pin.
+        run: mix deps.audit --ignore-advisory-ids GHSA-rhv4-8758-jx7v
 
       - name: Restore PLT cache
         id: plt_cache
