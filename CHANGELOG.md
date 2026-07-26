@@ -7,6 +7,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### wallop_core 0.27.1 — Security: close nine advisories surfaced by `mix deps.audit`
+
+`mix deps.audit` runs against a live advisory database, so these appeared without any code change on our side. `main` last ran CI on 2 June and passed; every one of these was published since. The audit step blocks the CI gate, so this blocks every other PR until merged.
+
+Three of them needed their upstreams to move first, which is why the constraint changes below are wider than a lockfile bump.
+
+- Bump `mint` 1.7.1 → 1.9.3 (pulled transitively via `finch`; the existing `~> 1.7` constraint already allowed it):
+  - GHSA-2p26-p43x-fhp8 (HIGH)
+  - GHSA-g586-ccqf-7x4r (HIGH) — unbounded `streams` map growth via `PUSH_PROMISE` without follow-up `HEADERS`.
+  - GHSA-mjqx-c6f6-7rc2 (MODERATE) — `Content-Length` header accepts non-RFC `+` sign prefix.
+  - GHSA-2pg6-44cx-c49v (LOW)
+- **Remove `hackney` entirely** rather than bumping it, and move `ex_aws` (2.6.1 → 2.7.0) onto `Req` via `config :ex_aws, http_client: ExAws.Request.Req`. `hackney` was only ever present as `ex_aws`'s HTTP client; no wallop code referenced it. Dropping the dependency closes all four advisories by removal, which is a stronger outcome than patching it.
+
+  The bump route was tried first and is a dead end. Closing these advisories needs `hackney` 4.x, which ships its own HTTP/2 application (`h2`) defining `h2_settings`, `h2_frame`, `h2_connection` and `h2_client`. `grpcbox` — pulled in unconditionally by `opentelemetry_exporter` — brings `chatterbox`, which defines the same four modules. `mix release` fails assembly with `Duplicated modules`, and the two cannot coexist in one release. Excluding `grpcbox` is also rejected, because Mix will not exclude an application that a `:permanent` one depends on. Note this reproduces only at release assembly, not under `mix test`.
+
+  `Req` was already a dependency and `ex_aws` 2.7.0 documents it as the default client, so this removes a transitive tree (`h2`, `quic`, `webtransport`, `idna`, `certifi`, `parse_trans`) rather than growing one. Closes:
+  - GHSA-gp9c-pm5m-5cxr (HIGH) — `ssl:connect/2` post-handshake upgrade has no timeout.
+  - GHSA-j9wq-vxxc-94wf (MODERATE) — CR/LF injection in query parameter.
+  - GHSA-pj7v-xfvx-wmjq (MODERATE) — SSRF allowlist bypass in `hackney_url:normalize/2` via percent-encoded host.
+  - GHSA-mp55-p8c9-rfw2 (LOW) — CRLF / header injection via unvalidated `domain` and `path` options.
+- Bump `decimal` 2.4.1 → 3.1.1 **(major)**, which required `ash` 3.24.4 → 3.27.7, `open_api_spex` 3.22.2 → 3.22.3 and `xema` 0.17.7 → 0.17.9 — all three capped `decimal` at `~> 2.0`. Closes GHSA-rhv4-8758-jx7v / CVE-2026-32686 (MODERATE, CVSS 6.9): `decimal` did not validate exponent bounds when parsing, so a value like `"1e10000000"` arriving as untrusted JSON and then touched by any arithmetic, comparison, rounding or string conversion allocates memory proportional to the exponent. One unauthenticated request is enough to OOM the BEAM.
+
+**Public API surface — this is why the version moves at all.** The `ash` bump adds `string_starts_with` and `string_ends_with` to the generated filter schemas in `priv/openapi.json` (96 insertions, 0 deletions, 16 sites each). These are new Ash predicate functions surfaced by `ash_json_api`, which builds filter schemas from `Ash.Filter.builtin_functions/0` with no per-resource opt-out — so they are genuinely callable, not merely documented: `filter[name][string_starts_with]=` now works against public string fields. Nothing is removed and no existing filter changes shape.
+
+There is no clean way to suppress two individual predicates: `filterable?: :simple_equality` is the only per-attribute knob and it would also remove `not_eq`, `in` and the rest. The affected fields are already-public verification data, so this is being shipped as a deliberate, versioned decision rather than blocking a security patch on it. The patch bump exists to make that decision visible; see `MIGRATING.md`.
+
+**S3 transport changed — worth a manual check.** Proof-PDF storage (`WallopWeb.ProofStorage.S3`) now makes its requests through `Req` instead of `hackney`. `config/test.exs` forces the `Filesystem` backend for the whole test environment, so the S3 path has no automated coverage and CI cannot catch a regression here. Upload and fetch one proof PDF against a real or MinIO endpoint around this change.
+
+**Lockfile scope.** Deliberately held to what the advisories require. `plug`, `plug_crypto`, `req` and `yaml_elixir` were briefly carried forward by the resolver and have been pinned back to their `main` versions — resolution accepts them, so they were never required. What moved is `spark`, `reactor`, `stream_data` and `multigraph` from `ash`; what left is `hackney` and its tree.
+
 ### wallop_core 0.27.0 — Vault dual-key rotation capability (Wave A of ADR-0013)
 
 **ADDED.** `WallopCore.Vault` can now boot with two ciphers — `:default` for new writes, `:retired` for decrypting rows under the previous master key — when `VAULT_KEY_OLD` is supplied alongside `VAULT_KEY`. Plus a read-only inspection task and an extended boot health check. **No protocol change, no signed-byte change, no on-disk shape change for existing single-key deployments.**

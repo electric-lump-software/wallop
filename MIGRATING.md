@@ -16,6 +16,28 @@ Within each version section, look for `### HTTP API surface`, `### Hex package s
 
 ---
 
+## 0.27.0 → 0.27.1
+
+Security-only dependency bumps closing nine advisories. **No protocol or signed-byte changes, no migration.** The version moves solely because one bump widens the public filter surface.
+
+### HTTP API surface
+
+- **Additive.** String fields gain two filter operators, `string_starts_with` and `string_ends_with`. They are genuinely callable, e.g. `filter[name][string_starts_with]=summer`. Nothing is removed and no existing filter changes shape, so no action is required — this is recorded because it widens the documented query surface.
+
+  They arrive from Ash's predicate functions via `ash_json_api`, which builds filter schemas from `Ash.Filter.builtin_functions/0` with no per-resource opt-out. Suppressing two individual predicates is not possible without also dropping `not_eq`, `in` and the rest via `filterable?: :simple_equality`. The affected fields are already-public verification data, so the operators are shipped rather than blocking a security patch.
+
+### Hex package surface
+
+- **`hackney` is no longer a dependency.** It was only present as `ex_aws`'s HTTP client; `ex_aws` now uses `Req` (`config :ex_aws, http_client: ExAws.Request.Req`). If you relied on `hackney` being pulled in transitively via `wallop_core`, declare it yourself — but note you cannot take `hackney` 4.x in a release alongside `opentelemetry_exporter`, as its `h2` application and `grpcbox`'s `chatterbox` define the same modules and release assembly fails with `Duplicated modules`.
+- `decimal` moves to 3.x (major). If you depend on it directly, widen your constraint — `ash` 3.27+ is needed before `decimal ~> 3.0` will resolve.
+- If you use the S3 proof-storage backend, its requests now go through `Req` rather than `hackney`. Behaviour is intended to be identical; `config :ex_aws, :req_opts` replaces any `:hackney_opts` tuning you had.
+
+### Verifier surface
+
+No changes.
+
+---
+
 ## 0.26.x → 0.27.0
 
 Vault dual-key rotation capability (Wave A of ADR-0013). **No HTTP breaking changes; no protocol or signed-byte changes.** Pure additive.
