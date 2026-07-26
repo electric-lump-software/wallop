@@ -84,6 +84,12 @@ defmodule WallopWeb.Plugs.KeyRateLimit do
     :ok
   end
 
+  @doc "Name of the backing ETS table. Used by the sweeper."
+  def table, do: @table
+
+  @doc "Length of the counting window in milliseconds. Used by the sweeper."
+  def window_ms, do: @window_ms
+
   def ensure_table do
     case :ets.whereis(@table) do
       :undefined ->
