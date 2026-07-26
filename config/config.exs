@@ -74,7 +74,13 @@ config :wallop_web, :gotenberg_url, "http://localhost:3000"
 
 # ex_aws S3 client defaults. Prod overrides via env vars in runtime.exs.
 config :ex_aws,
-  json_codec: Jason
+  json_codec: Jason,
+  # Req rather than the ex_aws default of hackney. hackney 4.x ships its own
+  # HTTP/2 app (`h2`) whose modules collide with grpcbox's chatterbox, which
+  # opentelemetry_exporter pulls in — the two cannot coexist in one release.
+  # Staying on hackney 1.x would instead mean carrying four open advisories.
+  # Req is already a dependency and ex_aws supports it as a first-class client.
+  http_client: ExAws.Request.Req
 
 config :ash, :tracer, [OpentelemetryAsh]
 
