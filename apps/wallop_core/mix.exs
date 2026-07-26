@@ -4,7 +4,7 @@ defmodule WallopCore.MixProject do
   def project do
     [
       app: :wallop_core,
-      version: "0.27.1",
+      version: "0.28.0",
       build_path: "../../_build",
       deps_path: "../../deps",
       lockfile: "../../mix.lock",
@@ -35,7 +35,7 @@ defmodule WallopCore.MixProject do
       {:fair_pick, "~> 0.2"},
       {:jcs, "~> 0.2.0"},
       {:jason, "~> 1.4"},
-      {:oban, "~> 2.18"},
+      {:oban, "~> 2.23"},
       {:req, "~> 0.5"},
       {:ash_cloak, "~> 0.2"},
       {:cloak_ecto, "~> 1.3"},

@@ -16,6 +16,39 @@ Within each version section, look for `### HTTP API surface`, `### Hex package s
 
 ---
 
+## 0.27.x → 0.28.0
+
+Fixes unbounded memory growth in Oban's Postgres notifier and gives the rate-limit ETS tables a supervised owner. **No protocol or signed-byte changes.** Requires a database migration, and changes when per-IP rate limits bite.
+
+### HTTP API surface
+
+- Rate limits were not previously enforced across connections: the ETS table holding the counters was owned by the connection process and died with it, so each new connection started from zero. All four caps now apply as documented. **The values are unchanged — only their enforcement.**
+
+  | Limiter | Cap | Who notices |
+  |---|---|---|
+  | `RateLimit` | 10 req/min/IP | **Most consequential.** If you call the API from a single egress IP at more than 10 requests/minute you will start receiving `429` where you previously did not. |
+  | `KeyRateLimit` | 60 req/min/key | Integrations exceeding 60 calls/minute on one API key. |
+  | `SelfCheckRateLimit` | 60 req/min/IP | Proof-page self-check probes. |
+  | `ProofPreLockRateLimit` | 120 req/min/IP | Proof-page reads of `:open` draws. |
+
+  If you front the proof page with a shared-IP proxy or CDN that does not preserve the client IP, every viewer behind it now shares one budget. Check that `conn.remote_ip` reflects the real client before upgrading.
+
+### Hex package surface
+
+- **Database migration required.** Oban moves from 2.21.0 to 2.23.0, which requires Oban schema version 14; wallop_core previously installed version 12. The service's own migration ships in this release. **If you run `wallop_core` against your own Oban prefix, add the equivalent migration to your repo:**
+
+  ```elixir
+  defmodule MyApp.Repo.Migrations.UpdateObanToV14 do
+    use Ecto.Migration
+
+    def up, do: Oban.Migration.up(version: 14, prefix: "my_oban_prefix")
+    def down, do: Oban.Migration.down(version: 12, prefix: "my_oban_prefix")
+  end
+  ```
+
+  Oban will refuse to boot with `Oban migrations are outdated` until this is applied.
+- New module `WallopWeb.RateLimit.Sweeper`, started by `WallopWeb.Application`. Consumers embedding the plugs directly in their own supervision tree should start it too, or the plugs fall back to the previous lazy per-process table behaviour.
+- Rate-limit plugs gain `table/0` and `window_ms/0`. Existing functions are unchanged.
 ## 0.27.0 → 0.27.1
 
 Security-only dependency bumps closing nine advisories. **No protocol or signed-byte changes, no migration.** The version moves solely because one bump widens the public filter surface.

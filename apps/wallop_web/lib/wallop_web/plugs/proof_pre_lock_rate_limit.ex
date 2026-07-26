@@ -106,6 +106,12 @@ defmodule WallopWeb.Plugs.ProofPreLockRateLimit do
     :ok
   end
 
+  @doc "Name of the backing ETS table. Used by the sweeper."
+  def table, do: @table
+
+  @doc "Length of the counting window in milliseconds. Used by the sweeper."
+  def window_ms, do: @window_ms
+
   @doc "Creates the ETS table if it does not already exist."
   def ensure_table do
     case :ets.whereis(@table) do
