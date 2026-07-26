@@ -2,9 +2,14 @@ defmodule WallopWeb.Plugs.KeyRateLimit do
   @moduledoc """
   Per-API-key rate limit plug.
 
-  Tracks the number of requests per API key within a 60-second sliding
+  Tracks the number of requests per API key within a 60-second **fixed**
   window. Requests exceeding the limit are rejected with HTTP 429 plus a
   `Retry-After` header.
+
+  The window is anchored at the first request on a key and only resets once
+  a request arrives after it has closed — it does not slide. A caller may
+  therefore spend the whole budget at once, and may land up to twice the cap
+  across a window boundary.
 
   Runs after `WallopWeb.Plugs.ApiKeyAuth` so the actor is available.
   Per-IP rate limiting (in `WallopWeb.Plugs.RateLimit`) runs before auth
