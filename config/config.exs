@@ -84,6 +84,11 @@ config :ex_aws,
 
 config :ash, :tracer, [OpentelemetryAsh]
 
+# Count codepoints for `:string` min/max_length, matching Postgres, so
+# `max_length` actually bounds stored size. (`:mixed` counts graphemes in
+# Elixir, and one grapheme can carry unbounded combining characters.)
+config :ash, default_string_length_count: :codepoints
+
 config :opentelemetry_ash,
   trace_types: [:custom, :action, :flow]
 
