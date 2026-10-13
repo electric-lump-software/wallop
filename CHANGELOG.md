@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### wallop_core 0.28.2 — Proof-page verify command fills in what to check, never whom to trust
+
+**FIXED.** The `wallop-verify` command on every completed draw's proof page was the same hardcoded text everywhere: `https://wallop.run` as the base URL, a `<slug>` placeholder, and a `proof-bundle.json` filename that didn't match the file the page actually downloads. On any deployment other than production it also failed outright with "no trusted anchor matches the pin's signature", because nothing told the verifier which infrastructure keys to trust. **No protocol change, no signed-byte change, no request or response shape change.**
+
+The rule now is: fill in every value that says *what* to verify, and never one that says *whom to trust*.
+
+- **Identifiers are always filled in.** The base URL comes from the endpoint's configured URL (never the request's `Host` header), the operator slug is the draw's own, and the bundle filename is `<draw_id>.json`. A wrong identifier can only make verification fail: the pin must verify against an anchor the verifier already holds, and the pin's operator slug must match the bundle's.
+- **Trust anchors depend on a new setting**, `config :wallop_web, :verify_block_anchor_mode`, set at runtime via `VERIFY_BLOCK_ANCHOR_MODE`:
+  - `bundled` (the default) omits `--infra-key-pin`. The verifier's compiled-in anchors are the independent root; a server handing you its own key alongside its own bundle would make the check circular.
+  - `self` is for deployments whose infrastructure keys aren't in the released verifier (staging, development, self-hosters). It adds one `--infra-key-pin` per key in the instance's full infrastructure keyring — not just the current key, since the override replaces the bundled set and execution receipts resolve against it, so a current-key-only command fails every draw executed before a rotation. The page says plainly that this checks consistency with what the instance publishes, not authenticity.
+
+  The default is `bundled` so that a misconfigured deployment fails verification loudly instead of quietly telling people to trust the server's own keys.
+
+**Copy and spec.** The proof page and the verification explainer no longer claim more than the verifier delivers: the infrastructure trust root is built into the binary, but operator keys still come from the network. `spec/protocol.md` §4.4 gains two entries: the proof-page command is a convenience rather than a trust root, and keyring-pin replay is a known gap until the verifier's stale-pin warning ships.
+
+**Operator note.** Production needs nothing. Any deployment whose infrastructure keys aren't in the released `wallop_verifier` anchor set should set `VERIFY_BLOCK_ANCHOR_MODE=self`. Any value other than `bundled` or `self` refuses to boot. Completed proof pages are served with a year-long immutable cache header, so pages already cached keep the old command until those caches expire.
+
 ### wallop_core 0.28.1 — Security: close six advisories surfaced by `mix deps.audit` (phoenix, plug, req, ash)
 
 `mix deps.audit` runs against a live advisory database, so these appeared without any code change on our side. The audit step blocks the CI gate, so this blocks every other PR until merged. **No protocol change, no signed-byte change, no request or response shape change.**

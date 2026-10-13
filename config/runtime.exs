@@ -81,6 +81,16 @@ if config_env() == :prod do
       raise "SECRET_KEY_BASE environment variable is not set"
 
   host = System.get_env("PHX_HOST") || "localhost"
+
+  # "self" for deployments whose infrastructure keys are not in the
+  # released verifier's bundled anchor set. Unset means "bundled".
+  case System.get_env("VERIFY_BLOCK_ANCHOR_MODE") do
+    nil -> :ok
+    "bundled" -> config :wallop_web, :verify_block_anchor_mode, :bundled
+    "self" -> config :wallop_web, :verify_block_anchor_mode, :self
+    other -> raise "VERIFY_BLOCK_ANCHOR_MODE must be \"bundled\" or \"self\", got: #{inspect(other)}"
+  end
+
   port = String.to_integer(System.get_env("PORT") || "4000")
 
   config :wallop_web, WallopWeb.Endpoint,

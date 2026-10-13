@@ -72,6 +72,15 @@ config :wallop_web, :proof_storage,
 # via GOTENBERG_URL env var in runtime.exs.
 config :wallop_web, :gotenberg_url, "http://localhost:3000"
 
+# Which trust anchors the proof page's `wallop-verify` command relies on.
+# `:bundled` — the verifier's compiled-in anchors (the released production
+# deployment). `:self` — this instance's own infrastructure keys, supplied
+# via `--infra-key-pin`, for deployments whose keys aren't in the released
+# verifier (staging, dev, self-hosters). Defaults to `:bundled` so a
+# misconfigured deployment fails verification loudly rather than quietly
+# telling users to trust the server's own keys. See WallopWeb.VerifyCommand.
+config :wallop_web, :verify_block_anchor_mode, :bundled
+
 # ex_aws S3 client defaults. Prod overrides via env vars in runtime.exs.
 config :ex_aws,
   json_codec: Jason,

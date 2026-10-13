@@ -16,6 +16,16 @@ Within each version section, look for `### HTTP API surface`, `### Hex package s
 
 ---
 
+## 0.28.1 → 0.28.2
+
+The proof page's `wallop-verify` command is now filled in for each draw. **No protocol, signed-byte, request or response changes.** Nothing to do on production.
+
+### Deployment configuration
+
+- New optional setting `VERIFY_BLOCK_ANCHOR_MODE` (`bundled` or `self`; unset means `bundled`). Set it to `self` on any deployment whose infrastructure keys aren't in the released `wallop_verifier` anchor set (staging, development, self-hosted), so the proof page's command includes `--infra-key-pin` records for that instance's own keys. Leave it unset on a deployment covered by the bundled anchors. Any other value refuses to boot.
+
+---
+
 ## 0.28.0 → 0.28.1
 
 Security dependency bumps (phoenix, plug, req, ash). **No protocol, signed-byte, request or response changes.**

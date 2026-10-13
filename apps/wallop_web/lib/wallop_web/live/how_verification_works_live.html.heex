@@ -210,7 +210,7 @@
               from crates.io and point it at a proof bundle. In
               <strong>attributable mode</strong>, it proves that every key in the
               draw&#39;s keyring was published by wallop&#39;s infrastructure under a
-              signing key whose fingerprint is compiled into the verifier you
+              signing key whose public key is compiled into the verifier you
               installed. The trust decision happens at install time, not at verify
               time. Trust comes from the signature, not the source.
             </p>
@@ -220,7 +220,12 @@
     --pin-from-url https://wallop.run/operator/&lt;slug&gt;/keyring-pin.json \
     proof-bundle.json</pre>
             <p class="text-xs text-[#777] italic mt-3">
-              The trust root is the binary you installed, not the network you&#39;re talking to.
+              The infrastructure trust root is the binary you installed, not the network you&#39;re talking to.
+            </p>
+            <p class="text-xs text-[#777] italic mt-2">
+              Every proof page fills this command in for its own draw. Handy, but a convenience
+              rather than a trust root: a tampered page could tamper with its instructions too.
+              Install the verifier from crates.io, not from a link someone handed you.
             </p>
           </div>
         </div>

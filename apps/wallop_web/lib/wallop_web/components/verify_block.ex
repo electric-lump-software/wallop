@@ -12,6 +12,7 @@ defmodule WallopWeb.Components.VerifyBlock do
   attr(:execution_receipt, :map, default: nil)
   attr(:operator_public_key_hex, :string, default: nil)
   attr(:infra_public_key_hex, :string, default: nil)
+  attr(:verify_command, :map, default: nil)
 
   def verify_block(assigns) do
     ~H"""
@@ -66,12 +67,31 @@ defmodule WallopWeb.Components.VerifyBlock do
             itself. It catches accidents and casual tampering, but it does
             <em>not</em> defend against a tampered mirror or a compromised
             CDN — an attacker serving a forged bundle with their own keys
-            would also pass every step. For full verification — bound to
-            wallop's infrastructure key, where the trust root is the
-            binary you installed, not the network you're talking to — run
-            the CLI in attributable mode:
+            would also pass every step.
           </p>
-          <pre class="mt-2 bg-[#1a1a1a] text-[#e2e8f0] p-3 rounded font-mono text-[10px] leading-[1.7] overflow-x-auto">{Phoenix.HTML.raw(~s(<span class="text-[#777]">$</span> cargo install wallop_verifier\n<span class="text-[#777]">$</span> wallop-verify --mode attributable \\\n    --wallop-base-url https://wallop.run \\\n    --pin-from-url https://wallop.run/operator/&lt;slug&gt;/keyring-pin.json \\\n    proof-bundle.json))}</pre>
+          <div :if={@verify_command}>
+            <p :if={@verify_command.mode == :bundled} class="mt-2 leading-relaxed">
+              For full verification, run the CLI in attributable mode. The
+              infrastructure key it trusts is built into the binary you
+              installed rather than fetched from the network you're talking to:
+            </p>
+            <p :if={@verify_command.mode == :self} class="mt-2 leading-relaxed">
+              This instance's infrastructure keys aren't built into the
+              verifier, so the command below supplies them with
+              <code class="font-mono text-[10px]">--infra-key-pin</code>.
+              It trusts this instance's own keys: it checks the bundle is
+              consistent with what this instance publishes, not that it's
+              authentic.
+            </p>
+            <pre class="mt-2 bg-[#1a1a1a] text-[#e2e8f0] p-3 rounded font-mono text-[10px] leading-[1.7] overflow-x-auto"><span class="text-[#777]">$</span> cargo install wallop_verifier
+    <span class="text-[#777]">$</span> {Enum.join(@verify_command.lines, " \\\n    ")}</pre>
+            <p class="mt-2 leading-relaxed">
+              This command is a convenience, not a trust root — a page that
+              can be tampered with can tamper with its own instructions. Get
+              the verifier from crates.io and check the invocation against
+              the docs.
+            </p>
+          </div>
           <p class="mt-2 leading-relaxed">
             See
             <a href="/how-verification-works" class="underline decoration-[#ccc] hover:decoration-[#1a1a1a]">how verification works</a>
