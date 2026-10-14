@@ -46,16 +46,22 @@ defmodule WallopWeb.Plugs.KeyRateLimitTest do
     |> KeyRateLimit.call([])
   end
 
-  defp pressure(key) do
-    receive do
-      {:rate_limit_pressure, %{api_key_id: id} = payload} when id == key.id ->
-        [payload | pressure(key)]
-    after
-      100 -> []
-    end
+  # Waits (generously) for exactly `n` messages for the key, then checks that
+  # no further one turns up.
+  defp pressure(key, n) do
+    id = key.id
+
+    received =
+      for _ <- 1..n//1 do
+        assert_receive {:rate_limit_pressure, %{api_key_id: ^id} = payload}, 1_000
+        payload
+      end
+
+    refute_receive {:rate_limit_pressure, %{api_key_id: ^id}}, 100
+    received
   end
 
-  defp kinds(key), do: key |> pressure() |> Enum.map(& &1.kind) |> Enum.sort()
+  defp kinds(key, n), do: key |> pressure(n) |> Enum.map(& &1.kind) |> Enum.sort()
 
   defp telemetry_kinds(key) do
     receive do
@@ -102,7 +108,7 @@ defmodule WallopWeb.Plugs.KeyRateLimitTest do
     key = with_limit(5)
     for _ <- 1..5, do: call(key)
 
-    assert [%{kind: :near_limit, limit: 5, window_start: %DateTime{} = ws}] = pressure(key)
+    assert [%{kind: :near_limit, limit: 5, window_start: %DateTime{} = ws}] = pressure(key, 1)
     assert ws.second == 0
   end
 
@@ -111,7 +117,8 @@ defmodule WallopWeb.Plugs.KeyRateLimitTest do
     key = with_limit(5)
     for _ <- 1..8, do: call(key)
 
-    assert kinds(key) == [:limited, :near_limit]
+    assert kinds(key, 2) == [:limited, :near_limit]
+    # Telemetry handlers run in the calling process, so these are already here.
     assert Enum.sort(telemetry_kinds(key)) == [:limited, :near_limit]
   end
 
@@ -137,7 +144,7 @@ defmodule WallopWeb.Plugs.KeyRateLimitTest do
         for _ <- 1..5, do: refute(call(key).halted)
       end)
 
-      assert pressure(key) == []
+      assert pressure(key, 0) == []
       assert telemetry_kinds(key) == []
     end
   end

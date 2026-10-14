@@ -153,7 +153,10 @@ defmodule WallopWeb.Plugs.TierLimitTest do
       assert String.to_integer(ra) in 3590..3600
 
       id = api_key.id
-      assert_receive {:rate_limit_pressure, %{api_key_id: ^id, kind: :quota_limited, limit: 1}}
+
+      assert_receive {:rate_limit_pressure, %{api_key_id: ^id, kind: :quota_limited, limit: 1}},
+                     1_000
+
       assert_receive {:telemetry, :quota_limited, %{api_key_id: ^id, limit: 1}}
     end
 
@@ -218,7 +221,7 @@ defmodule WallopWeb.Plugs.TierLimitTest do
       assert TierLimit.call(conn_with_key(api_key), []).status == 429
 
       id = api_key.id
-      assert_receive {:rate_limit_pressure, %{api_key_id: ^id, kind: :quota_limited}}
+      assert_receive {:rate_limit_pressure, %{api_key_id: ^id, kind: :quota_limited}}, 1_000
       refute_receive {:rate_limit_pressure, %{api_key_id: ^id}}, 200
       assert_receive {:telemetry, :quota_limited, %{api_key_id: ^id}}
       refute_receive {:telemetry, _, %{api_key_id: ^id}}, 50

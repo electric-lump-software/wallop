@@ -13,8 +13,9 @@ defmodule WallopWeb.RateLimitSignal do
   `kind` is `:near_limit`, `:limited` or `:quota_limited`. Callers dedupe to
   once per key, kind and minute, and never call this on a store error.
 
-  Never fails or delays the request that triggered it: the telemetry event is
-  local, and the broadcast runs in a task under `WallopWeb.TaskSupervisor`.
+  Never fails the request that triggered it, and never waits on PubSub: the
+  telemetry event is local, and the broadcast runs in a task under
+  `WallopWeb.TaskSupervisor`.
   """
 
   require Logger
