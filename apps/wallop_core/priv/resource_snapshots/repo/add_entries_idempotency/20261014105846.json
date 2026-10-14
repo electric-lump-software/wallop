@@ -18,11 +18,30 @@
       "generated?": false,
       "precision": null,
       "primary_key?": false,
-      "references": null,
+      "references": {
+        "deferrable": false,
+        "destination_attribute": "id",
+        "destination_attribute_default": null,
+        "destination_attribute_generated": null,
+        "index?": false,
+        "match_type": null,
+        "match_with": null,
+        "multitenancy": {
+          "attribute": null,
+          "global": null,
+          "strategy": null
+        },
+        "name": "add_entries_idempotency_draw_id_fkey",
+        "on_delete": "delete",
+        "on_update": null,
+        "primary_key?": true,
+        "schema": "public",
+        "table": "draws"
+      },
       "scale": null,
       "size": null,
-      "source": "name",
-      "type": "text"
+      "source": "draw_id",
+      "type": "uuid"
     },
     {
       "allow_nil?": false,
@@ -33,8 +52,8 @@
       "references": null,
       "scale": null,
       "size": null,
-      "source": "key_hash",
-      "type": "text"
+      "source": "client_ref_digest",
+      "type": "binary"
     },
     {
       "allow_nil?": false,
@@ -45,23 +64,11 @@
       "references": null,
       "scale": null,
       "size": null,
-      "source": "key_prefix",
-      "type": "text"
+      "source": "payload_digest",
+      "type": "binary"
     },
     {
       "allow_nil?": false,
-      "default": "true",
-      "generated?": false,
-      "precision": null,
-      "primary_key?": false,
-      "references": null,
-      "scale": null,
-      "size": null,
-      "source": "active",
-      "type": "boolean"
-    },
-    {
-      "allow_nil?": true,
       "default": "nil",
       "generated?": false,
       "precision": null,
@@ -69,20 +76,11 @@
       "references": null,
       "scale": null,
       "size": null,
-      "source": "webhook_secret",
-      "type": "text"
-    },
-    {
-      "allow_nil?": true,
-      "default": "nil",
-      "generated?": false,
-      "precision": null,
-      "primary_key?": false,
-      "references": null,
-      "scale": null,
-      "size": null,
-      "source": "deactivated_at",
-      "type": "utc_datetime_usec"
+      "source": "entry_ids",
+      "type": [
+        "array",
+        "uuid"
+      ]
     },
     {
       "allow_nil?": false,
@@ -95,18 +93,6 @@
       "size": null,
       "source": "inserted_at",
       "type": "utc_datetime_usec"
-    },
-    {
-      "allow_nil?": false,
-      "default": "fragment(\"(now() AT TIME ZONE 'utc')\")",
-      "generated?": false,
-      "precision": null,
-      "primary_key?": false,
-      "references": null,
-      "scale": null,
-      "size": null,
-      "source": "updated_at",
-      "type": "utc_datetime_usec"
     }
   ],
   "base_filter": null,
@@ -115,19 +101,23 @@
   "custom_indexes": [],
   "custom_statements": [],
   "has_create_action": true,
-  "hash": "62B96952AC97DD778769F71FF6F08A2557DAB35C25F42F28443CCA4606832BA2",
+  "hash": "B6B70818531177945C4A3945863463948F2D8EB1997EC6A320A2026F10EF7970",
   "identities": [
     {
       "all_tenants?": false,
       "base_filter": null,
-      "index_name": "api_keys_unique_prefix_index",
+      "index_name": "add_entries_idempotency_draw_client_ref_index",
       "keys": [
         {
           "type": "atom",
-          "value": "key_prefix"
+          "value": "draw_id"
+        },
+        {
+          "type": "atom",
+          "value": "client_ref_digest"
         }
       ],
-      "name": "unique_prefix",
+      "name": "draw_client_ref",
       "nils_distinct?": true,
       "where": null
     }
@@ -139,5 +129,5 @@
   },
   "repo": "Elixir.WallopCore.Repo",
   "schema": null,
-  "table": "api_keys"
+  "table": "add_entries_idempotency"
 }

@@ -159,6 +159,16 @@ jobs:
       - name: Run tests
         run: mix test
 
+      - name: Check resource snapshots are up to date
+        # Fails when a resource changes without its snapshot. Run
+        # `mix ash.codegen <name>` and commit the snapshot (and the
+        # migration, hand-editing it if it needs triggers or raw SQL).
+        # If you wrote the migration by hand, run
+        # `mix ash_postgres.generate_migrations --snapshots-only` instead.
+        run: mix ash.codegen --check
+        env:
+          MIX_ENV: test
+
       - name: Check OpenAPI spec is up to date
         run: |
           mix wallop.gen.openapi

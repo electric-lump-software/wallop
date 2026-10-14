@@ -21,7 +21,7 @@
       "references": null,
       "scale": null,
       "size": null,
-      "source": "name",
+      "source": "version_action_type",
       "type": "text"
     },
     {
@@ -33,7 +33,7 @@
       "references": null,
       "scale": null,
       "size": null,
-      "source": "key_hash",
+      "source": "version_action_name",
       "type": "text"
     },
     {
@@ -45,20 +45,39 @@
       "references": null,
       "scale": null,
       "size": null,
-      "source": "key_prefix",
-      "type": "text"
+      "source": "version_action_inputs",
+      "type": "map"
     },
     {
       "allow_nil?": false,
-      "default": "true",
+      "default": "nil",
       "generated?": false,
       "precision": null,
       "primary_key?": false,
-      "references": null,
+      "references": {
+        "deferrable": false,
+        "destination_attribute": "id",
+        "destination_attribute_default": null,
+        "destination_attribute_generated": null,
+        "index?": false,
+        "match_type": null,
+        "match_with": null,
+        "multitenancy": {
+          "attribute": null,
+          "global": null,
+          "strategy": null
+        },
+        "name": "operators_versions_version_source_id_fkey",
+        "on_delete": null,
+        "on_update": null,
+        "primary_key?": true,
+        "schema": "public",
+        "table": "operators"
+      },
       "scale": null,
       "size": null,
-      "source": "active",
-      "type": "boolean"
+      "source": "version_source_id",
+      "type": "uuid"
     },
     {
       "allow_nil?": true,
@@ -69,7 +88,19 @@
       "references": null,
       "scale": null,
       "size": null,
-      "source": "deactivated_at",
+      "source": "changes",
+      "type": "map"
+    },
+    {
+      "allow_nil?": false,
+      "default": "fragment(\"(now() AT TIME ZONE 'utc')\")",
+      "generated?": false,
+      "precision": null,
+      "primary_key?": false,
+      "references": null,
+      "scale": null,
+      "size": null,
+      "source": "version_inserted_at",
       "type": "utc_datetime_usec"
     },
     {
@@ -81,19 +112,7 @@
       "references": null,
       "scale": null,
       "size": null,
-      "source": "inserted_at",
-      "type": "utc_datetime_usec"
-    },
-    {
-      "allow_nil?": false,
-      "default": "fragment(\"(now() AT TIME ZONE 'utc')\")",
-      "generated?": false,
-      "precision": null,
-      "primary_key?": false,
-      "references": null,
-      "scale": null,
-      "size": null,
-      "source": "updated_at",
+      "source": "version_updated_at",
       "type": "utc_datetime_usec"
     }
   ],
@@ -103,23 +122,8 @@
   "custom_indexes": [],
   "custom_statements": [],
   "has_create_action": true,
-  "hash": "6BE1614E4937C79F70EC846C87CC6B9A4F8249EBBD3BBC5319E2DFB3CE5E13B9",
-  "identities": [
-    {
-      "all_tenants?": false,
-      "base_filter": null,
-      "index_name": "api_keys_unique_prefix_index",
-      "keys": [
-        {
-          "type": "atom",
-          "value": "key_prefix"
-        }
-      ],
-      "name": "unique_prefix",
-      "nils_distinct?": true,
-      "where": null
-    }
-  ],
+  "hash": "D764B09FFC72387864B52A3049F323FB66756663E5DE3E3E519FC574FA98EB79",
+  "identities": [],
   "multitenancy": {
     "attribute": null,
     "global": null,
@@ -127,5 +131,5 @@
   },
   "repo": "Elixir.WallopCore.Repo",
   "schema": null,
-  "table": "api_keys"
+  "table": "operators_versions"
 }
