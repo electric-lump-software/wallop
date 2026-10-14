@@ -64,18 +64,16 @@ defmodule WallopWeb.RateLimiterTest do
       :gen_tcp.listen(0, [:binary, active: false, reuseaddr: true, ip: {127, 0, 0, 1}])
 
     {:ok, port} = :inet.port(listener)
+    test_pid = self()
 
-    # Accept connections and never reply.
+    # Accept the connection (Redix sends no handshake without auth or a db),
+    # then hold it open and never reply to any command.
     acceptor =
       spawn_link(fn ->
-        accept_forever = fn loop ->
-          case :gen_tcp.accept(listener) do
-            {:ok, _socket} -> loop.(loop)
-            {:error, _} -> :ok
-          end
-        end
-
-        accept_forever.(accept_forever)
+        {:ok, socket} = :gen_tcp.accept(listener)
+        send(test_pid, :connected)
+        Process.sleep(:infinity)
+        :gen_tcp.close(socket)
       end)
 
     on_exit(fn ->
@@ -87,10 +85,23 @@ defmodule WallopWeb.RateLimiterTest do
       RateLimiter.child_spec(backend: :redis, redis_url: "redis://127.0.0.1:#{port}")
     )
 
-    {micros, result} = :timer.tc(fn -> RateLimiter.hit("b", id(), 1, :redis) end)
+    # Wait for an established connection, so the stall is a command timeout
+    # and not an immediate "not connected" error.
+    assert_receive :connected, 2_000
+    Process.sleep(100)
 
+    # The error log is throttled per node; clear it so we can see the reason.
+    :persistent_term.erase({RateLimiter, :last_error_log})
+
+    log =
+      ExUnit.CaptureLog.capture_log(fn ->
+        send(test_pid, {:timed, :timer.tc(fn -> RateLimiter.hit("b", id(), 1, :redis) end)})
+      end)
+
+    assert_received {:timed, {micros, result}}
     assert {:allow, 0} = result
-    assert micros < 500_000
+    assert micros < 300_000
+    assert log =~ "reason: :timeout"
   end
 
   @tag :redis
