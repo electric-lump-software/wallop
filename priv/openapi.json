@@ -2067,30 +2067,8 @@
       "get": {
         "callbacks": {},
         "deprecated": false,
-        "description": "/draws operation on draw resource",
+        "description": "The caller's draws, oldest first, optionally filtered by status. Keyset-paginated; page[limit] above 100 is reduced to 100. Not a snapshot: a draw created while paging can commit behind a cursor already returned.",
         "parameters": [
-          {
-            "description": "Filters the query to results with attributes matching the given filter object",
-            "in": "query",
-            "name": "filter",
-            "required": false,
-            "schema": {
-              "$ref": "#/components/schemas/draw-filter"
-            },
-            "style": "deepObject"
-          },
-          {
-            "description": "Sort order to apply to the results",
-            "explode": false,
-            "in": "query",
-            "name": "sort",
-            "required": false,
-            "schema": {
-              "pattern": "^(id|-id|\\+\\+id|--id|status|-status|\\+\\+status|--status|name|-name|\\+\\+name|--name|entry_count|-entry_count|\\+\\+entry_count|--entry_count|entry_hash|-entry_hash|\\+\\+entry_hash|--entry_hash|entry_canonical|-entry_canonical|\\+\\+entry_canonical|--entry_canonical|winner_count|-winner_count|\\+\\+winner_count|--winner_count|seed|-seed|\\+\\+seed|--seed|seed_source|-seed_source|\\+\\+seed_source|--seed_source|seed_json|-seed_json|\\+\\+seed_json|--seed_json|drand_chain|-drand_chain|\\+\\+drand_chain|--drand_chain|drand_round|-drand_round|\\+\\+drand_round|--drand_round|drand_randomness|-drand_randomness|\\+\\+drand_randomness|--drand_randomness|drand_signature|-drand_signature|\\+\\+drand_signature|--drand_signature|drand_response|-drand_response|\\+\\+drand_response|--drand_response|weather_station|-weather_station|\\+\\+weather_station|--weather_station|weather_time|-weather_time|\\+\\+weather_time|--weather_time|weather_value|-weather_value|\\+\\+weather_value|--weather_value|weather_raw|-weather_raw|\\+\\+weather_raw|--weather_raw|weather_observation_time|-weather_observation_time|\\+\\+weather_observation_time|--weather_observation_time|weather_fallback_reason|-weather_fallback_reason|\\+\\+weather_fallback_reason|--weather_fallback_reason|callback_url|-callback_url|\\+\\+callback_url|--callback_url|metadata|-metadata|\\+\\+metadata|--metadata|check_url|-check_url|\\+\\+check_url|--check_url|executed_at|-executed_at|\\+\\+executed_at|--executed_at|failed_at|-failed_at|\\+\\+failed_at|--failed_at|failure_reason|-failure_reason|\\+\\+failure_reason|--failure_reason|stage_timestamps|-stage_timestamps|\\+\\+stage_timestamps|--stage_timestamps|operator_sequence|-operator_sequence|\\+\\+operator_sequence|--operator_sequence|operator_id|-operator_id|\\+\\+operator_id|--operator_id)(,(id|-id|\\+\\+id|--id|status|-status|\\+\\+status|--status|name|-name|\\+\\+name|--name|entry_count|-entry_count|\\+\\+entry_count|--entry_count|entry_hash|-entry_hash|\\+\\+entry_hash|--entry_hash|entry_canonical|-entry_canonical|\\+\\+entry_canonical|--entry_canonical|winner_count|-winner_count|\\+\\+winner_count|--winner_count|seed|-seed|\\+\\+seed|--seed|seed_source|-seed_source|\\+\\+seed_source|--seed_source|seed_json|-seed_json|\\+\\+seed_json|--seed_json|drand_chain|-drand_chain|\\+\\+drand_chain|--drand_chain|drand_round|-drand_round|\\+\\+drand_round|--drand_round|drand_randomness|-drand_randomness|\\+\\+drand_randomness|--drand_randomness|drand_signature|-drand_signature|\\+\\+drand_signature|--drand_signature|drand_response|-drand_response|\\+\\+drand_response|--drand_response|weather_station|-weather_station|\\+\\+weather_station|--weather_station|weather_time|-weather_time|\\+\\+weather_time|--weather_time|weather_value|-weather_value|\\+\\+weather_value|--weather_value|weather_raw|-weather_raw|\\+\\+weather_raw|--weather_raw|weather_observation_time|-weather_observation_time|\\+\\+weather_observation_time|--weather_observation_time|weather_fallback_reason|-weather_fallback_reason|\\+\\+weather_fallback_reason|--weather_fallback_reason|callback_url|-callback_url|\\+\\+callback_url|--callback_url|metadata|-metadata|\\+\\+metadata|--metadata|check_url|-check_url|\\+\\+check_url|--check_url|executed_at|-executed_at|\\+\\+executed_at|--executed_at|failed_at|-failed_at|\\+\\+failed_at|--failed_at|failure_reason|-failure_reason|\\+\\+failure_reason|--failure_reason|stage_timestamps|-stage_timestamps|\\+\\+stage_timestamps|--stage_timestamps|operator_sequence|-operator_sequence|\\+\\+operator_sequence|--operator_sequence|operator_id|-operator_id|\\+\\+operator_id|--operator_id))*$",
-              "type": "string"
-            },
-            "style": "form"
-          },
           {
             "description": "Paginates the response with the limit and offset or keyset pagination.",
             "in": "query",
@@ -2098,7 +2076,7 @@
             "required": false,
             "schema": {
               "example": {
-                "limit": 25
+                "limit": 50
               },
               "properties": {
                 "after": {
@@ -2113,10 +2091,6 @@
                 },
                 "limit": {
                   "minimum": 1,
-                  "type": "integer"
-                },
-                "offset": {
-                  "minimum": 0,
                   "type": "integer"
                 }
               },
@@ -2156,6 +2130,16 @@
               "type": "object"
             },
             "style": "deepObject"
+          },
+          {
+            "description": "Comma-separated statuses, e.g. `awaiting_entropy,pending_entropy`.",
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "style": "form"
           }
         ],
         "responses": {

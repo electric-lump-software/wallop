@@ -5,7 +5,7 @@ defmodule WallopCore.Domain do
   json_api do
     routes do
       base_route "/draws", WallopCore.Resources.Draw do
-        index(:read)
+        index(:list, derive_filter?: false, derive_sort?: false)
         get(:read, route: "/:id")
         post(:create)
         patch(:add_entries, route: "/:id/entries")
