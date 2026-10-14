@@ -38,17 +38,17 @@ defmodule WallopCore.RateLimitEvents do
   def prune(now) do
     cutoff = DateTime.add(now, -retention_days() * 86_400, :second)
 
-    %Ash.BulkResult{records: records} =
-      RateLimitEvent
-      |> Ash.Query.filter(window_start < ^cutoff)
-      |> Ash.bulk_destroy!(:destroy, %{},
-        domain: WallopCore.Domain,
-        authorize?: false,
-        strategy: [:atomic, :stream],
-        return_records?: true
-      )
+    stale = Ash.Query.filter(RateLimitEvent, window_start < ^cutoff)
+    count = Ash.count!(stale, domain: WallopCore.Domain, authorize?: false)
 
-    length(records || [])
+    Ash.bulk_destroy!(stale, :destroy, %{},
+      domain: WallopCore.Domain,
+      authorize?: false,
+      strategy: [:atomic, :stream],
+      return_records?: false
+    )
+
+    count
   end
 
   defp retention_days do

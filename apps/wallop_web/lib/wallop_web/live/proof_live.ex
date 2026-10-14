@@ -15,7 +15,6 @@ defmodule WallopWeb.ProofLive do
   import WallopWeb.Components.VerifyBlock
   import WallopWeb.Components.PreLockPanel
 
-  alias Phoenix.LiveView, as: LV
   alias WallopCore.Proof
   alias WallopWeb.Plugs.SelfCheckRateLimit
   alias WallopWeb.ProofPreLockView
@@ -116,8 +115,9 @@ defmodule WallopWeb.ProofLive do
   end
 
   def handle_event("check_entry", %{"entry_id" => entry_id}, socket) do
-    # Mirror the HTTP-side rate limit on the LiveView channel, keyed off
-    # the same per-IP ETS table so budgets unify across transports. Without
+    # Mirror the HTTP-side rate limit on the LiveView channel, using the
+    # RateLimiter's "self-check" bucket shared with the HTTP plug so budgets
+    # unify across transports. Without
     # this, an attacker holding one socket open could fire handle_event
     # faster than the HTTP plug's 60/min would allow.
     case SelfCheckRateLimit.check_rate(socket.assigns.peer_ip) do

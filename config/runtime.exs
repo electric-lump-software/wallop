@@ -61,7 +61,9 @@ if config_env() == :prod do
       :ok
 
     "redis" ->
-      config :wallop_web, WallopWeb.RateLimiter, backend: :redis, redis_url: System.get_env("REDIS_URL")
+      config :wallop_web, WallopWeb.RateLimiter,
+        backend: :redis,
+        redis_url: System.get_env("REDIS_URL")
 
     other ->
       raise "RATE_LIMIT_BACKEND must be ets or redis, got #{inspect(other)}"

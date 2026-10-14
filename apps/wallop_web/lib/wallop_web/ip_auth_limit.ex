@@ -41,6 +41,13 @@ defmodule WallopWeb.IpAuthLimit do
   @spec bucket_id(:inet.ip_address()) :: String.t()
   def bucket_id({_, _, _, _} = ip), do: ip |> :inet.ntoa() |> List.to_string()
 
+  # IPv4-mapped IPv6 (::ffff:a.b.c.d) is the IPv4 client, not one shared /64.
+  def bucket_id({0, 0, 0, 0, 0, 0xFFFF, hi, lo}),
+    do:
+      bucket_id(
+        {Bitwise.bsr(hi, 8), Bitwise.band(hi, 0xFF), Bitwise.bsr(lo, 8), Bitwise.band(lo, 0xFF)}
+      )
+
   def bucket_id({a, b, c, d, _, _, _, _}),
     do: ({a, b, c, d, 0, 0, 0, 0} |> :inet.ntoa() |> List.to_string()) <> "/64"
 
