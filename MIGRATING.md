@@ -16,6 +16,27 @@ Within each version section, look for `### HTTP API surface`, `### Hex package s
 
 ---
 
+## 0.28.0 → 0.28.1
+
+Security dependency bumps (phoenix, plug, req, ash). **No protocol, signed-byte, request or response changes.**
+
+### HTTP API surface
+
+- String length limits (`min_length` / `max_length` on operator names, draw names and similar) now count Unicode codepoints rather than graphemes, matching Postgres. Plain text is unaffected. A value built from combining accents or multi-codepoint emoji counts as longer than before, so a value right at a limit may now be rejected with the same validation error that any over-long value gets.
+
+### Hex package surface
+
+- Ash 3.35 requires every application to choose how string length is counted. If you depend on `wallop_core`, add this to your own `config/config.exs` (wallop's own config does not reach a consumer app):
+
+  ```elixir
+  config :ash, default_string_length_count: :codepoints
+  ```
+
+  Without it your app will fail to compile if it defines its own Ash resources with length constraints, or raise at runtime when a `wallop_core` resource validates a string length.
+- `req` moves to `~> 0.6.1`. If your app also depends on Req, it must accept 0.6.x.
+
+---
+
 ## 0.27.x → 0.28.0
 
 Fixes unbounded memory growth in Oban's Postgres notifier and gives the rate-limit ETS tables a supervised owner. **No protocol or signed-byte changes.** Requires a database migration, and changes when per-IP rate limits bite.

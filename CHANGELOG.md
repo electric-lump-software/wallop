@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### wallop_core 0.28.1 — Security: close six advisories surfaced by `mix deps.audit` (phoenix, plug, req, ash)
+
+`mix deps.audit` runs against a live advisory database, so these appeared without any code change on our side. The audit step blocks the CI gate, so this blocks every other PR until merged. **No protocol change, no signed-byte change, no request or response shape change.**
+
+- Bump `phoenix` 1.8.7 → 1.8.15:
+  - GHSA-6983-jfq8-485w (HIGH) — unbounded channel joins per transport enables DoS over few connections.
+  - GHSA-63mc-hw7g-86rr (MODERATE) — Presence keys colliding with `Object.prototype` members break existence checks.
+- Bump `plug` 1.19.2 → 1.20.3:
+  - GHSA-j43x-5hjq-rgxf (HIGH) — quadratic-time decoding of nested query/body parameters.
+- Bump `req` 0.5.17 → 0.6.3, and tighten the constraint to `~> 0.6.1`:
+  - GHSA-655f-mp8p-96gv (HIGH)
+  - GHSA-px9f-whj3-246m (MODERATE)
+
+  Deliberately 0.6 rather than the latest 0.7: 0.7.0 makes a string of breaking changes (adapter modules replace the Finch and Plug steps, `put_params` overwrites instead of appending, a GET with a body becomes a POST), and every HTTP call on the entropy path goes through Req. 0.6's only breaking change is that response bodies other than JSON are no longer decoded by default; nothing in wallop relied on that (drand and the Met Office answer in JSON, Gotenberg returns raw PDF bytes, webhook response bodies are ignored, and the `ex_aws` Req adapter used for S3 sets `decode_body: false`).
+- Bump `ash` 3.27.7 → 3.35.0, which needs `ecto` / `ecto_sql` 3.13 → 3.14:
+  - GHSA-f4hc-ppw9-4hhw (MODERATE) — private action arguments can be set via string-keyed params and atomic changesets.
+
+  Ash 3.35 refuses to compile until the application declares how string length is counted. We set `config :ash, default_string_length_count: :codepoints`, as Ash recommends: `min_length` / `max_length` now count Unicode codepoints, which is how Postgres counts them, so `max_length` genuinely bounds stored size. The previous grapheme counting let a single "character" carry unbounded combining marks. The Ash extensions (`ash_postgres`, `ash_phoenix`, `ash_json_api`, `ash_cloak`, `ash_paper_trail`) are unchanged.
+
+Transitive updates pulled in alongside: `bandit`, `decimal`, `finch`, `hpax`, `mint`, `phoenix_pubsub`, `phoenix_template`, `plug_crypto`, `postgrex`, `reactor`, `spark`, `splode`, `websock_adapter`, `yaml_elixir`, `ymlr`, `multigraph` — all patch or minor.
+
 ### BREAKING — wallop_core 0.28.0 — Unbounded notifier growth in Oban; rate-limit tables get a real owner
 
 **FIXED, and BREAKING for consumers.** Two long-running memory faults, one in a dependency and one of our own. Both only showed up on a node that had been up for weeks, which is why neither surfaced in tests. **No protocol change, no signed-byte change, no request or response shape change** — but two things require consumer action: a database migration is mandatory (Oban refuses to boot without it), and the existing rate limits are now genuinely enforced where previously they silently were not. See `MIGRATING.md`.
