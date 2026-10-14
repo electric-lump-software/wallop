@@ -50,7 +50,7 @@ defmodule WallopCore.Resources.Draw do
         allow_nil?(true)
         # Keep "" as "" (not nil) so `?status=` is rejected, not ignored.
         constraints(allow_empty?: true, trim?: false)
-        description("Comma-separated statuses, e.g. `awaiting_entropy,pending_entropy`.")
+        description("Comma-separated statuses (open, locked, awaiting_entropy, pending_entropy, completed, failed, expired), e.g. `awaiting_entropy,pending_entropy`.")
       end
 
       pagination(keyset?: true, required?: true, default_limit: 50, max_page_size: 100)

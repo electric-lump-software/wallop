@@ -2070,7 +2070,7 @@
         "description": "The caller's draws, oldest first, optionally filtered by status. Keyset-paginated; page[limit] above 100 is reduced to 100. Not a snapshot: a draw created while paging can commit behind a cursor already returned.",
         "parameters": [
           {
-            "description": "Paginates the response with the limit and offset or keyset pagination.",
+            "description": "Keyset pagination: `limit` (1 to 100, default 50) and `after` (a cursor from `links.next`).",
             "in": "query",
             "name": "page",
             "required": false,
@@ -2082,14 +2082,9 @@
                 "after": {
                   "type": "string"
                 },
-                "before": {
-                  "type": "string"
-                },
-                "count": {
-                  "default": false,
-                  "type": "boolean"
-                },
                 "limit": {
+                  "default": 50,
+                  "maximum": 100,
                   "minimum": 1,
                   "type": "integer"
                 }
@@ -2132,7 +2127,7 @@
             "style": "deepObject"
           },
           {
-            "description": "Comma-separated statuses, e.g. `awaiting_entropy,pending_entropy`.",
+            "description": "Comma-separated statuses (open, locked, awaiting_entropy, pending_entropy, completed, failed, expired), e.g. `awaiting_entropy,pending_entropy`.",
             "in": "query",
             "name": "status",
             "required": false,
@@ -2163,6 +2158,27 @@
                       },
                       "type": "array",
                       "uniqueItems": true
+                    },
+                    "links": {
+                      "properties": {
+                        "first": {
+                          "nullable": true,
+                          "type": "string"
+                        },
+                        "next": {
+                          "nullable": true,
+                          "type": "string"
+                        },
+                        "prev": {
+                          "nullable": true,
+                          "type": "string"
+                        },
+                        "self": {
+                          "nullable": true,
+                          "type": "string"
+                        }
+                      },
+                      "type": "object"
                     },
                     "meta": {
                       "additionalProperties": true,

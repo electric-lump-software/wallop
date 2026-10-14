@@ -141,7 +141,7 @@ Returns the authenticated API key's draws, oldest first, one page at a time.
 
 | Query parameter | Meaning |
 |-----------------|---------|
-| `status` | Optional. One status or a comma-separated list, e.g. `status=awaiting_entropy,pending_entropy`. Values are the statuses below, lower case. Anything else is a `400` that names the allowed values. |
+| `status` | Optional. One status or a comma-separated list, e.g. `status=awaiting_entropy,pending_entropy`. Values are the statuses below, lower case; spaces around the commas are tolerated. Anything else is a `400` that names the parameter and the allowed values. `filter[...]` and `sort` are not accepted on this route (`400`). |
 | `page[limit]` | Optional. 1 to 100, default 50. Above 100 is reduced to 100. |
 | `page[after]` | Optional. A cursor taken from a previous response. Do not build these yourself. |
 
@@ -156,6 +156,7 @@ Paging is by keyset, so it is not a snapshot. A draw created while you are pagin
 | Status | Description |
 |--------|-------------|
 | `open` | Accepting entries. Mutable. |
+| `locked` | Entries locked, before entropy collection is declared. |
 | `awaiting_entropy` | Entries locked. Waiting for entropy collection. |
 | `pending_entropy` | Entropy collection in progress. |
 | `completed` | Winners selected. Immutable. Terminal. |
