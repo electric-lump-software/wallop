@@ -40,6 +40,8 @@ defmodule WallopCore.Resources.ApiKey do
     # that predates it. Matches only rows with no digest, so a concurrent
     # second writer gets StaleRecord, which callers treat as success.
     # Uses the filter change: a bare `filter(...)` is a no-op on an update action.
+    # Any future action that rewrites key_hash or key_prefix must also set
+    # key_digest, or a stale digest keeps accepting the old key.
     update :record_key_digest do
       accept([:key_digest])
       change(filter(expr(is_nil(key_digest))))

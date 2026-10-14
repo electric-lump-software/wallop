@@ -81,30 +81,50 @@ defmodule WallopWeb.Plugs.ApiKeyAuth do
   end
 
   # Never changes the authentication result, which bcrypt already decided.
-  defp record_digest(api_key, raw_key) do
+  # A concurrent first request recording the digest first (StaleRecord) is a
+  # normal race and counts as success (ADR-0014). Exposed for tests only.
+  @doc false
+  def record_digest(api_key, raw_key) do
     api_key
     |> Ash.Changeset.for_update(:record_key_digest, %{key_digest: Digest.compute(raw_key)})
     |> Ash.update(domain: WallopCore.Domain, authorize?: false)
     |> case do
       {:ok, _} ->
-        :telemetry.execute([:wallop_web, :api_key, :digest_recorded], %{count: 1}, %{})
+        digest_recorded(:recorded)
 
       {:error, error} ->
-        Logger.warning(
-          "ApiKeyAuth: digest not recorded for key #{Log.redact_id(api_key.id)}: #{stale_or_inspect(error)}"
-        )
+        if stale_record?(error) do
+          Logger.info("ApiKeyAuth: digest already recorded for key #{Log.redact_id(api_key.id)}")
+          digest_recorded(:already_recorded)
+        else
+          # Error classes only: a leaf error's value could carry the digest.
+          Logger.warning(
+            "ApiKeyAuth: digest not recorded for key #{Log.redact_id(api_key.id)}: #{error_classes(error)}"
+          )
 
-        :telemetry.execute([:wallop_web, :api_key, :digest_record_failed], %{count: 1}, %{})
+          :telemetry.execute([:wallop_web, :api_key, :digest_record_failed], %{count: 1}, %{})
+        end
     end
+
+    :ok
   end
 
-  defp stale_or_inspect(%{errors: errors} = error) do
-    if Enum.any?(errors, &match?(%Ash.Error.Changes.StaleRecord{}, &1)),
-      do: "already recorded",
-      else: inspect(error)
+  defp digest_recorded(outcome) do
+    :telemetry.execute([:wallop_web, :api_key, :digest_recorded], %{count: 1}, %{
+      outcome: outcome
+    })
   end
 
-  defp stale_or_inspect(error), do: inspect(error)
+  defp stale_record?(%{errors: errors}),
+    do: Enum.any?(errors, &match?(%Ash.Error.Changes.StaleRecord{}, &1))
+
+  defp stale_record?(_), do: false
+
+  defp error_classes(%{errors: errors} = error) when is_list(errors),
+    do: inspect([error.__struct__ | Enum.map(errors, & &1.__struct__)])
+
+  defp error_classes(%{__struct__: module}), do: inspect(module)
+  defp error_classes(_), do: "unknown"
 
   defp dummy_digest do
     Digest.compute(@dummy_key)

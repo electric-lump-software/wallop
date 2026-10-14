@@ -89,6 +89,17 @@ defmodule WallopWeb.Plugs.ApiKeyAuthTest do
       )
     end
 
+    defp attach_digest_events do
+      ref =
+        :telemetry_test.attach_event_handlers(self(), [
+          [:wallop_web, :api_key, :digest_recorded],
+          [:wallop_web, :api_key, :digest_record_failed]
+        ])
+
+      on_exit(fn -> :telemetry.detach(ref) end)
+      ref
+    end
+
     test "a key with a digest authenticates without bcrypt" do
       api_key = create_api_key()
       raw = api_key.__metadata__.raw_key
@@ -128,14 +139,13 @@ defmodule WallopWeb.Plugs.ApiKeyAuthTest do
       raw = api_key.__metadata__.raw_key
       null_digest!(api_key)
 
-      ref =
-        :telemetry_test.attach_event_handlers(self(), [
-          [:wallop_web, :api_key, :digest_recorded]
-        ])
+      ref = attach_digest_events()
 
       conn = ApiKeyAuth.call(bearer(raw), [])
       refute conn.halted
-      assert_received {[:wallop_web, :api_key, :digest_recorded], ^ref, %{count: 1}, _}
+
+      assert_received {[:wallop_web, :api_key, :digest_recorded], ^ref, %{count: 1},
+                       %{outcome: :recorded}}
 
       assert Ash.get!(ApiKey, api_key.id, authorize?: false).key_digest == Digest.compute(raw)
     end
@@ -174,6 +184,59 @@ defmodule WallopWeb.Plugs.ApiKeyAuthTest do
       |> Ash.update!(authorize?: false)
 
       assert ApiKeyAuth.call(bearer(raw), []).status == 401
+    end
+
+    test "a wrong key with a matching prefix does not poison a key without a digest" do
+      api_key = create_api_key()
+      "wallop_" <> rest = api_key.__metadata__.raw_key
+      wrong = "wallop_" <> binary_part(rest, 0, 8) <> String.duplicate("A", 35)
+      null_digest!(api_key)
+      ref = attach_digest_events()
+
+      conn = ApiKeyAuth.call(bearer(wrong), [])
+      assert conn.halted
+      assert conn.status == 401
+      assert Ash.get!(ApiKey, api_key.id, authorize?: false).key_digest == nil
+      refute_received {[:wallop_web, :api_key, :digest_recorded], ^ref, _, _}
+    end
+
+    test "the second request uses the digest, not bcrypt" do
+      api_key = create_api_key()
+      raw = api_key.__metadata__.raw_key
+      null_digest!(api_key)
+
+      refute ApiKeyAuth.call(bearer(raw), []).halted
+
+      SQL.query!(WallopCore.Repo, "UPDATE api_keys SET key_hash = $1 WHERE id = $2", [
+        Bcrypt.hash_pwd_salt("something else"),
+        Ecto.UUID.dump!(api_key.id)
+      ])
+
+      refute ApiKeyAuth.call(bearer(raw), []).halted
+    end
+
+    test "a concurrent record of the digest is treated as success" do
+      api_key = create_api_key()
+      raw = api_key.__metadata__.raw_key
+      null_digest!(api_key)
+      # Read while the digest is nil, then let another request record it first.
+      stale = Ash.get!(ApiKey, api_key.id, authorize?: false)
+      assert stale.key_digest == nil
+      assert :ok = ApiKeyAuth.record_digest(stale, raw)
+
+      ref = attach_digest_events()
+
+      log =
+        ExUnit.CaptureLog.capture_log([level: :debug], fn ->
+          assert :ok = ApiKeyAuth.record_digest(stale, raw)
+        end)
+
+      assert_received {[:wallop_web, :api_key, :digest_recorded], ^ref, %{count: 1},
+                       %{outcome: :already_recorded}}
+
+      refute_received {[:wallop_web, :api_key, :digest_record_failed], ^ref, _, _}
+      refute log =~ "[warning]"
+      assert Ash.get!(ApiKey, api_key.id, authorize?: false).key_digest == Digest.compute(raw)
     end
   end
 end
