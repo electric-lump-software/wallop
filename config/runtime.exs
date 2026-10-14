@@ -47,6 +47,8 @@ if honeycomb_api_key = System.get_env("HONEYCOMB_API_KEY") do
 end
 
 if config_env() == :prod do
+  config :wallop_web, WallopWeb.Plugs.EdgeGuard, secret: System.get_env("EDGE_SHARED_SECRET")
+
   met_office_api_key =
     System.get_env("MET_OFFICE_API_KEY") ||
       raise "MET_OFFICE_API_KEY environment variable is not set"
