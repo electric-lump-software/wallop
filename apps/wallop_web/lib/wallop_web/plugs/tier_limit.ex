@@ -12,7 +12,9 @@ defmodule WallopWeb.Plugs.TierLimit do
   metadata on keys via the `update_tier` action when subscriptions change.
   """
 
-  import Plug.Conn
+  alias WallopCore.RateLimitEvents
+  alias WallopWeb.RateLimiter
+  alias WallopWeb.RateLimitResponse
 
   @upgrade_url "https://nether.wallop.run/pricing"
 
@@ -32,7 +34,7 @@ defmodule WallopWeb.Plugs.TierLimit do
       api_key ->
         case check_limit(api_key) do
           :ok -> conn
-          {:exceeded, tier, limit} -> render_429(conn, tier, limit)
+          {:exceeded, tier, limit} -> render_429(conn, api_key, tier, limit)
         end
     end
   end
@@ -57,30 +59,21 @@ defmodule WallopWeb.Plugs.TierLimit do
     end
   end
 
-  defp render_429(conn, tier, limit) do
+  defp render_429(conn, api_key, tier, limit) do
     tier_label = tier || "current"
+    retry_after = max(1, DateTime.diff(api_key.count_reset_at, DateTime.utc_now(), :second))
 
-    body = %{
-      errors: [
-        %{
-          status: "429",
-          code: "tier_limit_exceeded",
-          title: "Monthly draw limit reached",
-          detail:
-            "Monthly draw limit reached on the #{tier_label} tier (#{limit} draws/month). " <>
-              "Upgrade at #{@upgrade_url}",
-          meta: %{
-            tier: tier_label,
-            limit: limit,
-            upgrade_url: @upgrade_url
-          }
-        }
-      ]
-    }
+    # First quota refusal this minute only; false on a store error too.
+    if RateLimiter.first_this_window?("quota-limited-event", api_key.id),
+      do: RateLimitEvents.record(api_key.id, :quota_limited, limit)
 
-    conn
-    |> put_status(429)
-    |> Phoenix.Controller.json(body)
-    |> halt()
+    RateLimitResponse.send_429(
+      conn,
+      retry_after,
+      "tier_limit_exceeded",
+      "Monthly draw limit reached on the #{tier_label} tier (#{limit} draws/month). " <>
+        "Upgrade at #{@upgrade_url}",
+      %{tier: tier_label, limit: limit, upgrade_url: @upgrade_url}
+    )
   end
 end

@@ -74,15 +74,15 @@ defmodule WallopWeb.Plugs.TierLimitTest do
     test "rejects with 429 and tier metadata" do
       future = DateTime.add(DateTime.utc_now(), 7 * 86_400, :second)
 
-      conn =
-        conn_with_key(%{
+      api_key =
+        WallopCore.TestHelpers.create_api_key(%{
           monthly_draw_limit: 10,
           monthly_draw_count: 10,
           count_reset_at: future,
           tier: "starter"
         })
 
-      result = TierLimit.call(conn, [])
+      result = TierLimit.call(conn_with_key(api_key), [])
       assert result.halted
       assert result.status == 429
 
@@ -91,6 +91,7 @@ defmodule WallopWeb.Plugs.TierLimitTest do
       assert error["code"] == "tier_limit_exceeded"
       assert error["meta"]["tier"] == "starter"
       assert error["meta"]["limit"] == 10
+      assert error["title"] == "Too many requests"
       assert error["detail"] =~ "Upgrade at"
     end
   end
@@ -109,6 +110,31 @@ defmodule WallopWeb.Plugs.TierLimitTest do
 
       result = TierLimit.call(conn, [])
       refute result.halted
+    end
+  end
+
+  describe "quota 429" do
+    test "carries Retry-After until count_reset_at and records a quota_limited event" do
+      reset_at = DateTime.add(DateTime.utc_now(), 3600, :second)
+
+      api_key =
+        WallopCore.TestHelpers.create_api_key(%{
+          monthly_draw_limit: 1,
+          monthly_draw_count: 1,
+          count_reset_at: reset_at,
+          tier: "starter"
+        })
+
+      conn = TierLimit.call(conn_with_key(api_key), [])
+
+      assert conn.status == 429
+      assert [ra] = Plug.Conn.get_resp_header(conn, "retry-after")
+      assert String.to_integer(ra) in 3590..3600
+
+      assert [%{kind: :quota_limited}] =
+               WallopCore.Resources.RateLimitEvent
+               |> Ash.read!(authorize?: false)
+               |> Enum.filter(&(&1.api_key_id == api_key.id))
     end
   end
 end
