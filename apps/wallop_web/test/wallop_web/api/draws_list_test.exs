@@ -86,4 +86,14 @@ defmodule WallopWeb.Api.DrawsListTest do
     assert length(resp["data"]) == 100
     assert resp["links"]["next"]
   end
+
+  test "on the last page links.next is present and null", %{conn: conn} do
+    key = create_api_key()
+    for _ <- 1..2, do: open_draw(key)
+
+    resp = conn |> authed(key) |> get("/api/v1/draws?page[limit]=2") |> json_response(200)
+    assert length(resp["data"]) == 2
+    assert Map.has_key?(resp["links"], "next")
+    assert resp["links"]["next"] == nil
+  end
 end

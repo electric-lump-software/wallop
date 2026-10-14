@@ -18,7 +18,7 @@ Errors from the update routes (`PATCH /draws/:id/entries`, `/lock`, `/winner_cou
 **ADDED.**
 
 - **`status` filter.** `GET /api/v1/draws?status=awaiting_entropy,pending_entropy` returns only draws in those statuses. One value or a comma-separated list; lower case. Anything else (unknown, empty, stray comma, wrong case) is a `400` that names the parameter and the allowed values, rather than a shrug. The `filter[...]` and `sort` query parameters are no longer accepted on this route either (`400`).
-- **`page[limit]` and `page[after]`.** `page[limit]` is 1 to 100 (default 50; above 100 is reduced to 100). `links.next` is a complete URL and is present while more pages remain. When the endpoint URL is configured as `https`, it is built from that URL, not from the (plain HTTP) connection behind the edge.
+- **`page[limit]` and `page[after]`.** `page[limit]` is 1 to 100 (default 50; above 100 is reduced to 100). `links.next` is a complete URL and is a string while more pages remain and `null` (the key is still present) on the last page. When the endpoint URL is configured as `https`, it is built from that URL, not from the (plain HTTP) connection behind the edge.
 - **Index.** `draws (api_key_id, status, inserted_at, id)`, so a status-filtered list does not walk a key's whole history. Run `mix ecto.migrate`.
 
 **Not a snapshot.** Paging is by keyset: a draw created while you page can commit behind a cursor you were already handed. With one writer nothing is skipped or repeated; with several, sweep again if you need to be certain. **No protocol change, no signed-byte change.**

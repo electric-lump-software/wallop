@@ -83,9 +83,15 @@ defmodule WallopWeb.ApiSpec do
   defp add_links(response) do
     nullable_url = %{type: :string, nullable: true}
 
+    next = %{
+      type: :string,
+      nullable: true,
+      description: "URL of the next page; `null` (key present) on the last page."
+    }
+
     links = %{
       type: :object,
-      properties: Map.new(~w(self first prev next)a, &{&1, nullable_url})
+      properties: Map.put(Map.new(~w(self first prev)a, &{&1, nullable_url}), :next, next)
     }
 
     update_in(

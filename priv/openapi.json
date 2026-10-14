@@ -2166,6 +2166,7 @@
                           "type": "string"
                         },
                         "next": {
+                          "description": "URL of the next page; `null` (key present) on the last page.",
                           "nullable": true,
                           "type": "string"
                         },

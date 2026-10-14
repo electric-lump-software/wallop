@@ -145,7 +145,7 @@ Returns the authenticated API key's draws, oldest first, one page at a time.
 | `page[limit]` | Optional. 1 to 100, default 50. Above 100 is reduced to 100. |
 | `page[after]` | Optional. A cursor taken from a previous response. Do not build these yourself. |
 
-While more draws remain, the response carries `links.next`: a complete URL (filter and limit included) to fetch as it stands. When `links.next` is `null`, you have the lot.
+While more draws remain, the response carries `links.next`: a complete URL (filter and limit included) to fetch as it stands. On the last page the `next` key is still there, with the value `null`; when you see that, you have the lot. A page that happens to end exactly on the final draw also gives `null`, not an empty extra page.
 
 Paging is by keyset, so it is not a snapshot. A draw created while you are paging can commit behind a cursor you were already handed and be missed until your next sweep. If you need to be sure, sweep again.
 
@@ -156,7 +156,7 @@ Paging is by keyset, so it is not a snapshot. A draw created while you are pagin
 | Status | Description |
 |--------|-------------|
 | `open` | Accepting entries. Mutable. |
-| `locked` | Entries locked, before entropy collection is declared. |
+| `locked` | Not seen in practice: locking a draw declares entropy in the same transaction, so a draw goes straight from `open` to `awaiting_entropy`. Still accepted as a `status` filter value (it is in the status enum), but it matches nothing. |
 | `awaiting_entropy` | Entries locked. Waiting for entropy collection. |
 | `pending_entropy` | Entropy collection in progress. |
 | `completed` | Winners selected. Immutable. Terminal. |
