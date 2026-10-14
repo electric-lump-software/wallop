@@ -97,7 +97,7 @@ defmodule WallopWeb.Plugs.KeyRateLimitTest do
       on_exit(fn -> Application.put_env(:wallop_web, RateLimiter, previous) end)
     end
 
-    test "requests pass and no event is recorded" do
+    test "requests pass and no near-limit event is recorded" do
       key = with_limit(1)
 
       capture_log(fn ->

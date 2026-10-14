@@ -121,4 +121,22 @@ defmodule WallopWeb.RateLimiterTest do
     assert {:allow, 0} = RateLimiter.hit("b", id(), 1, :redis)
     assert {:allow, 0} = RateLimiter.hit("b", id(), 1, :redis)
   end
+
+  describe "first_this_window?/3" do
+    test "is true once, then false, for the same bucket and id" do
+      await_fresh_window()
+      k = id()
+      assert RateLimiter.first_this_window?("once", k)
+      refute RateLimiter.first_this_window?("once", k)
+      refute RateLimiter.first_this_window?("once", k)
+      assert RateLimiter.first_this_window?("once", id())
+    end
+
+    test "is false every time when the store errors" do
+      # The Redis backend is not started in tests, so every hit is a store error.
+      k = id()
+      refute RateLimiter.first_this_window?("once", k, :redis)
+      refute RateLimiter.first_this_window?("once", k, :redis)
+    end
+  end
 end

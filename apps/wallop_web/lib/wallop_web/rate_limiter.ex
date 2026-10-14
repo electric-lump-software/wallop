@@ -53,6 +53,15 @@ defmodule WallopWeb.RateLimiter do
     end
   end
 
+  @doc """
+  True the first time `bucket:id` is seen this window; false after, and false
+  when the store errors (so a failing store never triggers the once-a-window
+  action on every request).
+  """
+  @spec first_this_window?(String.t(), term(), :ets | :redis) :: boolean()
+  def first_this_window?(bucket, id, backend \\ backend()),
+    do: match?({:allow, 1}, hit(bucket, id, 1, backend))
+
   @spec retry_after_seconds(non_neg_integer()) :: 1..60
   def retry_after_seconds(ms),
     do: ms |> Kernel./(1000) |> Float.ceil() |> trunc() |> max(1) |> min(60)

@@ -41,10 +41,8 @@ defmodule WallopWeb.Plugs.KeyRateLimit do
         conn
 
       {:deny, retry_after} ->
-        # First refusal this minute only: the event bucket allows one hit.
-        # Match the first hit exactly; a store error reports count 0 and must
-        # record nothing rather than write on every request.
-        if match?({:allow, 1}, RateLimiter.hit("key-limited-event", api_key.id, 1)),
+        # First refusal this minute only; false on a store error too.
+        if RateLimiter.first_this_window?("key-limited-event", api_key.id),
           do: RateLimitEvents.record(api_key.id, :limited, limit)
 
         RateLimitResponse.send_429(
