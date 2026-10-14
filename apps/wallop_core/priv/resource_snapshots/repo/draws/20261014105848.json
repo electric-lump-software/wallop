@@ -26,18 +26,27 @@
     },
     {
       "allow_nil?": true,
-      "default": "[]",
+      "default": "nil",
       "generated?": false,
       "precision": null,
       "primary_key?": false,
       "references": null,
       "scale": null,
       "size": null,
-      "source": "entries",
-      "type": [
-        "array",
-        "map"
-      ]
+      "source": "name",
+      "type": "text"
+    },
+    {
+      "allow_nil?": false,
+      "default": "0",
+      "generated?": false,
+      "precision": null,
+      "primary_key?": false,
+      "references": null,
+      "scale": null,
+      "size": null,
+      "source": "entry_count",
+      "type": "bigint"
     },
     {
       "allow_nil?": true,
@@ -255,6 +264,18 @@
       "references": null,
       "scale": null,
       "size": null,
+      "source": "weather_fallback_reason",
+      "type": "text"
+    },
+    {
+      "allow_nil?": true,
+      "default": "nil",
+      "generated?": false,
+      "precision": null,
+      "primary_key?": false,
+      "references": null,
+      "scale": null,
+      "size": null,
       "source": "callback_url",
       "type": "text"
     },
@@ -269,6 +290,18 @@
       "size": null,
       "source": "metadata",
       "type": "map"
+    },
+    {
+      "allow_nil?": true,
+      "default": "nil",
+      "generated?": false,
+      "precision": null,
+      "primary_key?": false,
+      "references": null,
+      "scale": null,
+      "size": null,
+      "source": "check_url",
+      "type": "text"
     },
     {
       "allow_nil?": true,
@@ -317,6 +350,18 @@
       "size": null,
       "source": "stage_timestamps",
       "type": "map"
+    },
+    {
+      "allow_nil?": false,
+      "default": "nil",
+      "generated?": false,
+      "precision": null,
+      "primary_key?": false,
+      "references": null,
+      "scale": null,
+      "size": null,
+      "source": "operator_sequence",
+      "type": "bigint"
     },
     {
       "allow_nil?": false,
@@ -372,6 +417,37 @@
       "size": null,
       "source": "api_key_id",
       "type": "uuid"
+    },
+    {
+      "allow_nil?": false,
+      "default": "nil",
+      "generated?": false,
+      "precision": null,
+      "primary_key?": false,
+      "references": {
+        "deferrable": false,
+        "destination_attribute": "id",
+        "destination_attribute_default": null,
+        "destination_attribute_generated": null,
+        "index?": false,
+        "match_type": null,
+        "match_with": null,
+        "multitenancy": {
+          "attribute": null,
+          "global": null,
+          "strategy": null
+        },
+        "name": "draws_operator_id_fkey",
+        "on_delete": null,
+        "on_update": null,
+        "primary_key?": true,
+        "schema": "public",
+        "table": "operators"
+      },
+      "scale": null,
+      "size": null,
+      "source": "operator_id",
+      "type": "uuid"
     }
   ],
   "base_filter": null,
@@ -380,7 +456,7 @@
   "custom_indexes": [],
   "custom_statements": [],
   "has_create_action": true,
-  "hash": "D1257F1FF6054241545A890D2C178CA203E60DA622E82BF131522C9033E99553",
+  "hash": "E1AD45FCA89473BD7F1FB07699039B2DF74A80EA6955BBA59C0C9D3A83F608A7",
   "identities": [],
   "multitenancy": {
     "attribute": null,

@@ -13,20 +13,32 @@
       "type": "uuid"
     },
     {
-      "allow_nil?": false,
-      "default": "\"locked\"",
+      "allow_nil?": true,
+      "default": "nil",
       "generated?": false,
       "precision": null,
       "primary_key?": false,
       "references": null,
       "scale": null,
       "size": null,
-      "source": "status",
+      "source": "name",
       "type": "text"
     },
     {
       "allow_nil?": false,
       "default": "nil",
+      "generated?": false,
+      "precision": null,
+      "primary_key?": false,
+      "references": null,
+      "scale": null,
+      "size": null,
+      "source": "winner_count",
+      "type": "bigint"
+    },
+    {
+      "allow_nil?": false,
+      "default": "[]",
       "generated?": false,
       "precision": null,
       "primary_key?": false,
@@ -48,72 +60,12 @@
       "references": null,
       "scale": null,
       "size": null,
-      "source": "entry_hash",
-      "type": "text"
-    },
-    {
-      "allow_nil?": false,
-      "default": "nil",
-      "generated?": false,
-      "precision": null,
-      "primary_key?": false,
-      "references": null,
-      "scale": null,
-      "size": null,
-      "source": "entry_canonical",
-      "type": "text"
-    },
-    {
-      "allow_nil?": false,
-      "default": "nil",
-      "generated?": false,
-      "precision": null,
-      "primary_key?": false,
-      "references": null,
-      "scale": null,
-      "size": null,
-      "source": "winner_count",
-      "type": "bigint"
-    },
-    {
-      "allow_nil?": true,
-      "default": "nil",
-      "generated?": false,
-      "precision": null,
-      "primary_key?": false,
-      "references": null,
-      "scale": null,
-      "size": null,
       "source": "seed",
       "type": "text"
     },
     {
-      "allow_nil?": true,
-      "default": "nil",
-      "generated?": false,
-      "precision": null,
-      "primary_key?": false,
-      "references": null,
-      "scale": null,
-      "size": null,
-      "source": "seed_source",
-      "type": "text"
-    },
-    {
-      "allow_nil?": true,
-      "default": "nil",
-      "generated?": false,
-      "precision": null,
-      "primary_key?": false,
-      "references": null,
-      "scale": null,
-      "size": null,
-      "source": "seed_json",
-      "type": "text"
-    },
-    {
-      "allow_nil?": true,
-      "default": "nil",
+      "allow_nil?": false,
+      "default": "[]",
       "generated?": false,
       "precision": null,
       "primary_key?": false,
@@ -127,19 +79,7 @@
       ]
     },
     {
-      "allow_nil?": true,
-      "default": "nil",
-      "generated?": false,
-      "precision": null,
-      "primary_key?": false,
-      "references": null,
-      "scale": null,
-      "size": null,
-      "source": "metadata",
-      "type": "map"
-    },
-    {
-      "allow_nil?": true,
+      "allow_nil?": false,
       "default": "nil",
       "generated?": false,
       "precision": null,
@@ -164,18 +104,6 @@
     },
     {
       "allow_nil?": false,
-      "default": "fragment(\"(now() AT TIME ZONE 'utc')\")",
-      "generated?": false,
-      "precision": null,
-      "primary_key?": false,
-      "references": null,
-      "scale": null,
-      "size": null,
-      "source": "updated_at",
-      "type": "utc_datetime_usec"
-    },
-    {
-      "allow_nil?": false,
       "default": "nil",
       "generated?": false,
       "precision": null,
@@ -193,7 +121,7 @@
           "global": null,
           "strategy": null
         },
-        "name": "draws_api_key_id_fkey",
+        "name": "sandbox_draws_api_key_id_fkey",
         "on_delete": null,
         "on_update": null,
         "primary_key?": true,
@@ -204,6 +132,37 @@
       "size": null,
       "source": "api_key_id",
       "type": "uuid"
+    },
+    {
+      "allow_nil?": true,
+      "default": "nil",
+      "generated?": false,
+      "precision": null,
+      "primary_key?": false,
+      "references": {
+        "deferrable": false,
+        "destination_attribute": "id",
+        "destination_attribute_default": null,
+        "destination_attribute_generated": null,
+        "index?": false,
+        "match_type": null,
+        "match_with": null,
+        "multitenancy": {
+          "attribute": null,
+          "global": null,
+          "strategy": null
+        },
+        "name": "sandbox_draws_operator_id_fkey",
+        "on_delete": null,
+        "on_update": null,
+        "primary_key?": true,
+        "schema": "public",
+        "table": "operators"
+      },
+      "scale": null,
+      "size": null,
+      "source": "operator_id",
+      "type": "uuid"
     }
   ],
   "base_filter": null,
@@ -212,7 +171,7 @@
   "custom_indexes": [],
   "custom_statements": [],
   "has_create_action": true,
-  "hash": "3CCCE72E3F77E6FD0090AB18B9FB1199888472D8044575E1FE34FD388F9DE219",
+  "hash": "6EBD7450ACFEDDCC027CCB3532EDE5312F5A097CE81171F6B3CBE2CE59A99784",
   "identities": [],
   "multitenancy": {
     "attribute": null,
@@ -221,5 +180,5 @@
   },
   "repo": "Elixir.WallopCore.Repo",
   "schema": null,
-  "table": "draws"
+  "table": "sandbox_draws"
 }
