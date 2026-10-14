@@ -56,7 +56,7 @@ defmodule WallopWeb.Api.DrawsListTest do
     for bad <- ["", "nope", "open,", "OPEN", "open,nope"] do
       resp = conn |> authed(key) |> get("/api/v1/draws?status=#{URI.encode_www_form(bad)}")
       assert resp.status == 400, "status=#{inspect(bad)} gave #{resp.status}"
-      assert resp.resp_body =~ "awaiting_entropy"
+      assert resp.resp_body =~ "status must be one or more of: open, locked, awaiting_entropy"
     end
   end
 

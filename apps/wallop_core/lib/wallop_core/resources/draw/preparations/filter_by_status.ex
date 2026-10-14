@@ -15,10 +15,7 @@ defmodule WallopCore.Resources.Draw.Preparations.FilterByStatus do
   @impl true
   def prepare(query, _opts, _context) do
     case Ash.Query.get_argument(query, :status) do
-      nil ->
-        query
-
-      value ->
+      value when is_binary(value) ->
         allowed = statuses()
         parts = value |> String.split(",") |> Enum.map(&String.trim/1)
 
@@ -30,10 +27,14 @@ defmodule WallopCore.Resources.Draw.Preparations.FilterByStatus do
             query,
             InvalidArgument.exception(
               field: :status,
-              message: "must be a comma-separated list of: " <> Enum.join(allowed, ", ")
+              message: "status must be one or more of: " <> Enum.join(allowed, ", ") <> " (comma-separated)"
             )
           )
         end
+
+      _ ->
+        # nil, or a value Ash has already recorded a cast error for.
+        query
     end
   end
 
