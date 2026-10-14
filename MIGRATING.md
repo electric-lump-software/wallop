@@ -22,6 +22,7 @@ Replaces the rate limiters with one `WallopWeb.RateLimiter`, adds per-key limits
 
 ### HTTP API surface
 
+- **BREAKING: `GET /api/v1/draws` is paged.** It used to return every draw for the key; it now returns the first 50, oldest first. Follow `links.next` until it is `null` to get the rest. New optional parameters: `status` (one status or a comma-separated list; anything else is a `400` naming the allowed values), `page[limit]` (1 to 100, default 50) and `page[after]` (a cursor; take it from `links.next`). Paging is not a snapshot: a draw created while you page can commit behind a cursor already handed out, so sweep again if you need to be certain. Requires a database migration (an index on `draws`).
 - The per-IP limit now counts only failed authentications (30 a minute by default, IPv6 per /64) and runs after authentication. Keys that match by digest are no longer refused because of their IP, so callers sharing one egress IP stop seeing the old 10-requests-a-minute `429`. A key still on bcrypt (not yet used since upgrading) is refused while its IP is over the failure limit; each key only takes that path once. Over-limit failures get `429` `ip_rate_limit_exceeded`.
 - Every `429` carries a `Retry-After` header in whole seconds. Per-key and per-IP values are at most 60; the quota `429` can be much longer (until `count_reset_at`, or 86400 when there is no future reset).
 - The quota `429` `title` is now "Too many requests" (was "Monthly draw limit reached"). The `code` is unchanged; match on that.

@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Many draws in one call: `GET /draws` filters by status and pages by keyset
+
+**BREAKING.** `GET /api/v1/draws` used to return every draw for the key in one go, which is a lovely idea right up until a key has a lot of draws. It now returns the first 50, oldest first. **Callers must follow `links.next` until it is `null`** to collect the rest; a client that reads one response and stops will quietly see only the first page.
+
+**ADDED.**
+
+- **`status` filter.** `GET /api/v1/draws?status=awaiting_entropy,pending_entropy` returns only draws in those statuses. One value or a comma-separated list; lower case. Anything else (unknown, empty, stray comma, wrong case) is a `400` that names the allowed values, rather than a shrug.
+- **`page[limit]` and `page[after]`.** `page[limit]` is 1 to 100 (default 50; above 100 is reduced to 100). `links.next` is a complete URL and is present while more pages remain.
+- **Index.** `draws (api_key_id, status, inserted_at, id)`, so a status-filtered list does not walk a key's whole history. Run `mix ecto.migrate`.
+
+**Not a snapshot.** Paging is by keyset: a draw created while you page can commit behind a cursor you were already handed. With one writer nothing is skipped or repeated; with several, sweep again if you need to be certain. **No protocol change, no signed-byte change.**
+
 ### Rate limiting: one limiter, per-key limits, `Retry-After` everywhere, and a tap on the shoulder when someone gets close
 
 **ADDED.**
