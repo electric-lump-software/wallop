@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed: API error pointers name the attribute; constraint messages are filled in
+
+Errors from the update routes (`PATCH /draws/:id/entries`, `/lock`, `/winner_count`) carried a stray record index in `source.pointer` (`/data/attributes/0/winner_count`); it is now `/data/attributes/winner_count`. Constraint messages used to arrive as unfilled templates ("must be greater than or equal to %{min}"); `detail` now reads "must be greater than or equal to 1". Values that don't fit in a sentence (a list of allowed values, say) stay as the template. **Status codes and error `code`s are unchanged**; only `source.pointer` and `detail` differ, so match on `code`, not on the wording.
+
 ### Many draws in one call: `GET /draws` filters by status and pages by keyset
 
 **BREAKING.** `GET /api/v1/draws` used to return every draw for the key in one go, which is a lovely idea right up until a key has a lot of draws. It now returns the first 50, oldest first. **Callers must follow `links.next` until it is `null`** to collect the rest; a client that reads one response and stops will quietly see only the first page.

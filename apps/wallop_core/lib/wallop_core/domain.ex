@@ -3,6 +3,8 @@ defmodule WallopCore.Domain do
   use Ash.Domain, otp_app: :wallop_core, extensions: [AshJsonApi.Domain]
 
   json_api do
+    error_handler({WallopCore.JsonApiErrors, :handle, []})
+
     routes do
       base_route "/draws", WallopCore.Resources.Draw do
         index(:list, derive_filter?: false, derive_sort?: false)
