@@ -50,14 +50,20 @@ defmodule WallopWeb.Components.EntryCheck do
       </form>
 
       <div :if={@check_result} class="mt-3">
-        <div :if={@draw_status != :completed} class="bg-cream-50 border border-cream-border text-[#555] rounded-lg px-4 py-3 text-sm">
+        <div
+          :if={Map.get(@check_result, :rate_limited, false)}
+          class="bg-yellow-50 border border-yellow-200 text-yellow-800 rounded-lg px-4 py-3 text-sm"
+        >
+          Too many checks from your connection. Have a cup of tea and try again in a minute.
+        </div>
+        <div :if={!Map.get(@check_result, :rate_limited, false) && @draw_status != :completed} class="bg-cream-50 border border-cream-border text-[#555] rounded-lg px-4 py-3 text-sm">
           The draw hasn't completed yet — no winners to check against.
         </div>
-        <div :if={@draw_status == :completed && @check_result.winner} class="bg-green-50 border border-green-200 text-green-800 rounded-lg px-4 py-3 text-sm">
+        <div :if={!Map.get(@check_result, :rate_limited, false) && @draw_status == :completed && @check_result.winner} class="bg-green-50 border border-green-200 text-green-800 rounded-lg px-4 py-3 text-sm">
           This UUID is in the winner list.
         </div>
         <div
-          :if={@draw_status == :completed && !@check_result.winner}
+          :if={!Map.get(@check_result, :rate_limited, false) && @draw_status == :completed && !@check_result.winner}
           class="bg-yellow-50 border border-yellow-200 text-yellow-800 rounded-lg px-4 py-3 text-sm"
         >
           <p>
