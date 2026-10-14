@@ -16,6 +16,12 @@ Within each version section, look for `### HTTP API surface`, `### Hex package s
 
 ---
 
+## 0.28.2 → 0.28.3
+
+The install command on the proof page and the verification explainer now includes `--features cli`. **No protocol, signed-byte, request or response changes.** Nothing to do.
+
+---
+
 ## 0.28.1 → 0.28.2
 
 The proof page's `wallop-verify` command is now filled in for each draw. **No protocol, signed-byte, request or response changes.** Nothing to do on production.

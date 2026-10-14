@@ -83,7 +83,7 @@ defmodule WallopWeb.Components.VerifyBlock do
               consistent with what this instance publishes, not that it's
               authentic.
             </p>
-            <pre class="mt-2 bg-[#1a1a1a] text-[#e2e8f0] p-3 rounded font-mono text-[10px] leading-[1.7] overflow-x-auto"><span class="text-[#777]">$</span> cargo install wallop_verifier
+            <pre class="mt-2 bg-[#1a1a1a] text-[#e2e8f0] p-3 rounded font-mono text-[10px] leading-[1.7] overflow-x-auto"><span class="text-[#777]">$</span> cargo install wallop_verifier --features cli
     <span class="text-[#777]">$</span> {Enum.join(@verify_command.lines, " \\\n    ")}</pre>
             <p class="mt-2 leading-relaxed">
               This command is a convenience, not a trust root — a page that

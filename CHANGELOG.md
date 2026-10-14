@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### wallop_core 0.28.3 — The install command actually installs the verifier
+
+**FIXED.** The proof page and the "how verification works" page told people to run `cargo install wallop_verifier`. The `wallop-verify` binary sits behind the crate's `cli` feature, which is off by default, so cargo installed no binary at all. Both pages now say `cargo install wallop_verifier --features cli`, matching the verifier's own README. **No protocol change, no signed-byte change, no request or response shape change.**
+
+Completed proof pages are served with a year-long immutable cache header, so pages already cached keep the old command until those caches expire.
+
 ### wallop_core 0.28.2 — Proof-page verify command fills in what to check, never whom to trust
 
 **FIXED.** The `wallop-verify` command on every completed draw's proof page was the same hardcoded text everywhere: `https://wallop.run` as the base URL, a `<slug>` placeholder, and a `proof-bundle.json` filename that didn't match the file the page actually downloads. On any deployment other than production it also failed outright with "no trusted anchor matches the pin's signature", because nothing told the verifier which infrastructure keys to trust. **No protocol change, no signed-byte change, no request or response shape change.**
