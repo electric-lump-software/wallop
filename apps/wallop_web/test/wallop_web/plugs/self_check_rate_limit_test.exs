@@ -1,14 +1,26 @@
 defmodule WallopWeb.Plugs.SelfCheckRateLimitTest do
   use WallopWeb.ConnCase, async: false
 
+  import WallopWeb.RateLimitHelpers
+
   alias WallopWeb.Plugs.SelfCheckRateLimit
 
   setup do
-    SelfCheckRateLimit.reset()
+    WallopWeb.RateLimiter.reset()
+    await_fresh_window()
     :ok
   end
 
   describe "call/2" do
+    test "IPv6 clients in one /64 share a budget", %{conn: conn} do
+      a = %{conn | remote_ip: {0x2001, 0xDB8, 1, 2, 0, 0, 0, 1}, params: %{"entry_id" => "abc"}}
+      b = %{conn | remote_ip: {0x2001, 0xDB8, 1, 2, 9, 9, 9, 9}, params: %{"entry_id" => "abc"}}
+
+      for _ <- 1..60, do: SelfCheckRateLimit.call(a, [])
+
+      assert SelfCheckRateLimit.call(b, []).halted
+    end
+
     test "no-op for proof page GET with no entry_id", %{conn: conn} do
       # Same IP, many requests — none carrying an entry_id. Must not rate-limit.
       for _ <- 1..100 do
@@ -36,6 +48,8 @@ defmodule WallopWeb.Plugs.SelfCheckRateLimitTest do
       result = SelfCheckRateLimit.call(conn_with_check, [])
       assert result.halted
       assert result.status == 429
+      [ra] = Plug.Conn.get_resp_header(result, "retry-after")
+      assert String.to_integer(ra) in 1..60
     end
 
     test "separate IPs have separate quotas", %{conn: conn} do

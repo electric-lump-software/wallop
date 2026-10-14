@@ -3,27 +3,25 @@ defmodule WallopWeb.Plugs.SelfCheckRateLimit do
   Per-IP rate limit on the proof page's public self-check endpoint.
 
   The self-check is a flat-boolean lookup against the published winner
-  list. Its only job is "is THIS UUID a winner — yes or no." Throttle
-  concentrated probing per IP so that a client who holds a UUID (say,
-  an entrant) can't cheaply enumerate outcome state on someone else's
-  behalf by submitting many UUIDs in quick succession.
+  list. Its only job is "is THIS UUID a winner — yes or no." Winners are
+  public in the draw's results, so this is a capacity limit, not a secrecy
+  one: it stops one client from using the lookup to soak up the server.
 
-  Separate ETS table from the API `RateLimit` plug: the generic auth
-  path uses 10/minute (appropriate for a bcrypt-gated API), which
-  would block legitimate proof page viewers here. The self-check
-  window allows 60 checks/minute per IP — plenty for a human pasting
-  UUIDs, too little for scripted enumeration of a leaked list.
+  Separate bucket from the API limits: the generic auth path is
+  tighter (appropriate for a bcrypt-gated API), which would block
+  legitimate proof page viewers here. The self-check allows 60
+  checks/minute per IP — plenty for a human pasting UUIDs, too little
+  for a script hammering the endpoint.
 
-  Table: `:wallop_self_check_rate_limit` (named, public, set)
-  Key:   `{:self_check, ip_string}`
-  Value: `{key, count, window_start_monotonic_ms}`
+  The live proof page calls `check_rate/1` too, so the HTTP and
+  LiveView budgets are one. Counts through `WallopWeb.RateLimiter`.
   """
 
   import Plug.Conn
 
-  @table :wallop_self_check_rate_limit
+  alias WallopWeb.RateLimiter
+
   @max_attempts 60
-  @window_ms 60_000
 
   def init(opts), do: opts
 
@@ -31,17 +29,17 @@ defmodule WallopWeb.Plugs.SelfCheckRateLimit do
     # Only enforce when the request actually carries a self-check
     # (either via path param or query string).
     if has_self_check?(conn) do
-      ensure_table()
-      ip = conn.remote_ip |> :inet.ntoa() |> List.to_string()
+      ip = RateLimiter.ip_bucket(conn.remote_ip)
 
-      case check_rate(ip) do
-        :ok ->
+      case RateLimiter.hit("self-check", ip, @max_attempts) do
+        {:allow, _} ->
           conn
 
-        :rate_limited ->
+        {:deny, retry_after} ->
           conn
           |> put_status(429)
           |> Phoenix.Controller.put_view(html: WallopWeb.ErrorHTML, json: WallopWeb.ErrorJSON)
+          |> put_resp_header("retry-after", Integer.to_string(retry_after))
           |> put_resp_content_type("text/plain")
           |> send_resp(429, "Too many self-check attempts. Try again in a minute.\n")
           |> halt()
@@ -66,44 +64,18 @@ defmodule WallopWeb.Plugs.SelfCheckRateLimit do
 
   defp lookup_param(_), do: nil
 
-  @doc "Increments the counter for `ip`. Returns `:ok` or `:rate_limited`."
+  @doc """
+  Counts a self-check for `ip`. Returns `:ok` or `:rate_limited`. Shared by
+  the HTTP plug and the live proof page so they draw on one budget.
+  """
+  @spec check_rate(String.t()) :: :ok | :rate_limited
   def check_rate(ip) do
-    key = {:self_check, ip}
-    now = System.monotonic_time(:millisecond)
-
-    case :ets.lookup(@table, key) do
-      [{^key, count, window_start}] when now - window_start < @window_ms ->
-        if count >= @max_attempts do
-          :rate_limited
-        else
-          :ets.insert(@table, {key, count + 1, window_start})
-          :ok
-        end
-
-      _ ->
-        :ets.insert(@table, {key, 1, now})
-        :ok
+    case RateLimiter.hit("self-check", ip, @max_attempts) do
+      {:allow, _} -> :ok
+      {:deny, _} -> :rate_limited
     end
   end
 
-  @doc "Deletes all entries from the rate limit table. Intended for tests."
-  def reset do
-    ensure_table()
-    :ets.delete_all_objects(@table)
-    :ok
-  end
-
-  @doc "Name of the backing ETS table. Used by the sweeper."
-  def table, do: @table
-
-  @doc "Length of the counting window in milliseconds. Used by the sweeper."
-  def window_ms, do: @window_ms
-
-  @doc "Creates the ETS table if it does not already exist."
-  def ensure_table do
-    case :ets.whereis(@table) do
-      :undefined -> :ets.new(@table, [:set, :public, :named_table])
-      _tid -> :ok
-    end
-  end
+  @doc "Maximum self-checks per window per IP. Public for tests."
+  def max_attempts, do: @max_attempts
 end

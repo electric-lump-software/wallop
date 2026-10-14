@@ -5,16 +5,24 @@ defmodule WallopWeb.Plugs.TierLimit do
   Runs after authentication on `POST /api/v1/draws`. If the actor has a
   `monthly_draw_limit` set and `monthly_draw_count` is at or above it,
   responds with HTTP 429 and a JSON error containing the tier name and
-  upgrade URL.
+  upgrade URL, plus a `Retry-After` header (seconds until the quota resets).
 
   API keys without a `monthly_draw_limit` (nil) are unlimited and pass
   through. The consumer application is responsible for setting tier
   metadata on keys via the `update_tier` action when subscriptions change.
   """
 
-  import Plug.Conn
+  alias WallopWeb.RateLimiter
+  alias WallopWeb.RateLimitResponse
+  alias WallopWeb.RateLimitSignal
 
   @upgrade_url "https://nether.wallop.run/pricing"
+
+  # Retry-After when there is no reset date at all: waiting won't lift the
+  # block. Integrators are told to treat waits over 30 minutes as a quota block.
+  # A reset date that has only just passed (it lapsed between the check and
+  # this response) is different: the block is about to lift, so retry in 1s.
+  @no_reset_retry_after 86_400
 
   def init(opts), do: opts
 
@@ -32,7 +40,7 @@ defmodule WallopWeb.Plugs.TierLimit do
       api_key ->
         case check_limit(api_key) do
           :ok -> conn
-          {:exceeded, tier, limit} -> render_429(conn, tier, limit)
+          {:exceeded, tier, limit} -> render_429(conn, api_key, tier, limit)
         end
     end
   end
@@ -57,30 +65,30 @@ defmodule WallopWeb.Plugs.TierLimit do
     end
   end
 
-  defp render_429(conn, tier, limit) do
+  defp render_429(conn, api_key, tier, limit) do
     tier_label = tier || "current"
+    retry_after = retry_after(api_key.count_reset_at)
 
-    body = %{
-      errors: [
-        %{
-          status: "429",
-          code: "tier_limit_exceeded",
-          title: "Monthly draw limit reached",
-          detail:
-            "Monthly draw limit reached on the #{tier_label} tier (#{limit} draws/month). " <>
-              "Upgrade at #{@upgrade_url}",
-          meta: %{
-            tier: tier_label,
-            limit: limit,
-            upgrade_url: @upgrade_url
-          }
-        }
-      ]
-    }
+    # First quota refusal this minute only; false on a store error too.
+    if RateLimiter.first_this_window?("quota-limited-event", api_key.id),
+      do: RateLimitSignal.emit(api_key.id, :quota_limited, limit)
 
-    conn
-    |> put_status(429)
-    |> Phoenix.Controller.json(body)
-    |> halt()
+    RateLimitResponse.send_429(
+      conn,
+      retry_after,
+      "tier_limit_exceeded",
+      "Monthly draw limit reached on the #{tier_label} tier (#{limit} draws/month). " <>
+        "Upgrade at #{@upgrade_url}",
+      %{tier: tier_label, limit: limit, upgrade_url: @upgrade_url}
+    )
+  end
+
+  defp retry_after(nil), do: @no_reset_retry_after
+
+  defp retry_after(reset_at) do
+    case DateTime.diff(reset_at, DateTime.utc_now(), :millisecond) do
+      ms when ms > 0 -> max(1, div(ms + 999, 1000))
+      _ -> 1
+    end
   end
 end

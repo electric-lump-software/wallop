@@ -7,8 +7,8 @@ defmodule WallopWeb.Plugs.ProofPreLockRateLimit do
 
   - **SelfCheckRateLimit** throttles entry-self-check probes (`?entry_id=...`)
     against the published winner list. It only fires when an `entry_id`
-    is in scope, and protects against winner-list enumeration on
-    completed draws.
+    is in scope, and caps how much server capacity one client can use
+    on lookups.
 
   - **ProofPreLockRateLimit** (this plug) throttles plain proof-page
     GETs on draws in `:open` status. The pre-lock public surface is
@@ -18,13 +18,8 @@ defmodule WallopWeb.Plugs.ProofPreLockRateLimit do
     legitimately checking their entry on a completed draw should not
     be throttled by traffic on a different draw still being filled.
 
-  Distinct ETS table from SelfCheckRateLimit (different schema and
-  retention requirements). Distinct config (different per-IP cap,
-  different window).
-
-  Table: `:wallop_proof_pre_lock_rate_limit` (named, public, set)
-  Key:   `{:proof_pre_lock, ip_string}`
-  Value: `{key, count, window_start_monotonic_ms}`
+  Distinct bucket from SelfCheckRateLimit, with its own per-IP cap.
+  Counts through `WallopWeb.RateLimiter`.
 
   ## Caps
 
@@ -43,27 +38,26 @@ defmodule WallopWeb.Plugs.ProofPreLockRateLimit do
   import Plug.Conn
 
   alias WallopCore.Resources.Draw
+  alias WallopWeb.RateLimiter
 
-  @table :wallop_proof_pre_lock_rate_limit
   @max_attempts 120
-  @window_ms 60_000
 
   def init(opts), do: opts
 
   def call(conn, _opts) do
     case draw_status_for(extract_id(conn)) do
       :open ->
-        ensure_table()
-        ip = conn.remote_ip |> :inet.ntoa() |> List.to_string()
+        ip = RateLimiter.ip_bucket(conn.remote_ip)
 
-        case check_rate(ip) do
-          :ok ->
+        case RateLimiter.hit("proof-pre-lock", ip, @max_attempts) do
+          {:allow, _} ->
             conn
 
-          :rate_limited ->
+          {:deny, retry_after} ->
             conn
             |> put_status(429)
             |> Phoenix.Controller.put_view(html: WallopWeb.ErrorHTML, json: WallopWeb.ErrorJSON)
+            |> put_resp_header("retry-after", Integer.to_string(retry_after))
             |> put_resp_content_type("text/plain")
             |> send_resp(429, "Too many proof-page reads. Try again in a minute.\n")
             |> halt()
@@ -76,47 +70,6 @@ defmodule WallopWeb.Plugs.ProofPreLockRateLimit do
         # would conflate the two states and turn the rate limiter into
         # an enumeration oracle ("limited = exists as :open").
         conn
-    end
-  end
-
-  @doc "Increments the counter for `ip`. Returns `:ok` or `:rate_limited`."
-  def check_rate(ip) do
-    key = {:proof_pre_lock, ip}
-    now = System.monotonic_time(:millisecond)
-
-    case :ets.lookup(@table, key) do
-      [{^key, count, window_start}] when now - window_start < @window_ms ->
-        if count >= @max_attempts do
-          :rate_limited
-        else
-          :ets.insert(@table, {key, count + 1, window_start})
-          :ok
-        end
-
-      _ ->
-        :ets.insert(@table, {key, 1, now})
-        :ok
-    end
-  end
-
-  @doc "Deletes all entries from the rate limit table. Intended for tests."
-  def reset do
-    ensure_table()
-    :ets.delete_all_objects(@table)
-    :ok
-  end
-
-  @doc "Name of the backing ETS table. Used by the sweeper."
-  def table, do: @table
-
-  @doc "Length of the counting window in milliseconds. Used by the sweeper."
-  def window_ms, do: @window_ms
-
-  @doc "Creates the ETS table if it does not already exist."
-  def ensure_table do
-    case :ets.whereis(@table) do
-      :undefined -> :ets.new(@table, [:set, :public, :named_table])
-      _tid -> :ok
     end
   end
 

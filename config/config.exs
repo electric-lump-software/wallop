@@ -72,6 +72,10 @@ config :wallop_web, :proof_storage,
 # via GOTENBERG_URL env var in runtime.exs.
 config :wallop_web, :gotenberg_url, "http://localhost:3000"
 
+# Rate limiter store: :ets (one node) or :redis (shared). Prod overrides via
+# RATE_LIMIT_BACKEND in runtime.exs.
+config :wallop_web, WallopWeb.RateLimiter, backend: :ets
+
 # Which trust anchors the proof page's `wallop-verify` command relies on.
 # `:bundled` — the verifier's compiled-in anchors (the released production
 # deployment). `:self` — this instance's own infrastructure keys, supplied

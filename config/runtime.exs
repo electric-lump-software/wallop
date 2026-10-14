@@ -56,6 +56,23 @@ if config_env() == :prod do
 
   config :wallop_web, WallopWeb.Plugs.EdgeGuard, secret: edge_shared_secret
 
+  # Logger isn't configured yet while runtime.exs runs, so only set a flag;
+  # WallopWeb.Application logs the warning at start.
+  config :wallop_web, :warn_edge_secret_unset, is_nil(edge_shared_secret)
+
+  case System.get_env("RATE_LIMIT_BACKEND", "ets") do
+    "ets" ->
+      :ok
+
+    "redis" ->
+      config :wallop_web, WallopWeb.RateLimiter,
+        backend: :redis,
+        redis_url: System.get_env("REDIS_URL")
+
+    other ->
+      raise "RATE_LIMIT_BACKEND must be ets or redis, got #{inspect(other)}"
+  end
+
   met_office_api_key =
     System.get_env("MET_OFFICE_API_KEY") ||
       raise "MET_OFFICE_API_KEY environment variable is not set"

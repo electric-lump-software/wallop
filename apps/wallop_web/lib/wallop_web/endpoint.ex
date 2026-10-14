@@ -9,8 +9,8 @@ defmodule WallopWeb.Endpoint do
   ]
 
   socket("/live", Phoenix.LiveView.Socket,
-    websocket: [connect_info: [:peer_data, :x_headers, session: @session_options]],
-    longpoll: [connect_info: [:peer_data, :x_headers, session: @session_options]]
+    websocket: [connect_info: [session: @session_options]],
+    longpoll: [connect_info: [session: @session_options]]
   )
 
   plug(Plug.Static,
@@ -34,7 +34,10 @@ defmodule WallopWeb.Endpoint do
 
   # Rewrite `conn.remote_ip` from the edge's client-IP header. Safe only
   # while requests that bypass the edge are refused (EdgeGuard above, or
-  # a platform-level restriction on who can reach the origin).
+  # a platform-level restriction on who can reach the origin). Trust
+  # assumption: if neither holds, any caller can forge this header and pick
+  # its own per-IP rate-limit bucket (WallopWeb.Application warns at boot in
+  # prod when EDGE_SHARED_SECRET is unset).
   plug(RemoteIp, headers: ~w(cf-connecting-ip))
 
   plug(Plug.Telemetry, event_prefix: [:phoenix, :endpoint])

@@ -28,7 +28,15 @@ defmodule WallopCore.Resources.ApiKey do
     defaults([:read])
 
     create :create do
-      accept([:name, :tier, :monthly_draw_limit, :count_reset_at, :operator_id])
+      accept([
+        :name,
+        :tier,
+        :monthly_draw_limit,
+        :count_reset_at,
+        :operator_id,
+        :rate_limit_per_minute
+      ])
+
       change({WallopCore.Resources.ApiKey.Changes.GenerateKey, []})
     end
 
@@ -56,7 +64,7 @@ defmodule WallopCore.Resources.ApiKey do
 
     # Updates tier metadata. Called by a consumer application on subscription changes.
     update :update_tier do
-      accept([:tier, :monthly_draw_limit, :count_reset_at])
+      accept([:tier, :monthly_draw_limit, :count_reset_at, :rate_limit_per_minute])
     end
 
     # Increments monthly_draw_count. Called when a draw is created.
@@ -133,6 +141,16 @@ defmodule WallopCore.Resources.ApiKey do
 
       allow_nil?(true)
       sensitive?(true)
+      public?(false)
+    end
+
+    attribute :rate_limit_per_minute, :integer do
+      description(
+        "Requests per minute allowed for this key. Null means the default (60). Set by the consumer application."
+      )
+
+      allow_nil?(true)
+      constraints(min: 1, max: 6000)
       public?(false)
     end
 

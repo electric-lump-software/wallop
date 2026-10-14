@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Rate limiting: one limiter, per-key limits, `Retry-After` everywhere, and a tap on the shoulder when someone gets close
+
+**ADDED.**
+
+- **Per-key limits.** `api_keys.rate_limit_per_minute` sets a key's own per-minute limit: `nil` means the default of 60, otherwise 1 to 6000. Set it with `create` or `update_tier`. Going over returns `429` `rate_limit_exceeded`, with the limit in `meta.limit`.
+- **Pressure signals.** When a key gets close or gets refused, wallop says so and keeps nothing. Three telemetry events, `[:wallop_web, :rate_limit, :near_limit]` (80% of a key's limit), `[:wallop_web, :rate_limit, :limited]` and `[:wallop_web, :rate_limit, :quota_limited]`, each with `%{count: 1}` and metadata `%{api_key_id:, limit:}`. The same moment is broadcast on `WallopCore.PubSub`, topic `"rate_limit_pressure"`, as `{:rate_limit_pressure, %{api_key_id:, kind:, limit:, window_start:}}` (a plain map; `window_start` is the clock-aligned minute). At most one signal per key, kind and minute, so a hammering client costs one message, not thousands; none at all if the limiter's store errors. The broadcast runs in a background task, so a request never fails, or waits, on PubSub. Attach a handler if you want history.
+- **Redis backend, if you want one.** `RATE_LIMIT_BACKEND=redis` plus `REDIS_URL` (Redis 7 or later) shares the counters across nodes. The default stays in-memory ETS, which is exact on a single node.
+- **`Retry-After` on every `429`.** Per-key and per-IP limits send 1 to 60 seconds. The quota `429` sends the time until `count_reset_at`, or 86400 when there is no reset date (1 if the reset passed a moment ago). The proof-page limiters (`ProofPreLockRateLimit`, 120/min, and `SelfCheckRateLimit`, 60/min) send it too.
+
+**CHANGED.**
+
+- **Authenticate first; count only failures per IP.** `WallopWeb.IpAuthLimit` replaces the blanket 10-requests-a-minute-per-IP check that ran before authentication. Only failed authentications count: 30 a minute by default (`config :wallop_web, WallopWeb.IpAuthLimit, max_failures_per_minute:`), IPv6 per /64. Over the limit gets `429` `ip_rate_limit_exceeded`. A key that matches by digest is never refused because of its IP. Keys still on bcrypt (not yet used since upgrading) are counted before bcrypt runs and refused once the IP is over the limit, so the CPU protection stays; each key only takes that path once.
+- **Clock-aligned windows.** Windows are fixed one-minute slots on the clock, so `Retry-After` values differ from request to request rather than all saying 60.
+- **Quota `429` title.** "Monthly draw limit reached" is now "Too many requests". The error `code` is unchanged; match on that, not the title.
+- **Live proof page.** It now rate-limits by the client IP from the HTTP render, sharing the self-check budget.
+
+**REMOVED.** `WallopWeb.Plugs.RateLimit` and `WallopWeb.RateLimit.Sweeper`, along with the plugs' `table/0`, `window_ms/0` and `ensure_table/0` and their ETS tables. Everything counts through `WallopWeb.RateLimiter` now.
+
+**Operator note.** Run `mix ecto.migrate` (adds `api_keys.rate_limit_per_minute`). If the limiter's store errors, requests are let through (fail open) rather than refused; the error is logged at most once a minute and emitted as `[:wallop_web, :rate_limiter, :backend_error]`. Every store call has a 100 ms timeout. Alert on that event before you turn Redis on, because a broken Redis will otherwise quietly mean no limits. `RATE_LIMIT_BACKEND=redis` without `REDIS_URL` refuses to boot. A quota `Retry-After` can be up to a month, which is as long as the quota takes to reset. Per-IP limits trust `cf-connecting-ip`, so in production leave `EDGE_SHARED_SECRET` set (or otherwise keep the origin unreachable except through the edge); with it unset, boot logs an error saying so.
+
 ### wallop_core 0.28.3 — The install command actually installs the verifier
 
 **FIXED.** The proof page and the "how verification works" page told people to run `cargo install wallop_verifier`. The `wallop-verify` binary sits behind the crate's `cli` feature, which is off by default, so cargo installed no binary at all. Both pages now say `cargo install wallop_verifier --features cli`, matching the verifier's own README. **No protocol change, no signed-byte change, no request or response shape change.**
