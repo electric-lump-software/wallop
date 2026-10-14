@@ -1,6 +1,6 @@
 defmodule WallopWeb.IpAuthLimit do
   @moduledoc """
-  Per-IP limit on failed API authentications (ADR-0015).
+  Per-IP limit on failed API authentications.
 
   Authentication runs first. Only failures count, so a valid key is never
   refused here, even from an IP someone else has exhausted. Once an IP has

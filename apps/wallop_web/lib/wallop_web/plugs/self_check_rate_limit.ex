@@ -15,8 +15,7 @@ defmodule WallopWeb.Plugs.SelfCheckRateLimit do
   for scripted enumeration of a leaked list.
 
   The live proof page calls `check_rate/1` too, so the HTTP and
-  LiveView budgets are one. Counts through `WallopWeb.RateLimiter`
-  (ADR-0015).
+  LiveView budgets are one. Counts through `WallopWeb.RateLimiter`.
   """
 
   import Plug.Conn

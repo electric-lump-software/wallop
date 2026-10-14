@@ -1,5 +1,5 @@
 defmodule WallopWeb.RateLimitResponse do
-  @moduledoc "The one shape of an API 429: `Retry-After` header plus a JSON:API errors array (ADR-0015)."
+  @moduledoc "The one shape of an API 429: `Retry-After` header plus a JSON:API errors array."
 
   import Plug.Conn
 

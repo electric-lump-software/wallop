@@ -1,4 +1,4 @@
-defmodule WallopWeb.Plugs.RateLimitTest do
+defmodule WallopWeb.IpAuthLimitTest do
   use WallopWeb.ConnCase, async: false
 
   import WallopCore.TestHelpers

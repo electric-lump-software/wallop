@@ -1,6 +1,6 @@
 defmodule WallopWeb.Plugs.KeyRateLimit do
   @moduledoc """
-  Per-API-key limit (ADR-0015). The limit is the key's
+  Per-API-key limit. The limit is the key's
   `rate_limit_per_minute`, or 60 when unset. Runs after authentication.
 
   Records a `:near_limit` event the first time a key reaches 80% of its limit

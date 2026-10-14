@@ -19,7 +19,7 @@ defmodule WallopWeb.Plugs.ProofPreLockRateLimit do
     be throttled by traffic on a different draw still being filled.
 
   Distinct bucket from SelfCheckRateLimit, with its own per-IP cap.
-  Counts through `WallopWeb.RateLimiter` (ADR-0015).
+  Counts through `WallopWeb.RateLimiter`.
 
   ## Caps
 

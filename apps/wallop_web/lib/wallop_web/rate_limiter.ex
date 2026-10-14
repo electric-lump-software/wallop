@@ -1,13 +1,13 @@
 defmodule WallopWeb.RateLimiter do
   @moduledoc """
-  The one rate limiter (ADR-0015).
+  The one rate limiter.
 
   Fixed one-minute windows aligned to the clock, via Hammer. The backend is
   configuration: ETS (default, exact on one node) or Redis (shared across
   nodes; windows follow each node's clock, so clock skew shifts window
   edges by the skew).
 
-  If the store errors, the request is allowed (ADR-0015, "Store failure"):
+  If the store errors, the request is allowed (fail open):
   the error is logged at most once a minute per node and
   `[:wallop_web, :rate_limiter, :backend_error]` is emitted. A Redis call that
   takes longer than 100 ms counts as a store error, so a hung Redis costs a

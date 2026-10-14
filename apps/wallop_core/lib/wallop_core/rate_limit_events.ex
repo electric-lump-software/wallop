@@ -1,5 +1,5 @@
 defmodule WallopCore.RateLimitEvents do
-  @moduledoc "Records rate-limit pressure (ADR-0015 §6). Never fails the request that triggered it."
+  @moduledoc "Records rate-limit pressure. Never fails the request that triggered it."
 
   require Logger
   require Ash.Query

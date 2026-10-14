@@ -3,7 +3,7 @@ defmodule WallopCore.Resources.RateLimitEvent do
   A minute in which an API key came close to (`:near_limit`, 80%) or hit
   (`:limited`) its per-minute limit, or was refused by its monthly quota
   (`:quota_limited`). At most one row per key, kind and minute; never one per
-  request (ADR-0015 §6). Operators alert on sustained pressure from these rows.
+  request. Operators alert on sustained pressure from these rows.
 
   Internal: no policy allows any caller. Readers use `authorize?: false`
   and the `:recent` action. Rows older than the retention period
