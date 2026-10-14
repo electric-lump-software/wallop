@@ -2,13 +2,15 @@ defmodule WallopWeb.Plugs.ProofPreLockRateLimitTest do
   use WallopWeb.ConnCase, async: false
 
   import WallopCore.TestHelpers
+  import WallopWeb.RateLimitHelpers
 
   alias WallopCore.Resources.Draw
   alias WallopWeb.Plugs.ProofPreLockRateLimit
   alias WallopWeb.Plugs.SelfCheckRateLimit
 
   setup do
-    ProofPreLockRateLimit.reset()
+    WallopWeb.RateLimiter.reset()
+    await_fresh_window()
     :ok
   end
 
@@ -67,6 +69,8 @@ defmodule WallopWeb.Plugs.ProofPreLockRateLimitTest do
       result = ProofPreLockRateLimit.call(conn, [])
       assert result.halted
       assert result.status == 429
+      [ra] = Plug.Conn.get_resp_header(result, "retry-after")
+      assert String.to_integer(ra) in 1..60
     end
 
     test "separate IPs have separate quotas on :open draw", %{conn: conn} do
@@ -86,27 +90,9 @@ defmodule WallopWeb.Plugs.ProofPreLockRateLimitTest do
       assert ProofPreLockRateLimit.call(a, []).halted
     end
 
-    test "table is distinct from SelfCheckRateLimit's table", %{conn: _conn} do
-      # Existence/identity check: the two plugs must NOT share an ETS
-      # table — otherwise their budgets would fight on the same key
-      # space. This is a structural regression guard.
-      ProofPreLockRateLimit.ensure_table()
-      SelfCheckRateLimit.ensure_table()
-
-      pre_lock_tid = :ets.whereis(:wallop_proof_pre_lock_rate_limit)
-      self_check_tid = :ets.whereis(:wallop_self_check_rate_limit)
-
-      refute pre_lock_tid == :undefined
-      refute self_check_tid == :undefined
-      refute pre_lock_tid == self_check_tid
-    end
-
     test "exhausting pre-lock bucket does not deplete self-check bucket", %{conn: conn} do
-      # Cross-bucket isolation under load. The two plugs share neither
-      # table nor key — exhausting one must not affect the other.
-      ProofPreLockRateLimit.ensure_table()
-      SelfCheckRateLimit.ensure_table()
-
+      # Cross-bucket isolation under load. The two plugs use different
+      # buckets — exhausting one must not affect the other.
       api_key = create_api_key()
 
       draw =
@@ -118,10 +104,20 @@ defmodule WallopWeb.Plugs.ProofPreLockRateLimitTest do
 
       # Exhaust the pre-lock bucket for this IP.
       for _ <- 1..ProofPreLockRateLimit.max_attempts() do
-        :ok = ProofPreLockRateLimit.check_rate(ip)
+        assert {:allow, _} =
+                 WallopWeb.RateLimiter.hit(
+                   "proof-pre-lock",
+                   ip,
+                   ProofPreLockRateLimit.max_attempts()
+                 )
       end
 
-      assert ProofPreLockRateLimit.check_rate(ip) == :rate_limited
+      assert {:deny, _} =
+               WallopWeb.RateLimiter.hit(
+                 "proof-pre-lock",
+                 ip,
+                 ProofPreLockRateLimit.max_attempts()
+               )
 
       # Self-check bucket for the SAME IP must still serve.
       assert SelfCheckRateLimit.check_rate(ip) == :ok

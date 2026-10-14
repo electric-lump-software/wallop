@@ -1,10 +1,13 @@
 defmodule WallopWeb.Plugs.SelfCheckRateLimitTest do
   use WallopWeb.ConnCase, async: false
 
+  import WallopWeb.RateLimitHelpers
+
   alias WallopWeb.Plugs.SelfCheckRateLimit
 
   setup do
-    SelfCheckRateLimit.reset()
+    WallopWeb.RateLimiter.reset()
+    await_fresh_window()
     :ok
   end
 
@@ -36,6 +39,8 @@ defmodule WallopWeb.Plugs.SelfCheckRateLimitTest do
       result = SelfCheckRateLimit.call(conn_with_check, [])
       assert result.halted
       assert result.status == 429
+      [ra] = Plug.Conn.get_resp_header(result, "retry-after")
+      assert String.to_integer(ra) in 1..60
     end
 
     test "separate IPs have separate quotas", %{conn: conn} do

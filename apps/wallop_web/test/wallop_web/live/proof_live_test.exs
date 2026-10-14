@@ -3,6 +3,10 @@ defmodule WallopWeb.ProofLiveTest do
 
   import Phoenix.LiveViewTest
   import WallopCore.TestHelpers
+  import WallopWeb.RateLimitHelpers
+
+  alias WallopWeb.Plugs.SelfCheckRateLimit
+  alias WallopWeb.RateLimiter
 
   describe "completed draw (static controller)" do
     test "renders completed draw with verification badge", %{conn: conn} do
@@ -328,6 +332,44 @@ defmodule WallopWeb.ProofLiveTest do
       Phoenix.PubSub.broadcast(WallopCore.PubSub, "draw:#{draw.id}", {:draw_updated, draw})
 
       assert render(view) =~ "Draw Open"
+    end
+  end
+
+  describe "self-check rate limit on the live page" do
+    setup do
+      RateLimiter.reset()
+      await_fresh_window()
+      :ok
+    end
+
+    test "counts against the client address from the HTTP render, sharing the plug's bucket",
+         %{conn: conn} do
+      api_key = create_api_key()
+
+      draw =
+        WallopCore.Resources.Draw
+        |> Ash.Changeset.for_create(:create, %{winner_count: 1}, actor: api_key)
+        |> Ash.create!()
+
+      cap = SelfCheckRateLimit.max_attempts()
+      client = "198.51.100.7"
+      other = "198.51.100.8"
+
+      for _ <- 1..(cap - 1), do: :ok = SelfCheckRateLimit.check_rate(client)
+
+      {:ok, view, _html} = live(%{conn | remote_ip: {198, 51, 100, 7}}, "/live/proof/#{draw.id}")
+
+      # The live check takes the last token in the client's bucket...
+      render_hook(view, "check_entry", %{"entry_id" => Ecto.UUID.generate()})
+      assert SelfCheckRateLimit.check_rate(client) == :rate_limited
+
+      # ...and further checks come back looking like a non-winner.
+      html = render_hook(view, "check_entry", %{"entry_id" => Ecto.UUID.generate()})
+      refute html =~ "is a winner"
+
+      # Neither the proxy bucket ("unknown") nor another client was touched.
+      assert SelfCheckRateLimit.check_rate(other) == :ok
+      assert SelfCheckRateLimit.check_rate("unknown") == :ok
     end
   end
 

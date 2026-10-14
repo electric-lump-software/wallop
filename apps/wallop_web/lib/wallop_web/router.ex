@@ -58,8 +58,12 @@ defmodule WallopWeb.Router do
     get("/proof/:id/entries", ProofController, :entries_index)
     get("/proof/:id/:entry_id", ProofController, :show)
     get("/proof/:id", ProofController, :show)
-    live("/live/proof/:id/:entry_id", ProofLive)
-    live("/live/proof/:id", ProofLive)
+
+    live_session :proof, session: {WallopWeb.ProofLive, :session, []} do
+      live("/live/proof/:id/:entry_id", ProofLive)
+      live("/live/proof/:id", ProofLive)
+    end
+
     live("/operator/:slug", OperatorLive)
     live("/transparency", TransparencyLive)
     live("/how-verification-works", HowVerificationWorksLive)

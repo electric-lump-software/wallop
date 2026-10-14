@@ -22,7 +22,18 @@ defmodule WallopWeb.ProofLive do
 
   @poll_interval_ms 30_000
 
-  def mount(%{"id" => id} = params, _session, socket) do
+  @doc """
+  Session callback for the router's `live_session`. Runs on the HTTP render,
+  where `conn.remote_ip` is the trustworthy client address (the edge guard and
+  `RemoteIp` have already run). The value travels in the signed LiveView
+  session, so the socket never has to guess it from the proxy's address or a
+  client-supplied header.
+  """
+  def session(conn) do
+    %{"client_ip" => conn.remote_ip |> :inet.ntoa() |> List.to_string()}
+  end
+
+  def mount(%{"id" => id} = params, session, socket) do
     entry_id = Map.get(params, "entry_id")
 
     case load_draw(id) do
@@ -31,7 +42,7 @@ defmodule WallopWeb.ProofLive do
         {:ok, redirect(socket, to: path)}
 
       {:ok, draw} ->
-        peer_ip = peer_ip_from(socket)
+        peer_ip = Map.get(session, "client_ip", "unknown")
 
         if connected?(socket) do
           Phoenix.PubSub.subscribe(WallopCore.PubSub, "draw:#{id}")
@@ -226,36 +237,6 @@ defmodule WallopWeb.ProofLive do
 
     {Jason.encode!(entries), Jason.encode!(draw.results || [])}
   end
-
-  # Extract the client IP for rate limiting. On a live WebSocket socket,
-  # `connect_info` carries `:peer_data`; on a disconnected mount (first
-  # render, before WebSocket upgrade) we fall back to `:x_headers` or to
-  # a placeholder. The placeholder is only ever rate-limited during the
-  # brief window between HTTP render and socket connect, which in
-  # practice means zero real user impact.
-  defp peer_ip_from(socket) do
-    case LV.get_connect_info(socket, :peer_data) do
-      %{address: address} when is_tuple(address) ->
-        address |> :inet.ntoa() |> List.to_string()
-
-      _ ->
-        socket |> LV.get_connect_info(:x_headers) |> ip_from_forwarded_for()
-    end
-  end
-
-  defp ip_from_forwarded_for(headers) when is_list(headers) do
-    headers
-    |> Enum.find_value(fn
-      {"x-forwarded-for", val} -> val |> String.split(",") |> List.first()
-      _ -> nil
-    end)
-    |> case do
-      nil -> "unknown"
-      ip -> String.trim(ip)
-    end
-  end
-
-  defp ip_from_forwarded_for(_), do: "unknown"
 
   defp load_draw(id) do
     case Ash.get(WallopCore.Resources.Draw, id,

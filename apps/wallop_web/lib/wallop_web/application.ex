@@ -10,10 +10,9 @@ defmodule WallopWeb.Application do
     OpentelemetryBandit.setup()
 
     children = [
-      # Must start before the endpoint so the rate-limit tables exist, and are
+      # Must start before the endpoint so the rate-limit table exists, and is
       # owned by a supervised process, before the first request is served.
       WallopWeb.RateLimiter,
-      WallopWeb.RateLimit.Sweeper,
       WallopWeb.Endpoint
     ]
 
