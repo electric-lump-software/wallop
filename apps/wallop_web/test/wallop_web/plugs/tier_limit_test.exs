@@ -136,5 +136,69 @@ defmodule WallopWeb.Plugs.TierLimitTest do
                |> Ash.read!(authorize?: false)
                |> Enum.filter(&(&1.api_key_id == api_key.id))
     end
+
+    test "limit 0 with no reset date is a clean 429 with a day-long Retry-After" do
+      api_key =
+        WallopCore.TestHelpers.create_api_key(%{
+          monthly_draw_limit: 0,
+          count_reset_at: nil,
+          tier: "frozen"
+        })
+
+      conn = TierLimit.call(conn_with_key(api_key), [])
+
+      assert conn.status == 429
+      assert Plug.Conn.get_resp_header(conn, "retry-after") == ["86400"]
+    end
+
+    test "limit 0 with a reset date in the past also waits a day" do
+      past = DateTime.add(DateTime.utc_now(), -3600, :second)
+
+      api_key =
+        WallopCore.TestHelpers.create_api_key(%{
+          monthly_draw_limit: 0,
+          count_reset_at: past,
+          tier: "frozen"
+        })
+
+      conn = TierLimit.call(conn_with_key(api_key), [])
+
+      assert conn.status == 429
+      assert Plug.Conn.get_resp_header(conn, "retry-after") == ["86400"]
+    end
+
+    test "Retry-After rounds a part-second up" do
+      reset_at = DateTime.add(DateTime.utc_now(), 1500, :millisecond)
+
+      api_key =
+        WallopCore.TestHelpers.create_api_key(%{
+          monthly_draw_limit: 1,
+          monthly_draw_count: 1,
+          count_reset_at: reset_at,
+          tier: "starter"
+        })
+
+      conn = TierLimit.call(conn_with_key(api_key), [])
+      assert [ra] = Plug.Conn.get_resp_header(conn, "retry-after")
+      assert String.to_integer(ra) in 2..3
+    end
+
+    test "a second quota 429 in the same minute records no second event" do
+      api_key =
+        WallopCore.TestHelpers.create_api_key(%{
+          monthly_draw_limit: 1,
+          monthly_draw_count: 1,
+          count_reset_at: DateTime.add(DateTime.utc_now(), 3600, :second),
+          tier: "starter"
+        })
+
+      assert TierLimit.call(conn_with_key(api_key), []).status == 429
+      assert TierLimit.call(conn_with_key(api_key), []).status == 429
+
+      assert [%{kind: :quota_limited}] =
+               WallopCore.Resources.RateLimitEvent
+               |> Ash.read!(authorize?: false)
+               |> Enum.filter(&(&1.api_key_id == api_key.id))
+    end
   end
 end

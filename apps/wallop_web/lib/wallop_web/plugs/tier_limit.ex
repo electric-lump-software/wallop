@@ -5,7 +5,7 @@ defmodule WallopWeb.Plugs.TierLimit do
   Runs after authentication on `POST /api/v1/draws`. If the actor has a
   `monthly_draw_limit` set and `monthly_draw_count` is at or above it,
   responds with HTTP 429 and a JSON error containing the tier name and
-  upgrade URL.
+  upgrade URL, plus a `Retry-After` header (seconds until the quota resets).
 
   API keys without a `monthly_draw_limit` (nil) are unlimited and pass
   through. The consumer application is responsible for setting tier
@@ -17,6 +17,10 @@ defmodule WallopWeb.Plugs.TierLimit do
   alias WallopWeb.RateLimitResponse
 
   @upgrade_url "https://nether.wallop.run/pricing"
+
+  # Retry-After when there is no future reset date: waiting won't lift the
+  # block. Integrators are told to treat waits over 30 minutes as a quota block.
+  @no_reset_retry_after 86_400
 
   def init(opts), do: opts
 
@@ -61,7 +65,7 @@ defmodule WallopWeb.Plugs.TierLimit do
 
   defp render_429(conn, api_key, tier, limit) do
     tier_label = tier || "current"
-    retry_after = max(1, DateTime.diff(api_key.count_reset_at, DateTime.utc_now(), :second))
+    retry_after = retry_after(api_key.count_reset_at)
 
     # First quota refusal this minute only; false on a store error too.
     if RateLimiter.first_this_window?("quota-limited-event", api_key.id),
@@ -75,5 +79,14 @@ defmodule WallopWeb.Plugs.TierLimit do
         "Upgrade at #{@upgrade_url}",
       %{tier: tier_label, limit: limit, upgrade_url: @upgrade_url}
     )
+  end
+
+  defp retry_after(nil), do: @no_reset_retry_after
+
+  defp retry_after(reset_at) do
+    case DateTime.diff(reset_at, DateTime.utc_now(), :millisecond) do
+      ms when ms > 0 -> max(1, div(ms + 999, 1000))
+      _ -> @no_reset_retry_after
+    end
   end
 end
