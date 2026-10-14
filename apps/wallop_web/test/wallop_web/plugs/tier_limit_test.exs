@@ -151,7 +151,7 @@ defmodule WallopWeb.Plugs.TierLimitTest do
       assert Plug.Conn.get_resp_header(conn, "retry-after") == ["86400"]
     end
 
-    test "limit 0 with a reset date in the past also waits a day" do
+    test "limit 0 with a reset date that has just passed retries in a second" do
       past = DateTime.add(DateTime.utc_now(), -3600, :second)
 
       api_key =
@@ -164,7 +164,7 @@ defmodule WallopWeb.Plugs.TierLimitTest do
       conn = TierLimit.call(conn_with_key(api_key), [])
 
       assert conn.status == 429
-      assert Plug.Conn.get_resp_header(conn, "retry-after") == ["86400"]
+      assert Plug.Conn.get_resp_header(conn, "retry-after") == ["1"]
     end
 
     test "Retry-After rounds a part-second up" do

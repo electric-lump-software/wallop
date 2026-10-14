@@ -18,8 +18,10 @@ defmodule WallopWeb.Plugs.TierLimit do
 
   @upgrade_url "https://nether.wallop.run/pricing"
 
-  # Retry-After when there is no future reset date: waiting won't lift the
+  # Retry-After when there is no reset date at all: waiting won't lift the
   # block. Integrators are told to treat waits over 30 minutes as a quota block.
+  # A reset date that has only just passed (it lapsed between the check and
+  # this response) is different: the block is about to lift, so retry in 1s.
   @no_reset_retry_after 86_400
 
   def init(opts), do: opts
@@ -86,7 +88,7 @@ defmodule WallopWeb.Plugs.TierLimit do
   defp retry_after(reset_at) do
     case DateTime.diff(reset_at, DateTime.utc_now(), :millisecond) do
       ms when ms > 0 -> max(1, div(ms + 999, 1000))
-      _ -> @no_reset_retry_after
+      _ -> 1
     end
   end
 end
