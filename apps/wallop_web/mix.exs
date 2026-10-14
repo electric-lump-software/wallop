@@ -36,6 +36,8 @@ defmodule WallopWeb.MixProject do
       {:ash_phoenix, "~> 2.0"},
       {:bandit, "~> 1.0"},
       {:remote_ip, "~> 1.2"},
+      {:hammer, "~> 7.5"},
+      {:hammer_backend_redis, "~> 7.2"},
       {:ash_json_api, "~> 1.0"},
       {:open_api_spex, "~> 3.16"},
       {:phoenix_live_dashboard, "~> 0.8"},
