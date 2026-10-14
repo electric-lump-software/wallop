@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Rate limiting: one limiter, per-key limits, `Retry-After` everywhere, and a trail of who got close
+
+**ADDED.**
+
+- **Per-key limits.** `api_keys.rate_limit_per_minute` sets a key's own per-minute limit: `nil` means the default of 60, otherwise 1 to 6000. Set it with `create` or `update_tier`. Going over returns `429` `rate_limit_exceeded`, with the limit in `meta.limit`.
+- **`rate_limit_events`.** A new internal table records pressure: `near_limit` (80% of a key's limit), `limited`, and `quota_limited`. At most one row per key, kind and minute, so a hammering client costs one row, not thousands. Read them with the `:recent` action (takes `since`). `WallopCore.RateLimitEvents.PruneWorker` deletes rows older than 30 days, daily; change that with `config :wallop_core, WallopCore.RateLimitEvents, retention_days:`. Consumers that override core's Oban config must add the cron entry themselves.
+- **Redis backend, if you want one.** `RATE_LIMIT_BACKEND=redis` plus `REDIS_URL` (Redis 7 or later) shares the counters across nodes. The default stays in-memory ETS, which is exact on a single node.
+- **`Retry-After` on every `429`.** Per-key and per-IP limits send 1 to 60 seconds. The quota `429` sends the time until `count_reset_at`, or 86400 when there is no future reset. The proof-page limiters (`ProofPreLockRateLimit`, 120/min, and `SelfCheckRateLimit`, 60/min) send it too.
+
+**CHANGED.**
+
+- **Authenticate first; count only failures per IP.** `WallopWeb.IpAuthLimit` replaces the blanket 10-requests-a-minute-per-IP check that ran before authentication. Only failed authentications count: 30 a minute by default (`config :wallop_web, WallopWeb.IpAuthLimit, max_failures_per_minute:`), IPv6 per /64. Over the limit gets `429` `ip_rate_limit_exceeded`. A valid key is never refused because of its IP, and a key matching by digest is never refused at all. Keys still on bcrypt are counted before bcrypt runs, so the CPU protection stays.
+- **Clock-aligned windows.** Windows are fixed one-minute slots on the clock, so `Retry-After` values differ from request to request rather than all saying 60.
+- **Quota `429` title.** "Monthly draw limit reached" is now "Too many requests". The error `code` is unchanged; match on that, not the title.
+- **Live proof page.** It now rate-limits by the client IP from the HTTP render, sharing the self-check budget.
+
+**REMOVED.** `WallopWeb.Plugs.RateLimit` and `WallopWeb.RateLimit.Sweeper`, along with the plugs' `table/0`, `window_ms/0` and `ensure_table/0` and their ETS tables. Everything counts through `WallopWeb.RateLimiter` now.
+
+**Operator note.** Run `mix ecto.migrate`; the `rate_limit_events` table is new. If the limiter's store errors, requests are let through (fail open) rather than refused; the error is logged at most once a minute and emitted as `[:wallop_web, :rate_limiter, :backend_error]`. Every store call has a 100 ms timeout. Alert on that event before you turn Redis on, because a broken Redis will otherwise quietly mean no limits. `RATE_LIMIT_BACKEND=redis` without `REDIS_URL` refuses to boot. A quota `Retry-After` can be up to a month, which is as long as the quota takes to reset.
+
 ### wallop_core 0.28.3 — The install command actually installs the verifier
 
 **FIXED.** The proof page and the "how verification works" page told people to run `cargo install wallop_verifier`. The `wallop-verify` binary sits behind the crate's `cli` feature, which is off by default, so cargo installed no binary at all. Both pages now say `cargo install wallop_verifier --features cli`, matching the verifier's own README. **No protocol change, no signed-byte change, no request or response shape change.**

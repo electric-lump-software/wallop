@@ -16,6 +16,27 @@ Within each version section, look for `### HTTP API surface`, `### Hex package s
 
 ---
 
+## Unreleased (next release after 0.28.3)
+
+Replaces the rate limiters with one `WallopWeb.RateLimiter`, adds per-key limits and a `rate_limit_events` table. **No protocol or signed-byte changes.** Requires a database migration.
+
+### HTTP API surface
+
+- The per-IP limit now counts only failed authentications (30 a minute by default, IPv6 per /64) and runs after authentication. Valid keys are no longer throttled by IP, so callers sharing one egress IP stop seeing the old 10-requests-a-minute `429`. Over-limit failures get `429` `ip_rate_limit_exceeded`.
+- Every `429` carries a `Retry-After` header in whole seconds. Per-key and per-IP values are at most 60; the quota `429` can be much longer (until `count_reset_at`, or 86400 when there is no future reset).
+- The quota `429` `title` is now "Too many requests" (was "Monthly draw limit reached"). The `code` is unchanged; match on that.
+- Per-key limits: `api_keys.rate_limit_per_minute` (`nil` means 60, otherwise 1 to 6000). Set it with `update_tier` (or `create`). Going over returns `429` `rate_limit_exceeded` with `meta.limit`.
+
+### Hex package surface
+
+- Stop starting `WallopWeb.RateLimit.Sweeper`. It is deleted, and so is `WallopWeb.Plugs.RateLimit`. The plugs' `table/0`, `window_ms/0` and `ensure_table/0` are gone too; if you called them, count through `WallopWeb.RateLimiter` instead.
+- Run the migration: `mix ecto.migrate` (adds `rate_limit_events`, and `rate_limit_per_minute` on `api_keys`).
+- If you override core's Oban config, add `{"15 4 * * *", WallopCore.RateLimitEvents.PruneWorker}` to your crontab, or old rows are never pruned. Retention defaults to 30 days: `config :wallop_core, WallopCore.RateLimitEvents, retention_days:`.
+- Optional: share counters across nodes with `RATE_LIMIT_BACKEND=redis` and `REDIS_URL` (Redis 7 or later). Redis without `REDIS_URL` refuses to boot. If the store errors, requests are let through and `[:wallop_web, :rate_limiter, :backend_error]` is emitted; alert on it before enabling Redis.
+- Optional: `config :wallop_web, WallopWeb.IpAuthLimit, max_failures_per_minute:` changes the per-IP failure limit.
+
+---
+
 ## 0.28.2 → 0.28.3
 
 The install command on the proof page and the verification explainer now includes `--features cli`. **No protocol, signed-byte, request or response changes.** Nothing to do.
@@ -68,6 +89,8 @@ Fixes unbounded memory growth in Oban's Postgres notifier and gives the rate-lim
   | `SelfCheckRateLimit` | 60 req/min/IP | Proof-page self-check probes. |
   | `ProofPreLockRateLimit` | 120 req/min/IP | Proof-page reads of `:open` draws. |
 
+  > Superseded in the next release: `RateLimit` is gone and the per-IP limit now counts only failed authentications. See "Unreleased" above.
+
   If you front the proof page with a shared-IP proxy or CDN that does not preserve the client IP, every viewer behind it now shares one budget. Check that `conn.remote_ip` reflects the real client before upgrading.
 
 ### Hex package surface
@@ -86,6 +109,8 @@ Fixes unbounded memory growth in Oban's Postgres notifier and gives the rate-lim
   Oban will refuse to boot with `Oban migrations are outdated` until this is applied.
 - New module `WallopWeb.RateLimit.Sweeper`, started by `WallopWeb.Application`. Consumers embedding the plugs directly in their own supervision tree should start it too, or the plugs fall back to the previous lazy per-process table behaviour.
 - Rate-limit plugs gain `table/0` and `window_ms/0`. Existing functions are unchanged.
+
+> Superseded in the next release: the Sweeper, `table/0`, `window_ms/0` and `ensure_table/0` are removed. See "Unreleased" above.
 ## 0.27.0 → 0.27.1
 
 Security-only dependency bumps closing nine advisories. **No protocol or signed-byte changes, no migration.** The version moves solely because one bump widens the public filter surface.
@@ -200,6 +225,8 @@ A new rate-limit bucket fires on pre-lock reads (120/min per IP). Distinct from 
 ### Hex package surface
 
 New module `WallopWeb.ProofPreLockView` with `from_draw/2`. New component `WallopWeb.Components.PreLockPanel`. New plug `WallopWeb.Plugs.ProofPreLockRateLimit` (table `:wallop_proof_pre_lock_rate_limit`, separate from `:wallop_self_check_rate_limit`). No removals.
+
+> Superseded in the next release: the plug no longer has its own ETS table. See "Unreleased" above.
 
 ### Verifier surface
 
