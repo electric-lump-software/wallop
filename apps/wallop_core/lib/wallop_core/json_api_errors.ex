@@ -3,7 +3,8 @@ defmodule WallopCore.JsonApiErrors do
   AshJsonApi error handler for the draw API.
 
   - Update actions run through Ash's bulk path, whose record index leaks into
-    the pointer (`/data/attributes/0/winner_count`). Remove it.
+    the pointer (`/data/attributes/0/winner_count`). Remove it (only a numeric index directly after
+    `/data/attributes/`; deeper array pointers are left alone).
   - Constraint messages arrive as templates ("at least %{min}") with the
     values in `meta`. Fill in strings, numbers and atoms; leave any other
     value (a `one_of` list, a map) as the template.
@@ -36,6 +37,8 @@ defmodule WallopCore.JsonApiErrors do
     Regex.replace(~r/%\{(\w+)\}/, detail, fn whole, name -> fill(whole, name, meta) end)
   end
 
+  defp interpolate(detail, _meta), do: detail
+
   defp fill(whole, name, meta) do
     case Enum.find(meta, fn {key, _value} -> to_string(key) == name end) do
       {_key, value} -> if sentence_value?(value), do: to_string(value), else: whole
@@ -45,6 +48,4 @@ defmodule WallopCore.JsonApiErrors do
 
   defp sentence_value?(value),
     do: is_binary(value) or is_number(value) or (is_atom(value) and not is_nil(value))
-
-  defp interpolate(detail, _meta), do: detail
 end
