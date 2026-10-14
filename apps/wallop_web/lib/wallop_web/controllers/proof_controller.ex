@@ -79,7 +79,8 @@ defmodule WallopWeb.ProofController do
       receipt: receipt,
       execution_receipt: execution_receipt,
       operator_public_key_hex: operator_public_key_hex,
-      infra_public_key_hex: infra_public_key_hex
+      infra_public_key_hex: infra_public_key_hex,
+      verify_command: WallopWeb.VerifyCommand.build(draw.id, operator && operator.slug)
     )
   end
 

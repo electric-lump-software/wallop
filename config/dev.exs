@@ -28,6 +28,9 @@ config :wallop_web, WallopWeb.Endpoint,
     ]
   ]
 
+# Local infrastructure keys aren't in the released verifier's anchor set.
+config :wallop_web, :verify_block_anchor_mode, :self
+
 config :phoenix_live_view,
   debug_heex_annotations: true,
   enable_expensive_runtime_checks: true

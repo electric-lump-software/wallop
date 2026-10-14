@@ -64,6 +64,7 @@ defmodule WallopWeb.ProofLive do
            execution_receipt: execution_receipt,
            operator_public_key_hex: operator_public_key_hex,
            infra_public_key_hex: infra_public_key_hex,
+           verify_command: nil,
            page_title: "Draw Proof"
          )}
 
@@ -166,7 +167,7 @@ defmodule WallopWeb.ProofLive do
       # Same defense-in-depth rationale as the lock branch above.
       old_status in [:locked, :awaiting_entropy, :pending_entropy] and new_status == :completed ->
         {entries_json, results_json} = load_verify_data(draw)
-        {_operator, lock_receipt, execution_receipt} = WallopCore.OperatorInfo.for_draw(draw)
+        {operator, lock_receipt, execution_receipt} = WallopCore.OperatorInfo.for_draw(draw)
 
         {operator_public_key_hex, infra_public_key_hex} =
           WallopCore.OperatorInfo.signing_keys_hex(lock_receipt, execution_receipt)
@@ -182,7 +183,8 @@ defmodule WallopWeb.ProofLive do
            receipt: lock_receipt,
            execution_receipt: execution_receipt,
            operator_public_key_hex: operator_public_key_hex,
-           infra_public_key_hex: infra_public_key_hex
+           infra_public_key_hex: infra_public_key_hex,
+           verify_command: WallopWeb.VerifyCommand.build(draw.id, operator && operator.slug)
          )}
 
       true ->
