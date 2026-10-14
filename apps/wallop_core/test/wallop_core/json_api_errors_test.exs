@@ -16,7 +16,9 @@ defmodule WallopCore.JsonApiErrorsTest do
   end
 
   test "leaves lists, maps and tuples as the template" do
-    result = JsonApiErrors.handle(error("must be one of: %{one_of}", %{one_of: [:open, :locked]}), %{})
+    result =
+      JsonApiErrors.handle(error("must be one of: %{one_of}", %{one_of: [:open, :locked]}), %{})
+
     assert result.detail == "must be one of: %{one_of}"
     assert result.source_pointer == "/data/attributes/status"
 

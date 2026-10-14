@@ -27,7 +27,9 @@ defmodule WallopCore.Resources.Draw.Preparations.FilterByStatus do
             query,
             InvalidArgument.exception(
               field: :status,
-              message: "status must be one or more of: " <> Enum.join(allowed, ", ") <> " (comma-separated)"
+              message:
+                "status must be one or more of: " <>
+                  Enum.join(allowed, ", ") <> " (comma-separated)"
             )
           )
         end

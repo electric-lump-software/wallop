@@ -52,7 +52,9 @@ defmodule WallopWeb.Api.ErrorShapeTest do
     [error] =
       conn
       |> api(key)
-      |> post("/api/v1/draws", %{"data" => %{"type" => "draw", "attributes" => %{"winner_count" => 0}}})
+      |> post("/api/v1/draws", %{
+        "data" => %{"type" => "draw", "attributes" => %{"winner_count" => 0}}
+      })
       |> json_response(400)
       |> Map.fetch!("errors")
 
