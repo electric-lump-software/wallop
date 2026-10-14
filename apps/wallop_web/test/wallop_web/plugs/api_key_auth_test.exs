@@ -1,6 +1,7 @@
 defmodule WallopWeb.Plugs.ApiKeyAuthTest do
   use WallopWeb.ConnCase, async: true
 
+  alias Ecto.Adapters.SQL
   alias WallopWeb.Plugs.ApiKeyAuth
 
   defp create_key_with_raw(name \\ "test key") do
@@ -71,6 +72,108 @@ defmodule WallopWeb.Plugs.ApiKeyAuthTest do
 
       assert result.status == 401
       assert result.halted
+    end
+  end
+
+  describe "digest verification (ADR-0014)" do
+    alias WallopCore.Resources.ApiKey
+    alias WallopCore.Resources.ApiKey.Digest
+
+    defp bearer(raw), do: build_conn() |> put_req_header("authorization", "Bearer " <> raw)
+
+    defp null_digest!(api_key) do
+      SQL.query!(
+        WallopCore.Repo,
+        "UPDATE api_keys SET key_digest = NULL WHERE id = $1",
+        [Ecto.UUID.dump!(api_key.id)]
+      )
+    end
+
+    test "a key with a digest authenticates without bcrypt" do
+      api_key = create_api_key()
+      raw = api_key.__metadata__.raw_key
+      # Replace the bcrypt hash with one for a different secret: success now
+      # proves bcrypt wasn't consulted.
+      SQL.query!(
+        WallopCore.Repo,
+        "UPDATE api_keys SET key_hash = $1 WHERE id = $2",
+        [Bcrypt.hash_pwd_salt("something else"), Ecto.UUID.dump!(api_key.id)]
+      )
+
+      conn = ApiKeyAuth.call(bearer(raw), [])
+      refute conn.halted
+      assert conn.assigns.api_key.id == api_key.id
+    end
+
+    test "a wrong key with a matching prefix is refused and bcrypt is not consulted" do
+      api_key = create_api_key()
+      "wallop_" <> rest = api_key.__metadata__.raw_key
+      # Make bcrypt accept this exact wrong key: if the plug consulted bcrypt,
+      # the request would succeed.
+      wrong = "wallop_" <> binary_part(rest, 0, 8) <> String.duplicate("A", 35)
+
+      SQL.query!(
+        WallopCore.Repo,
+        "UPDATE api_keys SET key_hash = $1 WHERE id = $2",
+        [Bcrypt.hash_pwd_salt(wrong), Ecto.UUID.dump!(api_key.id)]
+      )
+
+      conn = ApiKeyAuth.call(bearer(wrong), [])
+      assert conn.halted
+      assert conn.status == 401
+    end
+
+    test "a key without a digest authenticates by bcrypt once and records its digest" do
+      api_key = create_api_key()
+      raw = api_key.__metadata__.raw_key
+      null_digest!(api_key)
+
+      ref =
+        :telemetry_test.attach_event_handlers(self(), [
+          [:wallop_web, :api_key, :digest_recorded]
+        ])
+
+      conn = ApiKeyAuth.call(bearer(raw), [])
+      refute conn.halted
+      assert_received {[:wallop_web, :api_key, :digest_recorded], ^ref, %{count: 1}, _}
+
+      assert Ash.get!(ApiKey, api_key.id, authorize?: false).key_digest == Digest.compute(raw)
+    end
+
+    test "a key containing + or / authenticates" do
+      api_key =
+        Enum.find_value(1..50, fn _ ->
+          k = create_api_key()
+          if String.contains?(k.__metadata__.raw_key, ["+", "/"]), do: k
+        end)
+
+      assert api_key, "no generated key contained + or / in 50 tries"
+      conn = ApiKeyAuth.call(bearer(api_key.__metadata__.raw_key), [])
+      refute conn.halted
+    end
+
+    test "malformed bearers are refused" do
+      for raw <- [
+            "wallop_short",
+            "wallop_" <> String.duplicate("A", 44),
+            "nope_" <> String.duplicate("A", 43),
+            "wallop_" <> String.duplicate("A", 42) <> "="
+          ] do
+        conn = ApiKeyAuth.call(bearer(raw), [])
+        assert conn.halted, "accepted #{raw}"
+        assert conn.status == 401
+      end
+    end
+
+    test "an inactive key is refused" do
+      api_key = create_api_key()
+      raw = api_key.__metadata__.raw_key
+
+      api_key
+      |> Ash.Changeset.for_update(:deactivate, %{})
+      |> Ash.update!(authorize?: false)
+
+      assert ApiKeyAuth.call(bearer(raw), []).status == 401
     end
   end
 end
