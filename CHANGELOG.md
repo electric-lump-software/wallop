@@ -18,7 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 **CHANGED.**
 
-- **Authenticate first; count only failures per IP.** `WallopWeb.IpAuthLimit` replaces the blanket 10-requests-a-minute-per-IP check that ran before authentication. Only failed authentications count: 30 a minute by default (`config :wallop_web, WallopWeb.IpAuthLimit, max_failures_per_minute:`), IPv6 per /64. Over the limit gets `429` `ip_rate_limit_exceeded`. A valid key is never refused because of its IP, and a key matching by digest is never refused at all. Keys still on bcrypt are counted before bcrypt runs, so the CPU protection stays.
+- **Authenticate first; count only failures per IP.** `WallopWeb.IpAuthLimit` replaces the blanket 10-requests-a-minute-per-IP check that ran before authentication. Only failed authentications count: 30 a minute by default (`config :wallop_web, WallopWeb.IpAuthLimit, max_failures_per_minute:`), IPv6 per /64. Over the limit gets `429` `ip_rate_limit_exceeded`. A key that matches by digest is never refused because of its IP. Keys still on bcrypt (not yet used since upgrading) are counted before bcrypt runs and refused once the IP is over the limit, so the CPU protection stays; each key only takes that path once.
 - **Clock-aligned windows.** Windows are fixed one-minute slots on the clock, so `Retry-After` values differ from request to request rather than all saying 60.
 - **Quota `429` title.** "Monthly draw limit reached" is now "Too many requests". The error `code` is unchanged; match on that, not the title.
 - **Live proof page.** It now rate-limits by the client IP from the HTTP render, sharing the self-check budget.

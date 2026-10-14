@@ -22,7 +22,7 @@ Replaces the rate limiters with one `WallopWeb.RateLimiter`, adds per-key limits
 
 ### HTTP API surface
 
-- The per-IP limit now counts only failed authentications (30 a minute by default, IPv6 per /64) and runs after authentication. Valid keys are no longer throttled by IP, so callers sharing one egress IP stop seeing the old 10-requests-a-minute `429`. Over-limit failures get `429` `ip_rate_limit_exceeded`.
+- The per-IP limit now counts only failed authentications (30 a minute by default, IPv6 per /64) and runs after authentication. Keys that match by digest are no longer refused because of their IP, so callers sharing one egress IP stop seeing the old 10-requests-a-minute `429`. A key still on bcrypt (not yet used since upgrading) is refused while its IP is over the failure limit; each key only takes that path once. Over-limit failures get `429` `ip_rate_limit_exceeded`.
 - Every `429` carries a `Retry-After` header in whole seconds. Per-key and per-IP values are at most 60; the quota `429` can be much longer (until `count_reset_at`, or 86400 when there is no future reset).
 - The quota `429` `title` is now "Too many requests" (was "Monthly draw limit reached"). The `code` is unchanged; match on that.
 - Per-key limits: `api_keys.rate_limit_per_minute` (`nil` means 60, otherwise 1 to 6000). Set it with `update_tier` (or `create`). Going over returns `429` `rate_limit_exceeded` with `meta.limit`.
