@@ -130,10 +130,4 @@ defmodule WallopWeb.IpAuthLimitTest do
     assert status({0x2001, 0xDB8, 1, 2, 0xFFFF, 0, 0, 9}, bad_key()) == 429
     assert status({0x2001, 0xDB8, 1, 3, 0, 0, 0, 1}, bad_key()) == 401
   end
-
-  test "bucket ids" do
-    assert IpAuthLimit.bucket_id({10, 1, 0, 1}) == "10.1.0.1"
-    assert IpAuthLimit.bucket_id({0x2001, 0xDB8, 1, 2, 3, 4, 5, 6}) == "2001:db8:1:2::/64"
-    assert IpAuthLimit.bucket_id({0, 0, 0, 0, 0, 0xFFFF, 0xC000, 0x0201}) == "192.0.2.1"
-  end
 end

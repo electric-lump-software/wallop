@@ -66,6 +66,25 @@ defmodule WallopWeb.RateLimiter do
   def retry_after_seconds(ms),
     do: ms |> Kernel./(1000) |> Float.ceil() |> trunc() |> max(1) |> min(60)
 
+  @doc """
+  The bucket id for a client address, used by every per-IP limiter so one
+  client draws on one budget whichever door it comes through. IPv4 is the
+  dotted address; IPv4-mapped IPv6 is the IPv4 client; other IPv6 is its /64,
+  since one host usually holds a whole /64.
+  """
+  @spec ip_bucket(:inet.ip_address()) :: String.t()
+  def ip_bucket({_, _, _, _} = ip), do: ip |> :inet.ntoa() |> List.to_string()
+
+  # IPv4-mapped IPv6 (::ffff:a.b.c.d) is the IPv4 client, not one shared /64.
+  def ip_bucket({0, 0, 0, 0, 0, 0xFFFF, hi, lo}),
+    do:
+      ip_bucket(
+        {Bitwise.bsr(hi, 8), Bitwise.band(hi, 0xFF), Bitwise.bsr(lo, 8), Bitwise.band(lo, 0xFF)}
+      )
+
+  def ip_bucket({a, b, c, d, _, _, _, _}),
+    do: ({a, b, c, d, 0, 0, 0, 0} |> :inet.ntoa() |> List.to_string()) <> "/64"
+
   @doc "Clears every ETS counter. For tests."
   @spec reset() :: :ok
   def reset do

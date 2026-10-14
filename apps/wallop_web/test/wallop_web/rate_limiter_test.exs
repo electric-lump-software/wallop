@@ -139,4 +139,10 @@ defmodule WallopWeb.RateLimiterTest do
       refute RateLimiter.first_this_window?("once", k, :redis)
     end
   end
+
+  test "ip_bucket ids" do
+    assert RateLimiter.ip_bucket({10, 1, 0, 1}) == "10.1.0.1"
+    assert RateLimiter.ip_bucket({0x2001, 0xDB8, 1, 2, 3, 4, 5, 6}) == "2001:db8:1:2::/64"
+    assert RateLimiter.ip_bucket({0, 0, 0, 0, 0, 0xFFFF, 0xC000, 0x0201}) == "192.0.2.1"
+  end
 end

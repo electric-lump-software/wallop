@@ -28,7 +28,7 @@ defmodule WallopWeb.IpAuthLimit do
   """
   @spec record_failure(:inet.ip_address()) :: :ok | {:deny, 1..60}
   def record_failure(ip) do
-    case RateLimiter.hit(@bucket, bucket_id(ip), max_failures()) do
+    case RateLimiter.hit(@bucket, RateLimiter.ip_bucket(ip), max_failures()) do
       {:allow, _count} ->
         :ok
 
@@ -37,19 +37,6 @@ defmodule WallopWeb.IpAuthLimit do
         {:deny, retry_after}
     end
   end
-
-  @spec bucket_id(:inet.ip_address()) :: String.t()
-  def bucket_id({_, _, _, _} = ip), do: ip |> :inet.ntoa() |> List.to_string()
-
-  # IPv4-mapped IPv6 (::ffff:a.b.c.d) is the IPv4 client, not one shared /64.
-  def bucket_id({0, 0, 0, 0, 0, 0xFFFF, hi, lo}),
-    do:
-      bucket_id(
-        {Bitwise.bsr(hi, 8), Bitwise.band(hi, 0xFF), Bitwise.bsr(lo, 8), Bitwise.band(lo, 0xFF)}
-      )
-
-  def bucket_id({a, b, c, d, _, _, _, _}),
-    do: ({a, b, c, d, 0, 0, 0, 0} |> :inet.ntoa() |> List.to_string()) <> "/64"
 
   @spec max_failures() :: pos_integer()
   def max_failures do

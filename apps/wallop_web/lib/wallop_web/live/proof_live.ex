@@ -26,10 +26,11 @@ defmodule WallopWeb.ProofLive do
   where `conn.remote_ip` is the trustworthy client address (the edge guard and
   `RemoteIp` have already run). The value travels in the signed LiveView
   session, so the socket never has to guess it from the proxy's address or a
-  client-supplied header.
+  client-supplied header. It is stored as the limiter's bucket id, so the live
+  page and the HTTP plug count the same client in the same bucket.
   """
   def session(conn) do
-    %{"client_ip" => conn.remote_ip |> :inet.ntoa() |> List.to_string()}
+    %{"client_ip" => WallopWeb.RateLimiter.ip_bucket(conn.remote_ip)}
   end
 
   def mount(%{"id" => id} = params, session, socket) do
@@ -117,20 +118,22 @@ defmodule WallopWeb.ProofLive do
   def handle_event("check_entry", %{"entry_id" => entry_id}, socket) do
     # Mirror the HTTP-side rate limit on the LiveView channel, using the
     # RateLimiter's "self-check" bucket shared with the HTTP plug so budgets
-    # unify across transports. Without
-    # this, an attacker holding one socket open could fire handle_event
-    # faster than the HTTP plug's 60/min would allow.
+    # unify across transports. Without this, an attacker holding one socket
+    # open could fire handle_event faster than the HTTP plug's 60/min would
+    # allow.
     case SelfCheckRateLimit.check_rate(socket.assigns.peer_ip) do
       :ok ->
         {:ok, result} = Proof.winner?(socket.assigns.draw, entry_id)
         {:noreply, assign(socket, check_result: result, checked_entry_id: entry_id)}
 
       :rate_limited ->
-        # Same response shape as a non-winner to avoid leaking rate-limit
-        # state itself as an enumeration signal.
+        # Say so, rather than render the non-winner copy: a real winner must
+        # never be told they lost. Winners are public in `draw.results` and the
+        # HTTP path already answers with an explicit 429, so hiding the
+        # rate-limit state would protect nothing.
         {:noreply,
          assign(socket,
-           check_result: %{winner: false},
+           check_result: %{rate_limited: true},
            checked_entry_id: entry_id
          )}
     end

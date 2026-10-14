@@ -3,16 +3,15 @@ defmodule WallopWeb.Plugs.SelfCheckRateLimit do
   Per-IP rate limit on the proof page's public self-check endpoint.
 
   The self-check is a flat-boolean lookup against the published winner
-  list. Its only job is "is THIS UUID a winner — yes or no." Throttle
-  concentrated probing per IP so that a client who holds a UUID (say,
-  an entrant) can't cheaply enumerate outcome state on someone else's
-  behalf by submitting many UUIDs in quick succession.
+  list. Its only job is "is THIS UUID a winner — yes or no." Winners are
+  public in the draw's results, so this is a capacity limit, not a secrecy
+  one: it stops one client from using the lookup to soak up the server.
 
   Separate bucket from the API limits: the generic auth path is
   tighter (appropriate for a bcrypt-gated API), which would block
   legitimate proof page viewers here. The self-check allows 60
   checks/minute per IP — plenty for a human pasting UUIDs, too little
-  for scripted enumeration of a leaked list.
+  for a script hammering the endpoint.
 
   The live proof page calls `check_rate/1` too, so the HTTP and
   LiveView budgets are one. Counts through `WallopWeb.RateLimiter`.
@@ -30,7 +29,7 @@ defmodule WallopWeb.Plugs.SelfCheckRateLimit do
     # Only enforce when the request actually carries a self-check
     # (either via path param or query string).
     if has_self_check?(conn) do
-      ip = conn.remote_ip |> :inet.ntoa() |> List.to_string()
+      ip = RateLimiter.ip_bucket(conn.remote_ip)
 
       case RateLimiter.hit("self-check", ip, @max_attempts) do
         {:allow, _} ->

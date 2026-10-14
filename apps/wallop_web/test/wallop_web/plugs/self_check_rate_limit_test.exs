@@ -12,6 +12,15 @@ defmodule WallopWeb.Plugs.SelfCheckRateLimitTest do
   end
 
   describe "call/2" do
+    test "IPv6 clients in one /64 share a budget", %{conn: conn} do
+      a = %{conn | remote_ip: {0x2001, 0xDB8, 1, 2, 0, 0, 0, 1}, params: %{"entry_id" => "abc"}}
+      b = %{conn | remote_ip: {0x2001, 0xDB8, 1, 2, 9, 9, 9, 9}, params: %{"entry_id" => "abc"}}
+
+      for _ <- 1..60, do: SelfCheckRateLimit.call(a, [])
+
+      assert SelfCheckRateLimit.call(b, []).halted
+    end
+
     test "no-op for proof page GET with no entry_id", %{conn: conn} do
       # Same IP, many requests — none carrying an entry_id. Must not rate-limit.
       for _ <- 1..100 do

@@ -5,6 +5,7 @@ defmodule WallopWeb.ProofLiveTest do
   import WallopCore.TestHelpers
   import WallopWeb.RateLimitHelpers
 
+  alias WallopWeb.Components.EntryCheck
   alias WallopWeb.Plugs.SelfCheckRateLimit
   alias WallopWeb.RateLimiter
 
@@ -363,13 +364,76 @@ defmodule WallopWeb.ProofLiveTest do
       render_hook(view, "check_entry", %{"entry_id" => Ecto.UUID.generate()})
       assert SelfCheckRateLimit.check_rate(client) == :rate_limited
 
-      # ...and further checks come back looking like a non-winner.
+      # ...and further checks say they were refused, not that the entry lost.
       html = render_hook(view, "check_entry", %{"entry_id" => Ecto.UUID.generate()})
       refute html =~ "is a winner"
+      refute html =~ "Not in the winner list"
+      assert html =~ "Too many checks from your connection"
 
       # Neither the proxy bucket ("unknown") nor another client was touched.
       assert SelfCheckRateLimit.check_rate(other) == :ok
       assert SelfCheckRateLimit.check_rate("unknown") == :ok
+    end
+  end
+
+  describe "rate-limited check" do
+    setup do
+      RateLimiter.reset()
+      await_fresh_window()
+      :ok
+    end
+
+    defp open_draw do
+      WallopCore.Resources.Draw
+      |> Ash.Changeset.for_create(:create, %{winner_count: 1}, actor: create_api_key())
+      |> Ash.create!()
+    end
+
+    test "the entry check says so instead of calling a real winner a loser" do
+      api_key = create_api_key()
+      draw = execute_draw(create_draw(api_key, %{}), test_seed(), api_key)
+      winning_id = List.first(draw.results)["entry_id"]
+
+      # A completed draw, a check result from a refused (rate-limited) lookup.
+      html =
+        render_component(&EntryCheck.entry_check/1,
+          check_result: %{rate_limited: true},
+          draw_status: draw.status,
+          checked_entry_id: winning_id,
+          check_url: nil
+        )
+
+      refute html =~ "Not in the winner list"
+      refute html =~ "in the winner list."
+      assert html =~ "Too many checks from your connection"
+    end
+
+    test "a refused live check on the page says it was refused", %{conn: conn} do
+      draw = open_draw()
+      {:ok, view, _html} = live(%{conn | remote_ip: {198, 51, 100, 9}}, "/live/proof/#{draw.id}")
+
+      for _ <- 1..SelfCheckRateLimit.max_attempts(),
+          do: SelfCheckRateLimit.check_rate("198.51.100.9")
+
+      html = render_hook(view, "check_entry", %{"entry_id" => Ecto.UUID.generate()})
+
+      refute html =~ "Not in the winner list"
+      assert html =~ "Too many checks from your connection"
+    end
+
+    test "an IPv6 client and a sibling in the same /64 share the self-check budget",
+         %{conn: conn} do
+      draw = open_draw()
+
+      {:ok, view, _html} =
+        live(%{conn | remote_ip: {0x2001, 0xDB8, 1, 2, 0, 0, 0, 1}}, "/live/proof/#{draw.id}")
+
+      sibling = RateLimiter.ip_bucket({0x2001, 0xDB8, 1, 2, 0xFFFF, 0, 0, 9})
+
+      for _ <- 1..SelfCheckRateLimit.max_attempts(), do: SelfCheckRateLimit.check_rate(sibling)
+
+      html = render_hook(view, "check_entry", %{"entry_id" => Ecto.UUID.generate()})
+      assert html =~ "Too many checks from your connection"
     end
   end
 

@@ -7,8 +7,8 @@ defmodule WallopWeb.Plugs.ProofPreLockRateLimit do
 
   - **SelfCheckRateLimit** throttles entry-self-check probes (`?entry_id=...`)
     against the published winner list. It only fires when an `entry_id`
-    is in scope, and protects against winner-list enumeration on
-    completed draws.
+    is in scope, and caps how much server capacity one client can use
+    on lookups.
 
   - **ProofPreLockRateLimit** (this plug) throttles plain proof-page
     GETs on draws in `:open` status. The pre-lock public surface is
@@ -47,7 +47,7 @@ defmodule WallopWeb.Plugs.ProofPreLockRateLimit do
   def call(conn, _opts) do
     case draw_status_for(extract_id(conn)) do
       :open ->
-        ip = conn.remote_ip |> :inet.ntoa() |> List.to_string()
+        ip = RateLimiter.ip_bucket(conn.remote_ip)
 
         case RateLimiter.hit("proof-pre-lock", ip, @max_attempts) do
           {:allow, _} ->
