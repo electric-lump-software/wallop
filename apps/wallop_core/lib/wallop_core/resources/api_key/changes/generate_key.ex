@@ -1,6 +1,8 @@
 defmodule WallopCore.Resources.ApiKey.Changes.GenerateKey do
-  @moduledoc "Generates a random API key, stores its bcrypt hash and prefix."
+  @moduledoc "Generates a random API key, stores its bcrypt hash, digest and prefix."
   use Ash.Resource.Change
+
+  alias WallopCore.Resources.ApiKey.Digest
 
   @impl true
   def change(changeset, _opts, _context) do
@@ -9,6 +11,7 @@ defmodule WallopCore.Resources.ApiKey.Changes.GenerateKey do
     raw_key = "wallop_" <> random_part
     prefix = String.slice(random_part, 0, 8)
     hash = Bcrypt.hash_pwd_salt(raw_key)
+    digest = Digest.compute(raw_key)
 
     webhook_secret = :crypto.strong_rand_bytes(32) |> Base.encode64(padding: false)
 
@@ -22,6 +25,7 @@ defmodule WallopCore.Resources.ApiKey.Changes.GenerateKey do
 
     changeset
     |> Ash.Changeset.force_change_attribute(:key_hash, hash)
+    |> Ash.Changeset.force_change_attribute(:key_digest, digest)
     |> Ash.Changeset.force_change_attribute(:key_prefix, prefix)
     |> Ash.Changeset.force_change_attribute(:webhook_secret, encoded_secret)
     |> Ash.Changeset.after_action(fn _changeset, api_key ->

@@ -2,8 +2,8 @@ defmodule WallopCore.Resources.ApiKey do
   @moduledoc """
   API key for authenticating requests to the Wallop API.
 
-  Keys are generated with a random secret, but only the bcrypt hash and an
-  8-character prefix are persisted. The raw key is returned once via metadata
+  Keys are generated with a random secret, but only a bcrypt hash, a labelled
+  SHA-256 digest (ADR-0014) and an 8-character prefix are persisted. The raw key is returned once via metadata
   after creation and never stored.
   """
   use Ash.Resource,
@@ -15,6 +15,13 @@ defmodule WallopCore.Resources.ApiKey do
   postgres do
     table("api_keys")
     repo(WallopCore.Repo)
+
+    check_constraints do
+      check_constraint(:key_digest, "api_keys_key_digest_length",
+        check: "key_digest IS NULL OR octet_length(key_digest) = 32",
+        message: "must be 32 bytes"
+      )
+    end
   end
 
   actions do
@@ -27,6 +34,18 @@ defmodule WallopCore.Resources.ApiKey do
 
     update :set_operator do
       accept([:operator_id])
+    end
+
+    # Lazy migration from bcrypt (ADR-0014): records the digest of a key
+    # that predates it. Matches only rows with no digest, so a concurrent
+    # second writer gets StaleRecord, which callers treat as success.
+    update :record_key_digest do
+      accept([:key_digest])
+      require_atomic?(false)
+
+      change(fn changeset, _context ->
+        Ash.Changeset.filter(changeset, expr(is_nil(key_digest)))
+      end)
     end
 
     update :deactivate do
@@ -78,6 +97,7 @@ defmodule WallopCore.Resources.ApiKey do
     policy action([
              :create,
              :set_operator,
+             :record_key_digest,
              :deactivate,
              :update_tier,
              :increment_draw_count,
@@ -105,6 +125,16 @@ defmodule WallopCore.Resources.ApiKey do
     attribute :key_prefix, :string do
       allow_nil?(false)
       public?(true)
+    end
+
+    attribute :key_digest, :binary do
+      description(
+        "SHA-256 of a label and the raw key (ADR-0014). Nil until first use for keys created before 0.29.0."
+      )
+
+      allow_nil?(true)
+      sensitive?(true)
+      public?(false)
     end
 
     attribute :active, :boolean do
