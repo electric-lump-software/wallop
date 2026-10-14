@@ -12,9 +12,9 @@ defmodule WallopWeb.Plugs.TierLimit do
   metadata on keys via the `update_tier` action when subscriptions change.
   """
 
-  alias WallopCore.RateLimitEvents
   alias WallopWeb.RateLimiter
   alias WallopWeb.RateLimitResponse
+  alias WallopWeb.RateLimitSignal
 
   @upgrade_url "https://nether.wallop.run/pricing"
 
@@ -71,7 +71,7 @@ defmodule WallopWeb.Plugs.TierLimit do
 
     # First quota refusal this minute only; false on a store error too.
     if RateLimiter.first_this_window?("quota-limited-event", api_key.id),
-      do: RateLimitEvents.record(api_key.id, :quota_limited, limit)
+      do: RateLimitSignal.emit(api_key.id, :quota_limited, limit)
 
     RateLimitResponse.send_429(
       conn,

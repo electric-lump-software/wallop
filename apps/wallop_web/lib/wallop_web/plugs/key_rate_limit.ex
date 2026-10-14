@@ -3,13 +3,14 @@ defmodule WallopWeb.Plugs.KeyRateLimit do
   Per-API-key limit. The limit is the key's
   `rate_limit_per_minute`, or 60 when unset. Runs after authentication.
 
-  Records a `:near_limit` event the first time a key reaches 80% of its limit
-  in a minute, and a `:limited` event the first time it's refused in a minute.
+  Signals `:near_limit` the first time a key reaches 80% of its limit in a
+  minute, and `:limited` the first time it's refused in a minute (see
+  `WallopWeb.RateLimitSignal`).
   """
 
-  alias WallopCore.RateLimitEvents
   alias WallopWeb.RateLimiter
   alias WallopWeb.RateLimitResponse
+  alias WallopWeb.RateLimitSignal
 
   @default_limit 60
 
@@ -36,14 +37,14 @@ defmodule WallopWeb.Plugs.KeyRateLimit do
       {:allow, count} ->
         # A store error reports count 0, which is never a threshold.
         if count == near_threshold(limit),
-          do: RateLimitEvents.record(api_key.id, :near_limit, limit)
+          do: RateLimitSignal.emit(api_key.id, :near_limit, limit)
 
         conn
 
       {:deny, retry_after} ->
         # First refusal this minute only; false on a store error too.
         if RateLimiter.first_this_window?("key-limited-event", api_key.id),
-          do: RateLimitEvents.record(api_key.id, :limited, limit)
+          do: RateLimitSignal.emit(api_key.id, :limited, limit)
 
         RateLimitResponse.send_429(
           conn,

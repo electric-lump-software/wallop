@@ -5,12 +5,26 @@ defmodule WallopWeb.Plugs.KeyRateLimitTest do
   import WallopCore.TestHelpers
   import WallopWeb.RateLimitHelpers
 
-  alias WallopCore.Resources.RateLimitEvent
   alias WallopWeb.Plugs.KeyRateLimit
   alias WallopWeb.RateLimiter
 
   setup do
     RateLimiter.reset()
+    Phoenix.PubSub.subscribe(WallopCore.PubSub, "rate_limit_pressure")
+
+    test_pid = self()
+    id = "key-rate-limit-#{System.unique_integer([:positive])}"
+
+    :telemetry.attach_many(
+      id,
+      for(k <- [:near_limit, :limited, :quota_limited], do: [:wallop_web, :rate_limit, k]),
+      fn [:wallop_web, :rate_limit, kind], %{count: 1}, meta, _ ->
+        send(test_pid, {:telemetry, kind, meta})
+      end,
+      nil
+    )
+
+    on_exit(fn -> :telemetry.detach(id) end)
     :ok
   end
 
@@ -32,12 +46,23 @@ defmodule WallopWeb.Plugs.KeyRateLimitTest do
     |> KeyRateLimit.call([])
   end
 
-  defp events(key) do
-    RateLimitEvent
-    |> Ash.read!(authorize?: false)
-    |> Enum.filter(&(&1.api_key_id == key.id))
-    |> Enum.map(& &1.kind)
-    |> Enum.sort()
+  defp pressure(key) do
+    receive do
+      {:rate_limit_pressure, %{api_key_id: id} = payload} when id == key.id ->
+        [payload | pressure(key)]
+    after
+      0 -> []
+    end
+  end
+
+  defp kinds(key), do: key |> pressure() |> Enum.map(& &1.kind) |> Enum.sort()
+
+  defp telemetry_kinds(key) do
+    receive do
+      {:telemetry, kind, %{api_key_id: id}} when id == key.id -> [kind | telemetry_kinds(key)]
+    after
+      0 -> []
+    end
   end
 
   test "no key assigned passes through" do
@@ -72,14 +97,22 @@ defmodule WallopWeb.Plugs.KeyRateLimitTest do
     refute call(b).halted
   end
 
-  test "records near-limit once at 80% and limited once per minute" do
+  test "signals near-limit once at 80%" do
     await_fresh_window()
     key = with_limit(5)
     for _ <- 1..5, do: call(key)
-    assert events(key) == [:near_limit]
 
-    for _ <- 1..3, do: call(key)
-    assert events(key) == [:limited, :near_limit]
+    assert [%{kind: :near_limit, limit: 5, window_start: %DateTime{} = ws}] = pressure(key)
+    assert ws.second == 0
+  end
+
+  test "signals limited once per minute, with a telemetry event alongside" do
+    await_fresh_window()
+    key = with_limit(5)
+    for _ <- 1..8, do: call(key)
+
+    assert kinds(key) == [:limited, :near_limit]
+    assert Enum.sort(telemetry_kinds(key)) == [:limited, :near_limit]
   end
 
   test "near threshold is 80% rounded up, at least 1" do
@@ -97,14 +130,15 @@ defmodule WallopWeb.Plugs.KeyRateLimitTest do
       on_exit(fn -> Application.put_env(:wallop_web, RateLimiter, previous) end)
     end
 
-    test "requests pass and no near-limit event is recorded" do
+    test "requests pass and nothing is signalled" do
       key = with_limit(1)
 
       capture_log(fn ->
         for _ <- 1..5, do: refute(call(key).halted)
       end)
 
-      assert events(key) == []
+      assert pressure(key) == []
+      assert telemetry_kinds(key) == []
     end
   end
 end

@@ -18,7 +18,7 @@ Within each version section, look for `### HTTP API surface`, `### Hex package s
 
 ## Unreleased (next release after 0.28.3)
 
-Replaces the rate limiters with one `WallopWeb.RateLimiter`, adds per-key limits and a `rate_limit_events` table. **No protocol or signed-byte changes.** Requires a database migration.
+Replaces the rate limiters with one `WallopWeb.RateLimiter`, adds per-key limits, and signals limit pressure as telemetry and PubSub. **No protocol or signed-byte changes.** Requires a database migration.
 
 ### HTTP API surface
 
@@ -30,8 +30,8 @@ Replaces the rate limiters with one `WallopWeb.RateLimiter`, adds per-key limits
 ### Hex package surface
 
 - Stop starting `WallopWeb.RateLimit.Sweeper`. It is deleted, and so is `WallopWeb.Plugs.RateLimit`. The plugs' `table/0`, `window_ms/0` and `ensure_table/0` are gone too; if you called them, count through `WallopWeb.RateLimiter` instead.
-- Run the migration: `mix ecto.migrate` (adds `rate_limit_events`, and `rate_limit_per_minute` on `api_keys`).
-- If you override core's Oban config, add `{"15 4 * * *", WallopCore.RateLimitEvents.PruneWorker}` to your crontab, or old rows are never pruned. Retention defaults to 30 days: `config :wallop_core, WallopCore.RateLimitEvents, retention_days:`.
+- Run the migration: `mix ecto.migrate` (adds `rate_limit_per_minute` on `api_keys`).
+- Pressure is now a telemetry event and a PubSub message (`[:wallop_web, :rate_limit, :near_limit | :limited | :quota_limited]`; topic `"rate_limit_pressure"` on `WallopCore.PubSub`). Nothing is stored; attach a handler if you want to keep it.
 - Optional: share counters across nodes with `RATE_LIMIT_BACKEND=redis` and `REDIS_URL` (Redis 7 or later). Redis without `REDIS_URL` refuses to boot. If the store errors, requests are let through and `[:wallop_web, :rate_limiter, :backend_error]` is emitted; alert on it before enabling Redis.
 - Optional: `config :wallop_web, WallopWeb.IpAuthLimit, max_failures_per_minute:` changes the per-IP failure limit.
 

@@ -23,13 +23,10 @@ config :wallop_core, Oban,
     {Oban.Plugins.Cron,
      crontab: [
        {"0 * * * *", WallopCore.Entropy.ExpiryWorker},
-       {"30 3 * * *", WallopCore.Transparency.AnchorWorker},
-       {"15 4 * * *", WallopCore.RateLimitEvents.PruneWorker}
+       {"30 3 * * *", WallopCore.Transparency.AnchorWorker}
      ]},
     {Oban.Plugins.Lifeline, rescue_after: :timer.minutes(2)}
   ]
-
-config :wallop_core, WallopCore.RateLimitEvents, retention_days: 30
 
 config :wallop_web, WallopWeb.Endpoint,
   url: [host: "localhost"],

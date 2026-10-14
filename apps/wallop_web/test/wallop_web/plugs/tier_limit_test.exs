@@ -1,7 +1,28 @@
 defmodule WallopWeb.Plugs.TierLimitTest do
   use WallopWeb.ConnCase, async: false
 
+  import WallopWeb.RateLimitHelpers
+
   alias WallopWeb.Plugs.TierLimit
+
+  setup do
+    Phoenix.PubSub.subscribe(WallopCore.PubSub, "rate_limit_pressure")
+
+    test_pid = self()
+    id = "tier-limit-#{System.unique_integer([:positive])}"
+
+    :telemetry.attach(
+      id,
+      [:wallop_web, :rate_limit, :quota_limited],
+      fn [:wallop_web, :rate_limit, kind], %{count: 1}, meta, _ ->
+        send(test_pid, {:telemetry, kind, meta})
+      end,
+      nil
+    )
+
+    on_exit(fn -> :telemetry.detach(id) end)
+    :ok
+  end
 
   defp conn_with_key(api_key, method \\ "POST", path \\ ["draws"]) do
     %{build_conn() | method: method, path_info: path}
@@ -114,7 +135,7 @@ defmodule WallopWeb.Plugs.TierLimitTest do
   end
 
   describe "quota 429" do
-    test "carries Retry-After until count_reset_at and records a quota_limited event" do
+    test "carries Retry-After until count_reset_at and signals quota_limited" do
       reset_at = DateTime.add(DateTime.utc_now(), 3600, :second)
 
       api_key =
@@ -131,10 +152,9 @@ defmodule WallopWeb.Plugs.TierLimitTest do
       assert [ra] = Plug.Conn.get_resp_header(conn, "retry-after")
       assert String.to_integer(ra) in 3590..3600
 
-      assert [%{kind: :quota_limited}] =
-               WallopCore.Resources.RateLimitEvent
-               |> Ash.read!(authorize?: false)
-               |> Enum.filter(&(&1.api_key_id == api_key.id))
+      id = api_key.id
+      assert_receive {:rate_limit_pressure, %{api_key_id: ^id, kind: :quota_limited, limit: 1}}
+      assert_receive {:telemetry, :quota_limited, %{api_key_id: ^id, limit: 1}}
     end
 
     test "limit 0 with no reset date is a clean 429 with a day-long Retry-After" do
@@ -183,7 +203,9 @@ defmodule WallopWeb.Plugs.TierLimitTest do
       assert String.to_integer(ra) in 2..3
     end
 
-    test "a second quota 429 in the same minute records no second event" do
+    test "a second quota 429 in the same minute signals no second time" do
+      await_fresh_window()
+
       api_key =
         WallopCore.TestHelpers.create_api_key(%{
           monthly_draw_limit: 1,
@@ -195,10 +217,11 @@ defmodule WallopWeb.Plugs.TierLimitTest do
       assert TierLimit.call(conn_with_key(api_key), []).status == 429
       assert TierLimit.call(conn_with_key(api_key), []).status == 429
 
-      assert [%{kind: :quota_limited}] =
-               WallopCore.Resources.RateLimitEvent
-               |> Ash.read!(authorize?: false)
-               |> Enum.filter(&(&1.api_key_id == api_key.id))
+      id = api_key.id
+      assert_receive {:rate_limit_pressure, %{api_key_id: ^id, kind: :quota_limited}}
+      refute_receive {:rate_limit_pressure, %{api_key_id: ^id}}, 50
+      assert_receive {:telemetry, :quota_limited, %{api_key_id: ^id}}
+      refute_receive {:telemetry, _, %{api_key_id: ^id}}, 50
     end
   end
 end
