@@ -17,6 +17,7 @@ defmodule WallopCore.Resources.ApiKeyDigestTest do
     raw_key = api_key.__metadata__.raw_key
     stored = Ash.get!(ApiKey, api_key.id, authorize?: false)
     assert stored.key_digest == Digest.compute(raw_key)
+    assert Bcrypt.verify_pass(raw_key, stored.key_hash)
   end
 
   test "record_key_digest only writes a missing digest" do
