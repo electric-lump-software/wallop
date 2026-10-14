@@ -17,6 +17,7 @@ defmodule WallopWeb.Application do
       # Must start before the endpoint so the rate-limit table exists, and is
       # owned by a supervised process, before the first request is served.
       WallopWeb.RateLimiter,
+      {Task.Supervisor, name: WallopWeb.TaskSupervisor},
       WallopWeb.Endpoint
     ]
 

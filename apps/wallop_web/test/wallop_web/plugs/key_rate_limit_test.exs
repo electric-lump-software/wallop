@@ -51,7 +51,7 @@ defmodule WallopWeb.Plugs.KeyRateLimitTest do
       {:rate_limit_pressure, %{api_key_id: id} = payload} when id == key.id ->
         [payload | pressure(key)]
     after
-      0 -> []
+      100 -> []
     end
   end
 

@@ -219,7 +219,7 @@ defmodule WallopWeb.Plugs.TierLimitTest do
 
       id = api_key.id
       assert_receive {:rate_limit_pressure, %{api_key_id: ^id, kind: :quota_limited}}
-      refute_receive {:rate_limit_pressure, %{api_key_id: ^id}}, 50
+      refute_receive {:rate_limit_pressure, %{api_key_id: ^id}}, 200
       assert_receive {:telemetry, :quota_limited, %{api_key_id: ^id}}
       refute_receive {:telemetry, _, %{api_key_id: ^id}}, 50
     end

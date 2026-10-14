@@ -13,7 +13,8 @@ defmodule WallopWeb.RateLimitSignal do
   `kind` is `:near_limit`, `:limited` or `:quota_limited`. Callers dedupe to
   once per key, kind and minute, and never call this on a store error.
 
-  Never fails or slows the request that triggered it.
+  Never fails or delays the request that triggered it: the telemetry event is
+  local, and the broadcast runs in a task under `WallopWeb.TaskSupervisor`.
   """
 
   require Logger
@@ -23,10 +24,6 @@ defmodule WallopWeb.RateLimitSignal do
   @topic "rate_limit_pressure"
 
   @type kind :: :near_limit | :limited | :quota_limited
-
-  @doc "The PubSub topic pressure messages are broadcast on."
-  @spec topic() :: String.t()
-  def topic, do: @topic
 
   @spec emit(Ecto.UUID.t(), kind(), pos_integer()) :: :ok
   def emit(api_key_id, kind, limit) when kind in [:near_limit, :limited, :quota_limited] do
@@ -43,17 +40,27 @@ defmodule WallopWeb.RateLimitSignal do
       window_start: window_start()
     }
 
-    try do
-      case Phoenix.PubSub.broadcast(WallopCore.PubSub, @topic, {:rate_limit_pressure, payload}) do
-        :ok -> :ok
-        {:error, reason} -> warn(api_key_id, kind, reason)
-      end
-    catch
-      kind_of_failure, reason ->
-        warn(api_key_id, kind, {kind_of_failure, reason})
-    end
-
+    spawn_broadcast(api_key_id, kind, payload)
     :ok
+  end
+
+  # The broadcast can block on a slow Redis adapter, so it runs off the
+  # request process. If even starting the task fails, the signal is dropped.
+  defp spawn_broadcast(api_key_id, kind, payload) do
+    Task.Supervisor.start_child(WallopWeb.TaskSupervisor, fn ->
+      broadcast(api_key_id, kind, payload)
+    end)
+  catch
+    _class, _reason -> :ok
+  end
+
+  defp broadcast(api_key_id, kind, payload) do
+    case Phoenix.PubSub.broadcast(WallopCore.PubSub, @topic, {:rate_limit_pressure, payload}) do
+      :ok -> :ok
+      {:error, reason} -> warn(api_key_id, kind, reason)
+    end
+  catch
+    class, reason -> warn(api_key_id, kind, {class, reason})
   end
 
   defp warn(api_key_id, kind, reason) do
