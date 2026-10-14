@@ -124,7 +124,6 @@ defmodule WallopWeb.Plugs.ApiKeyAuth do
     do: inspect([error.__struct__ | Enum.map(errors, & &1.__struct__)])
 
   defp error_classes(%{__struct__: module}), do: inspect(module)
-  defp error_classes(_), do: "unknown"
 
   defp dummy_digest do
     Digest.compute(@dummy_key)
