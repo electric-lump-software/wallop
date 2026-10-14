@@ -9,19 +9,27 @@ defmodule WallopWeb.Plugs.EdgeGuard do
   get 403.
 
   `GET /health` is exempt so the platform's internal healthcheck, which
-  doesn't pass through the edge, keeps working. With no secret configured
+  doesn't pass through the edge, keeps working. `HEAD /health` is not
+  exempt (the platform's healthcheck uses GET). With no secret configured
   (self-hosting, dev, test) the plug does nothing.
 
   The header is removed after the check so nothing downstream can log it.
   """
 
+  @behaviour Plug
+
   import Plug.Conn
+
+  require Logger
 
   @header "x-edge-secret"
 
+  @impl true
   def init(opts), do: opts
 
-  def call(%Plug.Conn{method: "GET", path_info: ["health"]} = conn, _opts), do: conn
+  @impl true
+  def call(%Plug.Conn{method: "GET", path_info: ["health"]} = conn, _opts),
+    do: delete_req_header(conn, @header)
 
   def call(conn, _opts) do
     case secret() do
@@ -29,6 +37,8 @@ defmodule WallopWeb.Plugs.EdgeGuard do
       secret -> check(conn, secret)
     end
   end
+
+  defp check(conn, ""), do: refuse(conn)
 
   defp check(conn, secret) do
     case get_req_header(conn, @header) do
@@ -43,6 +53,8 @@ defmodule WallopWeb.Plugs.EdgeGuard do
   end
 
   defp refuse(conn) do
+    Logger.warning("edge guard refused request: #{conn.method} #{conn.request_path}")
+
     conn
     |> put_resp_content_type("text/plain")
     |> send_resp(403, "Forbidden\n")

@@ -3,6 +3,7 @@ defmodule WallopWeb.Plugs.EdgeGuardTest do
   use ExUnit.Case, async: false
 
   import Plug.Conn
+  import ExUnit.CaptureLog
   import Plug.Test
 
   alias WallopWeb.Plugs.EdgeGuard
@@ -38,14 +39,14 @@ defmodule WallopWeb.Plugs.EdgeGuardTest do
 
   test "a wrong header is refused with 403" do
     with_secret("s3cret-value")
-    conn = call(:get, "/api/v1/draws", "guess")
+    {conn, _log} = with_log(fn -> call(:get, "/api/v1/draws", "guess") end)
     assert conn.halted
     assert conn.status == 403
   end
 
   test "a missing header is refused with 403" do
     with_secret("s3cret-value")
-    conn = call(:post, "/api/v1/draws", nil)
+    {conn, _log} = with_log(fn -> call(:post, "/api/v1/draws", nil) end)
     assert conn.halted
     assert conn.status == 403
   end
@@ -53,7 +54,41 @@ defmodule WallopWeb.Plugs.EdgeGuardTest do
   test "GET /health is exempt, for the platform's internal healthcheck" do
     with_secret("s3cret-value")
     refute call(:get, "/health", nil).halted
-    assert call(:post, "/health", nil).status == 403
-    assert call(:get, "/api/v1/health", nil).status == 403
+    health = call(:get, "/health", "anything")
+    refute health.halted
+    assert get_req_header(health, "x-edge-secret") == []
+
+    capture_log(fn ->
+      assert call(:post, "/health", nil).status == 403
+      assert call(:get, "/api/v1/health", nil).status == 403
+    end)
+  end
+
+  test "a blank configured secret does not admit an empty header" do
+    with_secret("")
+    {conn, _log} = with_log(fn -> call(:get, "/api/v1/draws", "") end)
+    assert conn.halted
+    assert conn.status == 403
+  end
+
+  test "two secret headers are refused even if one matches" do
+    with_secret("s3cret-value")
+
+    base = conn(:get, "/api/v1/draws")
+    headers = [{"x-edge-secret", "s3cret-value"}, {"x-edge-secret", "s3cret-value"}]
+
+    {conn, _log} =
+      with_log(fn ->
+        EdgeGuard.call(%{base | req_headers: headers}, EdgeGuard.init([]))
+      end)
+
+    assert conn.status == 403
+  end
+
+  test "a refusal is logged without the header value" do
+    with_secret("s3cret-value")
+    log = capture_log(fn -> call(:get, "/api/v1/draws", "guess") end)
+    assert log =~ "edge guard refused request: GET /api/v1/draws"
+    refute log =~ "guess"
   end
 end

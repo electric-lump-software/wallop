@@ -47,7 +47,14 @@ if honeycomb_api_key = System.get_env("HONEYCOMB_API_KEY") do
 end
 
 if config_env() == :prod do
-  config :wallop_web, WallopWeb.Plugs.EdgeGuard, secret: System.get_env("EDGE_SHARED_SECRET")
+  edge_shared_secret = System.get_env("EDGE_SHARED_SECRET")
+
+  if edge_shared_secret != nil and byte_size(edge_shared_secret) < 32 do
+    raise "EDGE_SHARED_SECRET is set but blank or shorter than 32 bytes; " <>
+            "unset it to disable the edge guard"
+  end
+
+  config :wallop_web, WallopWeb.Plugs.EdgeGuard, secret: edge_shared_secret
 
   met_office_api_key =
     System.get_env("MET_OFFICE_API_KEY") ||
