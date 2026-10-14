@@ -28,15 +28,13 @@ defmodule WallopWeb.Endpoint do
 
   plug(Plug.RequestId)
 
-  # Rewrite `conn.remote_ip` from the trusted proxy header written by
-  # the CDN/edge layer. The edge strips any client-supplied value of
-  # this header before forwarding, so the value can be treated as
-  # authoritative.
-  #
-  # IMPORTANT: this is only safe while the edge → origin path is
-  # protected so an attacker cannot bypass the edge and supply their
-  # own header value. Origin protection is a deploy-platform concern,
-  # not an app concern, but the security of this plug depends on it.
+  # Refuse requests that bypassed the edge, before trusting its headers.
+  # See WallopWeb.Plugs.EdgeGuard; inactive unless EDGE_SHARED_SECRET is set.
+  plug(WallopWeb.Plugs.EdgeGuard)
+
+  # Rewrite `conn.remote_ip` from the edge's client-IP header. Safe only
+  # while requests that bypass the edge are refused (EdgeGuard above, or
+  # a platform-level restriction on who can reach the origin).
   plug(RemoteIp, headers: ~w(cf-connecting-ip))
 
   plug(Plug.Telemetry, event_prefix: [:phoenix, :endpoint])
