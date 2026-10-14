@@ -29,5 +29,6 @@ defmodule WallopCore.Domain do
     resource(WallopCore.Resources.InfrastructureSigningKey)
     resource(WallopCore.Resources.TransparencyAnchor)
     resource(WallopCore.Resources.WaitlistSignup)
+    resource(WallopCore.Resources.RateLimitEvent)
   end
 end

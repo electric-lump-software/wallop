@@ -26,11 +26,10 @@ defmodule WallopWeb.RateLimit.Sweeper do
 
   use GenServer
 
-  alias WallopWeb.Plugs.KeyRateLimit
   alias WallopWeb.Plugs.ProofPreLockRateLimit
   alias WallopWeb.Plugs.SelfCheckRateLimit
 
-  @limiters [KeyRateLimit, ProofPreLockRateLimit, SelfCheckRateLimit]
+  @limiters [ProofPreLockRateLimit, SelfCheckRateLimit]
 
   @sweep_interval :timer.minutes(1)
 

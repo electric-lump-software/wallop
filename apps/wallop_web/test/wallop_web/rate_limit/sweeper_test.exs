@@ -1,7 +1,6 @@
 defmodule WallopWeb.RateLimit.SweeperTest do
   use ExUnit.Case, async: false
 
-  alias WallopWeb.Plugs.KeyRateLimit
   alias WallopWeb.Plugs.ProofPreLockRateLimit
   alias WallopWeb.Plugs.SelfCheckRateLimit
   alias WallopWeb.RateLimit.Sweeper
@@ -43,16 +42,14 @@ defmodule WallopWeb.RateLimit.SweeperTest do
     test "removes entries whose window has closed" do
       SelfCheckRateLimit.check_rate("198.51.100.2")
       ProofPreLockRateLimit.check_rate("198.51.100.3")
-      KeyRateLimit.check_rate("some-api-key-id")
 
       assert :ets.info(SelfCheckRateLimit.table(), :size) == 1
       assert :ets.info(ProofPreLockRateLimit.table(), :size) == 1
-      assert :ets.info(KeyRateLimit.table(), :size) == 1
 
       # Sweep as if a full window had elapsed since those entries were written.
-      future = System.monotonic_time(:millisecond) + KeyRateLimit.window_ms() + 1
+      future = System.monotonic_time(:millisecond) + SelfCheckRateLimit.window_ms() + 1
 
-      assert Sweeper.sweep(future) == 3
+      assert Sweeper.sweep(future) == 2
 
       for limiter <- Sweeper.limiters() do
         assert :ets.info(limiter.table(), :size) == 0,
