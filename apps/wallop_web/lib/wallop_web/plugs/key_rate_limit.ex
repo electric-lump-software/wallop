@@ -12,8 +12,7 @@ defmodule WallopWeb.Plugs.KeyRateLimit do
   across a window boundary.
 
   Runs after `WallopWeb.Plugs.ApiKeyAuth` so the actor is available.
-  Per-IP rate limiting (in `WallopWeb.Plugs.RateLimit`) runs before auth
-  to protect bcrypt CPU.
+  Failed authentications are limited per IP by `WallopWeb.IpAuthLimit`.
 
   Table: `:wallop_key_rate_limit` (named, public, set)
   Key:   `{:rate, api_key_id}`

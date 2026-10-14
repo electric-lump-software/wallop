@@ -12,6 +12,10 @@ defmodule WallopWeb.Plugs.ApiKeyAuth do
   path (a malformed bearer skips the database; a key with no digest yet is
   checked with bcrypt), which reveals nothing secret: prefixes are public
   (ADR-0014).
+
+  Failures count against the caller's IP (`WallopWeb.IpAuthLimit`). Once over
+  the limit, failures get a 429, and keys without a digest are refused before
+  bcrypt. A key that matches by digest is never refused by the IP limit.
   """
 
   import Plug.Conn
@@ -21,6 +25,8 @@ defmodule WallopWeb.Plugs.ApiKeyAuth do
   alias WallopCore.Log
   alias WallopCore.Resources.ApiKey
   alias WallopCore.Resources.ApiKey.Digest
+  alias WallopWeb.IpAuthLimit
+  alias WallopWeb.RateLimitResponse
 
   # `GenerateKey` uses Base.encode64(32 bytes, padding: false): 43 characters
   # of the standard alphabet.
@@ -33,14 +39,12 @@ defmodule WallopWeb.Plugs.ApiKeyAuth do
     with {:ok, raw_key} <- extract_bearer_token(conn),
          :ok <- check_format(raw_key),
          {:ok, api_key} <- find_key(raw_key),
-         :ok <- verify(raw_key, api_key) do
+         :ok <- verify(conn, raw_key, api_key) do
       assign(conn, :api_key, api_key)
     else
-      :error ->
-        conn
-        |> put_status(401)
-        |> Phoenix.Controller.json(%{errors: %{detail: "Unauthorized"}})
-        |> halt()
+      {:deny, retry_after} -> too_many_failures(conn, retry_after)
+      :counted_error -> unauthorized(conn)
+      :error -> fail(conn)
     end
   end
 
@@ -67,17 +71,46 @@ defmodule WallopWeb.Plugs.ApiKeyAuth do
     end
   end
 
-  defp verify(raw_key, %ApiKey{key_digest: digest}) when is_binary(digest) do
+  defp verify(_conn, raw_key, %ApiKey{key_digest: digest}) when is_binary(digest) do
     if Plug.Crypto.secure_compare(Digest.compute(raw_key), digest), do: :ok, else: :error
   end
 
-  defp verify(raw_key, %ApiKey{} = api_key) do
-    if Bcrypt.verify_pass(raw_key, api_key.key_hash) do
-      record_digest(api_key, raw_key)
-      :ok
-    else
-      :error
+  # No digest yet: bcrypt is expensive, so the attempt is counted against the
+  # IP before it runs (one atomic increment-and-compare) and an IP over its
+  # limit is refused without running it. A bcrypt failure is not counted again
+  # (`:counted_error`); a success keeps its slot.
+  defp verify(conn, raw_key, %ApiKey{} = api_key) do
+    with :ok <- IpAuthLimit.record_failure(conn.remote_ip) do
+      if Bcrypt.verify_pass(raw_key, api_key.key_hash) do
+        record_digest(api_key, raw_key)
+        :ok
+      else
+        :counted_error
+      end
     end
+  end
+
+  defp fail(conn) do
+    case IpAuthLimit.record_failure(conn.remote_ip) do
+      :ok -> unauthorized(conn)
+      {:deny, retry_after} -> too_many_failures(conn, retry_after)
+    end
+  end
+
+  defp unauthorized(conn) do
+    conn
+    |> put_status(401)
+    |> Phoenix.Controller.json(%{errors: %{detail: "Unauthorized"}})
+    |> halt()
+  end
+
+  defp too_many_failures(conn, retry_after) do
+    RateLimitResponse.send_429(
+      conn,
+      retry_after,
+      "ip_rate_limit_exceeded",
+      "Too many failed authentications from this address. Retry after #{retry_after} seconds."
+    )
   end
 
   # Never changes the authentication result, which bcrypt already decided.

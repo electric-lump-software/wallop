@@ -17,7 +17,6 @@ defmodule WallopWeb.Router do
   end
 
   pipeline :api_authenticated do
-    plug(WallopWeb.Plugs.RateLimit)
     plug(WallopWeb.Plugs.ApiKeyAuth)
     plug(WallopWeb.Plugs.KeyRateLimit)
     plug(WallopWeb.Plugs.TierLimit)

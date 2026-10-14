@@ -28,10 +28,9 @@ defmodule WallopWeb.RateLimit.Sweeper do
 
   alias WallopWeb.Plugs.KeyRateLimit
   alias WallopWeb.Plugs.ProofPreLockRateLimit
-  alias WallopWeb.Plugs.RateLimit
   alias WallopWeb.Plugs.SelfCheckRateLimit
 
-  @limiters [RateLimit, KeyRateLimit, ProofPreLockRateLimit, SelfCheckRateLimit]
+  @limiters [KeyRateLimit, ProofPreLockRateLimit, SelfCheckRateLimit]
 
   @sweep_interval :timer.minutes(1)
 

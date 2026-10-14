@@ -34,6 +34,7 @@ defmodule WallopWeb.ConnCase do
     # process, which gave async tests isolation by accident. That accident is
     # what this comment replaces.
     Enum.each(Sweeper.limiters(), & &1.reset())
+    WallopWeb.RateLimiter.reset()
 
     {:ok, conn: Phoenix.ConnTest.build_conn()}
   end
