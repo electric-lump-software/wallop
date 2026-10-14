@@ -1,15 +1,39 @@
 defmodule WallopWeb.Plugs.ApiKeyAuth do
-  @moduledoc "Bearer token authentication via API key with timing-safe verification."
+  @moduledoc """
+  Bearer token authentication by API key (ADR-0014).
+
+  A key is looked up by its 8-character prefix and verified by comparing a
+  labelled SHA-256 digest in constant time. Keys created before 0.29.0 have
+  no digest yet: they are verified once with bcrypt and their digest is then
+  recorded. Bcrypt is never consulted for a key that has a digest, including
+  when the comparison fails.
+
+  The digest comparison is constant-time. Response time still differs by
+  path (a malformed bearer skips the database; a key with no digest yet is
+  checked with bcrypt), which reveals nothing secret: prefixes are public
+  (ADR-0014).
+  """
 
   import Plug.Conn
+
+  require Logger
+
+  alias WallopCore.Log
+  alias WallopCore.Resources.ApiKey
+  alias WallopCore.Resources.ApiKey.Digest
+
+  # `GenerateKey` uses Base.encode64(32 bytes, padding: false): 43 characters
+  # of the standard alphabet.
+  @key_format ~r/\Awallop_[A-Za-z0-9+\/]{43}\z/
+  @dummy_key "wallop_" <> String.duplicate("A", 43)
 
   def init(opts), do: opts
 
   def call(conn, _opts) do
     with {:ok, raw_key} <- extract_bearer_token(conn),
-         {:ok, prefix} <- extract_prefix(raw_key),
-         {:ok, api_key} <- find_key_by_prefix(prefix),
-         :ok <- verify_key(raw_key, api_key) do
+         :ok <- check_format(raw_key),
+         {:ok, api_key} <- find_key(raw_key),
+         :ok <- verify(raw_key, api_key) do
       assign(conn, :api_key, api_key)
     else
       :error ->
@@ -23,47 +47,86 @@ defmodule WallopWeb.Plugs.ApiKeyAuth do
   defp extract_bearer_token(conn) do
     case get_req_header(conn, "authorization") do
       ["Bearer " <> key] -> {:ok, key}
-      _ -> :error
+      _ -> dummy_digest()
     end
   end
 
-  defp extract_prefix(raw_key) do
-    case raw_key do
-      "wallop_" <> rest when byte_size(rest) >= 8 ->
-        {:ok, String.slice(rest, 0, 8)}
-
-      _ ->
-        Bcrypt.no_user_verify()
-        :error
-    end
+  defp check_format(raw_key) do
+    if Regex.match?(@key_format, raw_key), do: :ok, else: dummy_digest()
   end
 
-  defp find_key_by_prefix(prefix) do
+  defp find_key("wallop_" <> rest) do
     # Auth-time lookup runs without an actor (we're determining who the actor
-    # IS), so we bypass the read policy. The bcrypt verification below is the
-    # actual auth check; this is just a directory lookup.
-    case WallopCore.Resources.ApiKey
+    # IS), so it bypasses the read policy. The digest check is the auth check.
+    case ApiKey
          |> Ash.Query.for_read(:read)
-         |> Ash.Query.filter_input(%{key_prefix: prefix, active: true})
+         |> Ash.Query.filter_input(%{key_prefix: binary_part(rest, 0, 8), active: true})
          |> Ash.read_one(domain: WallopCore.Domain, authorize?: false) do
-      {:ok, nil} ->
-        Bcrypt.no_user_verify()
-        :error
-
-      {:ok, api_key} ->
-        {:ok, api_key}
-
-      _ ->
-        Bcrypt.no_user_verify()
-        :error
+      {:ok, %ApiKey{} = api_key} -> {:ok, api_key}
+      _ -> dummy_digest()
     end
   end
 
-  defp verify_key(raw_key, api_key) do
+  defp verify(raw_key, %ApiKey{key_digest: digest}) when is_binary(digest) do
+    if Plug.Crypto.secure_compare(Digest.compute(raw_key), digest), do: :ok, else: :error
+  end
+
+  defp verify(raw_key, %ApiKey{} = api_key) do
     if Bcrypt.verify_pass(raw_key, api_key.key_hash) do
+      record_digest(api_key, raw_key)
       :ok
     else
       :error
     end
+  end
+
+  # Never changes the authentication result, which bcrypt already decided.
+  # A concurrent first request recording the digest first (StaleRecord) is a
+  # normal race and counts as success (ADR-0014). Exposed for tests only.
+  @doc false
+  def record_digest(api_key, raw_key) do
+    api_key
+    |> Ash.Changeset.for_update(:record_key_digest, %{key_digest: Digest.compute(raw_key)})
+    |> Ash.update(domain: WallopCore.Domain, authorize?: false)
+    |> case do
+      {:ok, _} ->
+        digest_recorded(:recorded)
+
+      {:error, error} ->
+        if stale_record?(error) do
+          Logger.info("ApiKeyAuth: digest already recorded for key #{Log.redact_id(api_key.id)}")
+          digest_recorded(:already_recorded)
+        else
+          # Error classes only: a leaf error's value could carry the digest.
+          Logger.warning(
+            "ApiKeyAuth: digest not recorded for key #{Log.redact_id(api_key.id)}: #{error_classes(error)}"
+          )
+
+          :telemetry.execute([:wallop_web, :api_key, :digest_record_failed], %{count: 1}, %{})
+        end
+    end
+
+    :ok
+  end
+
+  defp digest_recorded(outcome) do
+    :telemetry.execute([:wallop_web, :api_key, :digest_recorded], %{count: 1}, %{
+      outcome: outcome
+    })
+  end
+
+  defp stale_record?(%{errors: errors}),
+    do: Enum.any?(errors, &match?(%Ash.Error.Changes.StaleRecord{}, &1))
+
+  defp stale_record?(_), do: false
+
+  defp error_classes(%{errors: errors} = error) when is_list(errors),
+    do: inspect([error.__struct__ | Enum.map(errors, & &1.__struct__)])
+
+  defp error_classes(%{__struct__: module}), do: inspect(module)
+
+  defp dummy_digest do
+    Digest.compute(@dummy_key)
+    :error
   end
 end
