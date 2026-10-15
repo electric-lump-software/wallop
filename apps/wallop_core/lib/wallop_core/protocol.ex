@@ -6,6 +6,7 @@ defmodule WallopCore.Protocol do
   `spec/protocol.md`.
   """
 
+  alias WallopCore.Drand.Quicknet
   alias WallopCore.Protocol.Tags.LandObs
 
   @doc """
@@ -407,6 +408,7 @@ defmodule WallopCore.Protocol do
   @spec build_v6_lock_payload(map()) :: binary()
   def build_v6_lock_payload(input) do
     {tag, module} = v6_tag!(input)
+    require_quicknet_chain!(input)
     module.validate_lock!(input)
 
     input
@@ -424,6 +426,7 @@ defmodule WallopCore.Protocol do
   @spec build_v6_execution_payload(map()) :: binary()
   def build_v6_execution_payload(input) do
     {tag, module} = v6_tag!(input)
+    require_quicknet_chain!(input)
     module.validate_exec!(input)
 
     input
@@ -446,6 +449,21 @@ defmodule WallopCore.Protocol do
 
   defp v6_tag!(_input) do
     raise ArgumentError, "lock v6 / execution v5 input must carry :entropy_composition"
+  end
+
+  # Every lock v6 / execution v5 tag is a drand quicknet tag.
+  defp require_quicknet_chain!(%{drand_chain: chain}) do
+    unless chain == Quicknet.chain_hash() do
+      raise ArgumentError,
+            "lock v6 / execution v5 drand_chain must be the quicknet chain " <>
+              "#{Quicknet.chain_hash()}, got: #{inspect(chain)}"
+    end
+
+    :ok
+  end
+
+  defp require_quicknet_chain!(_input) do
+    raise ArgumentError, "lock v6 / execution v5 input must carry :drand_chain"
   end
 
   # A tag may add fields, never replace a base field.

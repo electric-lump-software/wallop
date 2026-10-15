@@ -8,9 +8,14 @@ defmodule WallopCore.Drand.Quicknet do
   whole minute is a publication time.
   """
 
+  @chain_hash "52db9ba70e0cc0f6eaf7803dd07447a1f5477735fd3f661792ba94600c84e971"
   @genesis 1_692_803_367
   @period 3
   @max_round_delta 201_600
+
+  @doc "The quicknet chain hash, as signed into receipts' `drand_chain`."
+  @spec chain_hash() :: String.t()
+  def chain_hash, do: @chain_hash
 
   @doc "Unix time (seconds) of round 1."
   @spec genesis() :: pos_integer()
