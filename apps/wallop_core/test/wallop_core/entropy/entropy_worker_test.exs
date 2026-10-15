@@ -359,6 +359,25 @@ defmodule WallopCore.Entropy.EntropyWorkerTest do
 
   # -- Helpers --
 
+  describe "losing a race to a finished draw" do
+    test "is success when the draw is already terminal" do
+      api_key = create_api_key()
+      draw = create_draw(api_key)
+
+      draw
+      |> Ash.Changeset.for_update(:mark_failed, %{failure_reason: "other worker"})
+      |> Ash.update!(domain: WallopCore.Domain, authorize?: false)
+
+      assert :ok = EntropyWorker.settle_after_error(draw.id, :stale)
+    end
+
+    test "is still an error when the draw is not terminal" do
+      api_key = create_api_key()
+      draw = create_draw(api_key)
+      assert {:error, :stale} = EntropyWorker.settle_after_error(draw.id, :stale)
+    end
+  end
+
   defp fake_job(draw, opts \\ []) do
     attempt = Keyword.get(opts, :attempt, 1)
 

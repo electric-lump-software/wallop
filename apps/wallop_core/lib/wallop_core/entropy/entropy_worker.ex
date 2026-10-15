@@ -292,7 +292,7 @@ defmodule WallopCore.Entropy.EntropyWorker do
             "EntropyWorker: execution failed for draw #{Log.redact_id(draw.id)}: #{inspect(reason)}"
           )
 
-          {:error, reason}
+          settle_after_error(draw.id, reason)
       end
     end
   end
@@ -323,7 +323,7 @@ defmodule WallopCore.Entropy.EntropyWorker do
             "EntropyWorker: drand-only execution failed for draw #{Log.redact_id(draw.id)}: #{inspect(reason)}"
           )
 
-          {:error, reason}
+          settle_after_error(draw.id, reason)
       end
     end
   end
@@ -393,11 +393,25 @@ defmodule WallopCore.Entropy.EntropyWorker do
 
       {:error, _} ->
         # Draw may already be completed or failed (Lifeline race).
-        # Re-check — if terminal, that's fine.
-        case load_draw(draw.id) do
-          {:ok, %{status: status}} when status in [:completed, :failed] -> :ok
-          _ -> {:error, reason}
-        end
+        settle_after_error(draw.id, reason)
+    end
+  end
+
+  # The draw finished while this attempt was running (another attempt, or a
+  # Lifeline rescue). Its outcome and webhook are already committed, so this
+  # attempt succeeded at nothing and must not retry or fail the draw.
+  @doc false
+  def settle_after_error(draw_id, reason) do
+    case load_draw(draw_id) do
+      {:ok, %{status: status}} when status in [:completed, :failed, :expired] ->
+        Logger.info(
+          "EntropyWorker: draw #{Log.redact_id(draw_id)} already #{status}; nothing to do"
+        )
+
+        :ok
+
+      _ ->
+        {:error, reason}
     end
   end
 
