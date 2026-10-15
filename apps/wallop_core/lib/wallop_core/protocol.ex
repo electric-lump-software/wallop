@@ -401,6 +401,50 @@ defmodule WallopCore.Protocol do
   @v6_execution_schema_version "5"
   @v6_tag_modules [LandObs]
 
+  # Inputs every lock v6 / execution v5 receipt needs, whatever the tag.
+  # The weather inputs must be present but may be nil here: each tag
+  # decides whether its weather fields are set.
+  @v6_lock_non_nil [
+    :operator_id,
+    :operator_slug,
+    :sequence,
+    :draw_id,
+    :commitment_hash,
+    :entry_hash,
+    :locked_at,
+    :signing_key_id,
+    :winner_count,
+    :drand_chain,
+    :drand_round,
+    :wallop_core_version,
+    :fair_pick_version
+  ]
+  @v6_lock_nullable [:weather_station, :weather_time]
+  @v6_exec_non_nil [
+    :draw_id,
+    :operator_id,
+    :operator_slug,
+    :sequence,
+    :lock_receipt_hash,
+    :entry_hash,
+    :drand_chain,
+    :drand_round,
+    :drand_randomness,
+    :drand_signature,
+    :wallop_core_version,
+    :fair_pick_version,
+    :seed,
+    :results,
+    :executed_at,
+    :signing_key_id
+  ]
+  @v6_exec_nullable [
+    :weather_station,
+    :weather_observation_time,
+    :weather_value,
+    :weather_fallback_reason
+  ]
+
   @doc "The Met Office Land Observations entropy tag, for lock v6 / execution v5."
   @spec landobs_entropy_composition() :: String.t()
   def landobs_entropy_composition, do: LandObs.tag()
@@ -425,6 +469,7 @@ defmodule WallopCore.Protocol do
   @spec build_v6_lock_payload(map()) :: binary()
   def build_v6_lock_payload(input) do
     {tag, module} = v6_tag!(input)
+    require_inputs!(input, "lock v6", @v6_lock_non_nil, @v6_lock_nullable, [:locked_at])
     require_quicknet_chain!(input)
     module.validate_lock!(input)
 
@@ -443,6 +488,7 @@ defmodule WallopCore.Protocol do
   @spec build_v6_execution_payload(map()) :: binary()
   def build_v6_execution_payload(input) do
     {tag, module} = v6_tag!(input)
+    require_inputs!(input, "exec v5", @v6_exec_non_nil, @v6_exec_nullable, [:executed_at])
     require_quicknet_chain!(input)
     module.validate_exec!(input)
 
@@ -466,6 +512,25 @@ defmodule WallopCore.Protocol do
 
   defp v6_tag!(_input) do
     raise ArgumentError, "lock v6 / execution v5 input must carry :entropy_composition"
+  end
+
+  # Missing or nil inputs raise ArgumentError naming the input, rather than
+  # a FunctionClauseError from deeper in the builder.
+  defp require_inputs!(input, receipt, non_nil, nullable, datetimes) do
+    Enum.each(non_nil ++ nullable, fn key ->
+      unless Map.has_key?(input, key),
+        do: raise(ArgumentError, "#{receipt} input must carry #{inspect(key)}")
+    end)
+
+    Enum.each(non_nil, fn key ->
+      if is_nil(Map.fetch!(input, key)),
+        do: raise(ArgumentError, "#{receipt} #{key} must not be nil")
+    end)
+
+    Enum.each(datetimes, fn key ->
+      unless match?(%DateTime{}, Map.fetch!(input, key)),
+        do: raise(ArgumentError, "#{receipt} #{key} must be a DateTime")
+    end)
   end
 
   # Every lock v6 / execution v5 tag is a drand quicknet tag.

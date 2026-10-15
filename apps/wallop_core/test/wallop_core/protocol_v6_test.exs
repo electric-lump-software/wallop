@@ -173,6 +173,58 @@ defmodule WallopCore.ProtocolV6Test do
     end
   end
 
+  describe "missing and nil inputs" do
+    test "lock v6: every input, missing or nil, raises ArgumentError" do
+      for key <- Map.keys(@lock) do
+        assert_raise ArgumentError, fn ->
+          Protocol.build_v6_lock_payload(Map.delete(@lock, key))
+        end
+
+        assert_raise ArgumentError, fn ->
+          Protocol.build_v6_lock_payload(%{@lock | key => nil})
+        end
+      end
+    end
+
+    test "lock v6: a nil weather_time names the rule" do
+      assert_raise ArgumentError, ~r/weather_time/, fn ->
+        Protocol.build_v6_lock_payload(%{@lock | weather_time: nil})
+      end
+
+      assert_raise ArgumentError, ~r/locked_at must not be nil/, fn ->
+        Protocol.build_v6_lock_payload(%{@lock | locked_at: nil})
+      end
+
+      assert_raise ArgumentError, ~r/locked_at must be a DateTime/, fn ->
+        Protocol.build_v6_lock_payload(%{@lock | locked_at: "2026-10-14T18:00:00.000000Z"})
+      end
+    end
+
+    test "exec v5: every input, missing or nil, raises ArgumentError" do
+      for key <- Map.keys(@exec) do
+        assert_raise ArgumentError, fn ->
+          Protocol.build_v6_execution_payload(Map.delete(@exec, key))
+        end
+      end
+
+      # weather_fallback_reason is nil on an observed receipt; nil on a
+      # fallback is the case to refuse.
+      for key <- Map.keys(@exec) -- [:weather_fallback_reason] do
+        assert_raise ArgumentError, fn ->
+          Protocol.build_v6_execution_payload(%{@exec | key => nil})
+        end
+      end
+
+      assert_raise ArgumentError, fn ->
+        Protocol.build_v6_execution_payload(%{@fallback | weather_fallback_reason: nil})
+      end
+
+      assert_raise ArgumentError, ~r/executed_at must be a DateTime/, fn ->
+        Protocol.build_v6_execution_payload(%{@exec | executed_at: "2026-10-14T20:00:06.000000Z"})
+      end
+    end
+  end
+
   describe "the drand chain" do
     test "the quicknet chain hash is pinned" do
       assert Quicknet.chain_hash() ==
