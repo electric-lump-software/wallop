@@ -274,7 +274,7 @@ defmodule WallopCore.Entropy.EntropyWorker do
           :ok
 
         {:error, reason} ->
-          Tracer.set_attributes(%{"error" => true, "error.message" => inspect(reason)})
+          Tracer.set_attributes(%{"error" => true, "error.type" => error_class(reason)})
 
           Logger.warning(
             "EntropyWorker: execution failed for draw #{Log.redact_id(draw.id)}: #{inspect(reason)}"
@@ -304,7 +304,7 @@ defmodule WallopCore.Entropy.EntropyWorker do
           :ok
 
         {:error, reason} ->
-          Tracer.set_attributes(%{"error" => true, "error.message" => inspect(reason)})
+          Tracer.set_attributes(%{"error" => true, "error.type" => error_class(reason)})
 
           Logger.warning(
             "EntropyWorker: drand-only execution failed for draw #{Log.redact_id(draw.id)}: #{inspect(reason)}"
