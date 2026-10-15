@@ -50,6 +50,10 @@ defmodule WallopCore.Resources.Operator do
 
   @max_name_length 80
 
+  # Weather protocols an operator's new locks can use. Adding one is a
+  # one-line change here (plus the generated migration's snapshot).
+  @draw_protocols [:forecast, :observation]
+
   postgres do
     table("operators")
     repo(WallopCore.Repo)
@@ -89,6 +93,14 @@ defmodule WallopCore.Resources.Operator do
         validate_name(Ash.Changeset.get_attribute(changeset, :name))
       end)
     end
+
+    # Which weather protocol new locks use. Set only by the platform's
+    # admin path (authorize?: false); draws already locked keep the protocol
+    # they were locked with.
+    update :set_draw_protocol do
+      accept([:draw_protocol])
+      require_atomic?(false)
+    end
   end
 
   policies do
@@ -111,6 +123,13 @@ defmodule WallopCore.Resources.Operator do
       forbid_unless(actor_present())
       authorize_if(expr(id == ^actor(:operator_id)))
     end
+
+    # The draw protocol is platform-controlled. No actor, including the
+    # operator's own api_key, may change it; the admin path uses
+    # `authorize?: false`.
+    policy action(:set_draw_protocol) do
+      forbid_if(always())
+    end
   end
 
   attributes do
@@ -127,6 +146,17 @@ defmodule WallopCore.Resources.Operator do
       allow_nil?(false)
       public?(true)
       constraints(max_length: @max_name_length)
+    end
+
+    attribute :draw_protocol, :atom do
+      description(
+        "Weather protocol for new locks: forecast (lock schema 5) or observation (lock schema 6). Admin-only."
+      )
+
+      constraints(one_of: @draw_protocols)
+      default(:forecast)
+      allow_nil?(false)
+      public?(false)
     end
 
     create_timestamp(:inserted_at)
