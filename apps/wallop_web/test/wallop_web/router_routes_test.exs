@@ -96,7 +96,7 @@ defmodule WallopWeb.RouterRoutesTest do
   # without touching `WallopWeb.Router.__routes__/0`, so the Phoenix
   # allowlist above does not catch them — this test does.
   @expected_ash_json_api_routes [
-    {WallopCore.Resources.Draw, :read, :get, "/draws"},
+    {WallopCore.Resources.Draw, :list, :get, "/draws"},
     {WallopCore.Resources.Draw, :read, :get, "/draws/:id"},
     {WallopCore.Resources.Draw, :create, :post, "/draws"},
     {WallopCore.Resources.Draw, :add_entries, :patch, "/draws/:id/entries"},

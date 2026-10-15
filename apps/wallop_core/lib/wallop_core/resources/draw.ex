@@ -25,10 +25,41 @@ defmodule WallopCore.Resources.Draw do
   postgres do
     table("draws")
     repo(WallopCore.Repo)
+
+    custom_indexes do
+      # GET /draws?status=... oldest first, per key. The existing
+      # (api_key_id, inserted_at DESC) index would scan the key's whole history.
+      index([:api_key_id, :status, :inserted_at, :id],
+        name: "draws_api_key_id_status_inserted_at_id_index"
+      )
+    end
   end
 
   actions do
     defaults([:read])
+
+    # Many draws in one call. :read is unchanged; GET /draws moves here.
+    read :list do
+      description(
+        "The caller's draws, oldest first, optionally filtered by status. Keyset-paginated; " <>
+          "page[limit] above 100 is reduced to 100. Not a snapshot: a draw created while paging " <>
+          "can commit behind a cursor already returned."
+      )
+
+      argument :status, :string do
+        allow_nil?(true)
+        # Keep "" as "" (not nil) so `?status=` is rejected, not ignored.
+        constraints(allow_empty?: true, trim?: false)
+
+        description(
+          "Comma-separated statuses (open, locked, awaiting_entropy, pending_entropy, completed, failed, expired), e.g. `awaiting_entropy,pending_entropy`."
+        )
+      end
+
+      pagination(keyset?: true, required?: true, default_limit: 50, max_page_size: 100)
+      prepare(build(sort: [inserted_at: :asc, id: :asc]))
+      prepare({WallopCore.Resources.Draw.Preparations.FilterByStatus, []})
+    end
 
     create :create do
       accept([:name, :winner_count, :metadata, :callback_url, :check_url])
@@ -249,7 +280,7 @@ defmodule WallopCore.Resources.Draw do
       authorize_if(expr(api_key_id == ^actor(:id) and status == :open))
     end
 
-    policy action(:read) do
+    policy action([:read, :list]) do
       forbid_unless(actor_present())
       authorize_if(expr(api_key_id == ^actor(:id)))
     end
