@@ -57,43 +57,53 @@ defmodule WallopCore.ProtocolV6Test do
       weather_fallback_reason: "no_observation_by_deadline"
   }
 
-  # One entry per accepted entropy tag: {lock input, exec input}. A second
-  # tag adds an entry here, and every field-set test below runs for it.
-  @accepted_tags %{@landobs => {@lock, @exec}}
+  # One entry per accepted entropy tag: {tag module, lock input, exec input}.
+  # A second tag adds an entry here, and every field-set test below runs for
+  # it against that tag's own expected key lists.
+  @accepted_tags [{WallopCore.Protocol.Tags.LandObs, @lock, @exec}]
 
-  test "the accepted tags are exactly the landobs tag" do
-    assert Map.keys(@accepted_tags) == [Protocol.landobs_entropy_composition()]
+  test "the accepted tags are exactly the listed tag modules" do
+    assert Protocol.v6_entropy_compositions() ==
+             Enum.map(@accepted_tags, fn {module, _, _} -> module.tag() end)
+
     assert Protocol.landobs_entropy_composition() == @landobs
     assert Protocol.landobs_fallback_reason() == "no_observation_by_deadline"
   end
 
-  for {tag, {lock, exec}} <- @accepted_tags do
+  for {module, lock, exec} <- @accepted_tags do
+    @tag_module module
     @tag_lock lock
     @tag_exec exec
 
-    test "#{tag}: lock v6 has exactly the lock v5 field set, with schema 6 and the tag" do
-      v5 = Jason.decode!(Protocol.build_receipt_payload(%{@tag_lock | weather_station: "x"}))
+    test "#{inspect(module)}: lock v6 has the tag's lock keys, schema 6 and the tag" do
       v6 = Jason.decode!(Protocol.build_v6_lock_payload(@tag_lock))
-      assert Map.keys(v6) == Map.keys(v5)
+      assert Map.keys(v6) == Enum.sort(@tag_module.lock_keys())
       assert v6["schema_version"] == "6"
-      assert v6["entropy_composition"] == unquote(tag)
+      assert v6["entropy_composition"] == @tag_module.tag()
     end
 
-    test "#{tag}: exec v5 has exactly the exec v4 field set, with schema 5 and the tag" do
-      v4 =
-        Jason.decode!(
-          Protocol.build_execution_receipt_payload(%{
-            @tag_exec
-            | weather_station: "x",
-              weather_value: "102500"
-          })
-        )
-
+    test "#{inspect(module)}: exec v5 has the tag's exec keys, schema 5 and the tag" do
       v5 = Jason.decode!(Protocol.build_v6_execution_payload(@tag_exec))
-      assert Map.keys(v5) == Map.keys(v4)
+      assert Map.keys(v5) == Enum.sort(@tag_module.exec_keys())
       assert v5["schema_version"] == "5"
-      assert v5["entropy_composition"] == unquote(tag)
+      assert v5["entropy_composition"] == @tag_module.tag()
     end
+  end
+
+  test "the landobs tag adds no fields: its key lists are the lock 5 / exec 4 key sets" do
+    lock_v5 = Jason.decode!(Protocol.build_receipt_payload(%{@lock | weather_station: "x"}))
+
+    exec_v4 =
+      Jason.decode!(
+        Protocol.build_execution_receipt_payload(%{
+          @exec
+          | weather_station: "x",
+            weather_value: "102500"
+        })
+      )
+
+    assert WallopCore.Protocol.Tags.LandObs.lock_keys() == Map.keys(lock_v5)
+    assert WallopCore.Protocol.Tags.LandObs.exec_keys() == Map.keys(exec_v4)
   end
 
   describe "the entropy tag" do
