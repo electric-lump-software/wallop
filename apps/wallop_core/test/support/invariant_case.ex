@@ -4,13 +4,8 @@ defmodule WallopCore.InvariantCase do
   `test/wallop_core/invariants/`. The suite's rules are in the moduledoc of
   `WallopCore.Invariants.SuiteTest` (`invariants/invariants_test.exs`).
 
-  `use WallopCore.InvariantCase` is `use WallopCore.DataCase` plus:
-
-    * the helpers below, imported;
-    * a `test` macro that marks a pending invariant (one tagged with one of
-      `pending_tags/0`) as skipped when the run includes it only through
-      another tag, such as `mix test --only invariant`. A normal run excludes
-      it (see `test_helper.exs`); `--only pending_task_N` runs it for real.
+  `use WallopCore.InvariantCase` is `use WallopCore.DataCase` plus the
+  helpers below and `WallopCore.TestHelpers`, imported.
   """
 
   alias WallopCore.Drand.Quicknet
@@ -31,35 +26,10 @@ defmodule WallopCore.InvariantCase do
   defmacro __using__(opts) do
     quote do
       use WallopCore.DataCase, unquote(opts)
-      import ExUnit.Case, except: [test: 1, test: 2, test: 3]
-      import WallopCore.InvariantCase, except: [__using__: 1, __skip_if_pending__: 1]
+      import WallopCore.InvariantCase, except: [__using__: 1]
       import WallopCore.TestHelpers
     end
   end
-
-  @doc false
-  defmacro test(message, var \\ quote(do: _), contents) do
-    quote do
-      WallopCore.InvariantCase.__skip_if_pending__(__MODULE__)
-      ExUnit.Case.test(unquote(message), unquote(var), unquote(contents))
-    end
-  end
-
-  @doc false
-  def __skip_if_pending__(module) do
-    tags = module |> Module.get_attribute(:tag) |> List.wrap() |> Enum.flat_map(&tag_keys/1)
-    include = ExUnit.configuration() |> Keyword.get(:include, []) |> Enum.flat_map(&tag_keys/1)
-
-    case Enum.filter(tags, &(&1 in @pending_tags and &1 not in include)) do
-      [] -> :ok
-      pending -> Module.put_attribute(module, :tag, skip: "pending: #{Enum.join(pending, ", ")}")
-    end
-  end
-
-  defp tag_keys(tag) when is_atom(tag), do: [tag]
-  defp tag_keys({key, _value}) when is_atom(key), do: [key]
-  defp tag_keys(tags) when is_list(tags), do: Enum.flat_map(tags, &tag_keys/1)
-  defp tag_keys(_), do: []
 
   @doc "A schedule whose latest lock time is still ahead: a lock now is in time."
   def in_time_schedule do
@@ -238,6 +208,13 @@ defmodule WallopCore.InvariantCase do
       ]
     )
   end
+
+  @doc """
+  The text of an error from an Ash call or the database, for pinning the
+  refusal's message: an exception's message, or the inspected term.
+  """
+  def error_text(%{__exception__: true} = e), do: Exception.message(e)
+  def error_text(other), do: inspect(other)
 
   @doc "Runs `fun` with every trigger off, for placing test state directly."
   def with_triggers_off(fun) do
