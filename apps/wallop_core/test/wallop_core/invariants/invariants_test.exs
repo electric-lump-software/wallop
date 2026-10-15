@@ -7,7 +7,8 @@ defmodule WallopCore.Invariants.SuiteTest do
   id, `INV-<n>`, followed by the rule, so a failure reads as the broken rule.
 
     * Group A, `group_a_lock_and_guard_test.exs`: the lock and the database
-      guard (INV-1 to INV-6).
+      guard (INV-1 to INV-6), and no commit deferred past drand (INV-12,
+      INV-13).
     * Group B, `group_b_observation_and_execution_test.exs`: the observation
       store, completion, execution and the lock action (INV-7 to INV-11,
       and INV-8b).
@@ -37,7 +38,7 @@ defmodule WallopCore.Invariants.SuiteTest do
   alias WallopCore.InvariantCase
 
   @dir __DIR__
-  @ids ~w(INV-1 INV-2 INV-3 INV-4 INV-5 INV-6 INV-7 INV-8 INV-8b INV-9 INV-10 INV-11)
+  @ids ~w(INV-1 INV-2 INV-3 INV-4 INV-5 INV-6 INV-7 INV-8 INV-8b INV-9 INV-10 INV-11 INV-12 INV-13)
 
   defp sources do
     for path <- Path.wildcard(Path.join(@dir, "*_test.exs")),
