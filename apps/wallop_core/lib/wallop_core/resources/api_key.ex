@@ -149,7 +149,7 @@ defmodule WallopCore.Resources.ApiKey do
     end
 
     # Kept so consumers on an older wallop_core can still use this table.
-    # Nothing in this version reads or writes them.
+    # Nothing in this version uses them; they are still mapped.
     attribute :tier, :string do
       description("Deprecated and unused; dropped in a later release.")
 

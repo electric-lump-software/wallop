@@ -32,11 +32,11 @@ Removes the monthly draw quota. Replaces the rate limiters with one `WallopWeb.R
 ### Hex package surface
 
 - Stop starting `WallopWeb.RateLimit.Sweeper`. It is deleted, and so is `WallopWeb.Plugs.RateLimit`. The plugs' `table/0`, `window_ms/0` and `ensure_table/0` are gone too; if you called them, count through `WallopWeb.RateLimiter` instead.
-- Run the migration: `mix ecto.migrate` (adds `rate_limit_per_minute` on `api_keys`). The four quota columns (`tier`, `monthly_draw_limit`, `monthly_draw_count`, `count_reset_at`) are no longer used and will be dropped in a later release, so be on this version before then.
-- **BREAKING (Ash callers):** `ApiKey` `:update_tier` is now `:set_rate_limit` (accepts only `rate_limit_per_minute`). `:increment_draw_count` and `:reset_draw_count` are removed, and `:create` no longer accepts `tier`, `monthly_draw_limit` or `count_reset_at`.
+- Run the migration: `mix ecto.migrate` (adds `rate_limit_per_minute` on `api_keys`). The four quota columns (`tier`, `monthly_draw_limit`, `monthly_draw_count`, `count_reset_at`) are no longer used and will be dropped in a later release, so be on this version before then. If several apps share the database, all of them must be on this version or later before then.
+- **BREAKING (Ash callers):** `ApiKey` `:update_tier` is now `:set_rate_limit` (accepts only `rate_limit_per_minute`). `:increment_draw_count` and `:reset_draw_count` are removed, and `:create` no longer accepts `tier`, `monthly_draw_limit` or `count_reset_at`. Passing any of the old quota fields to `:create` or `:set_rate_limit` returns `Ash.Error.Invalid`. The changes `WallopCore.Resources.ApiKey.Changes.IncrementDrawCount`, `WallopCore.Resources.ApiKey.Changes.AdvanceResetAt` and `WallopCore.Resources.Draw.Changes.IncrementApiKeyDrawCount` are deleted.
 - `monthly_draw_count` is no longer maintained and is stale after the upgrade. If you showed usage from it, count draws from the `draws` table instead.
-- `WallopWeb.Plugs.TierLimit` is removed; nothing replaces it.
-- Pressure is now a telemetry event and a PubSub message (`[:wallop_web, :rate_limit, :near_limit | :limited]`; topic `"rate_limit_pressure"` on `WallopCore.PubSub`; `kind` is only `:near_limit` or `:limited` now). Nothing is stored; attach a handler if you want to keep it.
+- **BREAKING:** `WallopWeb.Plugs.TierLimit` is removed; drop it from your pipeline. Nothing replaces it.
+- Pressure is now a telemetry event and a PubSub message (`[:wallop_web, :rate_limit, :near_limit | :limited]`; topic `"rate_limit_pressure"` on `WallopCore.PubSub`; `kind` is only `:near_limit` or `:limited`). Nothing is stored; attach a handler if you want to keep it.
 - Optional: share counters across nodes with `RATE_LIMIT_BACKEND=redis` and `REDIS_URL` (Redis 7 or later). Redis without `REDIS_URL` refuses to boot. If the store errors, requests are let through and `[:wallop_web, :rate_limiter, :backend_error]` is emitted; alert on it before enabling Redis.
 - Optional: `config :wallop_web, WallopWeb.IpAuthLimit, max_failures_per_minute:` changes the per-IP failure limit.
 

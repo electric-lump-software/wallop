@@ -119,10 +119,28 @@ defmodule WallopCore.Resources.ApiKeyTest do
       key = create_api_key()
 
       for value <- [0, 6001] do
-        assert {:error, %Ash.Error.Invalid{}} =
+        assert {:error, %Ash.Error.Invalid{errors: errors}} =
                  key
                  |> Ash.Changeset.for_update(:set_rate_limit, %{rate_limit_per_minute: value})
                  |> Ash.update(authorize?: false)
+
+        assert Enum.any?(errors, &(Map.get(&1, :field) == :rate_limit_per_minute))
+      end
+
+      reloaded = Ash.get!(ApiKey, key.id, authorize?: false)
+      assert reloaded.rate_limit_per_minute == nil
+    end
+
+    test "accepts the edges of 1..6000" do
+      key = create_api_key()
+
+      for value <- [1, 6000] do
+        updated =
+          key
+          |> Ash.Changeset.for_update(:set_rate_limit, %{rate_limit_per_minute: value})
+          |> Ash.update!(authorize?: false)
+
+        assert updated.rate_limit_per_minute == value
       end
     end
 

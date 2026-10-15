@@ -11,14 +11,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 **BREAKING.** The monthly draw quota is removed:
 
-- `ApiKey` actions `update_tier`, `increment_draw_count` and `reset_draw_count` are gone. `update_tier` becomes `set_rate_limit`, which accepts only `rate_limit_per_minute`. `create` still accepts `rate_limit_per_minute`, but no longer `tier`, `monthly_draw_limit` or `count_reset_at`.
+- `ApiKey` actions `update_tier`, `increment_draw_count` and `reset_draw_count` are gone. `update_tier` becomes `set_rate_limit`, which accepts only `rate_limit_per_minute`. `create` still accepts `rate_limit_per_minute`, but no longer `tier`, `monthly_draw_limit` or `count_reset_at`. Passing any of the old quota fields to `create` or `set_rate_limit` now returns `Ash.Error.Invalid`.
+- The modules `WallopCore.Resources.ApiKey.Changes.IncrementDrawCount`, `WallopCore.Resources.ApiKey.Changes.AdvanceResetAt` and `WallopCore.Resources.Draw.Changes.IncrementApiKeyDrawCount` are deleted.
 - `WallopWeb.Plugs.TierLimit` and the `tier_limit_exceeded` error code are gone.
-- The `tier`, `monthly_draw_limit`, `monthly_draw_count` and `count_reset_at` attributes are no longer read or written by anything in this version. The columns stay for now, so a consumer on an older `wallop_core` can still use the table, and will be dropped in a later release.
-- The pressure signal's `kind` is now only `:near_limit` or `:limited`; `:quota_limited` is gone. The topic and payload shape are unchanged.
+- The `tier`, `monthly_draw_limit`, `monthly_draw_count` and `count_reset_at` attributes are no longer used by anything in this version. They're still mapped, so don't drop the columns yourself; a later release drops them. They stay for now so a consumer on an older `wallop_core` can still use the table.
 
 **CHANGED.** Creating a draw no longer writes to the API key's row, so a key creating many draws at once no longer queues on a row lock.
 
-**Operator note.** No migration.
+**Operator note.** No migration for this change. The columns stay until a later release drops them.
 
 ### Fixed: API error pointers name the attribute; constraint messages are filled in
 
