@@ -772,4 +772,31 @@ defmodule WallopCore.Invariants.LockAndGuardTest do
       end
     end
   end
+
+  # ── INV-12, INV-13 ────────────────────────────────────────────────
+
+  # A commit can be held back past drand only by a transaction that is
+  # still open (bounded by the commit-time check) or by one that was
+  # prepared and committed later. These pin that the second way is shut.
+  @umbrella_root Path.expand("../../../../..", __DIR__)
+
+  describe "INV-12 / INV-13 no commit can be deferred past drand" do
+    test "INV-12 prepared transactions are disabled on the database" do
+      assert %{rows: [["0"]]} = Repo.query!("SHOW max_prepared_transactions")
+    end
+
+    test "INV-13 no lib code defers constraints or prepares a transaction" do
+      files = Path.wildcard(Path.join(@umbrella_root, "apps/*/lib/**/*"))
+      assert Enum.any?(files, &String.ends_with?(&1, ".ex"))
+
+      hits =
+        for path <- files,
+            File.regular?(path),
+            {line, n} <- path |> File.read!() |> String.split("\n") |> Enum.with_index(1),
+            line =~ ~r/set\s+constraints|prepare\s+transaction/i,
+            do: "#{Path.relative_to(path, @umbrella_root)}:#{n}: #{String.trim(line)}"
+
+      assert hits == []
+    end
+  end
 end
