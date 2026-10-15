@@ -218,6 +218,7 @@ defmodule WallopCore.Resources.Draw do
         Ash.Changeset.force_change_attribute(changeset, :failure_reason, reason)
       end)
 
+      change({WallopCore.Resources.Draw.Changes.ReportFailure, []})
       change({WallopCore.Resources.Draw.Changes.EnqueueWebhook, []})
       change({WallopCore.Resources.Draw.Changes.BroadcastUpdate, []})
     end

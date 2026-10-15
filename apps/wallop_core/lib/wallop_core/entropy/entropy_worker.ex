@@ -125,10 +125,7 @@ defmodule WallopCore.Entropy.EntropyWorker do
         :ok
 
       {:error, reason} when attempt >= max_attempts ->
-        fail_draw_with_reason(
-          draw,
-          "execution failed after #{attempt} attempts: #{inspect(reason)}"
-        )
+        fail_draw_with_reason(draw, "execution error after #{attempt} attempts", reason)
 
       {:error, reason} ->
         {:error, reason}
@@ -186,27 +183,19 @@ defmodule WallopCore.Entropy.EntropyWorker do
         :ok
 
       {:error, reason} ->
-        fail_draw_with_reason(
-          draw,
-          "drand-only execution failed: #{inspect(reason)}"
-        )
+        fail_draw_with_reason(draw, "drand-only execution error", reason)
     end
   end
 
   defp handle_final_attempt_failure(draw, drand_err, weather_err, attempt) do
-    reason =
+    {reason, detail} =
       cond do
-        drand_err != nil ->
-          "drand unavailable after #{attempt} attempts: #{inspect(drand_err)}"
-
-        weather_err != nil ->
-          "weather unavailable after #{attempt} attempts: #{inspect(weather_err)}"
-
-        true ->
-          "entropy sources unavailable after #{attempt} attempts"
+        drand_err != nil -> {"drand unavailable after #{attempt} attempts", drand_err}
+        weather_err != nil -> {"weather unavailable after #{attempt} attempts", weather_err}
+        true -> {"entropy sources unavailable after #{attempt} attempts", nil}
       end
 
-    fail_draw_with_reason(draw, reason)
+    fail_draw_with_reason(draw, reason, detail)
   end
 
   defp handle_transient_retry(draw, drand_err, weather_err) do
@@ -380,7 +369,16 @@ defmodule WallopCore.Entropy.EntropyWorker do
 
   defp maybe_transition_to_pending(draw), do: draw
 
-  defp fail_draw_with_reason(draw, reason) do
+  # `reason` is stored and public. `detail` is logged and set on the span only.
+  defp fail_draw_with_reason(draw, reason, detail \\ nil) do
+    if detail != nil do
+      Tracer.set_attributes(%{"error" => true, "error.message" => inspect(detail)})
+
+      Logger.error(
+        "EntropyWorker: draw #{Log.redact_id(draw.id)} failing (#{reason}): #{inspect(detail)}"
+      )
+    end
+
     draw = maybe_transition_to_pending(draw)
 
     draw

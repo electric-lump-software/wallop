@@ -256,6 +256,24 @@ defmodule WallopCore.Entropy.EntropyWorkerTest do
   end
 
   describe "max attempts exhausted" do
+    test "the public failure reason is fixed text; the detail is only logged" do
+      stub_drand_error(:not_found)
+      stub_weather_error(500)
+
+      api_key = create_api_key()
+      draw = create_draw(api_key, %{entropy: true})
+
+      log =
+        ExUnit.CaptureLog.capture_log(fn ->
+          assert :ok = EntropyWorker.perform(fake_job(draw, attempt: 10))
+        end)
+
+      failed = reload_draw(draw, api_key)
+      assert failed.failure_reason == "drand unavailable after 10 attempts"
+      refute failed.failure_reason =~ ~r/[{}%]/
+      assert log =~ "drand unavailable after 10 attempts"
+    end
+
     test "fails draw on final attempt when drand unavailable" do
       stub_drand_error(:not_found)
       stub_weather_error(500)
