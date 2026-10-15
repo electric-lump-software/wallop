@@ -241,4 +241,4 @@ Common errors:
 - `403` — draw belongs to a different API key
 - `400` — validation error (duplicate entries, draw not open, etc.)
 - `404` — draw not found
-- `429` — rate limited. The `Retry-After` header gives whole seconds to wait: at most 60 for per-key and per-IP limits, longer for a monthly quota
+- `429` — rate limited. The `Retry-After` header gives whole seconds to wait: at most 60 for per-key and per-IP limits. Every `429` carries it
