@@ -181,6 +181,15 @@
                 ],
                 "description": "Field included by default."
               },
+              "expected_result_at": {
+                "anyOf": [
+                  {},
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "Observation-weather draws only: when the result is due (the publication time of the committed drand round). Not signed; derived from drand_round. Null for other draws. Field included by default."
+              },
               "failed_at": {
                 "anyOf": [
                   {},
@@ -2113,12 +2122,12 @@
             "schema": {
               "additionalProperties": true,
               "example": {
-                "draw": "id,status,name,entry_count,entry_hash,entry_canonical,winner_count,seed,seed_source,seed_json,results,drand_chain,drand_round,drand_randomness,drand_signature,drand_response,weather_station,weather_time,weather_value,weather_raw,weather_observation_time,weather_fallback_reason,callback_url,metadata,check_url,executed_at,failed_at,failure_reason,stage_timestamps,operator_sequence,operator_id"
+                "draw": "id,status,name,entry_count,entry_hash,entry_canonical,winner_count,seed,seed_source,seed_json,results,drand_chain,drand_round,drand_randomness,drand_signature,drand_response,weather_station,weather_time,weather_value,weather_raw,weather_observation_time,weather_fallback_reason,callback_url,metadata,check_url,executed_at,failed_at,failure_reason,stage_timestamps,operator_sequence,operator_id,expected_result_at"
               },
               "properties": {
                 "draw": {
                   "description": "Comma separated field names for draw",
-                  "example": "id,status,name,entry_count,entry_hash,entry_canonical,winner_count,seed,seed_source,seed_json,results,drand_chain,drand_round,drand_randomness,drand_signature,drand_response,weather_station,weather_time,weather_value,weather_raw,weather_observation_time,weather_fallback_reason,callback_url,metadata,check_url,executed_at,failed_at,failure_reason,stage_timestamps,operator_sequence,operator_id",
+                  "example": "id,status,name,entry_count,entry_hash,entry_canonical,winner_count,seed,seed_source,seed_json,results,drand_chain,drand_round,drand_randomness,drand_signature,drand_response,weather_station,weather_time,weather_value,weather_raw,weather_observation_time,weather_fallback_reason,callback_url,metadata,check_url,executed_at,failed_at,failure_reason,stage_timestamps,operator_sequence,operator_id,expected_result_at",
                   "type": "string"
                 }
               },
@@ -2225,12 +2234,12 @@
             "schema": {
               "additionalProperties": true,
               "example": {
-                "draw": "id,status,name,entry_count,entry_hash,entry_canonical,winner_count,seed,seed_source,seed_json,results,drand_chain,drand_round,drand_randomness,drand_signature,drand_response,weather_station,weather_time,weather_value,weather_raw,weather_observation_time,weather_fallback_reason,callback_url,metadata,check_url,executed_at,failed_at,failure_reason,stage_timestamps,operator_sequence,operator_id"
+                "draw": "id,status,name,entry_count,entry_hash,entry_canonical,winner_count,seed,seed_source,seed_json,results,drand_chain,drand_round,drand_randomness,drand_signature,drand_response,weather_station,weather_time,weather_value,weather_raw,weather_observation_time,weather_fallback_reason,callback_url,metadata,check_url,executed_at,failed_at,failure_reason,stage_timestamps,operator_sequence,operator_id,expected_result_at"
               },
               "properties": {
                 "draw": {
                   "description": "Comma separated field names for draw",
-                  "example": "id,status,name,entry_count,entry_hash,entry_canonical,winner_count,seed,seed_source,seed_json,results,drand_chain,drand_round,drand_randomness,drand_signature,drand_response,weather_station,weather_time,weather_value,weather_raw,weather_observation_time,weather_fallback_reason,callback_url,metadata,check_url,executed_at,failed_at,failure_reason,stage_timestamps,operator_sequence,operator_id",
+                  "example": "id,status,name,entry_count,entry_hash,entry_canonical,winner_count,seed,seed_source,seed_json,results,drand_chain,drand_round,drand_randomness,drand_signature,drand_response,weather_station,weather_time,weather_value,weather_raw,weather_observation_time,weather_fallback_reason,callback_url,metadata,check_url,executed_at,failed_at,failure_reason,stage_timestamps,operator_sequence,operator_id,expected_result_at",
                   "type": "string"
                 }
               },
@@ -2400,12 +2409,12 @@
             "schema": {
               "additionalProperties": true,
               "example": {
-                "draw": "id,status,name,entry_count,entry_hash,entry_canonical,winner_count,seed,seed_source,seed_json,results,drand_chain,drand_round,drand_randomness,drand_signature,drand_response,weather_station,weather_time,weather_value,weather_raw,weather_observation_time,weather_fallback_reason,callback_url,metadata,check_url,executed_at,failed_at,failure_reason,stage_timestamps,operator_sequence,operator_id"
+                "draw": "id,status,name,entry_count,entry_hash,entry_canonical,winner_count,seed,seed_source,seed_json,results,drand_chain,drand_round,drand_randomness,drand_signature,drand_response,weather_station,weather_time,weather_value,weather_raw,weather_observation_time,weather_fallback_reason,callback_url,metadata,check_url,executed_at,failed_at,failure_reason,stage_timestamps,operator_sequence,operator_id,expected_result_at"
               },
               "properties": {
                 "draw": {
                   "description": "Comma separated field names for draw",
-                  "example": "id,status,name,entry_count,entry_hash,entry_canonical,winner_count,seed,seed_source,seed_json,results,drand_chain,drand_round,drand_randomness,drand_signature,drand_response,weather_station,weather_time,weather_value,weather_raw,weather_observation_time,weather_fallback_reason,callback_url,metadata,check_url,executed_at,failed_at,failure_reason,stage_timestamps,operator_sequence,operator_id",
+                  "example": "id,status,name,entry_count,entry_hash,entry_canonical,winner_count,seed,seed_source,seed_json,results,drand_chain,drand_round,drand_randomness,drand_signature,drand_response,weather_station,weather_time,weather_value,weather_raw,weather_observation_time,weather_fallback_reason,callback_url,metadata,check_url,executed_at,failed_at,failure_reason,stage_timestamps,operator_sequence,operator_id,expected_result_at",
                   "type": "string"
                 }
               },
@@ -2485,12 +2494,12 @@
             "schema": {
               "additionalProperties": true,
               "example": {
-                "draw": "id,status,name,entry_count,entry_hash,entry_canonical,winner_count,seed,seed_source,seed_json,results,drand_chain,drand_round,drand_randomness,drand_signature,drand_response,weather_station,weather_time,weather_value,weather_raw,weather_observation_time,weather_fallback_reason,callback_url,metadata,check_url,executed_at,failed_at,failure_reason,stage_timestamps,operator_sequence,operator_id"
+                "draw": "id,status,name,entry_count,entry_hash,entry_canonical,winner_count,seed,seed_source,seed_json,results,drand_chain,drand_round,drand_randomness,drand_signature,drand_response,weather_station,weather_time,weather_value,weather_raw,weather_observation_time,weather_fallback_reason,callback_url,metadata,check_url,executed_at,failed_at,failure_reason,stage_timestamps,operator_sequence,operator_id,expected_result_at"
               },
               "properties": {
                 "draw": {
                   "description": "Comma separated field names for draw",
-                  "example": "id,status,name,entry_count,entry_hash,entry_canonical,winner_count,seed,seed_source,seed_json,results,drand_chain,drand_round,drand_randomness,drand_signature,drand_response,weather_station,weather_time,weather_value,weather_raw,weather_observation_time,weather_fallback_reason,callback_url,metadata,check_url,executed_at,failed_at,failure_reason,stage_timestamps,operator_sequence,operator_id",
+                  "example": "id,status,name,entry_count,entry_hash,entry_canonical,winner_count,seed,seed_source,seed_json,results,drand_chain,drand_round,drand_randomness,drand_signature,drand_response,weather_station,weather_time,weather_value,weather_raw,weather_observation_time,weather_fallback_reason,callback_url,metadata,check_url,executed_at,failed_at,failure_reason,stage_timestamps,operator_sequence,operator_id,expected_result_at",
                   "type": "string"
                 }
               },
@@ -2639,12 +2648,12 @@
             "schema": {
               "additionalProperties": true,
               "example": {
-                "draw": "id,status,name,entry_count,entry_hash,entry_canonical,winner_count,seed,seed_source,seed_json,results,drand_chain,drand_round,drand_randomness,drand_signature,drand_response,weather_station,weather_time,weather_value,weather_raw,weather_observation_time,weather_fallback_reason,callback_url,metadata,check_url,executed_at,failed_at,failure_reason,stage_timestamps,operator_sequence,operator_id"
+                "draw": "id,status,name,entry_count,entry_hash,entry_canonical,winner_count,seed,seed_source,seed_json,results,drand_chain,drand_round,drand_randomness,drand_signature,drand_response,weather_station,weather_time,weather_value,weather_raw,weather_observation_time,weather_fallback_reason,callback_url,metadata,check_url,executed_at,failed_at,failure_reason,stage_timestamps,operator_sequence,operator_id,expected_result_at"
               },
               "properties": {
                 "draw": {
                   "description": "Comma separated field names for draw",
-                  "example": "id,status,name,entry_count,entry_hash,entry_canonical,winner_count,seed,seed_source,seed_json,results,drand_chain,drand_round,drand_randomness,drand_signature,drand_response,weather_station,weather_time,weather_value,weather_raw,weather_observation_time,weather_fallback_reason,callback_url,metadata,check_url,executed_at,failed_at,failure_reason,stage_timestamps,operator_sequence,operator_id",
+                  "example": "id,status,name,entry_count,entry_hash,entry_canonical,winner_count,seed,seed_source,seed_json,results,drand_chain,drand_round,drand_randomness,drand_signature,drand_response,weather_station,weather_time,weather_value,weather_raw,weather_observation_time,weather_fallback_reason,callback_url,metadata,check_url,executed_at,failed_at,failure_reason,stage_timestamps,operator_sequence,operator_id,expected_result_at",
                   "type": "string"
                 }
               },
@@ -2778,12 +2787,12 @@
             "schema": {
               "additionalProperties": true,
               "example": {
-                "draw": "id,status,name,entry_count,entry_hash,entry_canonical,winner_count,seed,seed_source,seed_json,results,drand_chain,drand_round,drand_randomness,drand_signature,drand_response,weather_station,weather_time,weather_value,weather_raw,weather_observation_time,weather_fallback_reason,callback_url,metadata,check_url,executed_at,failed_at,failure_reason,stage_timestamps,operator_sequence,operator_id"
+                "draw": "id,status,name,entry_count,entry_hash,entry_canonical,winner_count,seed,seed_source,seed_json,results,drand_chain,drand_round,drand_randomness,drand_signature,drand_response,weather_station,weather_time,weather_value,weather_raw,weather_observation_time,weather_fallback_reason,callback_url,metadata,check_url,executed_at,failed_at,failure_reason,stage_timestamps,operator_sequence,operator_id,expected_result_at"
               },
               "properties": {
                 "draw": {
                   "description": "Comma separated field names for draw",
-                  "example": "id,status,name,entry_count,entry_hash,entry_canonical,winner_count,seed,seed_source,seed_json,results,drand_chain,drand_round,drand_randomness,drand_signature,drand_response,weather_station,weather_time,weather_value,weather_raw,weather_observation_time,weather_fallback_reason,callback_url,metadata,check_url,executed_at,failed_at,failure_reason,stage_timestamps,operator_sequence,operator_id",
+                  "example": "id,status,name,entry_count,entry_hash,entry_canonical,winner_count,seed,seed_source,seed_json,results,drand_chain,drand_round,drand_randomness,drand_signature,drand_response,weather_station,weather_time,weather_value,weather_raw,weather_observation_time,weather_fallback_reason,callback_url,metadata,check_url,executed_at,failed_at,failure_reason,stage_timestamps,operator_sequence,operator_id,expected_result_at",
                   "type": "string"
                 }
               },

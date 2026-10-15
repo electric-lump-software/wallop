@@ -3,6 +3,14 @@ defmodule WallopCore.TestHelpers do
   Convenience functions for creating test data.
   """
 
+  alias WallopCore.Drand.Quicknet
+  alias WallopCore.Entries
+  alias WallopCore.Protocol
+  alias WallopCore.Repo
+  alias WallopCore.Resources.{Draw, Operator, OperatorReceipt, OperatorSigningKey}
+  alias WallopCore.Vault
+  alias WallopCore.Weather.{Schedule, Stations}
+
   @doc """
   Creates an active API key and returns the struct (actor for Ash calls).
 
@@ -181,6 +189,153 @@ defmodule WallopCore.TestHelpers do
   def create_api_key_for_operator(operator, name \\ "op-key") do
     WallopCore.Resources.ApiKey
     |> Ash.Changeset.for_create(:create, %{name: name, operator_id: operator.id})
+    |> Ash.create!(authorize?: false)
+  end
+
+  @doc "An operator on the observation weather protocol, and an API key for it."
+  def create_v6_operator do
+    operator = create_operator()
+
+    {:ok, operator} =
+      operator
+      |> Ash.Changeset.for_update(:set_draw_protocol, %{draw_protocol: :observation})
+      |> Ash.update(authorize?: false)
+
+    {operator, create_api_key_for_operator(operator)}
+  end
+
+  @doc "An open draw with `n` weight-1 entries."
+  def open_draw_with_entries(api_key, n \\ 3) do
+    Draw
+    |> Ash.Changeset.for_create(:create, %{winner_count: 1}, actor: api_key)
+    |> Ash.create!()
+    |> Ash.Changeset.for_update(
+      :add_entries,
+      %{entries: List.duplicate(%{"weight" => 1}, n), client_ref: Ash.UUID.generate()},
+      actor: api_key
+    )
+    |> Ash.update!()
+  end
+
+  @doc """
+  True when the database refuses `sql`. Runs it in a savepoint so the test
+  transaction survives a refusal.
+  """
+  def db_refused?(sql, params) do
+    Repo.transaction(fn -> Repo.query!(sql, params) end)
+    false
+  rescue
+    Postgrex.Error -> true
+  end
+
+  @doc """
+  Puts an open draw into awaiting_entropy as a v6 draw, and stores a signed
+  lock v6 receipt for it.
+
+  The draw row gets `weather_time` and `drand_round` as given. Test-only: it
+  turns triggers off for that one UPDATE, so tests can place the fetch window
+  around the current time (a real lock can't, because it must happen 46
+  minutes before weather_time).
+
+  The receipt is a real one: it goes through `Protocol.build_v6_lock_payload/1`
+  with the round's own observation hour, `Schedule.weather_time_for_round/1`,
+  and a `locked_at` 47 minutes before that hour, and it is inserted with the
+  triggers on. So `weather_time` may differ from the signed hour, but
+  `drand_round` is the signed round.
+
+  Options: `:entropy_composition` (default: the Land Observations tag).
+  Returns the draw with `expected_result_at` loaded.
+  """
+  def put_v6_awaiting!(draw, %DateTime{} = weather_time, drand_round, opts \\ [])
+      when is_integer(drand_round) do
+    tag =
+      Keyword.get(opts, :entropy_composition, Protocol.landobs_entropy_composition())
+
+    entries = Entries.load_for_draw(draw.id)
+    {hash, canonical} = Protocol.entry_hash({draw.id, entries})
+    chain = Quicknet.chain_hash()
+
+    Repo.query!("SET session_replication_role = replica")
+
+    try do
+      Repo.query!(
+        """
+        UPDATE draws SET status = 'awaiting_entropy', lock_schema_version = '6',
+          entropy_composition = $7, entry_hash = $2, entry_canonical = $3, drand_chain = $4,
+          drand_round = $5, weather_station = $8, weather_time = $6
+        WHERE id = $1
+        """,
+        [
+          Ecto.UUID.dump!(draw.id),
+          hash,
+          canonical,
+          chain,
+          drand_round,
+          DateTime.to_naive(weather_time),
+          tag,
+          Stations.primary().id
+        ]
+      )
+    after
+      Repo.query!("RESET session_replication_role")
+    end
+
+    insert_v6_lock_receipt!(draw, hash, tag, drand_round)
+    Ash.get!(Draw, draw.id, authorize?: false, load: [:expected_result_at])
+  end
+
+  @doc """
+  The signed lock v6 receipt `put_v6_awaiting!/4` stores. `locked_at` is 47
+  minutes before the round's observation hour; it is both the signed value
+  and the receipt's `locked_at` column.
+  """
+  def insert_v6_lock_receipt!(draw, entry_hash, entropy_composition, drand_round) do
+    require Ash.Query
+
+    operator_id = draw.operator_id
+
+    key =
+      OperatorSigningKey
+      |> Ash.Query.filter(operator_id == ^operator_id)
+      |> Ash.read_one!(authorize?: false)
+
+    {:ok, private} = Vault.decrypt(key.private_key)
+    operator = Ash.get!(Operator, operator_id, authorize?: false)
+    signed_wt = Schedule.weather_time_for_round(drand_round)
+    locked_at = DateTime.add(signed_wt, -47 * 60, :second)
+
+    payload =
+      Protocol.build_v6_lock_payload(%{
+        entropy_composition: entropy_composition,
+        operator_id: operator.id,
+        operator_slug: to_string(operator.slug),
+        sequence: draw.operator_sequence,
+        draw_id: draw.id,
+        commitment_hash: entry_hash,
+        entry_hash: entry_hash,
+        locked_at: locked_at,
+        signing_key_id: key.key_id,
+        winner_count: draw.winner_count,
+        drand_chain: Quicknet.chain_hash(),
+        drand_round: drand_round,
+        weather_station: Stations.primary().id,
+        weather_time: signed_wt,
+        wallop_core_version: to_string(Application.spec(:wallop_core, :vsn)),
+        fair_pick_version: to_string(Application.spec(:fair_pick, :vsn))
+      })
+
+    OperatorReceipt
+    |> Ash.Changeset.for_create(:create, %{
+      operator_id: operator.id,
+      draw_id: draw.id,
+      sequence: draw.operator_sequence,
+      commitment_hash: entry_hash,
+      entry_hash: entry_hash,
+      locked_at: locked_at,
+      signing_key_id: key.key_id,
+      payload_jcs: payload,
+      signature: Protocol.sign_receipt(payload, private)
+    })
     |> Ash.create!(authorize?: false)
   end
 end
