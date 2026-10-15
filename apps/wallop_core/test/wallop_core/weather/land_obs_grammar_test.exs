@@ -81,6 +81,15 @@ defmodule WallopCore.Weather.LandObsGrammarTest do
     end
   end
 
+  test "only temperature may be negative, and a minus sign on zero counts" do
+    assert {:error, {:invalid, "visibility"}} = value_of(%{"visibility" => "-4"})
+    assert {:error, {:invalid, "visibility"}} = value_of(%{"visibility" => "-0"})
+    assert {:error, {:invalid, "humidity"}} = value_of(%{"humidity" => "-0"})
+    assert {:error, {:invalid, "mslp"}} = value_of(%{"mslp" => "-0.0"})
+    assert {:ok, "0;1000;50;100"} = value_of(%{"temperature" => "-0.04"})
+    assert {:ok, "0;1000;50;100"} = value_of(%{"temperature" => "-0"})
+  end
+
   test "a row that is not an object is not an observation" do
     assert {:error, :not_an_object} = G.canonical_value([1, 2])
     assert {:error, :not_an_object} = G.canonical_value(nil)
@@ -108,13 +117,13 @@ defmodule WallopCore.Weather.LandObsGrammarTest do
     assert {:error, {:out_of_bounds, "mslp"}} = value_of(%{"mslp" => "1101"})
     assert {:ok, "10;1000;0;100"} = value_of(%{"humidity" => "0"})
     assert {:error, {:out_of_bounds, "humidity"}} = value_of(%{"humidity" => "101"})
-    assert {:error, {:out_of_bounds, "humidity"}} = value_of(%{"humidity" => "-1"})
+    assert {:error, {:invalid, "humidity"}} = value_of(%{"humidity" => "-1"})
     assert {:ok, "10;1000;50;0"} = value_of(%{"visibility" => "0"})
     assert {:ok, "10;1000;50;10000"} = value_of(%{"visibility" => "100000"})
     assert {:ok, "10;1000;50;10000"} = value_of(%{"visibility" => "100004"})
     assert {:error, {:out_of_bounds, "visibility"}} = value_of(%{"visibility" => "100005"})
     assert {:error, {:out_of_bounds, "visibility"}} = value_of(%{"visibility" => "100010"})
-    assert {:error, {:out_of_bounds, "visibility"}} = value_of(%{"visibility" => "-10"})
+    assert {:error, {:invalid, "visibility"}} = value_of(%{"visibility" => "-10"})
   end
 
   test "scale_decimal mirrors the verifier" do
@@ -165,21 +174,53 @@ defmodule WallopCore.Weather.LandObsGrammarTest do
     end
   end
 
-  property "every value canonical_value produces satisfies valid_value?" do
+  property "canonical_value rounds temperature half away from zero and always yields a valid value" do
     check all(
+            negative_fraction? <- boolean(),
             t <- integer(-1000..700),
-            t_frac <- integer(0..99),
+            t_frac <- string(?0..?9, min_length: 1, max_length: 3),
             mslp <- integer(800..1150),
             rh <- integer(-5..110),
             vis <- integer(0..110_000)
           ) do
+      # With negative_fraction?, temperature is -0.x: between -1 and 0.
+      t_text = if negative_fraction?, do: "-0.#{t_frac}", else: "#{t}.#{t_frac}"
+
       json =
-        ~s({"temperature": #{t}.#{t_frac}, "mslp": #{mslp}, "humidity": #{rh}, "visibility": #{vis}})
+        ~s({"temperature": #{t_text}, "mslp": #{mslp}, "humidity": #{rh}, "visibility": #{vis}})
+
+      want_t =
+        t_text
+        |> Decimal.new()
+        |> Decimal.mult(10)
+        |> Decimal.round(0, :half_up)
+        |> Decimal.to_integer()
 
       case G.canonical_value(row(json)) do
-        {:ok, value} -> assert G.valid_value?(value), value
-        {:error, {:out_of_bounds, _}} -> :ok
+        {:ok, value} ->
+          assert G.valid_value?(value), value
+          [t_part | _] = String.split(value, ";")
+          assert t_part == Integer.to_string(want_t)
+          refute t_part == "-0"
+
+        {:error, {:out_of_bounds, _}} ->
+          :ok
+
+        {:error, {:invalid, "humidity"}} ->
+          assert rh < 0
       end
+    end
+  end
+
+  test "temperature just below zero rounds to 0 or -1, never -0" do
+    for {t, want} <- [
+          {"-0.0", "0"},
+          {"-0.049", "0"},
+          {"-0.04", "0"},
+          {"-0.05", "-1"},
+          {"-0.95", "-10"}
+        ] do
+      assert {:ok, ^want <> ";1000;50;100"} = value_of(%{"temperature" => t})
     end
   end
 

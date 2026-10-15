@@ -10,8 +10,8 @@ defmodule WallopCore.Weather.LandObsGrammar do
 
   Each number is read from its own JSON text as a plain decimal. An
   exponent, NaN or a quoted number in one of these four fields, a missing or
-  null field, a fractional digit where a whole number is required, or a
-  value outside the bounds makes the row invalid. Other fields are never
+  null field, a fractional digit where a whole number is required, a minus
+  sign on mslp, humidity or visibility (even on zero), or a value outside the bounds makes the row invalid. Other fields are never
   read. There are no partial values and no substitutions. The bounds, after
   scaling, are t [-900, 600], mslp [850, 1100], rh [0, 100], vis [0, 10000].
 
@@ -61,6 +61,7 @@ defmodule WallopCore.Weather.LandObsGrammar do
     # Decimals, so that a valid number too large for a float (in a field
     # nobody reads) does not reject the whole body.
     with {:ok, _} <- Jason.decode(body, floats: :decimals) do
+      # Deliberate crash on a validator/token-reader inconsistency; not reachable from input.
       {term, []} = @token |> Regex.scan(body) |> List.flatten() |> parse_value()
       {:ok, term}
     end
@@ -72,11 +73,11 @@ defmodule WallopCore.Weather.LandObsGrammar do
   """
   @spec canonical_value(term()) :: {:ok, String.t()} | {:error, error_reason()}
   def canonical_value(row) when is_map(row) do
-    with {:ok, t} <- field(row, "temperature", 1, false),
-         {:ok, mslp} <- field(row, "mslp", 0, true),
-         {:ok, rh} <- field(row, "humidity", 0, true),
-         {:ok, _whole_metres} <- field(row, "visibility", 0, true),
-         {:ok, vis} <- field(row, "visibility", -1, false),
+    with {:ok, t} <- field(row, "temperature", 1, false, :signed),
+         {:ok, mslp} <- field(row, "mslp", 0, true, :unsigned),
+         {:ok, rh} <- field(row, "humidity", 0, true, :unsigned),
+         {:ok, _whole_metres} <- field(row, "visibility", 0, true, :unsigned),
+         {:ok, vis} <- field(row, "visibility", -1, false, :unsigned),
          :ok <- in_bounds("temperature", t, @bounds.t),
          :ok <- in_bounds("mslp", mslp, @bounds.mslp),
          :ok <- in_bounds("humidity", rh, @bounds.rh),
@@ -129,9 +130,12 @@ defmodule WallopCore.Weather.LandObsGrammar do
     end
   end
 
-  defp field(row, key, shift, exact?) do
+  # Only temperature may be negative. In the other fields any leading `-`
+  # (even on zero) makes the field invalid.
+  defp field(row, key, shift, exact?, sign) do
     case Map.get(row, key) do
       nil -> {:error, {:missing, key}}
+      {:number, "-" <> _} when sign == :unsigned -> {:error, {:invalid, key}}
       {:number, text} -> number(text, key, shift, exact?)
       _ -> {:error, {:invalid, key}}
     end
