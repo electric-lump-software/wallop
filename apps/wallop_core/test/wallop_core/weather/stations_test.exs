@@ -5,10 +5,10 @@ defmodule WallopCore.Weather.StationsTest do
   test "the ordered list frozen by the tag" do
     assert Stations.ids() == ["wmo-03749", "wmo-03462"]
 
-    assert %{geohash: "gcnfur", name: "Middle Wallop", lat: 51.15, lon: -1.57} =
+    assert %{geohash: "gcnfur", name: "Middle Wallop"} =
              Stations.primary()
 
-    assert %{geohash: "gcrem9", name: "Wittering", lat: 52.61, lon: -0.47} = Stations.backup()
+    assert %{geohash: "gcrem9", name: "Wittering"} = Stations.backup()
   end
 
   test "ids satisfy the receipt weather_station charset" do
@@ -20,5 +20,8 @@ defmodule WallopCore.Weather.StationsTest do
     assert {:ok, %{wmo: "03462"}} = Stations.fetch("wmo-03462")
     assert :error = Stations.fetch("wmo-03772")
     assert Stations.all() == [Stations.primary(), Stations.backup()]
+
+    for station <- Stations.all(),
+        do: assert(Map.keys(station) |> Enum.sort() == [:geohash, :id, :name, :verified_on, :wmo])
   end
 end

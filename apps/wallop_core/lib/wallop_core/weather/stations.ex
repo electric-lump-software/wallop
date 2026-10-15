@@ -11,8 +11,6 @@ defmodule WallopCore.Weather.Stations do
           wmo: String.t(),
           geohash: String.t(),
           name: String.t(),
-          lat: float(),
-          lon: float(),
           verified_on: Date.t()
         }
 
@@ -22,8 +20,6 @@ defmodule WallopCore.Weather.Stations do
       wmo: "03749",
       geohash: "gcnfur",
       name: "Middle Wallop",
-      lat: 51.15,
-      lon: -1.57,
       verified_on: ~D[2026-10-15]
     },
     %{
@@ -31,8 +27,6 @@ defmodule WallopCore.Weather.Stations do
       wmo: "03462",
       geohash: "gcrem9",
       name: "Wittering",
-      lat: 52.61,
-      lon: -0.47,
       verified_on: ~D[2026-10-15]
     }
   ]
