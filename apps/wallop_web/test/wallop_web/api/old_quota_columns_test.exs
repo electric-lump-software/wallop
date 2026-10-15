@@ -37,7 +37,9 @@ defmodule WallopWeb.Api.OldQuotaColumnsTest do
     assert conn |> api(raw) |> post("/api/v1/draws", draw_payload()) |> json_response(201)
   end
 
-  test "an open draw still finishes after its key's old quota columns change", %{conn: conn} do
+  test "an open draw can still take entries and lock after its key's old quota columns change", %{
+    conn: conn
+  } do
     {key, raw} = key_with_raw()
 
     created = conn |> api(raw) |> post("/api/v1/draws", draw_payload()) |> json_response(201)

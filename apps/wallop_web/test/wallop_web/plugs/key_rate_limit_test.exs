@@ -32,7 +32,7 @@ defmodule WallopWeb.Plugs.KeyRateLimitTest do
     key = create_api_key()
 
     key
-    |> Ash.Changeset.for_update(:update_tier, %{rate_limit_per_minute: n})
+    |> Ash.Changeset.for_update(:set_rate_limit, %{rate_limit_per_minute: n})
     |> Ash.update!(authorize?: false)
 
     key

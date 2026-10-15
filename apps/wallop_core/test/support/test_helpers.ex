@@ -6,8 +6,7 @@ defmodule WallopCore.TestHelpers do
   @doc """
   Creates an active API key and returns the struct (actor for Ash calls).
 
-  Accepts optional tier metadata: `tier`, `monthly_draw_limit`,
-  `count_reset_at`.
+  Accepts optional `:name` and `:rate_limit_per_minute`.
   """
   def create_api_key(name_or_attrs \\ "test-key")
 
@@ -24,7 +23,7 @@ defmodule WallopCore.TestHelpers do
 
     create_attrs =
       attrs
-      |> Map.take([:name, :tier, :monthly_draw_limit, :count_reset_at])
+      |> Map.take([:name, :rate_limit_per_minute])
       |> Map.put(:operator_id, operator.id)
 
     WallopCore.Resources.ApiKey

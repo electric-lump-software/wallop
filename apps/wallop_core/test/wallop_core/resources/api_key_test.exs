@@ -1,6 +1,8 @@
 defmodule WallopCore.Resources.ApiKeyTest do
   use WallopCore.DataCase, async: true
 
+  import WallopCore.TestHelpers, only: [create_api_key: 0, create_api_key: 1]
+
   alias Ash.Resource.Info
   alias WallopCore.Resources.ApiKey
 
@@ -45,6 +47,23 @@ defmodule WallopCore.Resources.ApiKeyTest do
 
       assert key.active == true
     end
+
+    test "accepts rate_limit_per_minute" do
+      assert create_api_key(%{rate_limit_per_minute: 300}).rate_limit_per_minute == 300
+    end
+
+    test "no longer accepts the old quota fields" do
+      for input <- [
+            %{tier: "pro"},
+            %{monthly_draw_limit: 10},
+            %{count_reset_at: DateTime.utc_now()}
+          ] do
+        assert {:error, %Ash.Error.Invalid{}} =
+                 ApiKey
+                 |> Ash.Changeset.for_create(:create, Map.put(input, :name, "k"))
+                 |> Ash.create(authorize?: false)
+      end
+    end
   end
 
   describe "deactivate" do
@@ -61,51 +80,43 @@ defmodule WallopCore.Resources.ApiKeyTest do
     end
   end
 
-  describe "tier metadata" do
-    test "tier defaults to nil and limit defaults to nil (unlimited)" do
-      {:ok, key} = create_key()
-      assert key.tier == nil
-      assert key.monthly_draw_limit == nil
-      assert key.monthly_draw_count == 0
-      assert key.count_reset_at == nil
-    end
+  describe "set_rate_limit" do
+    test "sets the per-minute limit" do
+      key = create_api_key()
 
-    test "create accepts tier metadata" do
-      {:ok, reset_at} = DateTime.new(~D[2026-05-01], ~T[00:00:00.000000], "Etc/UTC")
-
-      {:ok, key} =
-        ApiKey
-        |> Ash.Changeset.for_create(:create, %{
-          name: "test",
-          tier: "starter",
-          monthly_draw_limit: 50,
-          count_reset_at: reset_at
-        })
-        |> Ash.create(authorize?: false)
-
-      assert key.tier == "starter"
-      assert key.monthly_draw_limit == 50
-      assert key.count_reset_at == reset_at
-    end
-  end
-
-  describe "update_tier" do
-    test "updates tier metadata on an existing key" do
-      {:ok, key} = create_key()
-      {:ok, reset_at} = DateTime.new(~D[2026-05-01], ~T[00:00:00.000000], "Etc/UTC")
-
-      {:ok, updated} =
+      updated =
         key
-        |> Ash.Changeset.for_update(:update_tier, %{
-          tier: "pro",
-          monthly_draw_limit: 1000,
-          count_reset_at: reset_at
-        })
-        |> Ash.update(authorize?: false)
+        |> Ash.Changeset.for_update(:set_rate_limit, %{rate_limit_per_minute: 300})
+        |> Ash.update!(authorize?: false)
 
-      assert updated.tier == "pro"
-      assert updated.monthly_draw_limit == 1000
-      assert updated.count_reset_at == reset_at
+      assert updated.rate_limit_per_minute == 300
+    end
+
+    test "never writes tier or the other old quota columns" do
+      key = create_api_key()
+
+      for input <- [
+            %{tier: "pro"},
+            %{monthly_draw_limit: 10},
+            %{monthly_draw_count: 0},
+            %{count_reset_at: DateTime.utc_now()}
+          ] do
+        assert {:error, %Ash.Error.Invalid{}} =
+                 key
+                 |> Ash.Changeset.for_update(
+                   :set_rate_limit,
+                   Map.put(input, :rate_limit_per_minute, 300)
+                 )
+                 |> Ash.update(authorize?: false)
+      end
+
+      reloaded = Ash.get!(ApiKey, key.id, authorize?: false)
+      assert reloaded.tier == nil
+      assert reloaded.rate_limit_per_minute == nil
+    end
+
+    test "update_tier is gone" do
+      assert Info.action(ApiKey, :update_tier) == nil
     end
   end
 

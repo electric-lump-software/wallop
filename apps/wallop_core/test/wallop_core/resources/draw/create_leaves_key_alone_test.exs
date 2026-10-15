@@ -36,7 +36,7 @@ defmodule WallopCore.Resources.Draw.CreateLeavesKeyAloneTest do
     assert {:ok, _} = create(key)
   end
 
-  test "an open draw still finishes after its key's old quota columns change" do
+  test "an open draw can still take entries and lock after its key's old quota columns change" do
     key = create_api_key()
     {:ok, draw} = create(key)
     key = exhaust_old_quota(key)
