@@ -11,8 +11,8 @@ defmodule WallopCore.Weather.LandObsGrammar do
   Each number is read from its own JSON text as a plain decimal. An
   exponent, NaN or a quoted number in one of these four fields, a missing or
   null field, a fractional digit where a whole number is required, a minus
-  sign on mslp, humidity or visibility (even on zero), or a value outside the bounds makes the row invalid. Other fields are never
-  read. There are no partial values and no substitutions. The bounds, after
+  sign on mslp, humidity or visibility (even on zero), or a value outside the
+  bounds makes the row invalid. Other fields are never read. There are no partial values and no substitutions. The bounds, after
   scaling, are t [-900, 600], mslp [850, 1100], rh [0, 100], vis [0, 10000].
 
   Every part is a decimal integer with no leading zeros, and only t may
