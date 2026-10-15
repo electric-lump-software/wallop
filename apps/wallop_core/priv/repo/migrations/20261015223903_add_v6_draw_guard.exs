@@ -23,7 +23,7 @@ defmodule WallopCore.Repo.Migrations.AddV6DrawGuard do
     execute("""
     CREATE OR REPLACE FUNCTION wallop_quicknet_pub_time(drand_round bigint) RETURNS timestamp
     LANGUAGE sql IMMUTABLE STRICT AS $$
-      SELECT timestamp '1970-01-01 00:00:00' + make_interval(secs => 1692803367 + (drand_round - 1) * 3)
+      SELECT timestamp '1970-01-01 00:00:00' + interval '1 second' * (1692803367 + (drand_round - 1) * 3)
     $$
     """)
 
@@ -74,10 +74,94 @@ defmodule WallopCore.Repo.Migrations.AddV6DrawGuard do
     """)
 
     execute("""
+    CREATE OR REPLACE FUNCTION wallop_parse_rfc3339_usec(value text) RETURNS timestamp
+    LANGUAGE plpgsql STABLE STRICT AS $$
+    BEGIN
+      IF value !~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[.][0-9]{6}Z$' THEN
+        RAISE EXCEPTION 'not a canonical UTC timestamp: %', value;
+      END IF;
+      -- A timestamp literal ignores the trailing Z.
+      RETURN value::timestamp;
+    END;
+    $$
+    """)
+
+    execute("""
+    CREATE OR REPLACE FUNCTION wallop_check_v6_lock_receipt(d draws, r operator_receipts)
+    RETURNS void
+    LANGUAGE plpgsql STABLE AS $$
+    DECLARE
+      p jsonb := convert_from(r.payload_jcs, 'UTF8')::jsonb;
+    BEGIN
+      IF p->>'schema_version' IS DISTINCT FROM d.lock_schema_version
+         OR p->>'entropy_composition' IS DISTINCT FROM d.entropy_composition THEN
+        RAISE EXCEPTION 'a v6 lock receipt must carry its draw''s schema and entropy_composition';
+      END IF;
+
+      IF wallop_parse_rfc3339_usec(p->>'locked_at') IS DISTINCT FROM r.locked_at THEN
+        RAISE EXCEPTION 'receipt locked_at must equal the signed locked_at';
+      END IF;
+
+      IF p->>'draw_id' IS DISTINCT FROM d.id::text OR r.draw_id IS DISTINCT FROM d.id THEN
+        RAISE EXCEPTION 'v6 lock receipt field % does not match the draw', 'draw_id';
+      END IF;
+      IF p->>'operator_id' IS DISTINCT FROM d.operator_id::text
+         OR r.operator_id IS DISTINCT FROM d.operator_id THEN
+        RAISE EXCEPTION 'v6 lock receipt field % does not match the draw', 'operator_id';
+      END IF;
+      IF p->>'operator_slug' IS DISTINCT FROM (SELECT slug::text FROM operators WHERE id = d.operator_id) THEN
+        RAISE EXCEPTION 'v6 lock receipt field % does not match the draw', 'operator_slug';
+      END IF;
+      IF p->'sequence' IS DISTINCT FROM to_jsonb(d.operator_sequence)
+         OR r.sequence IS DISTINCT FROM d.operator_sequence THEN
+        RAISE EXCEPTION 'v6 lock receipt field % does not match the draw', 'sequence';
+      END IF;
+      IF p->>'entry_hash' IS DISTINCT FROM d.entry_hash OR r.entry_hash IS DISTINCT FROM d.entry_hash THEN
+        RAISE EXCEPTION 'v6 lock receipt field % does not match the draw', 'entry_hash';
+      END IF;
+      IF p->>'commitment_hash' IS DISTINCT FROM d.entry_hash
+         OR r.commitment_hash IS DISTINCT FROM d.entry_hash THEN
+        RAISE EXCEPTION 'v6 lock receipt field % does not match the draw', 'commitment_hash';
+      END IF;
+      IF p->'winner_count' IS DISTINCT FROM to_jsonb(d.winner_count) THEN
+        RAISE EXCEPTION 'v6 lock receipt field % does not match the draw', 'winner_count';
+      END IF;
+      IF p->>'drand_chain' IS DISTINCT FROM d.drand_chain THEN
+        RAISE EXCEPTION 'v6 lock receipt field % does not match the draw', 'drand_chain';
+      END IF;
+      IF p->'drand_round' IS DISTINCT FROM to_jsonb(d.drand_round) THEN
+        RAISE EXCEPTION 'v6 lock receipt field % does not match the draw', 'drand_round';
+      END IF;
+      IF p->>'weather_station' IS DISTINCT FROM d.weather_station THEN
+        RAISE EXCEPTION 'v6 lock receipt field % does not match the draw', 'weather_station';
+      END IF;
+      IF wallop_parse_rfc3339_usec(p->>'weather_time') IS DISTINCT FROM d.weather_time THEN
+        RAISE EXCEPTION 'v6 lock receipt field % does not match the draw', 'weather_time';
+      END IF;
+      IF p->>'signing_key_id' IS DISTINCT FROM r.signing_key_id
+         OR NOT EXISTS (SELECT 1 FROM operator_signing_keys k
+                        WHERE k.operator_id = d.operator_id AND k.key_id = r.signing_key_id) THEN
+        RAISE EXCEPTION 'v6 lock receipt field % does not match the draw', 'signing_key_id';
+      END IF;
+
+      IF d.entropy_composition IS NOT DISTINCT FROM wallop_landobs_tag() THEN
+        IF wallop_landobs_lock_allowed(r.locked_at, wallop_landobs_weather_time(d.drand_round))
+           IS NOT TRUE THEN
+          RAISE EXCEPTION 'v6 signed locked_at is too late for this draw time';
+        END IF;
+      ELSE
+        RAISE EXCEPTION 'no lock receipt rules for entropy_composition %', d.entropy_composition;
+      END IF;
+    END;
+    $$
+    """)
+
+    execute("""
     CREATE OR REPLACE FUNCTION guard_v6_draw() RETURNS trigger AS $$
     DECLARE
       now_utc timestamp := statement_timestamp() AT TIME ZONE 'UTC';
       obs RECORD;
+      r operator_receipts%ROWTYPE;
     BEGIN
       -- Every comparison that could meet a NULL is written so that NULL
       -- refuses (IS DISTINCT FROM, IS NOT TRUE), never passes.
@@ -122,6 +206,13 @@ defmodule WallopCore.Repo.Migrations.AddV6DrawGuard do
         ELSE
           RAISE EXCEPTION 'no lock rules for entropy_composition %', NEW.entropy_composition;
         END IF;
+
+        -- A receipt inserted before this UPDATE gets the same checks it
+        -- would get if inserted after.
+        SELECT * INTO r FROM operator_receipts WHERE draw_id = NEW.id;
+        IF FOUND THEN
+          PERFORM wallop_check_v6_lock_receipt(NEW, r);
+        END IF;
       END IF;
 
       IF OLD.lock_schema_version = '6' AND OLD.status <> 'completed' AND NEW.status = 'completed' THEN
@@ -160,38 +251,18 @@ defmodule WallopCore.Repo.Migrations.AddV6DrawGuard do
     execute("""
     CREATE OR REPLACE FUNCTION guard_v6_lock_receipt() RETURNS trigger AS $$
     DECLARE
-      d RECORD;
-      payload jsonb;
+      d draws%ROWTYPE;
     BEGIN
-      SELECT lock_schema_version, entropy_composition, drand_round INTO d
-        FROM draws WHERE id = NEW.draw_id;
+      SELECT * INTO d FROM draws WHERE id = NEW.draw_id;
 
-      IF NOT FOUND OR d.lock_schema_version IS NULL THEN
+      IF d.lock_schema_version IS NULL AND d.entropy_composition IS NULL THEN
+        IF convert_from(NEW.payload_jcs, 'UTF8')::jsonb->>'schema_version' IS NOT DISTINCT FROM '6' THEN
+          RAISE EXCEPTION 'a schema 6 lock receipt needs a draw locked under schema 6';
+        END IF;
         RETURN NEW;
       END IF;
 
-      payload := convert_from(NEW.payload_jcs, 'UTF8')::jsonb;
-
-      IF payload->>'schema_version' IS DISTINCT FROM d.lock_schema_version
-         OR payload->>'entropy_composition' IS DISTINCT FROM d.entropy_composition THEN
-        RAISE EXCEPTION 'a v6 lock receipt must carry its draw''s schema and entropy_composition';
-      END IF;
-
-      -- A timestamp literal ignores the trailing Z, so this reads UTC
-      -- whatever the session time zone.
-      IF (payload->>'locked_at')::timestamp IS DISTINCT FROM NEW.locked_at THEN
-        RAISE EXCEPTION 'receipt locked_at must equal the signed locked_at';
-      END IF;
-
-      IF d.entropy_composition = wallop_landobs_tag() THEN
-        IF wallop_landobs_lock_allowed(NEW.locked_at, wallop_landobs_weather_time(d.drand_round))
-           IS NOT TRUE THEN
-          RAISE EXCEPTION 'v6 signed locked_at is too late for this draw time';
-        END IF;
-      ELSE
-        RAISE EXCEPTION 'no lock receipt rules for entropy_composition %', d.entropy_composition;
-      END IF;
-
+      PERFORM wallop_check_v6_lock_receipt(d, NEW);
       RETURN NEW;
     END;
     $$ LANGUAGE plpgsql
@@ -201,9 +272,33 @@ defmodule WallopCore.Repo.Migrations.AddV6DrawGuard do
     CREATE TRIGGER operator_receipts_v6_guard BEFORE INSERT ON operator_receipts
       FOR EACH ROW EXECUTE FUNCTION guard_v6_lock_receipt()
     """)
+
+    execute("""
+    CREATE OR REPLACE FUNCTION guard_v6_draw_insert() RETURNS trigger AS $$
+    BEGIN
+      IF NEW.lock_schema_version IS NOT NULL OR NEW.entropy_composition IS NOT NULL THEN
+        RAISE EXCEPTION 'lock_schema_version and entropy_composition are set only when a draw leaves open';
+      END IF;
+      RETURN NEW;
+    END;
+    $$ LANGUAGE plpgsql
+    """)
+
+    execute("""
+    CREATE TRIGGER draws_v6_insert_guard BEFORE INSERT ON draws
+      FOR EACH ROW EXECUTE FUNCTION guard_v6_draw_insert()
+    """)
   end
 
   def down do
+    execute("""
+    DROP TRIGGER IF EXISTS draws_v6_insert_guard ON draws
+    """)
+
+    execute("""
+    DROP FUNCTION IF EXISTS guard_v6_draw_insert()
+    """)
+
     execute("""
     DROP TRIGGER IF EXISTS operator_receipts_v6_guard ON operator_receipts
     """)
@@ -218,6 +313,14 @@ defmodule WallopCore.Repo.Migrations.AddV6DrawGuard do
 
     execute("""
     DROP FUNCTION IF EXISTS guard_v6_draw()
+    """)
+
+    execute("""
+    DROP FUNCTION IF EXISTS wallop_check_v6_lock_receipt(draws, operator_receipts)
+    """)
+
+    execute("""
+    DROP FUNCTION IF EXISTS wallop_parse_rfc3339_usec(text)
     """)
 
     execute("""

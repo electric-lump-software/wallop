@@ -57,6 +57,40 @@ defmodule WallopCore.Weather.SqlSchedulePropertyTest do
     end
   end
 
+  property "wallop_parse_rfc3339_usec reads the receipts' canonical time strings exactly" do
+    check all(us <- integer(0..4_102_444_800_000_000), max_runs: 300) do
+      dt = DateTime.from_unix!(us, :microsecond)
+
+      assert utc(
+               sql_one("SELECT wallop_parse_rfc3339_usec($1)", [
+                 WallopCore.Time.to_rfc3339_usec(dt)
+               ])
+             ) ==
+               dt
+    end
+  end
+
+  test "wallop_parse_rfc3339_usec refuses anything but the canonical form" do
+    for bad <- [
+          "2026-10-15T12:00:00Z",
+          "2026-10-15T12:00:00.000000+00:00",
+          "2026-10-15T12:00:00.000000+05:30",
+          "2026-10-15 12:00:00.000000Z",
+          "2026-10-15T12:00:00.000000"
+        ] do
+      assert_raise Postgrex.Error, ~r/not a canonical UTC timestamp/, fn ->
+        Repo.transaction(fn -> Repo.query!("SELECT wallop_parse_rfc3339_usec($1)", [bad]) end)
+      end
+    end
+  end
+
+  test "pub time is exact at the far end of the property range and beyond" do
+    for round <- [1, 90_000_000, 1_000_000_000] do
+      assert utc(sql_one("SELECT wallop_quicknet_pub_time($1)", [round])) ==
+               Schedule.pub_time(round)
+    end
+  end
+
   describe "pinned boundaries" do
     @h ~U[2026-10-15 12:00:00.000000Z]
 

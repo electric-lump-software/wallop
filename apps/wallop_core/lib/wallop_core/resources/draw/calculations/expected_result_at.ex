@@ -2,37 +2,45 @@ defmodule WallopCore.Resources.Draw.Calculations.ExpectedResultAt do
   @moduledoc """
   When an observation-weather draw's result is due: pub(drand_round) for a
   draw locked under (lock schema "6", the Land Observations tag). Nil for
-  every draw without a lock schema. Any other pair raises, rather than fall
-  through to a tag's rule; the draws guard never stores one.
+  every draw without a lock schema.
+
+  Any other combination is a row the draws guard should never have stored.
+  This is a public read path, so it never raises: it returns nil and logs a
+  warning naming only the redacted draw id. It never falls through to a
+  tag's rule.
   """
   use Ash.Resource.Calculation
 
+  require Logger
+
+  alias WallopCore.Log
   alias WallopCore.Protocol.Tags.LandObs
   alias WallopCore.Weather.Schedule
 
+  @landobs LandObs.tag()
+
   @impl true
   def load(_query, _opts, _context),
-    do: [:lock_schema_version, :entropy_composition, :drand_round]
+    do: [:id, :lock_schema_version, :entropy_composition, :drand_round]
 
   @impl true
   def calculate(records, _opts, _context), do: Enum.map(records, &expected_result_at/1)
 
-  defp expected_result_at(%{lock_schema_version: nil}), do: nil
+  defp expected_result_at(%{lock_schema_version: nil, entropy_composition: nil}), do: nil
 
   defp expected_result_at(%{
          lock_schema_version: "6",
-         entropy_composition: tag,
+         entropy_composition: @landobs,
          drand_round: round
        })
-       when is_integer(round) do
-    if tag == LandObs.tag(),
-      do: Schedule.pub_time(round),
-      else:
-        raise(ArgumentError, "no expected_result_at rule for entropy_composition #{inspect(tag)}")
-  end
+       when is_integer(round) and round >= 1,
+       do: Schedule.pub_time(round)
 
-  defp expected_result_at(%{lock_schema_version: schema, entropy_composition: tag}) do
-    raise ArgumentError,
-          "no expected_result_at rule for (#{inspect(schema)}, #{inspect(tag)})"
+  defp expected_result_at(record) do
+    Logger.warning(
+      "ExpectedResultAt: inconsistent lock schema on draw #{Log.redact_id(Map.get(record, :id))}"
+    )
+
+    nil
   end
 end

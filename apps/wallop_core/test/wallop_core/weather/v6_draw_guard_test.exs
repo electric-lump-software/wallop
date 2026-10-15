@@ -5,16 +5,22 @@ defmodule WallopCore.Weather.V6DrawGuardTest do
   """
   use WallopCore.DataCase, async: false
 
+  import ExUnit.CaptureLog
+
   import WallopCore.TestHelpers
 
+  require Ash.Query
+
   alias WallopCore.Drand.Quicknet
+  alias WallopCore.Protocol
   alias WallopCore.Protocol.Tags.LandObs
-  alias WallopCore.Resources.Draw
+  alias WallopCore.Resources.{Draw, Operator, OperatorSigningKey}
   alias WallopCore.Weather.{Schedule, Stations}
 
   @lock_sql """
   UPDATE draws SET status = $5, lock_schema_version = $6, entropy_composition = $7,
-    drand_chain = $8, drand_round = $2, weather_time = $3, weather_station = $4
+    drand_chain = $8, drand_round = $2, weather_time = $3, weather_station = $4,
+    entry_hash = $9, entry_canonical = $10
   WHERE id = $1
   """
 
@@ -40,6 +46,8 @@ defmodule WallopCore.Weather.V6DrawGuardTest do
         overrides
       )
 
+    {hash, canonical} = entry_hash(draw)
+
     refusal(@lock_sql, [
       Ecto.UUID.dump!(draw.id),
       round,
@@ -48,9 +56,14 @@ defmodule WallopCore.Weather.V6DrawGuardTest do
       o[:status],
       o[:schema],
       o[:tag],
-      o[:chain]
+      o[:chain],
+      hash,
+      canonical
     ])
   end
+
+  defp entry_hash(draw),
+    do: Protocol.entry_hash({draw.id, WallopCore.Entries.load_for_draw(draw.id)})
 
   defp id(draw), do: Ecto.UUID.dump!(draw.id)
 
@@ -189,23 +202,15 @@ defmodule WallopCore.Weather.V6DrawGuardTest do
   end
 
   describe "the v6 lock receipt" do
-    test "put_v6_awaiting! stores a draw and a signed receipt the guards accept", %{
-      draw: d,
-      s: s
-    } do
-      v6 = put_v6_awaiting!(d, s.weather_time, s.round)
+    test "a real signed receipt passes after a real lock", %{draw: d, s: s} do
+      assert lock(d, s.weather_time, s.round) == nil
+      {hash, _} = entry_hash(d)
+      receipt = insert_v6_lock_receipt!(d, hash, LandObs.tag(), s.round)
 
-      assert v6.status == :awaiting_entropy
-      assert {v6.lock_schema_version, v6.entropy_composition} == {"6", LandObs.tag()}
-      assert v6.expected_result_at == s.expected_result_at
-
-      receipt = Ash.load!(v6, :receipt, authorize?: false).receipt
       payload = Jason.decode!(receipt.payload_jcs)
-
       assert payload["schema_version"] == "6"
       assert payload["entropy_composition"] == LandObs.tag()
       assert payload["weather_time"] == WallopCore.Time.to_rfc3339_usec(s.weather_time)
-
       assert DateTime.compare(receipt.locked_at, s.latest_lock_at) == :lt
     end
 
@@ -215,39 +220,181 @@ defmodule WallopCore.Weather.V6DrawGuardTest do
       v6 = put_v6_awaiting!(d, wt, round)
 
       assert DateTime.compare(v6.weather_time, wt) == :eq
+      assert {v6.lock_schema_version, v6.entropy_composition} == {"6", LandObs.tag()}
       assert v6.expected_result_at == Quicknet.pub_time(round)
+
+      payload = Jason.decode!(Ash.load!(v6, :receipt, authorize?: false).receipt.payload_jcs)
+
+      assert payload["weather_time"] ==
+               WallopCore.Time.to_rfc3339_usec(Schedule.weather_time_for_round(round))
     end
 
-    test "a receipt must carry the draw's schema and tag, and a locked_at in time", %{
+    test "the crafted valid receipt passes, so the refusals below are about one field", %{
       draw: d,
       s: s
     } do
       assert lock(d, s.weather_time, s.round) == nil
-
-      ok_at = s.latest_lock_at
-      late_at = DateTime.add(ok_at, 1, :microsecond)
-
-      assert insert_receipt(d, late_at, %{}) ==
-               "v6 signed locked_at is too late for this draw time"
-
-      assert insert_receipt(d, ok_at, %{"schema_version" => "5"}) ==
-               "a v6 lock receipt must carry its draw's schema and entropy_composition"
-
-      assert insert_receipt(d, ok_at, %{"entropy_composition" => "drand-quicknet+openmeteo-v1"}) ==
-               "a v6 lock receipt must carry its draw's schema and entropy_composition"
-
-      assert insert_receipt(d, ok_at, %{
-               "locked_at" => WallopCore.Time.to_rfc3339_usec(DateTime.add(ok_at, -1, :second))
-             }) == "receipt locked_at must equal the signed locked_at"
-
-      # Last, because a draw has one receipt.
-      assert insert_receipt(d, ok_at, %{}) == nil
+      {payload, cols} = valid_receipt(d, s)
+      assert insert_receipt(payload, cols) == nil
     end
 
-    test "a forecast draw's receipt is not checked" do
+    test "the signed locked_at must be in time and equal the column", %{draw: d, s: s} do
+      assert lock(d, s.weather_time, s.round) == nil
+      {payload, cols} = valid_receipt(d, s)
+      late = DateTime.add(s.latest_lock_at, 1, :microsecond)
+
+      assert insert_receipt(%{payload | "locked_at" => rfc(late)}, %{cols | locked_at: late}) ==
+               "v6 signed locked_at is too late for this draw time"
+
+      assert insert_receipt(payload, %{cols | locked_at: DateTime.add(cols.locked_at, -1)}) ==
+               "receipt locked_at must equal the signed locked_at"
+    end
+
+    test "schema and tag must match the draw's", %{draw: d, s: s} do
+      assert lock(d, s.weather_time, s.round) == nil
+      {payload, cols} = valid_receipt(d, s)
+
+      for {key, value} <- [
+            {"schema_version", "5"},
+            {"schema_version", nil},
+            {"entropy_composition", "drand-quicknet+openmeteo-v1"},
+            {"entropy_composition", nil}
+          ] do
+        assert insert_receipt(Map.put(payload, key, value), cols) ==
+                 "a v6 lock receipt must carry its draw's schema and entropy_composition",
+               inspect({key, value})
+      end
+    end
+
+    test "every signed field with a row counterpart is bound to it", %{draw: d, s: s} do
+      assert lock(d, s.weather_time, s.round) == nil
+      {payload, cols} = valid_receipt(d, s)
+      other_hash = String.duplicate("ab", 32)
+
+      payload_cases = [
+        {"draw_id", Ecto.UUID.generate()},
+        {"operator_id", Ecto.UUID.generate()},
+        {"operator_slug", "someone-else"},
+        {"sequence", payload["sequence"] + 1},
+        {"entry_hash", other_hash},
+        {"commitment_hash", other_hash},
+        {"winner_count", payload["winner_count"] + 1},
+        {"drand_chain", String.duplicate("0", 64)},
+        {"drand_round", payload["drand_round"] + 1},
+        {"weather_station", Stations.backup().id},
+        {"weather_time", rfc(DateTime.add(s.weather_time, 3600))},
+        {"signing_key_id", "deadbeef"}
+      ]
+
+      for {key, value} <- payload_cases do
+        assert insert_receipt(Map.put(payload, key, value), cols) ==
+                 "v6 lock receipt field #{key} does not match the draw",
+               key
+      end
+
+      column_cases = [
+        {:entry_hash, "entry_hash", other_hash},
+        {:commitment_hash, "commitment_hash", other_hash},
+        {:sequence, "sequence", cols.sequence + 1},
+        {:signing_key_id, "signing_key_id", "deadbeef"}
+      ]
+
+      for {col, key, value} <- column_cases do
+        assert insert_receipt(payload, Map.put(cols, col, value)) ==
+                 "v6 lock receipt field #{key} does not match the draw",
+               "column #{col}"
+      end
+    end
+
+    test "a signing key of another operator is refused", %{draw: d, s: s} do
+      assert lock(d, s.weather_time, s.round) == nil
+      {payload, cols} = valid_receipt(d, s)
+      other = key_for(create_operator())
+
+      assert insert_receipt(%{payload | "signing_key_id" => other.key_id}, %{
+               cols
+               | signing_key_id: other.key_id
+             }) == "v6 lock receipt field signing_key_id does not match the draw"
+    end
+
+    test "signed times must be canonical UTC strings", %{draw: d, s: s} do
+      assert lock(d, s.weather_time, s.round) == nil
+      {payload, cols} = valid_receipt(d, s)
+      offset = Calendar.strftime(s.weather_time, "%Y-%m-%dT%H:%M:%S.000000+00:00")
+
+      assert insert_receipt(%{payload | "weather_time" => offset}, cols) ==
+               "not a canonical UTC timestamp: #{offset}"
+    end
+  end
+
+  describe "the receipt guard fails closed" do
+    test "a schema 6 receipt on a draw without a lock schema is refused", %{draw: d, s: s} do
+      {payload, cols} = valid_receipt(d, s)
+
+      assert insert_receipt(payload, cols) ==
+               "a schema 6 lock receipt needs a draw locked under schema 6"
+    end
+
+    test "a non-6 receipt on a draw without a lock schema is untouched", %{draw: d, s: s} do
+      {payload, cols} = valid_receipt(d, s)
+      # Anything goes here, as before: the guard does not look past the schema.
+      assert insert_receipt(%{payload | "schema_version" => "5", "drand_round" => 1}, cols) ==
+               nil
+    end
+
+    test "a receipt inserted before the lock gets the same checks at the lock", %{
+      draw: d,
+      s: s
+    } do
+      {payload, cols} = valid_receipt(d, s)
+      assert insert_receipt(%{payload | "schema_version" => "5"}, cols) == nil
+
+      assert lock(d, s.weather_time, s.round) ==
+               "a v6 lock receipt must carry its draw's schema and entropy_composition"
+    end
+
+    test "a forecast lock and its receipt work as before" do
       draw = create_draw(create_api_key())
       receipt = Ash.load!(draw, :receipt, authorize?: false).receipt
       assert Jason.decode!(receipt.payload_jcs)["schema_version"] != "6"
+    end
+  end
+
+  describe "inserting a draw" do
+    @copy_sql """
+    INSERT INTO draws (id, status, winner_count, entry_count, api_key_id, operator_id,
+      operator_sequence, stage_timestamps, inserted_at, updated_at,
+      lock_schema_version, entropy_composition)
+    SELECT $2, $3, winner_count, entry_count, api_key_id, operator_id,
+      operator_sequence + 100000, stage_timestamps, inserted_at, updated_at, $4, $5
+    FROM draws WHERE id = $1
+    """
+
+    defp copy(draw, status, schema, tag),
+      do:
+        refusal(@copy_sql, [
+          id(draw),
+          Ecto.UUID.dump!(Ecto.UUID.generate()),
+          status,
+          schema,
+          tag
+        ])
+
+    test "a draw without a lock schema inserts as before", %{draw: d} do
+      assert copy(d, "open", nil, nil) == nil
+    end
+
+    test "a draw can't be inserted with a lock schema or tag", %{draw: d} do
+      for {status, schema, tag} <- [
+            {"open", "6", LandObs.tag()},
+            {"awaiting_entropy", "6", LandObs.tag()},
+            {"open", "6", nil},
+            {"open", nil, LandObs.tag()}
+          ] do
+        assert copy(d, status, schema, tag) ==
+                 "lock_schema_version and entropy_composition are set only when a draw leaves open",
+               inspect({status, schema, tag})
+      end
     end
   end
 
@@ -283,14 +430,41 @@ defmodule WallopCore.Weather.V6DrawGuardTest do
              ) == [nil, Quicknet.pub_time(7)]
     end
 
-    test "an unknown pair raises rather than fall through" do
+    test "an inconsistent row gives nil and a warning naming only the redacted id" do
+      draw_id = Ecto.UUID.generate()
+
       for record <- [
             %{lock_schema_version: "6", entropy_composition: "other-v1", drand_round: 7},
             %{lock_schema_version: "7", entropy_composition: LandObs.tag(), drand_round: 7},
-            %{lock_schema_version: "6", entropy_composition: LandObs.tag(), drand_round: nil}
+            %{lock_schema_version: "6", entropy_composition: LandObs.tag(), drand_round: nil},
+            %{lock_schema_version: nil, entropy_composition: LandObs.tag(), drand_round: 7}
           ] do
-        assert_raise ArgumentError, fn -> ExpectedResultAt.calculate([record], [], %{}) end
+        log =
+          capture_log(fn ->
+            assert ExpectedResultAt.calculate([Map.put(record, :id, draw_id)], [], %{}) == [nil]
+          end)
+
+        assert log =~ "inconsistent lock schema on draw #{WallopCore.Log.redact_id(draw_id)}"
+        refute log =~ draw_id
       end
+    end
+
+    test "an inconsistent stored row reads as nil, not an error", %{draw: d} do
+      Repo.query!("SET session_replication_role = replica")
+
+      try do
+        Repo.query!(
+          "UPDATE draws SET lock_schema_version = '6', entropy_composition = 'other-v1' WHERE id = $1",
+          [id(d)]
+        )
+      after
+        Repo.query!("RESET session_replication_role")
+      end
+
+      capture_log(fn ->
+        assert Ash.get!(Draw, d.id, authorize?: false, load: [:expected_result_at]).expected_result_at ==
+                 nil
+      end)
     end
   end
 
@@ -306,32 +480,78 @@ defmodule WallopCore.Weather.V6DrawGuardTest do
     assert v5.expected_result_at == nil
   end
 
-  # Inserts a lock receipt for `draw` whose column locked_at is `locked_at`
-  # and whose payload is a v6 payload with `overrides` merged in. The
-  # signature is not checked by the database, so it is a placeholder.
-  defp insert_receipt(draw, locked_at, overrides) do
+  defp rfc(dt), do: WallopCore.Time.to_rfc3339_usec(dt)
+
+  defp key_for(operator) do
+    operator_id = operator.id
+
+    OperatorSigningKey
+    |> Ash.Query.filter(operator_id == ^operator_id)
+    |> Ash.read_one!(authorize?: false)
+  end
+
+  # A payload and receipt columns that pass the guards for `draw` locked by
+  # lock(draw, s.weather_time, s.round), built by the real lock v6 builder.
+  defp valid_receipt(draw, s) do
+    operator = Ash.get!(Operator, draw.operator_id, authorize?: false)
+    key = key_for(operator)
+    {hash, _} = entry_hash(draw)
+    locked_at = DateTime.add(s.latest_lock_at, -60)
+
     payload =
       %{
-        "schema_version" => "6",
-        "entropy_composition" => LandObs.tag(),
-        "locked_at" => WallopCore.Time.to_rfc3339_usec(locked_at)
+        entropy_composition: LandObs.tag(),
+        operator_id: operator.id,
+        operator_slug: to_string(operator.slug),
+        sequence: draw.operator_sequence,
+        draw_id: draw.id,
+        commitment_hash: hash,
+        entry_hash: hash,
+        locked_at: locked_at,
+        signing_key_id: key.key_id,
+        winner_count: draw.winner_count,
+        drand_chain: Quicknet.chain_hash(),
+        drand_round: s.round,
+        weather_station: Stations.primary().id,
+        weather_time: s.weather_time,
+        wallop_core_version: "0.0.0",
+        fair_pick_version: "0.0.0"
       }
-      |> Map.merge(overrides)
-      |> Jason.encode!()
+      |> Protocol.build_v6_lock_payload()
+      |> Jason.decode!()
 
+    cols = %{
+      operator_id: operator.id,
+      sequence: draw.operator_sequence,
+      commitment_hash: hash,
+      entry_hash: hash,
+      locked_at: locked_at,
+      signing_key_id: key.key_id,
+      draw_id: draw.id
+    }
+
+    {payload, cols}
+  end
+
+  # Inserts a receipt row as given. The database does not check the
+  # signature, so it is a placeholder.
+  defp insert_receipt(payload, cols) do
     refusal(
       """
       INSERT INTO operator_receipts (id, operator_id, draw_id, sequence, commitment_hash,
         entry_hash, locked_at, signing_key_id, payload_jcs, signature, inserted_at)
-      VALUES ($1, $2, $3, $4, 'h', 'h', $5, 'k', $6, $7, $5)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $7)
       """,
       [
         Ecto.UUID.dump!(Ecto.UUID.generate()),
-        Ecto.UUID.dump!(draw.operator_id),
-        id(draw),
-        draw.operator_sequence,
-        DateTime.to_naive(locked_at),
-        payload,
+        Ecto.UUID.dump!(cols.operator_id),
+        Ecto.UUID.dump!(cols.draw_id),
+        cols.sequence,
+        cols.commitment_hash,
+        cols.entry_hash,
+        DateTime.to_naive(cols.locked_at),
+        cols.signing_key_id,
+        Jason.encode!(payload),
         :binary.copy(<<0>>, 64)
       ]
     )
