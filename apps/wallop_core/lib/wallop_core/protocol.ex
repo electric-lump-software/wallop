@@ -548,8 +548,15 @@ defmodule WallopCore.Protocol do
     raise ArgumentError, "lock v6 / execution v5 input must carry :drand_chain"
   end
 
-  # A tag may add fields, never replace a base field.
+  # A tag may add fields, never replace a base field. Keys must be strings,
+  # like the base keys, so an atom key can't slip past the clash check and
+  # then encode as a duplicate.
   defp merge_tag_fields!(base, extra) do
+    case Enum.reject(Map.keys(extra), &is_binary/1) do
+      [] -> :ok
+      bad -> raise ArgumentError, "tag field keys must be strings, got: #{inspect(bad)}"
+    end
+
     case Enum.filter(Map.keys(extra), &Map.has_key?(base, &1)) do
       [] -> Map.merge(base, extra)
       clash -> raise ArgumentError, "tag fields would replace base fields: #{inspect(clash)}"
