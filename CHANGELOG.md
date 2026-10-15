@@ -14,7 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `ApiKey` actions `update_tier`, `increment_draw_count` and `reset_draw_count` are gone. `update_tier` becomes `set_rate_limit`, which accepts only `rate_limit_per_minute`. `create` still accepts `rate_limit_per_minute`, but no longer `tier`, `monthly_draw_limit` or `count_reset_at`. Passing any of the old quota fields to `create` or `set_rate_limit` now returns `Ash.Error.Invalid`.
 - The modules `WallopCore.Resources.ApiKey.Changes.IncrementDrawCount`, `WallopCore.Resources.ApiKey.Changes.AdvanceResetAt` and `WallopCore.Resources.Draw.Changes.IncrementApiKeyDrawCount` are deleted.
 - `WallopWeb.Plugs.TierLimit` and the `tier_limit_exceeded` error code are gone.
-- The `tier`, `monthly_draw_limit`, `monthly_draw_count` and `count_reset_at` attributes are no longer used by anything in this version. They're still mapped, so don't drop the columns yourself; a later release drops them. They stay for now so a consumer on an older `wallop_core` can still use the table.
+- The `tier`, `monthly_draw_limit`, `monthly_draw_count` and `count_reset_at` attributes are no longer used by anything in this version. They're still mapped so a consumer on an older `wallop_core` can still use the table. Don't drop the columns yourself; a later release drops them.
 
 **CHANGED.** Creating a draw no longer writes to the API key's row, so a key creating many draws at once no longer queues on a row lock.
 
