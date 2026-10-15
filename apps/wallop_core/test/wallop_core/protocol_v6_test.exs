@@ -94,19 +94,59 @@ defmodule WallopCore.ProtocolV6Test do
   end
 
   test "the landobs tag adds no fields: its key lists are the lock 5 / exec 4 key sets" do
-    lock_v5 = Jason.decode!(Protocol.build_receipt_payload(%{@lock | weather_station: "x"}))
-
-    exec_v4 =
-      Jason.decode!(
-        Protocol.build_execution_receipt_payload(%{
-          @exec
-          | weather_station: "x",
-            weather_value: "102500"
-        })
-      )
+    lock_v5 = Jason.decode!(Protocol.build_receipt_payload(v5_input(@lock)))
+    exec_v4 = Jason.decode!(Protocol.build_execution_receipt_payload(v5_input(@exec)))
 
     assert LandObs.lock_keys() == Map.keys(lock_v5)
     assert LandObs.exec_keys() == Map.keys(exec_v4)
+  end
+
+  # The same input, as the lock 5 / execution 4 builders take it: no tag,
+  # the old station and an old-style value.
+  defp v5_input(input) do
+    input
+    |> Map.delete(:entropy_composition)
+    |> Map.put(:weather_station, "middle-wallop")
+    |> old_style_value()
+  end
+
+  defp old_style_value(%{weather_value: value} = input) when is_binary(value),
+    do: %{input | weather_value: "102500"}
+
+  defp old_style_value(input), do: input
+
+  describe "the lock 5 / execution 4 builders and the tag" do
+    test "no tag or the openmeteo tag keeps today's bytes" do
+      openmeteo = Protocol.entropy_composition()
+
+      for input <- [v5_input(@lock), Map.put(v5_input(@lock), :entropy_composition, openmeteo)] do
+        assert Protocol.build_receipt_payload(input) ==
+                 Protocol.build_receipt_payload(v5_input(@lock))
+      end
+
+      for input <- [v5_input(@exec), Map.put(v5_input(@exec), :entropy_composition, openmeteo)] do
+        assert Protocol.build_execution_receipt_payload(input) ==
+                 Protocol.build_execution_receipt_payload(v5_input(@exec))
+      end
+
+      decoded = Jason.decode!(Protocol.build_receipt_payload(v5_input(@lock)))
+      assert decoded["entropy_composition"] == "drand-quicknet+openmeteo-v1"
+      assert decoded["schema_version"] == "5"
+    end
+
+    test "any other tag is refused" do
+      for tag <- [@landobs, "drand-quicknet+metoffice-landobs-v2", "", nil] do
+        assert_raise ArgumentError, ~r/entropy_composition/, fn ->
+          Protocol.build_receipt_payload(Map.put(v5_input(@lock), :entropy_composition, tag))
+        end
+
+        assert_raise ArgumentError, ~r/entropy_composition/, fn ->
+          Protocol.build_execution_receipt_payload(
+            Map.put(v5_input(@exec), :entropy_composition, tag)
+          )
+        end
+      end
+    end
   end
 
   describe "the entropy tag" do
@@ -271,7 +311,7 @@ defmodule WallopCore.ProtocolV6Test do
 
     test "v5 builders still refuse the landobs-only fallback reason" do
       assert_raise ArgumentError, fn ->
-        Protocol.build_execution_receipt_payload(%{@fallback | weather_station: "middle-wallop"})
+        Protocol.build_execution_receipt_payload(v5_input(@fallback))
       end
     end
 

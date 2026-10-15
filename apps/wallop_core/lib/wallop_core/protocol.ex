@@ -205,6 +205,8 @@ defmodule WallopCore.Protocol do
   """
   @spec build_receipt_payload(map()) :: binary()
   def build_receipt_payload(input) do
+    refuse_foreign_tag!(input)
+
     input
     |> lock_fields(@receipt_schema_version, @entropy_composition)
     |> Jcs.encode()
@@ -259,6 +261,20 @@ defmodule WallopCore.Protocol do
     payload
   end
 
+  # The lock 5 / execution 4 builders sign only their own tag. An input
+  # that names another tag (a v6 input sent here by mistake) is refused
+  # rather than silently signed under the wrong rules. No key keeps the
+  # long-standing behaviour.
+  defp refuse_foreign_tag!(%{entropy_composition: @entropy_composition}), do: :ok
+
+  defp refuse_foreign_tag!(%{entropy_composition: other}) do
+    raise ArgumentError,
+          "lock v5 / execution v4 receipts carry entropy_composition " <>
+            "#{inspect(@entropy_composition)}, got: #{inspect(other)}"
+  end
+
+  defp refuse_foreign_tag!(_input), do: :ok
+
   # Frozen enum for the execution receipt's `weather_fallback_reason`
   # field. Anything outside this set raises — the classifier in
   # `WallopCore.Entropy.WeatherFallback` is the only permitted source.
@@ -302,6 +318,7 @@ defmodule WallopCore.Protocol do
   """
   @spec build_execution_receipt_payload(map()) :: binary()
   def build_execution_receipt_payload(%{weather_fallback_reason: reason} = input) do
+    refuse_foreign_tag!(input)
     validate_weather_fallback_reason!(reason)
 
     input
