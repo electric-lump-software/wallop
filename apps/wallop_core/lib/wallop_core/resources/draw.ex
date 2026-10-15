@@ -20,6 +20,43 @@ defmodule WallopCore.Resources.Draw do
 
   json_api do
     type("draw")
+
+    # Every public attribute, plus expected_result_at. Calculations are not
+    # in the JSON by default, so listing the fields is how it gets there.
+    default_fields([
+      :id,
+      :status,
+      :name,
+      :entry_count,
+      :entry_hash,
+      :entry_canonical,
+      :winner_count,
+      :seed,
+      :seed_source,
+      :seed_json,
+      :results,
+      :drand_chain,
+      :drand_round,
+      :drand_randomness,
+      :drand_signature,
+      :drand_response,
+      :weather_station,
+      :weather_time,
+      :weather_value,
+      :weather_raw,
+      :weather_observation_time,
+      :weather_fallback_reason,
+      :callback_url,
+      :metadata,
+      :check_url,
+      :executed_at,
+      :failed_at,
+      :failure_reason,
+      :stage_timestamps,
+      :operator_sequence,
+      :operator_id,
+      :expected_result_at
+    ])
   end
 
   postgres do
@@ -32,6 +69,276 @@ defmodule WallopCore.Resources.Draw do
       index([:api_key_id, :status, :inserted_at, :id],
         name: "draws_api_key_id_status_inserted_at_id_index"
       )
+    end
+
+    # The SQL side of the observation-weather protocol. Every constant mirrors
+    # an Elixir one and has an equality test in sql_schedule_property_test.exs:
+    # WallopCore.Drand.Quicknet, WallopCore.Weather.Schedule,
+    # WallopCore.Weather.Stations and WallopCore.Protocol.Tags.LandObs.
+    # Tag-specific functions are named after the source (wallop_landobs_*).
+    # Times are `timestamp` holding UTC; "now" is
+    # statement_timestamp() AT TIME ZONE 'UTC'; no timestamptz anywhere.
+    custom_statements do
+      statement :wallop_quicknet_chain_hash do
+        up("""
+        CREATE OR REPLACE FUNCTION wallop_quicknet_chain_hash() RETURNS text
+        LANGUAGE sql IMMUTABLE AS $$
+          SELECT text '52db9ba70e0cc0f6eaf7803dd07447a1f5477735fd3f661792ba94600c84e971'
+        $$
+        """)
+
+        down("DROP FUNCTION IF EXISTS wallop_quicknet_chain_hash()")
+      end
+
+      statement :wallop_quicknet_pub_time do
+        # pub(R) = genesis + (R - 1) * period, from a timestamp epoch plus an
+        # interval, so no timestamptz, and no session time zone, is involved.
+        up("""
+        CREATE OR REPLACE FUNCTION wallop_quicknet_pub_time(drand_round bigint) RETURNS timestamp
+        LANGUAGE sql IMMUTABLE STRICT AS $$
+          SELECT timestamp '1970-01-01 00:00:00' + make_interval(secs => 1692803367 + (drand_round - 1) * 3)
+        $$
+        """)
+
+        down("DROP FUNCTION IF EXISTS wallop_quicknet_pub_time(bigint)")
+      end
+
+      statement :wallop_landobs_tag do
+        up("""
+        CREATE OR REPLACE FUNCTION wallop_landobs_tag() RETURNS text
+        LANGUAGE sql IMMUTABLE AS $$ SELECT text 'drand-quicknet+metoffice-landobs-v1' $$
+        """)
+
+        down("DROP FUNCTION IF EXISTS wallop_landobs_tag()")
+      end
+
+      statement :wallop_landobs_fetch_window do
+        up("""
+        CREATE OR REPLACE FUNCTION wallop_landobs_fetch_window() RETURNS interval
+        LANGUAGE sql IMMUTABLE AS $$ SELECT interval '40 minutes' $$
+        """)
+
+        down("DROP FUNCTION IF EXISTS wallop_landobs_fetch_window()")
+      end
+
+      statement :wallop_landobs_lock_offset do
+        up("""
+        CREATE OR REPLACE FUNCTION wallop_landobs_lock_offset() RETURNS interval
+        LANGUAGE sql IMMUTABLE AS $$ SELECT interval '46 minutes' $$
+        """)
+
+        down("DROP FUNCTION IF EXISTS wallop_landobs_lock_offset()")
+      end
+
+      statement :wallop_landobs_primary_station do
+        up("""
+        CREATE OR REPLACE FUNCTION wallop_landobs_primary_station() RETURNS text
+        LANGUAGE sql IMMUTABLE AS $$ SELECT text 'wmo-03749' $$
+        """)
+
+        down("DROP FUNCTION IF EXISTS wallop_landobs_primary_station()")
+      end
+
+      statement :wallop_landobs_stations do
+        up("""
+        CREATE OR REPLACE FUNCTION wallop_landobs_stations() RETURNS text[]
+        LANGUAGE sql IMMUTABLE AS $$ SELECT ARRAY['wmo-03749', 'wmo-03462']::text[] $$
+        """)
+
+        down("DROP FUNCTION IF EXISTS wallop_landobs_stations()")
+      end
+
+      statement :wallop_landobs_fallback_reason do
+        up("""
+        CREATE OR REPLACE FUNCTION wallop_landobs_fallback_reason() RETURNS text
+        LANGUAGE sql IMMUTABLE AS $$ SELECT text 'no_observation_by_deadline' $$
+        """)
+
+        down("DROP FUNCTION IF EXISTS wallop_landobs_fallback_reason()")
+      end
+
+      statement :wallop_landobs_weather_time do
+        # The latest whole UTC hour h with h + W + 60s <= pub(drand_round).
+        up("""
+        CREATE OR REPLACE FUNCTION wallop_landobs_weather_time(drand_round bigint) RETURNS timestamp
+        LANGUAGE sql IMMUTABLE STRICT AS $$
+          SELECT date_trunc('hour',
+            wallop_quicknet_pub_time(drand_round) - wallop_landobs_fetch_window() - interval '60 seconds')
+        $$
+        """)
+
+        down("DROP FUNCTION IF EXISTS wallop_landobs_weather_time(bigint)")
+      end
+
+      statement :wallop_landobs_lock_allowed do
+        # True when a lock at locked_at is in time for weather_time. The guards
+        # call it with the DB clock or the signed locked_at; tests with exact instants.
+        up("""
+        CREATE OR REPLACE FUNCTION wallop_landobs_lock_allowed(locked_at timestamp, weather_time timestamp)
+        RETURNS boolean
+        LANGUAGE sql IMMUTABLE STRICT AS $$
+          SELECT locked_at <= weather_time - wallop_landobs_lock_offset()
+        $$
+        """)
+
+        down("DROP FUNCTION IF EXISTS wallop_landobs_lock_allowed(timestamp, timestamp)")
+      end
+
+      statement :guard_v6_draw do
+        # Does nothing to a draw whose (lock_schema_version,
+        # entropy_composition) is (NULL, NULL), which is every forecast and
+        # historic draw, except refuse to set the pair outside a lock.
+        # The completion clauses read weather_observations; PL/pgSQL resolves
+        # the table only when a v6 draw completes.
+        up("""
+        CREATE OR REPLACE FUNCTION guard_v6_draw() RETURNS trigger AS $$
+        DECLARE
+          now_utc timestamp := statement_timestamp() AT TIME ZONE 'UTC';
+          obs RECORD;
+        BEGIN
+          -- Every comparison that could meet a NULL is written so that NULL
+          -- refuses (IS DISTINCT FROM, IS NOT TRUE), never passes.
+          IF OLD.status <> 'open'
+             AND (NEW.lock_schema_version IS DISTINCT FROM OLD.lock_schema_version
+                  OR NEW.entropy_composition IS DISTINCT FROM OLD.entropy_composition) THEN
+            RAISE EXCEPTION 'lock_schema_version and entropy_composition are frozen once a draw has left open';
+          END IF;
+
+          IF NEW.status = 'open'
+             AND (NEW.lock_schema_version IS NOT NULL OR NEW.entropy_composition IS NOT NULL) THEN
+            RAISE EXCEPTION 'lock_schema_version and entropy_composition are set only when a draw leaves open';
+          END IF;
+
+          IF NOT ((NEW.lock_schema_version IS NULL AND NEW.entropy_composition IS NULL)
+                  OR (NEW.lock_schema_version IS NOT DISTINCT FROM '6'
+                      AND NEW.entropy_composition IS NOT DISTINCT FROM wallop_landobs_tag())) THEN
+            RAISE EXCEPTION 'unknown lock_schema_version and entropy_composition pair: (%, %)',
+              NEW.lock_schema_version, NEW.entropy_composition;
+          END IF;
+
+          -- Whenever a v6 draw leaves open, by any path.
+          IF OLD.status = 'open' AND NEW.status <> 'open' AND NEW.lock_schema_version = '6' THEN
+            IF NEW.status <> 'awaiting_entropy' THEN
+              RAISE EXCEPTION 'a v6 draw leaves open only by locking';
+            END IF;
+
+            IF NEW.entropy_composition = wallop_landobs_tag() THEN
+              IF NEW.drand_chain IS DISTINCT FROM wallop_quicknet_chain_hash() THEN
+                RAISE EXCEPTION 'v6 drand_chain must be the quicknet chain';
+              END IF;
+              IF NEW.drand_round IS NULL OR NEW.drand_round < 1
+                 OR NEW.weather_time IS DISTINCT FROM wallop_landobs_weather_time(NEW.drand_round) THEN
+                RAISE EXCEPTION 'v6 weather_time must follow from drand_round';
+              END IF;
+              IF NEW.weather_station IS DISTINCT FROM wallop_landobs_primary_station() THEN
+                RAISE EXCEPTION 'v6 lock weather_station must be %', wallop_landobs_primary_station();
+              END IF;
+              IF wallop_landobs_lock_allowed(now_utc, NEW.weather_time) IS NOT TRUE THEN
+                RAISE EXCEPTION 'v6 lock is too late for this draw time';
+              END IF;
+            ELSE
+              RAISE EXCEPTION 'no lock rules for entropy_composition %', NEW.entropy_composition;
+            END IF;
+          END IF;
+
+          IF OLD.lock_schema_version = '6' AND OLD.status <> 'completed' AND NEW.status = 'completed' THEN
+            IF (NEW.executed_at >= wallop_quicknet_pub_time(OLD.drand_round)) IS NOT TRUE THEN
+              RAISE EXCEPTION 'v6 draw cannot complete before its drand round publishes';
+            END IF;
+
+            IF OLD.entropy_composition = wallop_landobs_tag() THEN
+              SELECT value, observation_time INTO obs FROM weather_observations WHERE draw_id = NEW.id;
+              IF FOUND THEN
+                IF NEW.weather_value IS DISTINCT FROM obs.value
+                   OR NEW.weather_observation_time IS DISTINCT FROM obs.observation_time
+                   OR NEW.weather_fallback_reason IS NOT NULL THEN
+                  RAISE EXCEPTION 'v6 draw must complete with its stored observation';
+                END IF;
+              ELSIF NEW.weather_value IS NOT NULL OR NEW.weather_observation_time IS NOT NULL
+                    OR NEW.weather_fallback_reason IS DISTINCT FROM wallop_landobs_fallback_reason()
+                    OR (now_utc > OLD.weather_time + wallop_landobs_fetch_window()) IS NOT TRUE THEN
+                RAISE EXCEPTION 'v6 draw may fall back only after the fetch deadline with nothing stored';
+              END IF;
+            ELSE
+              RAISE EXCEPTION 'no completion rules for entropy_composition %', OLD.entropy_composition;
+            END IF;
+          END IF;
+
+          RETURN NEW;
+        END;
+        $$ LANGUAGE plpgsql
+        """)
+
+        down("DROP FUNCTION IF EXISTS guard_v6_draw()")
+      end
+
+      statement :draws_v6_guard do
+        up("""
+        CREATE TRIGGER draws_v6_guard BEFORE UPDATE ON draws
+          FOR EACH ROW EXECUTE FUNCTION guard_v6_draw()
+        """)
+
+        down("DROP TRIGGER IF EXISTS draws_v6_guard ON draws")
+      end
+
+      statement :guard_v6_lock_receipt do
+        # The lock receipt of a v6 draw must be the receipt of what the draw
+        # row says: same schema and tag, and the signed locked_at (the one in
+        # payload_jcs, which must equal the locked_at column) in time for the
+        # round's weather_time. The draws guard checks the DB clock at the
+        # lock; this checks the locked_at that was signed. The receipt is
+        # inserted after the draw's lock UPDATE, in the same transaction.
+        up("""
+        CREATE OR REPLACE FUNCTION guard_v6_lock_receipt() RETURNS trigger AS $$
+        DECLARE
+          d RECORD;
+          payload jsonb;
+        BEGIN
+          SELECT lock_schema_version, entropy_composition, drand_round INTO d
+            FROM draws WHERE id = NEW.draw_id;
+
+          IF NOT FOUND OR d.lock_schema_version IS NULL THEN
+            RETURN NEW;
+          END IF;
+
+          payload := convert_from(NEW.payload_jcs, 'UTF8')::jsonb;
+
+          IF payload->>'schema_version' IS DISTINCT FROM d.lock_schema_version
+             OR payload->>'entropy_composition' IS DISTINCT FROM d.entropy_composition THEN
+            RAISE EXCEPTION 'a v6 lock receipt must carry its draw''s schema and entropy_composition';
+          END IF;
+
+          -- A timestamp literal ignores the trailing Z, so this reads UTC
+          -- whatever the session time zone.
+          IF (payload->>'locked_at')::timestamp IS DISTINCT FROM NEW.locked_at THEN
+            RAISE EXCEPTION 'receipt locked_at must equal the signed locked_at';
+          END IF;
+
+          IF d.entropy_composition = wallop_landobs_tag() THEN
+            IF wallop_landobs_lock_allowed(NEW.locked_at, wallop_landobs_weather_time(d.drand_round))
+               IS NOT TRUE THEN
+              RAISE EXCEPTION 'v6 signed locked_at is too late for this draw time';
+            END IF;
+          ELSE
+            RAISE EXCEPTION 'no lock receipt rules for entropy_composition %', d.entropy_composition;
+          END IF;
+
+          RETURN NEW;
+        END;
+        $$ LANGUAGE plpgsql
+        """)
+
+        down("DROP FUNCTION IF EXISTS guard_v6_lock_receipt()")
+      end
+
+      statement :operator_receipts_v6_guard do
+        up("""
+        CREATE TRIGGER operator_receipts_v6_guard BEFORE INSERT ON operator_receipts
+          FOR EACH ROW EXECUTE FUNCTION guard_v6_lock_receipt()
+        """)
+
+        down("DROP TRIGGER IF EXISTS operator_receipts_v6_guard ON operator_receipts")
+      end
     end
   end
 
@@ -481,6 +788,27 @@ defmodule WallopCore.Resources.Draw do
       public?(true)
     end
 
+    attribute :lock_schema_version, :string do
+      description(
+        "Lock receipt schema this draw was locked under: \"6\" for observation weather, " <>
+          "nil for every other draw. Set as the draw leaves open, then frozen."
+      )
+
+      allow_nil?(true)
+      public?(false)
+    end
+
+    attribute :entropy_composition, :string do
+      description(
+        "The entropy tag this draw was locked under, when lock_schema_version is set " <>
+          "(\"drand-quicknet+metoffice-landobs-v1\" today); nil otherwise. Set as the " <>
+          "draw leaves open, then frozen."
+      )
+
+      allow_nil?(true)
+      public?(false)
+    end
+
     attribute :callback_url, :string do
       description(
         "Optional HTTPS URL to receive a webhook POST when the draw completes or fails. " <>
@@ -553,6 +881,19 @@ defmodule WallopCore.Resources.Draw do
 
     create_timestamp(:inserted_at)
     update_timestamp(:updated_at)
+  end
+
+  calculations do
+    calculate :expected_result_at,
+              :utc_datetime_usec,
+              WallopCore.Resources.Draw.Calculations.ExpectedResultAt do
+      description(
+        "Observation-weather draws only: when the result is due (the publication time of the " <>
+          "committed drand round). Not signed; derived from drand_round. Null for other draws."
+      )
+
+      public?(true)
+    end
   end
 
   relationships do
