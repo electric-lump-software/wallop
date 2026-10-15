@@ -22,7 +22,7 @@ defmodule WallopCore.Entropy.EntropyWorker do
   require Logger
   require OpenTelemetry.Tracer, as: Tracer
 
-  alias WallopCore.Entropy.{DrandClient, WeatherClient, WebhookWorker}
+  alias WallopCore.Entropy.{DrandClient, WeatherClient}
   alias WallopCore.Log
 
   # After this many attempts, fall back to drand-only if weather is unavailable
@@ -125,10 +125,7 @@ defmodule WallopCore.Entropy.EntropyWorker do
         :ok
 
       {:error, reason} when attempt >= max_attempts ->
-        fail_draw_with_reason(
-          draw,
-          "execution failed after #{attempt} attempts: #{inspect(reason)}"
-        )
+        fail_draw_with_reason(draw, "execution error after #{attempt} attempts", reason)
 
       {:error, reason} ->
         {:error, reason}
@@ -186,27 +183,19 @@ defmodule WallopCore.Entropy.EntropyWorker do
         :ok
 
       {:error, reason} ->
-        fail_draw_with_reason(
-          draw,
-          "drand-only execution failed: #{inspect(reason)}"
-        )
+        fail_draw_with_reason(draw, "drand-only execution error", reason)
     end
   end
 
   defp handle_final_attempt_failure(draw, drand_err, weather_err, attempt) do
-    reason =
+    {reason, detail} =
       cond do
-        drand_err != nil ->
-          "drand unavailable after #{attempt} attempts: #{inspect(drand_err)}"
-
-        weather_err != nil ->
-          "weather unavailable after #{attempt} attempts: #{inspect(weather_err)}"
-
-        true ->
-          "entropy sources unavailable after #{attempt} attempts"
+        drand_err != nil -> {"drand unavailable after #{attempt} attempts", drand_err}
+        weather_err != nil -> {"weather unavailable after #{attempt} attempts", weather_err}
+        true -> {"entropy sources unavailable after #{attempt} attempts", nil}
       end
 
-    fail_draw_with_reason(draw, reason)
+    fail_draw_with_reason(draw, reason, detail)
   end
 
   defp handle_transient_retry(draw, drand_err, weather_err) do
@@ -242,7 +231,7 @@ defmodule WallopCore.Entropy.EntropyWorker do
 
   defp format_permanent({:unexpected_status, status}), do: "HTTP #{status} — check credentials"
   defp format_permanent(:invalid_response), do: "invalid response from API"
-  defp format_permanent(other), do: inspect(other)
+  defp format_permanent(_other), do: "unrecoverable error"
 
   defp log_transient_errors(draw, drand_err, weather_err) do
     case {drand_err, weather_err} do
@@ -281,19 +270,17 @@ defmodule WallopCore.Entropy.EntropyWorker do
       })
       |> Ash.update(domain: WallopCore.Domain, authorize?: false)
       |> case do
-        {:ok, completed_draw} ->
-          broadcast_update(completed_draw)
-          maybe_enqueue_webhook(completed_draw)
+        {:ok, _completed_draw} ->
           :ok
 
         {:error, reason} ->
-          Tracer.set_attributes(%{"error" => true, "error.message" => inspect(reason)})
+          Tracer.set_attributes(%{"error" => true, "error.type" => error_class(reason)})
 
           Logger.warning(
             "EntropyWorker: execution failed for draw #{Log.redact_id(draw.id)}: #{inspect(reason)}"
           )
 
-          {:error, reason}
+          settle_after_error(draw.id, reason)
       end
     end
   end
@@ -313,19 +300,17 @@ defmodule WallopCore.Entropy.EntropyWorker do
       })
       |> Ash.update(domain: WallopCore.Domain, authorize?: false)
       |> case do
-        {:ok, completed_draw} ->
-          broadcast_update(completed_draw)
-          maybe_enqueue_webhook(completed_draw)
+        {:ok, _completed_draw} ->
           :ok
 
         {:error, reason} ->
-          Tracer.set_attributes(%{"error" => true, "error.message" => inspect(reason)})
+          Tracer.set_attributes(%{"error" => true, "error.type" => error_class(reason)})
 
           Logger.warning(
             "EntropyWorker: drand-only execution failed for draw #{Log.redact_id(draw.id)}: #{inspect(reason)}"
           )
 
-          {:error, reason}
+          settle_after_error(draw.id, reason)
       end
     end
   end
@@ -382,40 +367,60 @@ defmodule WallopCore.Entropy.EntropyWorker do
 
   defp maybe_transition_to_pending(draw), do: draw
 
-  defp fail_draw_with_reason(draw, reason) do
+  defp error_class(%{__struct__: module}), do: inspect(module)
+
+  defp error_class(tuple) when is_tuple(tuple) and tuple_size(tuple) > 0,
+    do: inspect(elem(tuple, 0))
+
+  defp error_class(_), do: "error"
+
+  # `reason` is stored and public. `detail` is logged and set on the span only.
+  defp fail_draw_with_reason(draw, reason, detail \\ nil) do
+    if detail != nil do
+      Tracer.set_attributes(%{"error" => true, "error.type" => error_class(detail)})
+
+      Logger.warning(
+        "EntropyWorker: draw #{Log.redact_id(draw.id)} failing (#{reason}): #{inspect(detail)}"
+      )
+    end
+
     draw = maybe_transition_to_pending(draw)
 
     draw
     |> Ash.Changeset.for_update(:mark_failed, %{failure_reason: reason})
     |> Ash.update(domain: WallopCore.Domain, authorize?: false)
     |> case do
-      {:ok, failed_draw} ->
-        broadcast_update(failed_draw)
-        maybe_enqueue_webhook(failed_draw)
+      {:ok, _failed_draw} ->
         :ok
 
       {:error, _} ->
         # Draw may already be completed or failed (Lifeline race).
-        # Re-check — if terminal, that's fine.
-        case load_draw(draw.id) do
-          {:ok, %{status: status}} when status in [:completed, :failed] -> :ok
-          _ -> {:error, reason}
-        end
+        settle_after_error(draw.id, reason)
     end
   end
 
-  defp broadcast_update(draw) do
-    Phoenix.PubSub.broadcast(WallopCore.PubSub, "draw:#{draw.id}", {:draw_updated, draw})
+  # `:expired` is listed for completeness: only open draws expire, so a draw
+  # this worker handles can't become expired.
+  # The draw finished while this attempt was running (another attempt, or a
+  # Lifeline rescue). Its outcome and webhook are already committed, so this
+  # attempt succeeded at nothing and must not retry or fail the draw.
+  @doc false
+  def settle_after_error(draw_id, reason) do
+    case load_draw(draw_id) do
+      {:ok, %{status: status}} when status in [:completed, :failed, :expired] ->
+        Logger.info(
+          "EntropyWorker: draw #{Log.redact_id(draw_id)} already #{status}; nothing to do"
+        )
+
+        :ok
+
+      _ ->
+        {:error, reason}
+    end
   end
 
-  defp maybe_enqueue_webhook(%{callback_url: nil}), do: :ok
-
-  defp maybe_enqueue_webhook(%{callback_url: url, id: draw_id, api_key_id: api_key_id})
-       when is_binary(url) do
-    %{draw_id: draw_id, api_key_id: api_key_id}
-    |> WebhookWorker.new()
-    |> Oban.insert()
-
-    :ok
+  # Only for `transition_to_pending`, which has no broadcasting change.
+  defp broadcast_update(draw) do
+    Phoenix.PubSub.broadcast(WallopCore.PubSub, "draw:#{draw.id}", {:draw_updated, draw})
   end
 end

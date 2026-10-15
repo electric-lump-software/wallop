@@ -203,6 +203,7 @@ defmodule WallopCore.Resources.Draw do
 
       change({WallopCore.Resources.Draw.Changes.ExecuteWithEntropy, []})
       change({WallopCore.Resources.Draw.Changes.SignAndStoreExecutionReceipt, []})
+      change({WallopCore.Resources.Draw.Changes.EnqueueWebhook, []})
       change({WallopCore.Resources.Draw.Changes.BroadcastUpdate, []})
     end
 
@@ -222,6 +223,7 @@ defmodule WallopCore.Resources.Draw do
       change({WallopCore.Resources.Draw.Changes.ExecuteDrandOnly, []})
       change({WallopCore.Resources.Draw.Changes.RecordStageTimestamp, key: "executed_at"})
       change({WallopCore.Resources.Draw.Changes.SignAndStoreExecutionReceipt, []})
+      change({WallopCore.Resources.Draw.Changes.EnqueueWebhook, []})
       change({WallopCore.Resources.Draw.Changes.BroadcastUpdate, []})
     end
 
@@ -229,6 +231,7 @@ defmodule WallopCore.Resources.Draw do
       require_atomic?(false)
       filter(expr(status == :open))
       change(set_attribute(:status, :expired))
+      change({WallopCore.Resources.Draw.Changes.EnqueueWebhook, []})
       change({WallopCore.Resources.Draw.Changes.BroadcastUpdate, []})
     end
 
@@ -246,6 +249,8 @@ defmodule WallopCore.Resources.Draw do
         Ash.Changeset.force_change_attribute(changeset, :failure_reason, reason)
       end)
 
+      change({WallopCore.Resources.Draw.Changes.ReportFailure, []})
+      change({WallopCore.Resources.Draw.Changes.EnqueueWebhook, []})
       change({WallopCore.Resources.Draw.Changes.BroadcastUpdate, []})
     end
   end

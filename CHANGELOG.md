@@ -43,6 +43,18 @@ Errors from the update routes (`PATCH /draws/:id/entries`, `/lock`, `/winner_cou
 
 **Operator note.** Run `mix ecto.migrate` (adds `api_keys.rate_limit_per_minute`). If the limiter's store errors, requests are let through (fail open) rather than refused; the error is logged at most once a minute and emitted as `[:wallop_web, :rate_limiter, :backend_error]`. Every store call has a 100 ms timeout. Alert on that event before you turn Redis on, because a broken Redis will otherwise quietly mean no limits. `RATE_LIMIT_BACKEND=redis` without `REDIS_URL` refuses to boot. A quota `Retry-After` can be up to a month, which is as long as the quota takes to reset. Per-IP limits trust `cf-connecting-ip`, so in production leave `EDGE_SHARED_SECRET` set (or otherwise keep the origin unreachable except through the edge); with it unset, boot logs an error saying so.
 
+### Draw outcomes and their webhooks commit together; failure reasons are fixed text
+
+**CHANGED.**
+
+- **`failure_reason` is fixed public text.** A failed draw's `failure_reason` no longer carries error details. The worker's reasons are "execution error after N attempts", "drand-only execution error", "drand unavailable after N attempts", "weather unavailable after N attempts" and "entropy sources unavailable after N attempts", alongside the existing drand credential and invalid-response messages and "unrecoverable error". Details go to logs and traces. Don't match on the old strings.
+- **The webhook job is inserted in the same transaction as `completed`, `failed` and `expired`.** An outcome and its webhook commit together. If the insert fails, the outcome rolls back and the worker retries. A retry is a fresh execution under the same lock: its receipt is signed afresh and, if the weather observation or fallback differs, it can select differently. A rolled-back outcome is never published.
+- **Live updates (PubSub) are sent only after the transition commits.**
+
+**ADDED.** Telemetry `[:wallop_core, :draw, :failed]`, with `%{count: 1}` and metadata `%{draw_id:, operator_id:, failure_reason:}`, emitted once per committed failure. The failure is also logged at error level.
+
+**Known gap.** If every attempt fails to commit (for example, the database is failing), the draw can remain pending with nothing left to retry it. There is no sweeper yet.
+
 ### wallop_core 0.28.3 — The install command actually installs the verifier
 
 **FIXED.** The proof page and the "how verification works" page told people to run `cargo install wallop_verifier`. The `wallop-verify` binary sits behind the crate's `cli` feature, which is off by default, so cargo installed no binary at all. Both pages now say `cargo install wallop_verifier --features cli`, matching the verifier's own README. **No protocol change, no signed-byte change, no request or response shape change.**
