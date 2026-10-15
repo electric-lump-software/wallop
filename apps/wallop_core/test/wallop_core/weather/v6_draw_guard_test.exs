@@ -317,6 +317,26 @@ defmodule WallopCore.Weather.V6DrawGuardTest do
              }) == "v6 lock receipt field signing_key_id does not match the draw"
     end
 
+    test "the signing key must have been valid at the signed locked_at", %{draw: d, s: s} do
+      assert lock(d, s.weather_time, s.round) == nil
+      {payload, cols} = valid_receipt(d, s)
+      locked_at = cols.locked_at
+
+      # Entered the keyring after locked_at.
+      later = add_key(d.operator_id, DateTime.add(locked_at, 600), DateTime.add(locked_at, 600))
+      # Eligible (valid_from) before locked_at, but in the keyring only after:
+      # the verifier's inserted_at <= locked_at rule refuses it.
+      straddling =
+        add_key(d.operator_id, DateTime.add(locked_at, -30), DateTime.add(locked_at, 20))
+
+      for key_id <- [later, straddling] do
+        assert insert_receipt(%{payload | "signing_key_id" => key_id}, %{
+                 cols
+                 | signing_key_id: key_id
+               }) == "v6 lock receipt signing key was not valid at locked_at"
+      end
+    end
+
     test "signed times must be canonical UTC strings", %{draw: d, s: s} do
       assert lock(d, s.weather_time, s.round) == nil
       {payload, cols} = valid_receipt(d, s)
@@ -482,6 +502,31 @@ defmodule WallopCore.Weather.V6DrawGuardTest do
 
   defp rfc(dt), do: WallopCore.Time.to_rfc3339_usec(dt)
 
+  # A raw keyring row for the operator, with the given valid_from and
+  # inserted_at (the keyring CHECK keeps them within 60 seconds).
+  defp add_key(operator_id, valid_from, inserted_at) do
+    {public_key, _private} = :crypto.generate_key(:eddsa, :ed25519)
+    key_id = Protocol.key_id(public_key)
+
+    Repo.query!(
+      """
+      INSERT INTO operator_signing_keys (id, operator_id, key_id, public_key, private_key,
+        valid_from, inserted_at)
+      VALUES ($1, $2, $3, $4, 'unused', $5, $6)
+      """,
+      [
+        Ecto.UUID.dump!(Ecto.UUID.generate()),
+        Ecto.UUID.dump!(operator_id),
+        key_id,
+        public_key,
+        DateTime.to_naive(valid_from),
+        DateTime.to_naive(inserted_at)
+      ]
+    )
+
+    key_id
+  end
+
   defp key_for(operator) do
     operator_id = operator.id
 
@@ -496,7 +541,8 @@ defmodule WallopCore.Weather.V6DrawGuardTest do
     operator = Ash.get!(Operator, draw.operator_id, authorize?: false)
     key = key_for(operator)
     {hash, _} = entry_hash(draw)
-    locked_at = DateTime.add(s.latest_lock_at, -60)
+    # Now, after the operator's key entered the keyring, and in time for s.
+    locked_at = DateTime.utc_now()
 
     payload =
       %{
