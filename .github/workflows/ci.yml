@@ -44,14 +44,6 @@ jobs:
           path: wallop
           fetch-depth: 0
 
-      - name: Check no AI attribution
-        working-directory: wallop
-        run: |
-          if git log origin/main..HEAD --format="%B" | grep -qi "co-authored-by: claude"; then
-            echo "ERROR: AI co-author attribution found in commits"
-            exit 1
-          fi
-
       - name: Verify wallop_rs vector submodule is current
         working-directory: wallop
         run: |

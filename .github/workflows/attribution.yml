@@ -1,0 +1,40 @@
+name: Attribution
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, edited, reopened, synchronize]
+
+permissions:
+  contents: read
+
+jobs:
+  attribution:
+    name: No attribution in commits or PR text
+    runs-on: ubuntu-latest
+    env:
+      PATTERN: 'claude|anthropic|co-authored-by|ADR-[0-9]'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Commit messages
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          if git log "$BASE..$HEAD" --format='%H %B' | grep -Ei "$PATTERN"; then
+            echo "ERROR: commit messages contain attribution or ADR references"
+            exit 1
+          fi
+
+      - name: PR title and description
+        env:
+          TITLE: ${{ github.event.pull_request.title }}
+          BODY: ${{ github.event.pull_request.body }}
+        run: |
+          if printf '%s\n%s\n' "$TITLE" "$BODY" | grep -Ei "$PATTERN"; then
+            echo "ERROR: PR title or description contains attribution or ADR references"
+            exit 1
+          fi
