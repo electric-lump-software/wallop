@@ -37,11 +37,18 @@ defmodule WallopCore.Resources.OperatorDrawProtocolTest do
                actor: key
              )
              |> Ash.update()
+
+    assert {:error, %Ash.Error.Forbidden{}} =
+             op
+             |> Ash.Changeset.for_update(:set_draw_protocol, %{draw_protocol: :observation},
+               actor: nil
+             )
+             |> Ash.update()
   end
 
   test "only forecast and observation are accepted" do
     for bad <- [:v6, :v5, :other] do
-      assert {:error, _} =
+      assert {:error, %Ash.Error.Invalid{}} =
                create_operator()
                |> Ash.Changeset.for_update(:set_draw_protocol, %{draw_protocol: bad})
                |> Ash.update(authorize?: false)

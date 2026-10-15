@@ -51,7 +51,7 @@ defmodule WallopCore.Resources.Operator do
   @max_name_length 80
 
   # Weather protocols an operator's new locks can use. Adding one is a
-  # one-line change here (plus the generated migration's snapshot).
+  # one-line change here.
   @draw_protocols [:forecast, :observation]
 
   postgres do
