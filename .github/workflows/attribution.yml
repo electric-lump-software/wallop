@@ -12,8 +12,9 @@ jobs:
   attribution:
     name: No attribution in commits or PR text
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     env:
-      PATTERN: 'claude|anthropic|co-authored-by|ADR-[0-9]'
+      PATTERN: 'claude|anthropic|co-authored-by|\bADR-[0-9]'
     steps:
       - uses: actions/checkout@v4
         with:
