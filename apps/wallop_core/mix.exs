@@ -41,7 +41,7 @@ defmodule WallopCore.MixProject do
       {:cloak_ecto, "~> 1.3"},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
       {:dialyxir, "~> 1.4", only: [:dev, :test], runtime: false},
-      {:stream_data, "~> 1.1", only: :test},
+      {:stream_data, "~> 1.1"},
       {:simple_sat, "~> 0.1"},
       {:phoenix_pubsub_redis, "~> 3.0"},
       {:opentelemetry, "~> 1.4"},
