@@ -1,6 +1,7 @@
 defmodule WallopCore.Resources.ApiKeyTest do
   use WallopCore.DataCase, async: true
 
+  alias Ash.Resource.Info
   alias WallopCore.Resources.ApiKey
 
   defp create_key(name \\ "test key") do
@@ -152,66 +153,9 @@ defmodule WallopCore.Resources.ApiKeyTest do
     end
   end
 
-  describe "increment_draw_count" do
-    test "increments the count and sets reset_at on first call" do
-      {:ok, key} = create_key()
-
-      {:ok, updated} =
-        key
-        |> Ash.Changeset.for_update(:increment_draw_count, %{})
-        |> Ash.update(authorize?: false)
-
-      assert updated.monthly_draw_count == 1
-      assert updated.count_reset_at != nil
-    end
-
-    test "increments the count without resetting if reset_at is in the future" do
-      future = DateTime.add(DateTime.utc_now(), 7 * 86_400, :second)
-
-      {:ok, key} =
-        ApiKey
-        |> Ash.Changeset.for_create(:create, %{name: "x", count_reset_at: future})
-        |> Ash.create(authorize?: false)
-
-      # Bump count to 5 directly
-      WallopCore.Repo.query!(
-        "UPDATE api_keys SET monthly_draw_count = 5 WHERE id = $1",
-        [Ecto.UUID.dump!(key.id)]
-      )
-
-      key = Ash.get!(ApiKey, key.id, authorize?: false)
-
-      {:ok, updated} =
-        key
-        |> Ash.Changeset.for_update(:increment_draw_count, %{})
-        |> Ash.update(authorize?: false)
-
-      assert updated.monthly_draw_count == 6
-      assert DateTime.compare(updated.count_reset_at, future) == :eq
-    end
-
-    test "resets the count to 1 if reset_at is in the past" do
-      past = DateTime.add(DateTime.utc_now(), -86_400, :second)
-
-      {:ok, key} =
-        ApiKey
-        |> Ash.Changeset.for_create(:create, %{name: "x", count_reset_at: past})
-        |> Ash.create(authorize?: false)
-
-      WallopCore.Repo.query!(
-        "UPDATE api_keys SET monthly_draw_count = 100 WHERE id = $1",
-        [Ecto.UUID.dump!(key.id)]
-      )
-
-      key = Ash.get!(ApiKey, key.id, authorize?: false)
-
-      {:ok, updated} =
-        key
-        |> Ash.Changeset.for_update(:increment_draw_count, %{})
-        |> Ash.update(authorize?: false)
-
-      assert updated.monthly_draw_count == 1
-      assert DateTime.compare(updated.count_reset_at, DateTime.utc_now()) == :gt
+  test "the draw counting actions are gone" do
+    for action <- [:increment_draw_count, :reset_draw_count] do
+      assert Info.action(ApiKey, action) == nil
     end
   end
 end

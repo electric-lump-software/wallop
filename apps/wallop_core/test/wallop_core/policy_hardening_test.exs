@@ -160,16 +160,6 @@ defmodule WallopCore.PolicyHardeningTest do
         |> Ash.update!()
       end
     end
-
-    test "increment_draw_count is Forbidden without authorize?: false" do
-      api_key = create_api_key()
-
-      assert_raise Ash.Error.Forbidden, fn ->
-        api_key
-        |> Ash.Changeset.for_update(:increment_draw_count, %{})
-        |> Ash.update!()
-      end
-    end
   end
 
   describe "Entry" do

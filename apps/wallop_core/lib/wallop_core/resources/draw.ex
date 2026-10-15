@@ -69,7 +69,6 @@ defmodule WallopCore.Resources.Draw do
       change(set_attribute(:api_key_id, actor(:id)))
       change(set_attribute(:status, :open))
       change({WallopCore.Resources.Draw.Changes.AssignOperatorSequence, []})
-      change({WallopCore.Resources.Draw.Changes.IncrementApiKeyDrawCount, []})
       change({WallopCore.Resources.Draw.Changes.ValidateCallbackUrl, []})
       change({WallopCore.Resources.Draw.Changes.ValidateCheckUrl, []})
       change({WallopCore.Resources.Draw.Changes.RecordStageTimestamp, key: "opened_at"})

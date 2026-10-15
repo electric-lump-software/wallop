@@ -36,7 +36,7 @@ defmodule WallopCore.RaceConditionTest do
 
       Postgrex.query!(
         setup_conn,
-        "INSERT INTO api_keys (id, name, key_hash, key_prefix, active, monthly_draw_count, operator_id, inserted_at, updated_at) VALUES ($1, $3, '$2b$04$AAAAAAAAAAAAAAAAAAAAAO6jGWxQhMFTXHCJFRlbNqjh22V6IlCzK', $3, true, 0, $2, NOW(), NOW())",
+        "INSERT INTO api_keys (id, name, key_hash, key_prefix, active, operator_id, inserted_at, updated_at) VALUES ($1, $3, '$2b$04$AAAAAAAAAAAAAAAAAAAAAO6jGWxQhMFTXHCJFRlbNqjh22V6IlCzK', $3, true, $2, NOW(), NOW())",
         [api_key_id_bin, operator_id_bin, "wlp_#{String.slice(api_key_id, 0, 8)}"]
       )
 
@@ -102,7 +102,7 @@ defmodule WallopCore.RaceConditionTest do
 
       Postgrex.query!(
         setup_conn,
-        "INSERT INTO api_keys (id, name, key_hash, key_prefix, active, monthly_draw_count, operator_id, inserted_at, updated_at) VALUES ($1, $3, '$2b$04$AAAAAAAAAAAAAAAAAAAAAO6jGWxQhMFTXHCJFRlbNqjh22V6IlCzK', $3, true, 0, $2, NOW(), NOW())",
+        "INSERT INTO api_keys (id, name, key_hash, key_prefix, active, operator_id, inserted_at, updated_at) VALUES ($1, $3, '$2b$04$AAAAAAAAAAAAAAAAAAAAAO6jGWxQhMFTXHCJFRlbNqjh22V6IlCzK', $3, true, $2, NOW(), NOW())",
         [api_key_id_bin, operator_id_bin, "wlp_#{String.slice(api_key_id, 0, 8)}"]
       )
 

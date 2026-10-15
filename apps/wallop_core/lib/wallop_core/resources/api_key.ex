@@ -67,23 +67,10 @@ defmodule WallopCore.Resources.ApiKey do
       accept([:tier, :monthly_draw_limit, :count_reset_at, :rate_limit_per_minute])
     end
 
-    # Increments monthly_draw_count. Called when a draw is created.
-    update :increment_draw_count do
-      require_atomic?(false)
-      change({WallopCore.Resources.ApiKey.Changes.IncrementDrawCount, []})
-    end
-
     update :regenerate_webhook_secret do
       accept([])
       require_atomic?(false)
       change({WallopCore.Resources.ApiKey.Changes.RegenerateWebhookSecret, []})
-    end
-
-    # Resets monthly_draw_count to zero and bumps count_reset_at.
-    update :reset_draw_count do
-      require_atomic?(false)
-      change(set_attribute(:monthly_draw_count, 0))
-      change({WallopCore.Resources.ApiKey.Changes.AdvanceResetAt, []})
     end
   end
 
@@ -107,8 +94,6 @@ defmodule WallopCore.Resources.ApiKey do
              :record_key_digest,
              :deactivate,
              :update_tier,
-             :increment_draw_count,
-             :reset_draw_count,
              :regenerate_webhook_secret
            ]) do
       forbid_if(always())
