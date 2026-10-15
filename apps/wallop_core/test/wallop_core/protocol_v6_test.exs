@@ -1,6 +1,9 @@
 defmodule WallopCore.ProtocolV6Test do
   use ExUnit.Case, async: true
+  alias WallopCore.Drand.Quicknet
+  alias WallopCore.Entropy.DrandClient
   alias WallopCore.Protocol
+  alias WallopCore.Protocol.Tags.LandObs
 
   @landobs "drand-quicknet+metoffice-landobs-v1"
 
@@ -60,7 +63,7 @@ defmodule WallopCore.ProtocolV6Test do
   # One entry per accepted entropy tag: {tag module, lock input, exec input}.
   # A second tag adds an entry here, and every field-set test below runs for
   # it against that tag's own expected key lists.
-  @accepted_tags [{WallopCore.Protocol.Tags.LandObs, @lock, @exec}]
+  @accepted_tags [{LandObs, @lock, @exec}]
 
   test "the accepted tags are exactly the listed tag modules" do
     assert Protocol.v6_entropy_compositions() ==
@@ -102,8 +105,8 @@ defmodule WallopCore.ProtocolV6Test do
         })
       )
 
-    assert WallopCore.Protocol.Tags.LandObs.lock_keys() == Map.keys(lock_v5)
-    assert WallopCore.Protocol.Tags.LandObs.exec_keys() == Map.keys(exec_v4)
+    assert LandObs.lock_keys() == Map.keys(lock_v5)
+    assert LandObs.exec_keys() == Map.keys(exec_v4)
   end
 
   describe "the entropy tag" do
@@ -126,6 +129,30 @@ defmodule WallopCore.ProtocolV6Test do
 
       assert_raise ArgumentError, ~r/entropy_composition/, fn ->
         Protocol.build_v6_execution_payload(Map.delete(@exec, :entropy_composition))
+      end
+    end
+  end
+
+  describe "the drand chain" do
+    test "the quicknet chain hash is pinned" do
+      assert Quicknet.chain_hash() ==
+               "52db9ba70e0cc0f6eaf7803dd07447a1f5477735fd3f661792ba94600c84e971"
+
+      assert Quicknet.chain_hash() == DrandClient.quicknet_chain_hash()
+    end
+
+    test "both v6 builders refuse any other chain" do
+      # The drand mainnet (default) chain hash.
+      other = "8990e7a9aaed2ffed73dbd7092123d6f289930540d7651336225dc172e51b2ce"
+
+      for chain <- [other, String.upcase(@lock.drand_chain), "", nil] do
+        assert_raise ArgumentError, ~r/drand_chain/, fn ->
+          Protocol.build_v6_lock_payload(%{@lock | drand_chain: chain})
+        end
+
+        assert_raise ArgumentError, ~r/drand_chain/, fn ->
+          Protocol.build_v6_execution_payload(%{@exec | drand_chain: chain})
+        end
       end
     end
   end
