@@ -83,42 +83,38 @@ defmodule WallopCore.Invariants.ObservationAndExecutionTest do
     end)
   end
 
-  # One weather_time shared by every draw of a test, and the station whose
-  # window is open for it now. The store's one-value rule keys on
-  # (station, observation_time), so the draws must share it exactly. A top of
-  # the hour is used whenever one has a window open now (minutes 0-29 for the
-  # primary, 31-38 for the backup); otherwise a shared time five minutes ago,
-  # in the primary window.
-  defp shared_hour do
-    now = DateTime.utc_now()
-    unix = DateTime.to_unix(now)
-    hour = DateTime.from_unix!((unix - Integer.mod(unix, 3600)) * 1_000_000, :microsecond)
-    elapsed = DateTime.diff(now, hour)
-    cutover = @w - 10 * 60
+  # Three v6 draws of one operator sharing one stored weather_time,
+  # `wt_offset` seconds from now, as v6_draw/3 places it. The store's
+  # one-value rule keys on (station, observation_time), so the draws must
+  # share it exactly.
+  defp three_draws_sharing_wt(wt_offset) do
+    {_op, key} = create_v6_operator()
+    wt = DateTime.utc_now() |> DateTime.add(wt_offset) |> DateTime.truncate(:second)
+    for _ <- 1..3, do: put_v6_awaiting!(open_draw_with_entries(key), wt, round_at(3600))
+  end
 
-    cond do
-      elapsed < cutover - 60 -> {hour, Stations.primary().id}
-      elapsed > cutover + 5 and elapsed < @w - 60 -> {hour, Stations.backup().id}
-      true -> {now |> DateTime.add(-5 * 60) |> DateTime.truncate(:second), Stations.primary().id}
-    end
+  # The first stores, a different value is refused, the same value is
+  # accepted (positive control).
+  defp assert_one_value_per_hour([a, b, c], station) do
+    assert {:ok, _} = Observations.store(a.id, station, reading(a))
+    assert {:error, error} = Observations.store(b.id, station, reading(b, "142;1025;85;2432"))
+    assert error_text(error) =~ "a different value is already stored for this station and hour"
+    assert {:ok, _} = Observations.store(c.id, station, reading(c))
   end
 
   # ── INV-7 ─────────────────────────────────────────────────────────
 
   describe "INV-7 one value per (station, hour), write-once" do
     @tag :pending_task_6
-    test "INV-7 a second draw of the hour can't store a different value" do
-      {_op, key} = create_v6_operator()
-      {wt, station} = shared_hour()
+    test "INV-7 a second draw of the hour can't store a different value (primary)" do
+      # Five minutes after weather_time: always in the primary window.
+      assert_one_value_per_hour(three_draws_sharing_wt(-5 * 60), Stations.primary().id)
+    end
 
-      [a, b, c] =
-        for _ <- 1..3, do: put_v6_awaiting!(open_draw_with_entries(key), wt, round_at(3600))
-
-      assert {:ok, _} = Observations.store(a.id, station, reading(a))
-      assert {:error, error} = Observations.store(b.id, station, reading(b, "142;1025;85;2432"))
-      assert error_text(error) =~ "a different value is already stored for this station and hour"
-      # Positive control: the same value for the same hour is accepted.
-      assert {:ok, _} = Observations.store(c.id, station, reading(c))
+    @tag :pending_task_6
+    test "INV-7 a second draw of the hour can't store a different value (backup)" do
+      # Five minutes before F: always in the backup window.
+      assert_one_value_per_hour(three_draws_sharing_wt(-(@w - 5 * 60)), Stations.backup().id)
     end
 
     @tag :pending_task_6
