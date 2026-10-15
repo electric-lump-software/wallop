@@ -45,6 +45,10 @@ the current protocol.
 - `proof-bundle.json` — full public proof bundle shape (the `/proof/:id.json` envelope)
 - `proof-bundle-drand-only.json` — proof bundle for the drand-only path (no `weather_value`)
 
+### Tampering
+
+- `proof-bundle-v6-tamper.json` — lock v6 / execution v5 proof bundles on a real quicknet round, each with exactly one signed field changed and re-signed with the vector key (a changed lock also gets a recomputed, re-signed `lock_receipt_hash`), so only the semantic checks can refuse it. Shape: `{description, keys, bases: [{name, bundle, expected_passed: true}], cases: [{name, base, receipt, field, mutation, bundle, expected_failing_steps}]}`. `keys` is `[{key_id, public_key_hex, key_class, inserted_at}]`; each `bundle` is the bundle's JCS text. Every case must fail exactly its `expected_failing_steps` (snake_case step names) and never pass; the bases pass every step. Regenerate with `MIX_ENV=test mix run apps/wallop_core/test/wallop_core/tamper_vectors_generator.exs`.
+
 ### Merkle and transparency anchors
 
 - `merkle-root.json` — Merkle construction `sha256-pairwise-v1` (0x00 leaf prefix, 0x01 node prefix, Bitcoin-style odd-level duplication, empty-list sentinel `SHA-256(<<>>)`)
