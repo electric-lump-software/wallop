@@ -190,16 +190,31 @@ defmodule WallopCore.Resources.Draw do
       statement :wallop_parse_rfc3339_usec do
         # The receipts' canonical UTC time string, YYYY-MM-DDTHH:MM:SS.ffffffZ,
         # as a timestamp holding UTC. Anything else (an offset, missing
-        # microseconds) raises rather than be read in some other zone.
+        # microseconds, 24:00, a leap second, an impossible date) raises
+        # rather than be read some other way: the value must print back to
+        # exactly the same string.
         up("""
         CREATE OR REPLACE FUNCTION wallop_parse_rfc3339_usec(value text) RETURNS timestamp
         LANGUAGE plpgsql STABLE STRICT AS $$
+        DECLARE
+          parsed timestamp;
         BEGIN
           IF value !~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[.][0-9]{6}Z$' THEN
             RAISE EXCEPTION 'not a canonical UTC timestamp: %', value;
           END IF;
-          -- A timestamp literal ignores the trailing Z.
-          RETURN value::timestamp;
+
+          BEGIN
+            -- A timestamp literal ignores the trailing Z.
+            parsed := value::timestamp;
+          EXCEPTION WHEN others THEN
+            RAISE EXCEPTION 'not a canonical UTC timestamp: %', value;
+          END;
+
+          IF to_char(parsed, 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') IS DISTINCT FROM value THEN
+            RAISE EXCEPTION 'not a canonical UTC timestamp: %', value;
+          END IF;
+
+          RETURN parsed;
         END;
         $$
         """)
@@ -269,6 +284,16 @@ defmodule WallopCore.Resources.Draw do
              OR NOT EXISTS (SELECT 1 FROM operator_signing_keys k
                             WHERE k.operator_id = d.operator_id AND k.key_id = r.signing_key_id) THEN
             RAISE EXCEPTION 'v6 lock receipt field % does not match the draw', 'signing_key_id';
+          END IF;
+
+          -- The key must have been valid at the signed locked_at: in the
+          -- keyring by then (the verifier's rule, inserted_at <= locked_at,
+          -- no skew), and eligible to sign by then (the lock path's rule,
+          -- valid_from <= locked_at). Operator keys have no revocation.
+          IF NOT EXISTS (SELECT 1 FROM operator_signing_keys k
+                         WHERE k.operator_id = d.operator_id AND k.key_id = r.signing_key_id
+                           AND k.inserted_at <= r.locked_at AND k.valid_from <= r.locked_at) THEN
+            RAISE EXCEPTION 'v6 lock receipt signing key was not valid at locked_at';
           END IF;
 
           IF d.entropy_composition IS NOT DISTINCT FROM wallop_landobs_tag() THEN
@@ -344,7 +369,10 @@ defmodule WallopCore.Resources.Draw do
             END IF;
 
             -- A receipt inserted before this UPDATE gets the same checks it
-            -- would get if inserted after.
+            -- would get if inserted after. If that receipt's transaction is
+            -- still open, its FOR SHARE lock on this row made this UPDATE wait
+            -- before the trigger ran; this function is VOLATILE, so the
+            -- SELECT below takes a fresh snapshot and sees it once committed.
             SELECT * INTO r FROM operator_receipts WHERE draw_id = NEW.id;
             IF FOUND THEN
               PERFORM wallop_check_v6_lock_receipt(NEW, r);
@@ -401,7 +429,12 @@ defmodule WallopCore.Resources.Draw do
         DECLARE
           d draws%ROWTYPE;
         BEGIN
-          SELECT * INTO d FROM draws WHERE id = NEW.draw_id;
+          -- FOR SHARE waits for an in-flight UPDATE of the draw (a lock) to
+          -- finish and then reads the committed row, so a receipt can't slip
+          -- in beside a concurrent lock. It also holds off a later lock
+          -- UPDATE until this transaction ends, so the draws guard then sees
+          -- this receipt.
+          SELECT * INTO d FROM draws WHERE id = NEW.draw_id FOR SHARE;
 
           IF d.lock_schema_version IS NULL AND d.entropy_composition IS NULL THEN
             IF convert_from(NEW.payload_jcs, 'UTF8')::jsonb->>'schema_version' IS NOT DISTINCT FROM '6' THEN

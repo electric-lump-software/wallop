@@ -292,8 +292,8 @@ defmodule WallopCore.TestHelpers do
   @doc """
   A signed lock v6 receipt for `draw`, inserted with whatever triggers are
   on. Signed weather_time is the round's observation hour; `locked_at` is
-  47 minutes before it, and is both the signed value and the receipt's
-  `locked_at` column. Signs with the operator's current key, chosen as the
+  now, or the latest in-time instant if now is too late, and is both the
+  signed value and the receipt's `locked_at` column. Signs with the operator's current key, chosen as the
   production lock path chooses it (latest `valid_from` not after now).
   """
   def insert_v6_lock_receipt!(draw, entry_hash, entropy_composition, drand_round) do
@@ -313,7 +313,15 @@ defmodule WallopCore.TestHelpers do
     {:ok, private} = Vault.decrypt(key.private_key)
     operator = Ash.get!(Operator, operator_id, authorize?: false)
     signed_wt = Schedule.weather_time_for_round(drand_round)
-    locked_at = DateTime.add(signed_wt, -47 * 60, :second)
+
+    # Now, as a real lock would sign, unless that is already too late for
+    # the round: then the latest in-time instant (only put_v6_awaiting!/4,
+    # with triggers off, places a round that close).
+    locked_at =
+      Enum.min(
+        [DateTime.truncate(now, :microsecond), Schedule.latest_lock_at(signed_wt)],
+        DateTime
+      )
 
     payload =
       Protocol.build_v6_lock_payload(%{

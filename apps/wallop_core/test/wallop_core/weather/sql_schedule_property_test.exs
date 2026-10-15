@@ -76,7 +76,12 @@ defmodule WallopCore.Weather.SqlSchedulePropertyTest do
           "2026-10-15T12:00:00.000000+00:00",
           "2026-10-15T12:00:00.000000+05:30",
           "2026-10-15 12:00:00.000000Z",
-          "2026-10-15T12:00:00.000000"
+          "2026-10-15T12:00:00.000000",
+          "2026-10-15T24:00:00.000000Z",
+          "2026-10-15T23:59:60.000000Z",
+          "2026-02-30T12:00:00.000000Z",
+          "2026-13-01T12:00:00.000000Z",
+          "2026-10-15T12:60:00.000000Z"
         ] do
       assert_raise Postgrex.Error, ~r/not a canonical UTC timestamp/, fn ->
         Repo.transaction(fn -> Repo.query!("SELECT wallop_parse_rfc3339_usec($1)", [bad]) end)
