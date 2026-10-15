@@ -230,34 +230,30 @@ defmodule WallopCore.TestHelpers do
 
   @doc """
   Puts an open draw into awaiting_entropy as a v6 draw, and stores a signed
-  lock v6 receipt for it.
+  lock v6 receipt for it, with every trigger off. Test-only: it lets tests
+  place the fetch window around the current time, which a real lock can't
+  (it must happen 46 minutes before weather_time).
 
-  The draw row gets `weather_time` and `drand_round` as given. Test-only: it
-  turns triggers off for that one UPDATE, so tests can place the fetch window
-  around the current time (a real lock can't, because it must happen 46
-  minutes before weather_time).
+  The draw row gets `weather_time` and `drand_round` as given. The receipt
+  is built by `insert_v6_lock_receipt!/4` from `drand_round` alone, so its
+  signed weather_time is `Schedule.weather_time_for_round(drand_round)`.
 
-  The receipt is a real one: it goes through `Protocol.build_v6_lock_payload/1`
-  with the round's own observation hour, `Schedule.weather_time_for_round/1`,
-  and a `locked_at` 47 minutes before that hour, and it is inserted with the
-  triggers on. So `weather_time` may differ from the signed hour, but
-  `drand_round` is the signed round.
+  **The stored `weather_time` may differ from the signed copy.** Tests that
+  build on this (fetch, execution, proof) must assert on the signed value in
+  the receipt, or on the value derived from `drand_round`, never on the
+  stored `weather_time` as if it had been signed.
 
   Options: `:entropy_composition` (default: the Land Observations tag).
   Returns the draw with `expected_result_at` loaded.
   """
   def put_v6_awaiting!(draw, %DateTime{} = weather_time, drand_round, opts \\ [])
       when is_integer(drand_round) do
-    tag =
-      Keyword.get(opts, :entropy_composition, Protocol.landobs_entropy_composition())
+    tag = Keyword.get(opts, :entropy_composition, Protocol.landobs_entropy_composition())
 
     entries = Entries.load_for_draw(draw.id)
     {hash, canonical} = Protocol.entry_hash({draw.id, entries})
-    chain = Quicknet.chain_hash()
 
-    Repo.query!("SET session_replication_role = replica")
-
-    try do
+    with_triggers_off(fn ->
       Repo.query!(
         """
         UPDATE draws SET status = 'awaiting_entropy', lock_schema_version = '6',
@@ -269,35 +265,50 @@ defmodule WallopCore.TestHelpers do
           Ecto.UUID.dump!(draw.id),
           hash,
           canonical,
-          chain,
+          Quicknet.chain_hash(),
           drand_round,
           DateTime.to_naive(weather_time),
           tag,
           Stations.primary().id
         ]
       )
-    after
-      Repo.query!("RESET session_replication_role")
-    end
 
-    insert_v6_lock_receipt!(draw, hash, tag, drand_round)
+      insert_v6_lock_receipt!(draw, hash, tag, drand_round)
+    end)
+
     Ash.get!(Draw, draw.id, authorize?: false, load: [:expected_result_at])
   end
 
+  defp with_triggers_off(fun) do
+    Repo.query!("SET session_replication_role = replica")
+
+    try do
+      fun.()
+    after
+      Repo.query!("RESET session_replication_role")
+    end
+  end
+
   @doc """
-  The signed lock v6 receipt `put_v6_awaiting!/4` stores. `locked_at` is 47
-  minutes before the round's observation hour; it is both the signed value
-  and the receipt's `locked_at` column.
+  A signed lock v6 receipt for `draw`, inserted with whatever triggers are
+  on. Signed weather_time is the round's observation hour; `locked_at` is
+  47 minutes before it, and is both the signed value and the receipt's
+  `locked_at` column. Signs with the operator's current key, chosen as the
+  production lock path chooses it (latest `valid_from` not after now).
   """
   def insert_v6_lock_receipt!(draw, entry_hash, entropy_composition, drand_round) do
     require Ash.Query
 
     operator_id = draw.operator_id
 
-    key =
+    now = DateTime.utc_now()
+
+    [key] =
       OperatorSigningKey
-      |> Ash.Query.filter(operator_id == ^operator_id)
-      |> Ash.read_one!(authorize?: false)
+      |> Ash.Query.filter(operator_id == ^operator_id and valid_from <= ^now)
+      |> Ash.Query.sort(valid_from: :desc)
+      |> Ash.Query.limit(1)
+      |> Ash.read!(authorize?: false)
 
     {:ok, private} = Vault.decrypt(key.private_key)
     operator = Ash.get!(Operator, operator_id, authorize?: false)
