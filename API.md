@@ -137,7 +137,17 @@ Returns the current state of a draw.
 GET /draws
 ```
 
-Returns all draws belonging to the authenticated API key.
+Returns the authenticated API key's draws, oldest first, one page at a time.
+
+| Query parameter | Meaning |
+|-----------------|---------|
+| `status` | Optional. One status or a comma-separated list, e.g. `status=awaiting_entropy,pending_entropy`. Values are the statuses below, lower case; spaces around the commas are tolerated. Anything else is a `400` that names the parameter and the allowed values. `filter[...]` and `sort` are not accepted on this route (`400`). |
+| `page[limit]` | Optional. 1 to 100, default 50. Above 100 is reduced to 100. |
+| `page[after]` | Optional. A cursor taken from a previous response. Do not build these yourself. |
+
+While more draws remain, the response carries `links.next`: a complete URL (filter and limit included) to fetch as it stands. On the last page the `next` key is still there, with the value `null`; when you see that, you have the lot. A page that happens to end exactly on the final draw also gives `null`, not an empty extra page.
+
+Paging is by keyset, so it is not a snapshot. A draw created while you are paging can commit behind a cursor you were already handed and be missed until your next sweep. If you need to be sure, sweep again.
 
 ---
 
@@ -146,6 +156,7 @@ Returns all draws belonging to the authenticated API key.
 | Status | Description |
 |--------|-------------|
 | `open` | Accepting entries. Mutable. |
+| `locked` | Not seen in practice: locking a draw declares entropy in the same transaction, so a draw goes straight from `open` to `awaiting_entropy`. Still accepted as a `status` filter value (it is in the status enum), but it matches nothing. |
 | `awaiting_entropy` | Entries locked. Waiting for entropy collection. |
 | `pending_entropy` | Entropy collection in progress. |
 | `completed` | Winners selected. Immutable. Terminal. |

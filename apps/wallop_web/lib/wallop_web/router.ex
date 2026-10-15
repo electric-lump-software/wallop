@@ -13,6 +13,7 @@ defmodule WallopWeb.Router do
   end
 
   pipeline :api do
+    plug(WallopWeb.Plugs.CanonicalUrl)
     plug(:accepts, ["json"])
   end
 
