@@ -561,7 +561,7 @@ defmodule WallopCore.Weather.V6DrawGuardTest do
         weather_station: Stations.primary().id,
         weather_time: s.weather_time,
         wallop_core_version: "0.0.0",
-        fair_pick_version: "0.0.0"
+        fair_pick_version: to_string(Application.spec(:fair_pick, :vsn))
       }
       |> Protocol.build_v6_lock_payload()
       |> Jason.decode!()

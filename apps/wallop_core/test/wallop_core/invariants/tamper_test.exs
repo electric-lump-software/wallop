@@ -9,11 +9,13 @@ defmodule WallopCore.Invariants.TamperTest do
       ±1 hour, the other station, another chain or tag, nil, a wrong type),
       and so are the pairs that must agree. Each mutation is either refused
       by the builder with its exact message, or classified:
+        - `:same_bytes`: the builder signs exactly the base bytes (a whole
+          float, which JCS renders as an integer);
         - `{:db, field}`: the builder can't see it; the lock receipt
           trigger must refuse it (checked against real locked draws below);
-        - `{:verifier, field}`: an execution field the builder can't see;
-          `spec/vectors/proof-bundle-v6-tamper.json` must carry a case for
-          it, which the Rust verifier refuses;
+        - `{:verifier, field}`: a field the builder can't see and the
+          database doesn't bind; `spec/vectors/proof-bundle-v6-tamper.json`
+          must carry a case for it, which the Rust verifier refuses;
         - `{:producer, field}`: another valid value (a later `executed_at`,
           the other listed station). No offline check can tell it from the
           truth; only the producer, from the draw row, knows it;
@@ -59,17 +61,11 @@ defmodule WallopCore.Invariants.TamperTest do
 
   # Mutations no layer refuses today. Reported as findings. A change that
   # adds a check moves a field out of here.
-  @no_layer_refuses %{
-    lock: ~w(fair_pick_version wallop_core_version),
-    exec: ~w(fair_pick_version operator_slug wallop_core_version)
-  }
+  @no_layer_refuses %{lock: ~w(wallop_core_version), exec: ~w(wallop_core_version)}
 
   # Signed fields the Rust verifier does not check, so the tamper vector
   # can't carry a refusing case for them (a re-signed change passes).
-  @verifier_blind %{
-    lock: ~w(commitment_hash fair_pick_version operator_slug wallop_core_version),
-    exec: ~w(fair_pick_version operator_slug wallop_core_version)
-  }
+  @verifier_blind %{lock: ~w(wallop_core_version), exec: ~w(wallop_core_version)}
 
   defp us(dt, n), do: DateTime.add(dt, n, :microsecond)
   defp hours(dt, n), do: DateTime.add(dt, n * 3600)
@@ -233,7 +229,12 @@ defmodule WallopCore.Invariants.TamperTest do
       {"wallop_core_version other", %{l | wallop_core_version: "9.9.9"},
        {:no_layer, "wallop_core_version"}},
       {"fair_pick_version other", %{l | fair_pick_version: "9.9.9"},
-       {:no_layer, "fair_pick_version"}},
+       {:verifier, "fair_pick_version"}},
+      # Floats: JCS renders a whole float as an integer, so the signed
+      # bytes are unchanged; the round is refused outright.
+      {"sequence 7.0", %{l | sequence: l.sequence * 1.0}, :same_bytes},
+      {"winner_count float", %{l | winner_count: l.winner_count * 1.0}, :same_bytes},
+      {"drand_round float", %{l | drand_round: r * 1.0}, {:raise, positive}},
       # Pairs that must agree.
       {"drand_round +1h with weather_time +1h",
        %{l | drand_round: r + 1200, weather_time: hours(wt, 1)}, {:db, "drand_round"}},
@@ -322,11 +323,14 @@ defmodule WallopCore.Invariants.TamperTest do
       {"entropy_composition v2", %{e | entropy_composition: @v2_tag},
        {:raise, tag_message(@v2_tag)}},
       {"entropy_composition nil", %{e | entropy_composition: nil}, {:raise, tag_message(nil)}},
-      {"operator_slug other", %{e | operator_slug: "someone-else"}, {:no_layer, "operator_slug"}},
+      {"operator_slug other", %{e | operator_slug: "someone-else"}, {:verifier, "operator_slug"}},
+      {"sequence 7.0", %{e | sequence: e.sequence * 1.0}, :same_bytes},
+      {"drand_round float", %{e | drand_round: r * 1.0},
+       {:raise, "exec v5 drand_round must be a positive integer"}},
       {"wallop_core_version other", %{e | wallop_core_version: "9.9.9"},
        {:no_layer, "wallop_core_version"}},
       {"fair_pick_version other", %{e | fair_pick_version: "9.9.9"},
-       {:no_layer, "fair_pick_version"}}
+       {:verifier, "fair_pick_version"}}
     ]
 
     common ++ exec_weather_mutations(kind, e, r, wt) ++ invisible ++ nils
@@ -391,8 +395,14 @@ defmodule WallopCore.Invariants.TamperTest do
   defp build_exec(input), do: Protocol.build_v6_execution_payload(input)
 
   # Asserts the builder outcome of one mutation; returns the payload when built.
-  defp assert_builder(builder, base_payload, {label, input, expected}, layer_fields) do
+  defp assert_builder(builder, base_jcs, {label, input, expected}, layer_fields) do
+    base_payload = Jason.decode!(base_jcs)
+
     case expected do
+      :same_bytes ->
+        assert builder.(input) == base_jcs, label
+        nil
+
       {:raise, message} ->
         error = assert_raise ArgumentError, fn -> builder.(input) end
         assert Exception.message(error) == message, label
@@ -411,8 +421,11 @@ defmodule WallopCore.Invariants.TamperTest do
     end
   end
 
-  defp exec_vector_fields do
-    for {_, _, :exec, field, _, _, _} <- TamperVectors.cases(), uniq: true, do: field
+  defp vector_fields(receipt) do
+    for {_, _, r, field, _, _, _} <- TamperVectors.cases(),
+        r in [receipt, :both],
+        uniq: true,
+        do: field
   end
 
   # ── Builders ───────────────────────────────────────────────────────
@@ -420,11 +433,12 @@ defmodule WallopCore.Invariants.TamperTest do
   describe "INV-2 the builders refuse every one-step lock and execution mutation they can see" do
     property "INV-2 (tamper, lock builder) each mutation is refused, or left to the database" do
       check all(c <- v6_inputs(), max_runs: 200) do
-        base = Jason.decode!(build_lock(c.lock))
+        base = build_lock(c.lock)
 
         for m <- lock_mutations(c) do
           assert_builder(&build_lock/1, base, m, %{
             db: @db_bound,
+            verifier: vector_fields(:lock),
             no_layer: @no_layer_refuses.lock
           })
         end
@@ -433,11 +447,11 @@ defmodule WallopCore.Invariants.TamperTest do
 
     property "INV-2 (tamper, exec builder) each mutation is refused, or left to the verifier" do
       check all(c <- v6_inputs(), max_runs: 200) do
-        base = Jason.decode!(build_exec(c.exec))
+        base = build_exec(c.exec)
 
         for m <- exec_mutations(c) do
           assert_builder(&build_exec/1, base, m, %{
-            verifier: exec_vector_fields(),
+            verifier: vector_fields(:exec),
             producer: @producer_only,
             no_layer: @no_layer_refuses.exec
           })
@@ -542,11 +556,15 @@ defmodule WallopCore.Invariants.TamperTest do
               assert insert_receipt(Jason.decode!(build_lock(input)), cols) == db_message(field),
                      label
 
-            {:no_layer, field} ->
-              assert field in @no_layer_refuses.lock
+            {layer, field} when layer in [:no_layer, :verifier] ->
+              # Unbound in the database: the build constants.
+              assert field in (@no_layer_refuses.lock ++ vector_fields(:lock))
               assert insert_receipt(Jason.decode!(build_lock(input)), cols) == nil, label
 
             {:raise, _} ->
+              :builder
+
+            :same_bytes ->
               :builder
           end
         end
@@ -600,6 +618,30 @@ defmodule WallopCore.Invariants.TamperTest do
              "v6 lock receipt signing key was not valid at locked_at"}
           ] do
         assert insert_receipt(tampered, tampered_cols) == message, label
+      end
+    end
+  end
+
+  describe "INV-2 the receipt trigger and whole floats" do
+    setup do
+      {_operator, key} = create_v6_operator()
+      %{key: key, s: in_time_schedule()}
+    end
+
+    # Reported finding, pinned as today's behaviour: the trigger compares
+    # integers as jsonb, so `7.0` equals `7`. The builder never signs it
+    # (JCS renders a whole float as an integer), and the verifier refuses
+    # it (the tamper vector's *_float cases).
+    test "INV-2 (tamper, database) a whole float in place of a signed integer is not refused",
+         %{key: key, s: s} do
+      d = open_draw_with_entries(key)
+      assert raw_lock(d, s.weather_time, s.round) == nil
+      {payload, cols} = valid_receipt(d, s)
+
+      for field <- ~w(sequence winner_count drand_round) do
+        float = Map.update!(payload, field, &(&1 * 1.0))
+        assert Jason.encode!(float) =~ ~s("#{field}":#{payload[field]}.0), field
+        assert insert_receipt(float, cols) == nil, field
       end
     end
   end
@@ -857,7 +899,8 @@ defmodule WallopCore.Invariants.TamperTest do
      Jason.decode!(b["execution_receipt"]["payload_jcs"])}
   end
 
-  defp changed(a, b), do: for({k, v} <- a, b[k] != v, do: k) |> Enum.sort()
+  # Strict, so 7.0 in place of 7 counts as a change.
+  defp changed(a, b), do: for({k, v} <- a, b[k] !== v, do: k) |> Enum.sort()
 
   defp verified?(wrapper, key_hex) do
     Protocol.verify_receipt(
@@ -920,6 +963,12 @@ defmodule WallopCore.Invariants.TamperTest do
           "exec" ->
             assert lock == base_lock, name
             assert changed(exec, base_exec) == [case["field"]], name
+
+          "both" ->
+            assert changed(lock, base_lock) == [case["field"]], name
+
+            assert changed(exec, base_exec) == Enum.sort([case["field"], "lock_receipt_hash"]),
+                   name
         end
 
         assert case["expected_failing_steps"] != [], name
@@ -931,7 +980,9 @@ defmodule WallopCore.Invariants.TamperTest do
 
       for {receipt, keys} <- [lock: LandObs.lock_keys(), exec: LandObs.exec_keys()],
           key <- keys do
-        covered? = Enum.any?(cases, &(&1["receipt"] == "#{receipt}" and &1["field"] == key))
+        covered? =
+          Enum.any?(cases, &(&1["receipt"] in ["#{receipt}", "both"] and &1["field"] == key))
+
         blind? = key in Map.fetch!(@verifier_blind, receipt)
         assert covered? != blind?, "#{receipt}.#{key}: covered #{covered?}, blind #{blind?}"
       end

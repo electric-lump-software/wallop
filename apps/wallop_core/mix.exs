@@ -32,7 +32,7 @@ defmodule WallopCore.MixProject do
       {:ash_paper_trail, "~> 0.5"},
       {:ash_postgres, "~> 2.0"},
       {:bcrypt_elixir, "~> 3.0"},
-      {:fair_pick, "~> 0.2"},
+      {:fair_pick, "== 0.2.0"},
       {:jcs, "~> 0.2.0"},
       {:jason, "~> 1.4"},
       {:oban, "~> 2.23"},
