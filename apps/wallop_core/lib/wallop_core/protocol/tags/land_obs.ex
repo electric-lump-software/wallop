@@ -20,6 +20,8 @@ defmodule WallopCore.Protocol.Tags.LandObs do
   Every rule here is frozen by the tag. Changing one needs a new tag.
   """
 
+  @behaviour WallopCore.Protocol.Tag
+
   alias WallopCore.Drand.Quicknet
   alias WallopCore.Weather.LandObsGrammar
   alias WallopCore.Weather.Schedule
@@ -43,30 +45,37 @@ defmodule WallopCore.Protocol.Tags.LandObs do
                 weather_value)
 
   @doc "The entropy tag."
+  @impl true
   @spec tag() :: String.t()
   def tag, do: @tag
 
   @doc "The only `weather_fallback_reason` the tag allows."
+  @impl true
   @spec fallback_reason() :: String.t()
   def fallback_reason, do: @fallback_reason
 
   @doc "Every key of a lock receipt under this tag, sorted."
+  @impl true
   @spec lock_keys() :: [String.t()]
   def lock_keys, do: @lock_keys
 
   @doc "Every key of an execution receipt under this tag, sorted."
+  @impl true
   @spec exec_keys() :: [String.t()]
   def exec_keys, do: @exec_keys
 
   @doc "Fields the tag adds to the lock receipt. None."
+  @impl true
   @spec lock_fields(map()) :: map()
   def lock_fields(_input), do: %{}
 
   @doc "Fields the tag adds to the execution receipt. None."
+  @impl true
   @spec exec_fields(map()) :: map()
   def exec_fields(_input), do: %{}
 
   @doc "Raises `ArgumentError` unless the lock input follows the tag's rules."
+  @impl true
   @spec validate_lock!(map()) :: :ok
   def validate_lock!(%{
         weather_station: station,
@@ -97,6 +106,7 @@ defmodule WallopCore.Protocol.Tags.LandObs do
   end
 
   @doc "Raises `ArgumentError` unless the execution input follows the tag's rules."
+  @impl true
   @spec validate_exec!(map()) :: :ok
   def validate_exec!(
         %{weather_station: station, drand_round: round, executed_at: executed_at} = input
