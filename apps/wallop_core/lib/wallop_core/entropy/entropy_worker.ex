@@ -22,7 +22,7 @@ defmodule WallopCore.Entropy.EntropyWorker do
   require Logger
   require OpenTelemetry.Tracer, as: Tracer
 
-  alias WallopCore.Entropy.{DrandClient, WeatherClient, WebhookWorker}
+  alias WallopCore.Entropy.{DrandClient, WeatherClient}
   alias WallopCore.Log
 
   # After this many attempts, fall back to drand-only if weather is unavailable
@@ -283,7 +283,6 @@ defmodule WallopCore.Entropy.EntropyWorker do
       |> case do
         {:ok, completed_draw} ->
           broadcast_update(completed_draw)
-          maybe_enqueue_webhook(completed_draw)
           :ok
 
         {:error, reason} ->
@@ -315,7 +314,6 @@ defmodule WallopCore.Entropy.EntropyWorker do
       |> case do
         {:ok, completed_draw} ->
           broadcast_update(completed_draw)
-          maybe_enqueue_webhook(completed_draw)
           :ok
 
         {:error, reason} ->
@@ -391,7 +389,6 @@ defmodule WallopCore.Entropy.EntropyWorker do
     |> case do
       {:ok, failed_draw} ->
         broadcast_update(failed_draw)
-        maybe_enqueue_webhook(failed_draw)
         :ok
 
       {:error, _} ->
@@ -406,16 +403,5 @@ defmodule WallopCore.Entropy.EntropyWorker do
 
   defp broadcast_update(draw) do
     Phoenix.PubSub.broadcast(WallopCore.PubSub, "draw:#{draw.id}", {:draw_updated, draw})
-  end
-
-  defp maybe_enqueue_webhook(%{callback_url: nil}), do: :ok
-
-  defp maybe_enqueue_webhook(%{callback_url: url, id: draw_id, api_key_id: api_key_id})
-       when is_binary(url) do
-    %{draw_id: draw_id, api_key_id: api_key_id}
-    |> WebhookWorker.new()
-    |> Oban.insert()
-
-    :ok
   end
 end
