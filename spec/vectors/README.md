@@ -49,6 +49,10 @@ the current protocol.
 
 - `proof-bundle-v6-tamper.json` — lock v6 / execution v5 proof bundles on a real quicknet round, each with exactly one signed field changed and re-signed with the vector key (a changed lock also gets a recomputed, re-signed `lock_receipt_hash`), so only the semantic checks can refuse it. Shape: `{description, keys, bases: [{name, bundle, expected_passed: true}], cases: [{name, base, receipt, field, mutation, bundle, expected_failing_steps}]}`. `keys` is `[{key_id, public_key_hex, key_class, inserted_at}]`; each `bundle` is the bundle's JCS text. Every case must fail exactly its `expected_failing_steps` (snake_case step names) and never pass; the bases pass every step. Regenerate with `MIX_ENV=test mix run apps/wallop_core/test/wallop_core/tamper_vectors_generator.exs`.
 
+  - `receipt` is `lock`, `exec` or `both`. A `both` case sets the same field on both receipts (for example a `fair_pick` version that was never released).
+  - The `expected_failing_steps` are the verifier's own step names, and each set is pinned by running the verifier. Renaming or splitting a verifier step means regenerating this file.
+  - Both receipts sign the `fair_pick_version` of the `fair_pick` dependency core runs, never a hard-coded string. The verifier accepts only `fair_pick` versions on its known list, so that version must be on the list. Core pins `fair_pick` exactly; moving to a new release means adding it to the verifier's list in the same release.
+
 ### Merkle and transparency anchors
 
 - `merkle-root.json` — Merkle construction `sha256-pairwise-v1` (0x00 leaf prefix, 0x01 node prefix, Bitcoin-style odd-level duplication, empty-list sentinel `SHA-256(<<>>)`)

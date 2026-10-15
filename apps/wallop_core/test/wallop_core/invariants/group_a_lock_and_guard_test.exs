@@ -532,7 +532,7 @@ defmodule WallopCore.Invariants.LockAndGuardTest do
     weather_station: "wmo-03749",
     weather_time: ~U[2026-10-14 19:00:00.000000Z],
     wallop_core_version: "0.29.0",
-    fair_pick_version: "0.2.1"
+    fair_pick_version: to_string(Application.spec(:fair_pick, :vsn))
   }
 
   @exec_input %{
@@ -552,7 +552,7 @@ defmodule WallopCore.Invariants.LockAndGuardTest do
     weather_value: "141;1025;85;2432",
     weather_fallback_reason: nil,
     wallop_core_version: "0.29.0",
-    fair_pick_version: "0.2.1",
+    fair_pick_version: to_string(Application.spec(:fair_pick, :vsn)),
     seed: String.duplicate("ef", 32),
     results: ["33333333-3333-3333-3333-333333333333"],
     executed_at: ~U[2026-10-14 20:00:06.000000Z],

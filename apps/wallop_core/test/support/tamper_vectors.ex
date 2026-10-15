@@ -57,6 +57,13 @@ defmodule WallopCore.TamperVectors do
   @doc "Where the vector file lives."
   def path, do: @path
 
+  @doc """
+  The fair_pick release both receipts sign: the running dependency's
+  version, as the lock and execution paths sign it. Never hard-coded; the
+  verifier accepts only releases it knows.
+  """
+  def fair_pick_version, do: Application.spec(:fair_pick, :vsn) |> to_string()
+
   @doc "The vector's real quicknet round."
   def round, do: @round
 
@@ -106,7 +113,7 @@ defmodule WallopCore.TamperVectors do
       weather_station: Stations.primary().id,
       weather_time: Schedule.weather_time_for_round(@round),
       wallop_core_version: "0.29.0",
-      fair_pick_version: "0.2.1"
+      fair_pick_version: fair_pick_version()
     }
   end
 
@@ -241,6 +248,23 @@ defmodule WallopCore.TamperVectors do
        "a different value", ~w(bundle_shape)},
       {"lock_signature_algorithm_other", :observed, :lock, "signature_algorithm", "ed448",
        "a different value", ~w(bundle_shape)},
+      {"lock_sequence_float", :observed, :lock, "sequence", {:float, 7},
+       "wrong type: 7.0 in the signed bytes",
+       ~w(bundle_shape lock_signature receipt_field_consistency)},
+      {"lock_drand_round_float", :observed, :lock, "drand_round", {:float, @round},
+       "wrong type: a float in the signed bytes",
+       ~w(bundle_shape lock_signature receipt_field_consistency weather_observation_window)},
+      {"lock_winner_count_float", :observed, :lock, "winner_count", {:float, @winner_count},
+       "wrong type: a float in the signed bytes",
+       ~w(bundle_shape lock_signature winner_selection)},
+      {"lock_fair_pick_version_other", :observed, :lock, "fair_pick_version", "0.1.0",
+       "another released version than the exec's", ~w(receipt_field_consistency)},
+      {"lock_operator_slug_other", :observed, :lock, "operator_slug", "someone-else",
+       "another slug than the exec's", ~w(receipt_field_consistency)},
+      {"lock_commitment_hash_other", :observed, :lock, "commitment_hash", @other_hash,
+       "not the entry_hash", ~w(lock_receipt_entry_hash)},
+      {"lock_commitment_hash_upper_case", :observed, :lock, "commitment_hash",
+       String.upcase(entry_hash()), "the entry_hash in upper case", ~w(lock_receipt_entry_hash)},
 
       # ── Execution receipt ─────────────────────────────────────────
       {"exec_drand_round_plus_one", :observed, :exec, "drand_round", @round + 1, "+1 round",
@@ -306,7 +330,23 @@ defmodule WallopCore.TamperVectors do
       {"exec_jcs_version_other", :observed, :exec, "jcs_version", "sha256-jcs-v2",
        "a different value", ~w(bundle_shape)},
       {"exec_signature_algorithm_other", :observed, :exec, "signature_algorithm", "ed448",
-       "a different value", ~w(bundle_shape)}
+       "a different value", ~w(bundle_shape)},
+      {"exec_sequence_float", :observed, :exec, "sequence", {:float, 7},
+       "wrong type: 7.0 in the signed bytes",
+       ~w(bundle_shape exec_signature receipt_field_consistency)},
+      {"exec_drand_round_float", :observed, :exec, "drand_round", {:float, @round},
+       "wrong type: a float in the signed bytes",
+       ~w(bundle_shape exec_signature receipt_field_consistency)},
+      {"exec_fair_pick_version_other", :observed, :exec, "fair_pick_version", "0.1.0",
+       "another released version than the lock's", ~w(receipt_field_consistency)},
+      {"exec_operator_slug_other", :observed, :exec, "operator_slug", "someone-else",
+       "another slug than the lock's", ~w(receipt_field_consistency)},
+
+      # ── Both receipts ─────────────────────────────────────────────
+      {"both_fair_pick_version_unreleased", :observed, :both, "fair_pick_version", "0.2.1",
+       "a fair_pick version never released, on both receipts", ~w(receipt_field_consistency)},
+      {"both_fair_pick_version_unknown", :fallback, :both, "fair_pick_version", "9.9.9",
+       "an unknown fair_pick version, on both receipts", ~w(receipt_field_consistency)}
     ]
   end
 
@@ -315,7 +355,8 @@ defmodule WallopCore.TamperVectors do
     %{
       "description" =>
         "Signed lock v6 / execution v5 proof bundles, each with exactly one signed " <>
-          "field tampered and re-signed with the vector key, so only the semantic " <>
+          "field tampered (on one receipt, or on both for receipt both) and " <>
+          "re-signed with the vector key, so only the semantic " <>
           "checks can refuse it. When the lock receipt is tampered, the execution " <>
           "receipt's lock_receipt_hash is recomputed and re-signed too. Each case " <>
           "must fail exactly expected_failing_steps and never pass. The bases pass.",
@@ -376,7 +417,10 @@ defmodule WallopCore.TamperVectors do
     }
   end
 
-  @doc "The base bundle of `kind` with one field of one receipt replaced, re-signed."
+  @doc """
+  The base bundle of `kind` with one field of one receipt (or of both, for
+  `:both`) replaced, re-signed.
+  """
   def tampered_bundle(kind, receipt, field, value) do
     {lock_jcs, exec_jcs} = base(kind)
 
@@ -391,10 +435,30 @@ defmodule WallopCore.TamperVectors do
 
       :exec ->
         bundle(lock_jcs, put_field(exec_jcs, field, value), kind)
+
+      :both ->
+        lock_jcs = put_field(lock_jcs, field, value)
+        exec_jcs = exec_jcs |> put_field(field, value)
+
+        bundle(
+          lock_jcs,
+          put_field(exec_jcs, "lock_receipt_hash", sha256_hex(lock_jcs)),
+          kind
+        )
     end
   end
 
-  @doc "Decodes `jcs`, sets `field` to `value` and encodes it again as JCS."
+  @doc """
+  Decodes `jcs`, sets `field` to `value` and encodes it again as JCS.
+  `{:float, n}` instead rewrites the integer `n` as `n.0` in the bytes
+  themselves, since JCS would render a whole float as an integer.
+  """
+  def put_field(jcs, field, {:float, n}) do
+    pattern = Regex.compile!(~s<"#{field}":#{n}(?=[,}])>)
+    [_] = Regex.scan(pattern, jcs)
+    Regex.replace(pattern, jcs, ~s<"#{field}":#{n}.0>)
+  end
+
   def put_field(jcs, field, :reverse) do
     payload = Jason.decode!(jcs)
     Jcs.encode(%{payload | field => Enum.reverse(Map.fetch!(payload, field))})

@@ -7,6 +7,10 @@ defmodule WallopCore.ProtocolV6Test do
 
   @landobs "drand-quicknet+metoffice-landobs-v1"
 
+  # The fair_pick release this build runs, as the lock and execution paths
+  # sign it. Never hard-coded: the verifier accepts only releases it knows.
+  @fair_pick Application.spec(:fair_pick, :vsn) |> to_string()
+
   # drand_round 33_068_212 publishes at 2026-10-14 20:00:00Z, so its
   # observation hour is 19:00:00Z and the latest lock is 18:14:00Z.
   @lock %{
@@ -25,7 +29,7 @@ defmodule WallopCore.ProtocolV6Test do
     weather_station: "wmo-03749",
     weather_time: ~U[2026-10-14 19:00:00.000000Z],
     wallop_core_version: "0.29.0",
-    fair_pick_version: "0.2.1"
+    fair_pick_version: @fair_pick
   }
 
   @exec %{
@@ -46,7 +50,7 @@ defmodule WallopCore.ProtocolV6Test do
     weather_value: "141;1025;85;2432",
     weather_fallback_reason: nil,
     wallop_core_version: "0.29.0",
-    fair_pick_version: "0.2.1",
+    fair_pick_version: @fair_pick,
     seed: String.duplicate("ef", 32),
     results: ["33333333-3333-3333-3333-333333333333"],
     executed_at: ~U[2026-10-14 20:00:06.000000Z],
@@ -385,6 +389,15 @@ defmodule WallopCore.ProtocolV6Test do
     end
   end
 
+  describe "the fair_pick release" do
+    test "the running fair_pick is the pinned 0.2.0" do
+      assert @fair_pick == "0.2.0",
+             "fair_pick is #{@fair_pick}, not 0.2.0. Every lock v6 / execution v5 receipt " <>
+               "signs this version and the verifier accepts only releases it knows: add it " <>
+               "to wallop_rs FAIR_PICK_VERSIONS in the same release, then update this pin."
+    end
+  end
+
   describe "byte-level output" do
     # Exact JCS bytes. Any change here changes every signature under the tag.
     test "lock v6 bytes" do
@@ -395,7 +408,7 @@ defmodule WallopCore.ProtocolV6Test do
                  ~s("draw_id":"22222222-2222-2222-2222-222222222222",) <>
                  ~s("entropy_composition":"drand-quicknet+metoffice-landobs-v1",) <>
                  ~s("entry_hash":"#{String.duplicate("ab", 32)}",) <>
-                 ~s("fair_pick_version":"0.2.1","jcs_version":"sha256-jcs-v1",) <>
+                 ~s("fair_pick_version":"0.2.0","jcs_version":"sha256-jcs-v1",) <>
                  ~s("locked_at":"2026-10-14T18:00:00.123456Z",) <>
                  ~s("operator_id":"11111111-1111-1111-1111-111111111111",) <>
                  ~s("operator_slug":"acme-prizes","schema_version":"6","sequence":7,) <>
@@ -408,13 +421,13 @@ defmodule WallopCore.ProtocolV6Test do
       sha = &(:crypto.hash(:sha256, &1) |> Base.encode16(case: :lower))
 
       assert sha.(Protocol.build_v6_lock_payload(@lock)) ==
-               "8d580b7e659cec64b3731444140f028c45cc023ac3c16f0b0eadc0955dae4541"
+               "b8b0943389d5d3e6c455bbc7b812b6ebd6bde35619d59f1fc4b2014a48dba616"
 
       assert sha.(Protocol.build_v6_execution_payload(@exec)) ==
-               "db799b895287123ac757a744cfe2941b728534caf6b5ef42b47d6afb2f62e2ec"
+               "eda3da304ced89945e31865dcca54f111c9ed7c0a112f3e889a0e5db88d27317"
 
       assert sha.(Protocol.build_v6_execution_payload(@fallback)) ==
-               "dbbb4ecba3df22f50ee10f933f743818749b8dd1adf097e9153d47f005385b2c"
+               "06a9dbbc0adedc7557894c3e31d4d0ad34492fb9e2e8c79b4df863ab54a2f2b2"
     end
 
     test "exec v5 fallback bytes carry explicit nulls" do
