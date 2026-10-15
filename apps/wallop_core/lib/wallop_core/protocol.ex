@@ -6,6 +6,11 @@ defmodule WallopCore.Protocol do
   `spec/protocol.md`.
   """
 
+  alias WallopCore.Drand.Quicknet
+  alias WallopCore.Weather.LandObsGrammar
+  alias WallopCore.Weather.Schedule
+  alias WallopCore.Weather.Stations
+
   @doc """
   Compute the entry hash for a draw.
 
@@ -194,41 +199,51 @@ defmodule WallopCore.Protocol do
     (verifiers resolve operator keys via `KeyResolver` against
     `/operator/:slug/keys` or an operator-published `.well-known` pin).
     See spec §4.2.4.
+  - **v6** — same field set as v5, built by `build_v6_lock_payload/1`
+    under an entropy tag that sets the weather rules.
 
   `locked_at` must be a `DateTime` with microsecond precision; the caller is
   responsible for capturing it once at lock time and not re-stamping.
   """
   @spec build_receipt_payload(map()) :: binary()
-  def build_receipt_payload(%{
-        operator_id: operator_id,
-        operator_slug: operator_slug,
-        sequence: sequence,
-        draw_id: draw_id,
-        commitment_hash: commitment_hash,
-        entry_hash: entry_hash,
-        locked_at: %DateTime{} = locked_at,
-        signing_key_id: signing_key_id,
-        winner_count: winner_count,
-        drand_chain: drand_chain,
-        drand_round: drand_round,
-        weather_station: weather_station,
-        weather_time: weather_time,
-        wallop_core_version: wallop_core_version,
-        fair_pick_version: fair_pick_version
-      }) do
+  def build_receipt_payload(input) do
+    lock_payload(input, @receipt_schema_version, @entropy_composition)
+  end
+
+  defp lock_payload(
+         %{
+           operator_id: operator_id,
+           operator_slug: operator_slug,
+           sequence: sequence,
+           draw_id: draw_id,
+           commitment_hash: commitment_hash,
+           entry_hash: entry_hash,
+           locked_at: %DateTime{} = locked_at,
+           signing_key_id: signing_key_id,
+           winner_count: winner_count,
+           drand_chain: drand_chain,
+           drand_round: drand_round,
+           weather_station: weather_station,
+           weather_time: weather_time,
+           wallop_core_version: wallop_core_version,
+           fair_pick_version: fair_pick_version
+         },
+         schema_version,
+         entropy_composition
+       ) do
     payload = %{
       "commitment_hash" => commitment_hash,
       "draw_id" => draw_id,
       "drand_chain" => drand_chain,
       "drand_round" => drand_round,
-      "entropy_composition" => @entropy_composition,
+      "entropy_composition" => entropy_composition,
       "entry_hash" => entry_hash,
       "fair_pick_version" => fair_pick_version,
       "jcs_version" => @jcs_version,
       "locked_at" => WallopCore.Time.to_rfc3339_usec(locked_at),
       "operator_id" => operator_id,
       "operator_slug" => to_string(operator_slug),
-      "schema_version" => @receipt_schema_version,
+      "schema_version" => schema_version,
       "sequence" => sequence,
       "signature_algorithm" => @signature_algorithm,
       "signing_key_id" => signing_key_id,
@@ -279,32 +294,42 @@ defmodule WallopCore.Protocol do
     verifier behaviour. Producers MUST omit
     `infrastructure_public_key_hex` from the bundle's execution_receipt
     wrapper. See spec §4.2.4.
+  - **v5** — same field set as v4, built by `build_v6_execution_payload/1`
+    under an entropy tag that sets the weather rules. Pairs only with
+    lock v6.
   """
   @spec build_execution_receipt_payload(map()) :: binary()
-  def build_execution_receipt_payload(%{
-        draw_id: draw_id,
-        operator_id: operator_id,
-        operator_slug: operator_slug,
-        sequence: sequence,
-        lock_receipt_hash: lock_receipt_hash,
-        entry_hash: entry_hash,
-        drand_chain: drand_chain,
-        drand_round: drand_round,
-        drand_randomness: drand_randomness,
-        drand_signature: drand_signature,
-        weather_station: weather_station,
-        weather_observation_time: weather_observation_time,
-        weather_value: weather_value,
-        weather_fallback_reason: weather_fallback_reason,
-        wallop_core_version: wallop_core_version,
-        fair_pick_version: fair_pick_version,
-        seed: seed,
-        results: results,
-        executed_at: %DateTime{} = executed_at,
-        signing_key_id: signing_key_id
-      }) do
-    validate_weather_fallback_reason!(weather_fallback_reason)
+  def build_execution_receipt_payload(%{weather_fallback_reason: reason} = input) do
+    validate_weather_fallback_reason!(reason)
+    execution_payload(input, @execution_receipt_schema_version, @entropy_composition)
+  end
 
+  defp execution_payload(
+         %{
+           draw_id: draw_id,
+           operator_id: operator_id,
+           operator_slug: operator_slug,
+           sequence: sequence,
+           lock_receipt_hash: lock_receipt_hash,
+           entry_hash: entry_hash,
+           drand_chain: drand_chain,
+           drand_round: drand_round,
+           drand_randomness: drand_randomness,
+           drand_signature: drand_signature,
+           weather_station: weather_station,
+           weather_observation_time: weather_observation_time,
+           weather_value: weather_value,
+           weather_fallback_reason: weather_fallback_reason,
+           wallop_core_version: wallop_core_version,
+           fair_pick_version: fair_pick_version,
+           seed: seed,
+           results: results,
+           executed_at: %DateTime{} = executed_at,
+           signing_key_id: signing_key_id
+         },
+         schema_version,
+         entropy_composition
+       ) do
     payload = %{
       "draw_id" => draw_id,
       "drand_chain" => drand_chain,
@@ -312,7 +337,7 @@ defmodule WallopCore.Protocol do
       "drand_round" => drand_round,
       "drand_signature" => drand_signature,
       "drand_signature_algorithm" => @drand_signature_algorithm,
-      "entropy_composition" => @entropy_composition,
+      "entropy_composition" => entropy_composition,
       "entry_hash" => entry_hash,
       "executed_at" => WallopCore.Time.to_rfc3339_usec(executed_at),
       "fair_pick_version" => fair_pick_version,
@@ -322,7 +347,7 @@ defmodule WallopCore.Protocol do
       "operator_id" => operator_id,
       "operator_slug" => to_string(operator_slug),
       "results" => results,
-      "schema_version" => @execution_receipt_schema_version,
+      "schema_version" => schema_version,
       "seed" => seed,
       "sequence" => sequence,
       "signature_algorithm" => @signature_algorithm,
@@ -338,6 +363,196 @@ defmodule WallopCore.Protocol do
     assert_canonical_timestamps!(payload, ["executed_at", "weather_observation_time"])
     Jcs.encode(payload)
   end
+
+  # ── Lock schema 6 / execution schema 5 ─────────────────────────────
+  #
+  # Same field sets as lock 5 / execution 4. The difference is the rules:
+  # the input's `entropy_composition` tag picks them, and is signed into
+  # the payload verbatim. A second tag adds an entry to
+  # `@v6_entropy_compositions` and a clause to each `validate_v6_*!`.
+
+  @v6_lock_schema_version "6"
+  @v6_execution_schema_version "5"
+  @landobs_entropy_composition "drand-quicknet+metoffice-landobs-v1"
+  @landobs_fallback_reason "no_observation_by_deadline"
+  @v6_entropy_compositions [@landobs_entropy_composition]
+
+  @doc "The Met Office Land Observations entropy tag, for lock v6 / execution v5."
+  @spec landobs_entropy_composition() :: String.t()
+  def landobs_entropy_composition, do: @landobs_entropy_composition
+
+  @doc "The only `weather_fallback_reason` allowed under the Land Observations tag."
+  @spec landobs_fallback_reason() :: String.t()
+  def landobs_fallback_reason, do: @landobs_fallback_reason
+
+  @doc """
+  Build the canonical JCS payload bytes for a lock receipt, schema 6.
+
+  Takes the same keys as `build_receipt_payload/1`, plus
+  `entropy_composition`, which picks the rules and is signed verbatim. The
+  only accepted tag is `landobs_entropy_composition/0`; any other value, or
+  none, raises `ArgumentError`.
+
+  Under the Land Observations tag, `weather_station` must be the first
+  station, `weather_time` must be the observation hour of `drand_round`
+  (a whole UTC hour), and `locked_at` must be no later than `weather_time`
+  minus the lock offset (46 minutes), to the microsecond.
+  """
+  @spec build_v6_lock_payload(map()) :: binary()
+  def build_v6_lock_payload(input) do
+    tag = v6_entropy_composition!(input)
+    validate_v6_lock!(tag, input)
+    lock_payload(input, @v6_lock_schema_version, tag)
+  end
+
+  @doc """
+  Build the canonical JCS payload bytes for an execution receipt, schema 5.
+
+  Takes the same keys as `build_execution_receipt_payload/1`, plus
+  `entropy_composition`, chosen and checked as in `build_v6_lock_payload/1`.
+
+  Under the Land Observations tag, `weather_station` is the station whose
+  observation was used, and one of the tag's stations. Either:
+
+    * `weather_value` matches the Land Observations grammar and bounds,
+      `weather_observation_time` is the observation hour of `drand_round`,
+      and `weather_fallback_reason` is nil; or
+    * `weather_value` and `weather_observation_time` are nil, the reason is
+      `landobs_fallback_reason/0`, and the station is the first station.
+
+  `executed_at` must not be earlier than the publication of `drand_round`.
+  """
+  @spec build_v6_execution_payload(map()) :: binary()
+  def build_v6_execution_payload(input) do
+    tag = v6_entropy_composition!(input)
+    validate_v6_execution!(tag, input)
+    execution_payload(input, @v6_execution_schema_version, tag)
+  end
+
+  defp v6_entropy_composition!(%{entropy_composition: tag})
+       when tag in @v6_entropy_compositions,
+       do: tag
+
+  defp v6_entropy_composition!(%{entropy_composition: tag}) do
+    raise ArgumentError,
+          "unknown entropy_composition for lock v6 / execution v5: #{inspect(tag)}; " <>
+            "accepted: #{inspect(@v6_entropy_compositions)}"
+  end
+
+  defp v6_entropy_composition!(_input) do
+    raise ArgumentError, "lock v6 / execution v5 input must carry :entropy_composition"
+  end
+
+  defp validate_v6_lock!(@landobs_entropy_composition, input), do: validate_landobs_lock!(input)
+
+  defp validate_v6_execution!(@landobs_entropy_composition, input),
+    do: validate_landobs_execution!(input)
+
+  defp validate_landobs_lock!(%{
+         weather_station: station,
+         weather_time: weather_time,
+         drand_round: round,
+         locked_at: locked_at
+       }) do
+    primary = Stations.primary().id
+    require!(station == primary, "lock v6 weather_station must be #{primary}")
+
+    require!(
+      match?(%DateTime{}, weather_time) and whole_hour?(weather_time),
+      "lock v6 weather_time must be a whole UTC hour"
+    )
+
+    require!(valid_round?(round), "lock v6 drand_round must be a positive integer")
+
+    require!(
+      DateTime.compare(weather_time, Schedule.weather_time_for_round(round)) ==
+        :eq,
+      "lock v6 weather_time is not the observation hour for drand round #{round}"
+    )
+
+    require!(
+      match?(%DateTime{}, locked_at) and
+        Schedule.lock_allowed?(locked_at, weather_time),
+      "lock v6 locked_at is later than weather_time minus " <>
+        "#{div(Schedule.lock_offset_seconds(), 60)} minutes"
+    )
+  end
+
+  defp validate_landobs_lock!(_input) do
+    raise ArgumentError,
+          "lock v6 needs weather_station, weather_time, drand_round and locked_at"
+  end
+
+  defp validate_landobs_execution!(
+         %{weather_station: station, drand_round: round, executed_at: executed_at} = input
+       ) do
+    ids = Stations.ids()
+    require!(station in ids, "exec v5 weather_station must be one of #{inspect(ids)}")
+    require!(valid_round?(round), "exec v5 drand_round must be a positive integer")
+    validate_landobs_weather!(input, station, round)
+
+    require!(
+      match?(%DateTime{}, executed_at) and
+        DateTime.compare(executed_at, Quicknet.pub_time(round)) != :lt,
+      "exec v5 executed_at is before drand round #{round} was published"
+    )
+  end
+
+  defp validate_landobs_execution!(_input) do
+    raise ArgumentError, "exec v5 needs weather_station, drand_round and executed_at"
+  end
+
+  defp validate_landobs_weather!(
+         %{
+           weather_fallback_reason: nil,
+           weather_value: value,
+           weather_observation_time: %DateTime{} = observed
+         },
+         _station,
+         round
+       ) do
+    # valid_value?/1 checks the grammar and the frozen bounds.
+    require!(
+      LandObsGrammar.valid_value?(value),
+      "exec v5 weather_value does not match the Land Observations grammar and bounds"
+    )
+
+    require!(whole_hour?(observed), "exec v5 weather_observation_time must be a whole UTC hour")
+
+    require!(
+      DateTime.compare(observed, Schedule.weather_time_for_round(round)) ==
+        :eq,
+      "exec v5 weather_observation_time is not the observation hour for drand round #{round}"
+    )
+  end
+
+  defp validate_landobs_weather!(
+         %{
+           weather_fallback_reason: @landobs_fallback_reason,
+           weather_value: nil,
+           weather_observation_time: nil
+         },
+         station,
+         _round
+       ) do
+    # A fallback used no station, so it names the tag's first one.
+    primary = Stations.primary().id
+    require!(station == primary, "exec v5 fallback must name #{primary}")
+  end
+
+  defp validate_landobs_weather!(_input, _station, _round) do
+    raise ArgumentError,
+          "exec v5 weather fields must be a value and observation time with a null " <>
+            "reason, or both null with reason #{inspect(@landobs_fallback_reason)}"
+  end
+
+  defp valid_round?(round), do: is_integer(round) and round >= 1
+
+  defp whole_hour?(%DateTime{} = dt),
+    do: Integer.mod(DateTime.to_unix(dt), 3600) == 0 and elem(dt.microsecond, 0) == 0
+
+  defp require!(true, _message), do: :ok
+  defp require!(false, message), do: raise(ArgumentError, message)
 
   # Defence-in-depth: assert that every timestamp field in a signed payload
   # matches the canonical RFC 3339 form pinned in `spec/protocol.md` §4.2.1.

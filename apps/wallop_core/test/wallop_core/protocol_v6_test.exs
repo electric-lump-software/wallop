@@ -1,0 +1,302 @@
+defmodule WallopCore.ProtocolV6Test do
+  use ExUnit.Case, async: true
+  alias WallopCore.Protocol
+
+  @landobs "drand-quicknet+metoffice-landobs-v1"
+
+  # drand_round 33_068_212 publishes at 2026-10-14 20:00:00Z, so its
+  # observation hour is 19:00:00Z and the latest lock is 18:14:00Z.
+  @lock %{
+    entropy_composition: @landobs,
+    operator_id: "11111111-1111-1111-1111-111111111111",
+    operator_slug: "acme-prizes",
+    sequence: 7,
+    draw_id: "22222222-2222-2222-2222-222222222222",
+    commitment_hash: String.duplicate("ab", 32),
+    entry_hash: String.duplicate("ab", 32),
+    locked_at: ~U[2026-10-14 18:00:00.123456Z],
+    signing_key_id: "deadbeef",
+    winner_count: 2,
+    drand_chain: "52db9ba70e0cc0f6eaf7803dd07447a1f5477735fd3f661792ba94600c84e971",
+    drand_round: 33_068_212,
+    weather_station: "wmo-03749",
+    weather_time: ~U[2026-10-14 19:00:00.000000Z],
+    wallop_core_version: "0.29.0",
+    fair_pick_version: "0.2.1"
+  }
+
+  @exec %{
+    entropy_composition: @landobs,
+    draw_id: @lock.draw_id,
+    operator_id: @lock.operator_id,
+    operator_slug: "acme-prizes",
+    sequence: 7,
+    lock_receipt_hash: String.duplicate("cd", 32),
+    entry_hash: @lock.entry_hash,
+    drand_chain: @lock.drand_chain,
+    drand_round: 33_068_212,
+    drand_randomness: "140117383b03a0c0c7a899a32b8cbd2ffff9e2569504037c358ee8c7c2efe2fd",
+    drand_signature:
+      "b6541e41bb68ff318e8bd74b9f6e168ae6424476c432241420c38427df58c6ef33fe009ce202a7101120ab481702fddf",
+    weather_station: "wmo-03749",
+    weather_observation_time: ~U[2026-10-14 19:00:00.000000Z],
+    weather_value: "141;1025;85;2432",
+    weather_fallback_reason: nil,
+    wallop_core_version: "0.29.0",
+    fair_pick_version: "0.2.1",
+    seed: String.duplicate("ef", 32),
+    results: ["33333333-3333-3333-3333-333333333333"],
+    executed_at: ~U[2026-10-14 20:00:06.000000Z],
+    signing_key_id: "cafebabe"
+  }
+
+  @fallback %{
+    @exec
+    | weather_value: nil,
+      weather_observation_time: nil,
+      weather_fallback_reason: "no_observation_by_deadline"
+  }
+
+  # One entry per accepted entropy tag: {lock input, exec input}. A second
+  # tag adds an entry here, and every field-set test below runs for it.
+  @accepted_tags %{@landobs => {@lock, @exec}}
+
+  test "the accepted tags are exactly the landobs tag" do
+    assert Map.keys(@accepted_tags) == [Protocol.landobs_entropy_composition()]
+    assert Protocol.landobs_entropy_composition() == @landobs
+    assert Protocol.landobs_fallback_reason() == "no_observation_by_deadline"
+  end
+
+  for {tag, {lock, exec}} <- @accepted_tags do
+    @tag_lock lock
+    @tag_exec exec
+
+    test "#{tag}: lock v6 has exactly the lock v5 field set, with schema 6 and the tag" do
+      v5 = Jason.decode!(Protocol.build_receipt_payload(%{@tag_lock | weather_station: "x"}))
+      v6 = Jason.decode!(Protocol.build_v6_lock_payload(@tag_lock))
+      assert Map.keys(v6) == Map.keys(v5)
+      assert v6["schema_version"] == "6"
+      assert v6["entropy_composition"] == unquote(tag)
+    end
+
+    test "#{tag}: exec v5 has exactly the exec v4 field set, with schema 5 and the tag" do
+      v4 =
+        Jason.decode!(
+          Protocol.build_execution_receipt_payload(%{
+            @tag_exec
+            | weather_station: "x",
+              weather_value: "102500"
+          })
+        )
+
+      v5 = Jason.decode!(Protocol.build_v6_execution_payload(@tag_exec))
+      assert Map.keys(v5) == Map.keys(v4)
+      assert v5["schema_version"] == "5"
+      assert v5["entropy_composition"] == unquote(tag)
+    end
+  end
+
+  describe "the entropy tag" do
+    test "an unknown tag raises on both builders" do
+      for tag <- ["drand-quicknet+metoffice-landobs-v2", "drand-quicknet+openmeteo-v1", "", nil] do
+        assert_raise ArgumentError, ~r/entropy_composition/, fn ->
+          Protocol.build_v6_lock_payload(%{@lock | entropy_composition: tag})
+        end
+
+        assert_raise ArgumentError, ~r/entropy_composition/, fn ->
+          Protocol.build_v6_execution_payload(%{@exec | entropy_composition: tag})
+        end
+      end
+    end
+
+    test "a missing tag raises on both builders" do
+      assert_raise ArgumentError, ~r/entropy_composition/, fn ->
+        Protocol.build_v6_lock_payload(Map.delete(@lock, :entropy_composition))
+      end
+
+      assert_raise ArgumentError, ~r/entropy_composition/, fn ->
+        Protocol.build_v6_execution_payload(Map.delete(@exec, :entropy_composition))
+      end
+    end
+  end
+
+  describe "lock v6 under the landobs tag" do
+    test "pins the station, the observation hour and the tag" do
+      v6 = Jason.decode!(Protocol.build_v6_lock_payload(@lock))
+      assert v6["weather_station"] == "wmo-03749"
+      assert v6["weather_time"] == "2026-10-14T19:00:00.000000Z"
+      assert v6["locked_at"] == "2026-10-14T18:00:00.123456Z"
+    end
+
+    test "refuses anything but the first station and a whole-hour weather_time" do
+      assert_raise ArgumentError, fn ->
+        Protocol.build_v6_lock_payload(%{@lock | weather_station: "wmo-03462"})
+      end
+
+      assert_raise ArgumentError, fn ->
+        Protocol.build_v6_lock_payload(%{@lock | weather_time: ~U[2026-10-14 19:00:01.000000Z]})
+      end
+
+      assert_raise ArgumentError, fn ->
+        Protocol.build_v6_lock_payload(%{@lock | weather_time: ~U[2026-10-14 19:00:00.000001Z]})
+      end
+
+      assert_raise ArgumentError, fn ->
+        Protocol.build_v6_lock_payload(%{@lock | weather_time: nil})
+      end
+    end
+
+    test "refuses a weather_time that is not the drand round's observation hour" do
+      assert_raise ArgumentError, ~r/observation hour/, fn ->
+        Protocol.build_v6_lock_payload(%{@lock | weather_time: ~U[2026-10-14 18:00:00.000000Z]})
+      end
+
+      # pub(33_068_212 + 1) is 20:00:03; still 19:00. 20:41:00 is the first
+      # round whose observation hour is 20:00.
+      assert is_binary(Protocol.build_v6_lock_payload(%{@lock | drand_round: 33_068_213}))
+
+      assert_raise ArgumentError, ~r/observation hour/, fn ->
+        Protocol.build_v6_lock_payload(%{@lock | drand_round: 33_068_212 + 41 * 20})
+      end
+    end
+
+    test "refuses a lock later than weather_time minus 46 minutes, to the microsecond" do
+      assert is_binary(
+               Protocol.build_v6_lock_payload(%{
+                 @lock
+                 | locked_at: ~U[2026-10-14 18:14:00.000000Z]
+               })
+             )
+
+      assert_raise ArgumentError, ~r/46 minutes/, fn ->
+        Protocol.build_v6_lock_payload(%{@lock | locked_at: ~U[2026-10-14 18:14:00.000001Z]})
+      end
+    end
+  end
+
+  describe "exec v5 under the landobs tag" do
+    test "accepts the backup station and the rule-based fallback" do
+      assert is_binary(
+               Protocol.build_v6_execution_payload(%{@exec | weather_station: "wmo-03462"})
+             )
+
+      decoded = Jason.decode!(Protocol.build_v6_execution_payload(@fallback))
+      assert decoded["weather_fallback_reason"] == "no_observation_by_deadline"
+      assert Map.has_key?(decoded, "weather_value") and decoded["weather_value"] == nil
+
+      assert Map.has_key?(decoded, "weather_observation_time") and
+               decoded["weather_observation_time"] == nil
+    end
+
+    test "refuses partial fallbacks, v5 reasons, foreign stations and off-grammar values" do
+      bad = [
+        %{@exec | weather_station: "middle-wallop"},
+        %{@exec | weather_station: nil},
+        %{@fallback | weather_fallback_reason: "unreachable"},
+        %{@fallback | weather_fallback_reason: nil},
+        %{@exec | weather_value: nil},
+        %{@exec | weather_observation_time: nil},
+        %{@exec | weather_fallback_reason: "no_observation_by_deadline"},
+        %{@exec | weather_value: "102500"},
+        %{@exec | weather_observation_time: ~U[2026-10-14 19:10:00.000000Z]},
+        %{@exec | weather_observation_time: ~U[2026-10-14 19:00:00.000001Z]}
+      ]
+
+      for input <- bad do
+        assert_raise ArgumentError, fn -> Protocol.build_v6_execution_payload(input) end
+      end
+    end
+
+    test "refuses an observation hour other than the drand round's" do
+      assert_raise ArgumentError, ~r/observation hour/, fn ->
+        Protocol.build_v6_execution_payload(%{
+          @exec
+          | weather_observation_time: ~U[2026-10-14 18:00:00.000000Z]
+        })
+      end
+    end
+
+    test "refuses an executed_at before the drand round was published" do
+      assert is_binary(
+               Protocol.build_v6_execution_payload(%{
+                 @exec
+                 | executed_at: ~U[2026-10-14 20:00:00.000000Z]
+               })
+             )
+
+      assert_raise ArgumentError, ~r/published/, fn ->
+        Protocol.build_v6_execution_payload(%{
+          @exec
+          | executed_at: ~U[2026-10-14 19:59:59.999999Z]
+        })
+      end
+    end
+
+    test "v5 builders still refuse the landobs-only fallback reason" do
+      assert_raise ArgumentError, fn ->
+        Protocol.build_execution_receipt_payload(%{@fallback | weather_station: "middle-wallop"})
+      end
+    end
+
+    test "a fallback names the primary station, never the backup" do
+      assert Jason.decode!(Protocol.build_v6_execution_payload(@fallback))["weather_station"] ==
+               "wmo-03749"
+
+      assert_raise ArgumentError, fn ->
+        Protocol.build_v6_execution_payload(%{@fallback | weather_station: "wmo-03462"})
+      end
+    end
+
+    test "refuses values outside the frozen bounds" do
+      for bad <- ["601;1025;85;2432", "141;849;85;2432", "141;1025;101;2432", "141;1025;85;10001"] do
+        assert_raise ArgumentError, fn ->
+          Protocol.build_v6_execution_payload(%{@exec | weather_value: bad})
+        end
+      end
+    end
+  end
+
+  describe "byte-level output" do
+    # Exact JCS bytes. Any change here changes every signature under the tag.
+    test "lock v6 bytes" do
+      assert Protocol.build_v6_lock_payload(@lock) ==
+               ~s({"commitment_hash":"#{String.duplicate("ab", 32)}",) <>
+                 ~s("drand_chain":"52db9ba70e0cc0f6eaf7803dd07447a1f5477735fd3f661792ba94600c84e971",) <>
+                 ~s("drand_round":33068212,) <>
+                 ~s("draw_id":"22222222-2222-2222-2222-222222222222",) <>
+                 ~s("entropy_composition":"drand-quicknet+metoffice-landobs-v1",) <>
+                 ~s("entry_hash":"#{String.duplicate("ab", 32)}",) <>
+                 ~s("fair_pick_version":"0.2.1","jcs_version":"sha256-jcs-v1",) <>
+                 ~s("locked_at":"2026-10-14T18:00:00.123456Z",) <>
+                 ~s("operator_id":"11111111-1111-1111-1111-111111111111",) <>
+                 ~s("operator_slug":"acme-prizes","schema_version":"6","sequence":7,) <>
+                 ~s("signature_algorithm":"ed25519","signing_key_id":"deadbeef",) <>
+                 ~s("wallop_core_version":"0.29.0","weather_station":"wmo-03749",) <>
+                 ~s("weather_time":"2026-10-14T19:00:00.000000Z","winner_count":2})
+    end
+
+    test "payload SHA-256 is pinned" do
+      sha = &(:crypto.hash(:sha256, &1) |> Base.encode16(case: :lower))
+
+      assert sha.(Protocol.build_v6_lock_payload(@lock)) ==
+               "8d580b7e659cec64b3731444140f028c45cc023ac3c16f0b0eadc0955dae4541"
+
+      assert sha.(Protocol.build_v6_execution_payload(@exec)) ==
+               "db799b895287123ac757a744cfe2941b728534caf6b5ef42b47d6afb2f62e2ec"
+
+      assert sha.(Protocol.build_v6_execution_payload(@fallback)) ==
+               "dbbb4ecba3df22f50ee10f933f743818749b8dd1adf097e9153d47f005385b2c"
+    end
+
+    test "exec v5 fallback bytes carry explicit nulls" do
+      payload = Protocol.build_v6_execution_payload(@fallback)
+
+      assert payload =~
+               ~s("weather_fallback_reason":"no_observation_by_deadline",) <>
+                 ~s("weather_observation_time":null,"weather_station":"wmo-03749",) <>
+                 ~s("weather_value":null})
+
+      assert payload =~ ~s("schema_version":"5")
+    end
+  end
+end
