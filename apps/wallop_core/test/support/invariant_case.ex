@@ -18,7 +18,13 @@ defmodule WallopCore.InvariantCase do
   # One tag per task that still owes the suite an invariant. A task removes
   # its tag from the tests it delivers; once no test uses a tag, it may be
   # removed here too.
-  @pending_tags [:pending_task_6, :pending_task_10, :pending_task_11, :pending_task_18]
+  @pending_tags [
+    :pending_task_6,
+    :pending_task_10,
+    :pending_task_11,
+    :pending_task_13,
+    :pending_task_18
+  ]
 
   @doc "Tags of invariants whose task has not landed. Excluded by default."
   def pending_tags, do: @pending_tags
@@ -128,10 +134,10 @@ defmodule WallopCore.InvariantCase do
   @doc """
   A lock v6 payload (decoded) and receipt columns that pass every guard for
   `draw` once it is locked under schedule `s`, built by the real builder.
-  Signed `locked_at` is now: after the operator's key entered the keyring,
-  and in time for `s`.
+  Signed `locked_at` is now by default: after the operator's key entered the
+  keyring, and in time for `s`. Pass `locked_at` to sign another instant.
   """
-  def valid_receipt(draw, s) do
+  def valid_receipt(draw, s, locked_at \\ DateTime.utc_now()) do
     require Ash.Query
 
     operator = Ash.get!(Operator, draw.operator_id, authorize?: false)
@@ -145,7 +151,6 @@ defmodule WallopCore.InvariantCase do
       |> Ash.read_one!(authorize?: false)
 
     {hash, _} = entry_hash(draw)
-    locked_at = DateTime.utc_now()
 
     payload =
       %{

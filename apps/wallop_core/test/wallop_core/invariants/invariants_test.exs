@@ -12,6 +12,10 @@ defmodule WallopCore.Invariants.SuiteTest do
     * Group B, `group_b_observation_and_execution_test.exs`: the observation
       store, completion, execution and the lock action (INV-7 to INV-11,
       and INV-8b).
+    * Tamper, `tamper_test.exs`: every signed lock v6 / execution v5 field,
+      mutated one step at a time and in pairs, is refused by the builder,
+      the database or (through `spec/vectors/proof-bundle-v6-tamper.json`)
+      the verifier (INV-2), and raw SQL attack sequences in every order.
 
   The rule: an invariant that a later task delivers is written now, against
   that task's planned interface, and tagged `@tag :pending_task_<N>` on the
@@ -45,6 +49,7 @@ defmodule WallopCore.Invariants.SuiteTest do
   alias Ash.Resource.Info
   alias WallopCore.Entropy.{ObservationDrawWorker, StuckDrawRedriver}
   alias WallopCore.InvariantCase
+  alias WallopCore.ProofBundle
   alias WallopCore.Resources.Draw
   alias WallopCore.Weather.Observations
 
@@ -128,6 +133,9 @@ defmodule WallopCore.Invariants.SuiteTest do
 
   defp landed?(:pending_task_11),
     do: Enum.any?(Info.action(Draw, :lock).arguments, &(&1.name == :draw_at))
+
+  defp landed?(:pending_task_13),
+    do: Code.ensure_loaded?(ProofBundle) and function_exported?(ProofBundle, :assemble, 1)
 
   defp landed?(:pending_task_18), do: Code.ensure_loaded?(StuckDrawRedriver)
 
