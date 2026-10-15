@@ -115,6 +115,17 @@ defmodule WallopCore.Resources.ApiKeyTest do
       assert reloaded.rate_limit_per_minute == nil
     end
 
+    test "rejects a per-minute limit outside 1..6000" do
+      key = create_api_key()
+
+      for value <- [0, 6001] do
+        assert {:error, %Ash.Error.Invalid{}} =
+                 key
+                 |> Ash.Changeset.for_update(:set_rate_limit, %{rate_limit_per_minute: value})
+                 |> Ash.update(authorize?: false)
+      end
+    end
+
     test "update_tier is gone" do
       assert Info.action(ApiKey, :update_tier) == nil
     end
