@@ -83,18 +83,42 @@ defmodule WallopCore.Invariants.ObservationAndExecutionTest do
     end)
   end
 
+  # One weather_time shared by every draw of a test, and the station whose
+  # window is open for it now. The store's one-value rule keys on
+  # (station, observation_time), so the draws must share it exactly. A top of
+  # the hour is used whenever one has a window open now (minutes 0-29 for the
+  # primary, 31-38 for the backup); otherwise a shared time five minutes ago,
+  # in the primary window.
+  defp shared_hour do
+    now = DateTime.utc_now()
+    unix = DateTime.to_unix(now)
+    hour = DateTime.from_unix!((unix - Integer.mod(unix, 3600)) * 1_000_000, :microsecond)
+    elapsed = DateTime.diff(now, hour)
+    cutover = @w - 10 * 60
+
+    cond do
+      elapsed < cutover - 60 -> {hour, Stations.primary().id}
+      elapsed > cutover + 5 and elapsed < @w - 60 -> {hour, Stations.backup().id}
+      true -> {now |> DateTime.add(-5 * 60) |> DateTime.truncate(:second), Stations.primary().id}
+    end
+  end
+
   # ── INV-7 ─────────────────────────────────────────────────────────
 
   describe "INV-7 one value per (station, hour), write-once" do
     @tag :pending_task_6
     test "INV-7 a second draw of the hour can't store a different value" do
       {_op, key} = create_v6_operator()
-      [a, b, c] = for _ <- 1..3, do: v6_draw(-5 * 60, 3600, key)
-      primary = Stations.primary().id
+      {wt, station} = shared_hour()
 
-      assert {:ok, _} = Observations.store(a.id, primary, reading(a))
-      assert {:error, _} = Observations.store(b.id, primary, reading(b, "142;1025;85;2432"))
-      assert {:ok, _} = Observations.store(c.id, primary, reading(c))
+      [a, b, c] =
+        for _ <- 1..3, do: put_v6_awaiting!(open_draw_with_entries(key), wt, round_at(3600))
+
+      assert {:ok, _} = Observations.store(a.id, station, reading(a))
+      assert {:error, error} = Observations.store(b.id, station, reading(b, "142;1025;85;2432"))
+      assert error_text(error) =~ "a different value is already stored for this station and hour"
+      # Positive control: the same value for the same hour is accepted.
+      assert {:ok, _} = Observations.store(c.id, station, reading(c))
     end
 
     @tag :pending_task_6
@@ -102,8 +126,11 @@ defmodule WallopCore.Invariants.ObservationAndExecutionTest do
       draw = v6_draw(-5 * 60, 3600)
 
       assert {:ok, _} = Observations.store(draw.id, Stations.primary().id, reading(draw))
-      assert {:error, _} = Observations.store(draw.id, Stations.primary().id, reading(draw))
-      assert {:error, _} = Observations.store(draw.id, Stations.backup().id, reading(draw))
+
+      for station <- [Stations.primary().id, Stations.backup().id] do
+        assert {:error, error} = Observations.store(draw.id, station, reading(draw))
+        assert error_text(error) =~ "an observation is already stored for this draw", station
+      end
     end
 
     @tag :pending_task_6
@@ -115,10 +142,10 @@ defmodule WallopCore.Invariants.ObservationAndExecutionTest do
             "UPDATE weather_observations SET value = '1;1000;1;1' WHERE draw_id = $1",
             "DELETE FROM weather_observations WHERE draw_id = $1"
           ] do
-        assert try_sql(sql, [dump(draw.id)]) != nil, sql
+        assert try_sql(sql, [dump(draw.id)]) == "weather observations are write-once", sql
       end
 
-      assert try_sql("TRUNCATE weather_observations", []) != nil
+      assert try_sql("TRUNCATE weather_observations", []) == "weather observations are write-once"
     end
   end
 
@@ -224,48 +251,104 @@ defmodule WallopCore.Invariants.ObservationAndExecutionTest do
 
   # ── INV-8b ────────────────────────────────────────────────────────
 
+  # The commit-time check's refusal: the store's deferred constraint
+  # trigger raises exactly this.
+  @commit_late "an observation must commit by its fetch deadline"
+
   describe "INV-8b a stored observation's commit time is at or before F" do
     # The sandbox wraps each test in one transaction, so a commit can't
-    # happen in it. This test runs its fixtures and its store transaction
+    # happen in it. These tests run their fixtures and the store transaction
     # outside it (Sandbox.unboxed_run/2, as V6LockReceiptRaceTest does), on
-    # real connections that really commit, and deletes what it created.
+    # real connections that really commit, and delete what they created.
+    # Every time comparison uses the database clock.
     @tag :pending_task_6
+    @tag :slow
     test "INV-8b an insert made before F but committed after F is refused at commit" do
       # F is a few seconds ahead: the store's statement runs inside the
-      # backup window, before F; its commit waits until F has passed.
-      lead = 4
-
-      {operator, draw} =
-        unboxed(fn ->
-          {operator, key} = create_v6_operator()
-          {operator, v6_draw(-(@w - lead), 3600, key)}
-        end)
-
-      on_exit(fn -> unboxed(fn -> delete_operator!(operator.id) end) end)
+      # backup window, before F; the commit waits until F has passed.
+      draw = unboxed_v6_draw(-(@w - 4))
       f = Schedule.fetch_deadline(draw.weather_time)
 
       outcome =
-        try do
-          unboxed(fn ->
-            Repo.transaction(fn ->
-              Repo.query!("SET LOCAL lock_timeout = '10s'")
-              {:ok, _} = Observations.store(draw.id, Stations.backup().id, reading(draw))
-              assert DateTime.compare(DateTime.utc_now(), f) == :lt
-              Process.sleep(max(DateTime.diff(f, DateTime.utc_now(), :millisecond), 0) + 1_000)
-            end)
-          end)
-        rescue
-          e in Postgrex.Error -> {:refused, e.postgres.message}
-        end
+        store_and_commit(draw, Stations.backup().id, fn ->
+          assert DateTime.compare(db_now(), f) == :lt
+          wait_until_db_clock_after(f)
+        end)
 
-      assert match?({:refused, _}, outcome), inspect(outcome)
-
-      assert unboxed(fn ->
-               Repo.query!("SELECT count(*) FROM weather_observations WHERE draw_id = $1", [
-                 dump(draw.id)
-               ]).rows
-             end) == [[0]]
+      assert outcome == {:refused, @commit_late}
+      assert stored_rows(draw) == 0
     end
+
+    @tag :pending_task_6
+    @tag :slow
+    test "INV-8b an insert committed before F is stored, once" do
+      # Positive control: same path, F 35 minutes ahead, commit at once.
+      draw = unboxed_v6_draw(-5 * 60)
+      f = Schedule.fetch_deadline(draw.weather_time)
+
+      outcome =
+        store_and_commit(draw, Stations.primary().id, fn ->
+          assert DateTime.compare(db_now(), f) == :lt
+        end)
+
+      assert outcome == :committed
+      assert stored_rows(draw) == 1
+    end
+  end
+
+  # A v6 draw committed outside the sandbox, for its own fresh operator,
+  # deleted at the end of the test.
+  defp unboxed_v6_draw(wt_offset) do
+    {operator, draw} =
+      unboxed(fn ->
+        {operator, key} = create_v6_operator()
+        {operator, v6_draw(wt_offset, 3600, key)}
+      end)
+
+    on_exit(fn -> unboxed(fn -> delete_operator!(operator.id) end) end)
+    draw
+  end
+
+  # Stores the draw's reading in a real transaction, runs `before_commit`
+  # inside it, then commits. :committed, or {:refused, message}.
+  defp store_and_commit(draw, station, before_commit) do
+    unboxed(fn ->
+      {:ok, _} =
+        Repo.transaction(fn ->
+          Repo.query!("SET LOCAL lock_timeout = '10s'")
+          {:ok, _} = Observations.store(draw.id, station, reading(draw))
+          before_commit.()
+        end)
+    end)
+
+    :committed
+  rescue
+    e in Postgrex.Error -> {:refused, e.postgres.message}
+  end
+
+  defp db_now do
+    %{rows: [[now]]} = Repo.query!("SELECT clock_timestamp() AT TIME ZONE 'UTC'")
+    DateTime.from_naive!(now, "Etc/UTC")
+  end
+
+  defp wait_until_db_clock_after(t) do
+    if DateTime.compare(db_now(), t) == :gt do
+      :ok
+    else
+      Process.sleep(200)
+      wait_until_db_clock_after(t)
+    end
+  end
+
+  defp stored_rows(draw) do
+    unboxed(fn ->
+      %{rows: [[n]]} =
+        Repo.query!("SELECT count(*) FROM weather_observations WHERE draw_id = $1", [
+          dump(draw.id)
+        ])
+
+      n
+    end)
   end
 
   defp unboxed(fun), do: Sandbox.unboxed_run(Repo, fun)
@@ -300,23 +383,39 @@ defmodule WallopCore.Invariants.ObservationAndExecutionTest do
 
   # ── INV-9 ─────────────────────────────────────────────────────────
 
+  # The draws guard's backstop refusal: the guard raises exactly this.
+  @no_fail_after_drand "a v6 draw can't fail once its drand randomness is stored"
+
   describe "INV-9 after drand is fetched, a v6 draw is never marked failed" do
     setup do
       ensure_infrastructure_key()
+      test_pid = self()
 
       Application.put_env(:wallop_core, DrandClient,
         req_options: [plug: {Req.Test, DrandClient}, retry: false]
       )
 
+      # Echoes the requested round, so the client's round check passes and
+      # the fetch succeeds. Reports each fetch to the test.
       Req.Test.stub(DrandClient, fn conn ->
+        round = conn.path_info |> List.last() |> String.to_integer()
+        send(test_pid, {:drand_fetched, round})
+
         Req.Test.json(conn, %{
-          "round" => 1,
+          "round" => round,
           "randomness" => @randomness,
           "signature" => String.duplicate("ab", 48)
         })
       end)
 
       on_exit(fn -> Application.delete_env(:wallop_core, DrandClient) end)
+    end
+
+    # The failure under test must come after a successful fetch of the
+    # draw's own round.
+    defp assert_fetched(draw) do
+      round = draw.drand_round
+      assert_received {:drand_fetched, ^round}
     end
 
     # Makes execute_v6 refuse after drand has been fetched: the committed
@@ -330,21 +429,31 @@ defmodule WallopCore.Invariants.ObservationAndExecutionTest do
       end)
     end
 
-    # Makes the database refuse the completion, inside this test's
-    # transaction only (rolled back with it).
-    defp refuse_completion_in_db!(draw) do
-      Repo.query!("""
-      CREATE FUNCTION inv9_refuse_completion() RETURNS trigger AS $$
-      BEGIN RAISE EXCEPTION 'test: completion refused'; END;
-      $$ LANGUAGE plpgsql
-      """)
-
-      Repo.query!("""
-      CREATE TRIGGER inv9_refuse BEFORE UPDATE ON draws FOR EACH ROW
-        WHEN (NEW.status = 'completed' AND NEW.id = '#{draw.id}')
-        EXECUTE FUNCTION inv9_refuse_completion()
-      """)
+    # Makes the database refuse the completion with an existing constraint,
+    # no DDL: an execution receipt already stored for the draw collides with
+    # the unique index on execution_receipts(draw_id) when execution
+    # inserts its own.
+    defp occupy_execution_receipt!(draw) do
+      with_triggers_off(fn ->
+        Repo.query!(
+          """
+          INSERT INTO execution_receipts (id, draw_id, operator_id, sequence, lock_receipt_hash,
+            payload_jcs, signature, signing_key_id)
+          VALUES ($1, $2, $3, $4, 'x', '{}', $5, 'k')
+          """,
+          [
+            dump(Ecto.UUID.generate()),
+            dump(draw.id),
+            dump(draw.operator_id),
+            draw.operator_sequence + 1_000_000,
+            :binary.copy(<<0>>, 64)
+          ]
+        )
+      end)
     end
+
+    defp delete_jobs_for!(draw),
+      do: Repo.query!("DELETE FROM oban_jobs WHERE args->>'draw_id' = $1", [draw.id])
 
     @tag :pending_task_10
     test "INV-9 an execute error after the fetch leaves the draw pending, on every attempt" do
@@ -353,6 +462,7 @@ defmodule WallopCore.Invariants.ObservationAndExecutionTest do
 
       for attempt <- [1, 10] do
         perform_job(ObservationDrawWorker, %{draw_id: draw.id}, attempt: attempt)
+        assert_fetched(draw)
         assert reload(draw).status == :pending_entropy, "attempt #{attempt}"
       end
     end
@@ -360,10 +470,11 @@ defmodule WallopCore.Invariants.ObservationAndExecutionTest do
     @tag :pending_task_10
     test "INV-9 a database refusal after the fetch leaves the draw pending, on every attempt" do
       draw = v6_draw(-(@w + 60), -10)
-      refuse_completion_in_db!(draw)
+      occupy_execution_receipt!(draw)
 
       for attempt <- [1, 10] do
         perform_job(ObservationDrawWorker, %{draw_id: draw.id}, attempt: attempt)
+        assert_fetched(draw)
         assert reload(draw).status == :pending_entropy, "attempt #{attempt}"
       end
     end
@@ -374,7 +485,61 @@ defmodule WallopCore.Invariants.ObservationAndExecutionTest do
       break_entry_hash!(draw)
 
       perform_job(EntropyWorker, %{draw_id: draw.id}, attempt: 10)
-      refute reload(draw).status == :failed
+      assert_fetched(draw)
+      assert reload(draw).status == :pending_entropy
+    end
+
+    @tag :pending_task_10
+    test "INV-9 the draws guard refuses failing a v6 draw whose drand is stored" do
+      draw = v6_draw(-(@w + 60), -10) |> to_pending!()
+
+      with_triggers_off(fn ->
+        Repo.query!("UPDATE draws SET drand_randomness = $2 WHERE id = $1", [
+          dump(draw.id),
+          @randomness
+        ])
+      end)
+
+      assert try_sql(
+               "UPDATE draws SET status = 'failed', failed_at = now() WHERE id = $1",
+               [dump(draw.id)]
+             ) == @no_fail_after_drand
+
+      # Positive control: a forecast draw with drand stored still fails as
+      # before; the backstop is a no-op without the v6 pair.
+      forecast = create_draw(create_api_key())
+
+      with_triggers_off(fn ->
+        Repo.query!(
+          "UPDATE draws SET status = 'pending_entropy', drand_randomness = $2 WHERE id = $1",
+          [dump(forecast.id), @randomness]
+        )
+      end)
+
+      assert try_sql(
+               "UPDATE draws SET status = 'failed', failed_at = now() WHERE id = $1",
+               [dump(forecast.id)]
+             ) == nil
+    end
+
+    @tag :pending_task_10
+    test "INV-9 before drand is fetched, drand exhaustion still fails the draw" do
+      # Positive control for the backstop: with no drand stored, failing is
+      # allowed, through the worker and through a raw UPDATE.
+      Req.Test.stub(DrandClient, fn conn -> Plug.Conn.send_resp(conn, 503, "") end)
+      draw = v6_draw(-(@w + 60), -10)
+
+      perform_job(ObservationDrawWorker, %{draw_id: draw.id}, attempt: 10)
+      failed = reload(draw)
+      assert failed.status == :failed
+      assert failed.drand_randomness == nil
+
+      other = v6_draw(-(@w + 60), -10) |> to_pending!()
+
+      assert try_sql(
+               "UPDATE draws SET status = 'failed', failed_at = now() WHERE id = $1",
+               [dump(other.id)]
+             ) == nil
     end
 
     @tag :pending_task_10
@@ -385,8 +550,9 @@ defmodule WallopCore.Invariants.ObservationAndExecutionTest do
       break_entry_hash!(draw)
 
       perform_job(ObservationDrawWorker, %{draw_id: draw.id}, attempt: 10)
+      assert_fetched(draw)
       assert reload(draw).status == :pending_entropy
-      Repo.query!("DELETE FROM oban_jobs")
+      delete_jobs_for!(draw)
 
       assert draw.id in StuckDrawRedriver.redrive()
       assert_enqueued(worker: ObservationDrawWorker, args: %{draw_id: draw.id})

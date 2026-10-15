@@ -17,6 +17,8 @@ defmodule WallopCore.Invariants.LockAndGuardTest do
   alias WallopCore.Weather.{Schedule, Stations}
 
   @too_late "v6 lock is too late for this draw time"
+  @lock_only "a v6 draw leaves open only by locking"
+  @non_open ~w(awaiting_entropy pending_entropy completed failed expired locked)
 
   setup do
     {operator, key} = create_v6_operator()
@@ -37,22 +39,41 @@ defmodule WallopCore.Invariants.LockAndGuardTest do
   describe "INV-1 a v6 draw can't leave open once the DB clock is past weather_time - 46m" do
     @tag :pending_task_11
     test "INV-1 (Ash lock) the lock action refuses a draw time whose latest lock has passed",
-         %{draw: d, key: key} do
+         %{draw: d, key: key, s: s} do
       for late <- missed_schedules() do
-        assert {:error, _} =
+        assert {:error, %Ash.Error.Invalid{errors: [error | _]}} =
                  d
                  |> Ash.Changeset.for_update(:lock, %{draw_at: late.draw_at}, actor: key)
                  |> Ash.update()
 
+        assert error.field == :draw_at
+        assert Keyword.get(error.vars, :latest_lock_at) == rfc(late.latest_lock_at)
         assert_still_open(d)
       end
+
+      # Positive control: an in-time draw time locks under v6.
+      assert {:ok, locked} =
+               d
+               |> Ash.Changeset.for_update(:lock, %{draw_at: s.draw_at}, actor: key)
+               |> Ash.update()
+
+      assert {locked.lock_schema_version, locked.drand_round} == {"6", s.round}
     end
 
-    test "INV-1 (raw UPDATE) a late lock is refused; the same draw then locks in time",
+    test "INV-1 (raw UPDATE) no target status is reachable late; the same draw then locks in time",
          %{draw: d, s: s} do
-      for late <- missed_schedules() do
-        assert raw_lock(d, late.weather_time, late.round) == @too_late
+      for late <- missed_schedules(), status <- @non_open do
+        expected = if status == "awaiting_entropy", do: @too_late, else: @lock_only
+
+        assert raw_lock(d, late.weather_time, late.round, status: status) == expected,
+               "#{status} at #{late.weather_time}"
+
         assert_still_open(d)
+      end
+
+      # In time, only awaiting_entropy is a way out of open.
+      for status <- @non_open -- ["awaiting_entropy"] do
+        assert raw_lock(d, s.weather_time, s.round, status: status) == @lock_only, status
       end
 
       assert raw_lock(d, s.weather_time, s.round) == nil
@@ -146,12 +167,18 @@ defmodule WallopCore.Invariants.LockAndGuardTest do
     test "INV-1 (re-lock) a locked v6 draw can't go back to open", %{draw: d, s: s} do
       assert raw_lock(d, s.weather_time, s.round) == nil
 
-      for sql <- [
-            "UPDATE draws SET status = 'open' WHERE id = $1",
-            "UPDATE draws SET status = 'open', lock_schema_version = NULL, entropy_composition = NULL WHERE id = $1"
+      for {sql, message} <- [
+            {"UPDATE draws SET status = 'open' WHERE id = $1",
+             "lock_schema_version and entropy_composition are set only when a draw leaves open"},
+            {"UPDATE draws SET status = 'open', lock_schema_version = NULL, entropy_composition = NULL WHERE id = $1",
+             "lock_schema_version and entropy_composition are frozen once a draw has left open"}
           ] do
-        assert try_sql(sql, [dump(d.id)]) != nil, sql
+        assert try_sql(sql, [dump(d.id)]) == message, sql
       end
+
+      # Positive control: the locked draw moves on as normal.
+      assert try_sql("UPDATE draws SET status = 'pending_entropy' WHERE id = $1", [dump(d.id)]) ==
+               nil
     end
   end
 
@@ -676,23 +703,40 @@ defmodule WallopCore.Invariants.LockAndGuardTest do
     end
 
     @tag :pending_task_10
-    test "INV-5 (execution) a stored unknown pair is never executed", %{key: key, s: s} do
-      for {schema, tag} <- [{"6", "drand-quicknet+metoffice-landobs-v2"}, {"6", nil}] do
+    test "INV-5 (execution) a stored unknown pair is never executed", %{key: key} do
+      ensure_infrastructure_key()
+
+      # A round published a minute ago: pub(R) and F are both behind us, so
+      # nothing but the pair can stop the execution.
+      round = Quicknet.round_at_or_after(DateTime.add(DateTime.utc_now(), -60))
+      past = %{round: round, weather_time: Schedule.weather_time_for_round(round)}
+
+      for {schema, tag} = pair <- [{"6", "drand-quicknet+metoffice-landobs-v2"}, {"6", nil}] do
         draw = open_draw_with_entries(key)
-        store_with_pair!(draw, s, "pending_entropy", schema, tag)
+        store_with_pair!(draw, past, "pending_entropy", schema, tag)
 
-        assert {:error, _} =
-                 Ash.get!(Draw, draw.id, authorize?: false)
-                 |> Ash.Changeset.for_update(:execute_v6, %{
-                   drand_randomness: String.duplicate("a", 64),
-                   drand_signature: "sig",
-                   drand_response: "{}"
-                 })
-                 |> Ash.update(authorize?: false)
-
+        assert {:error, error} = execute_v6(draw)
+        assert error_text(error) =~ unknown_pair_message(pair), inspect(pair)
         assert Ash.get!(Draw, draw.id, authorize?: false).status == :pending_entropy
       end
+
+      # Positive control: the known pair, in the same timing, executes.
+      known = put_v6_awaiting!(open_draw_with_entries(key), past.weather_time, round)
+      Repo.query!("UPDATE draws SET status = 'pending_entropy' WHERE id = $1", [dump(known.id)])
+      assert {:ok, done} = execute_v6(known)
+      assert done.status == :completed
     end
+  end
+
+  defp execute_v6(draw) do
+    Draw
+    |> Ash.get!(draw.id, authorize?: false)
+    |> Ash.Changeset.for_update(:execute_v6, %{
+      drand_randomness: String.duplicate("a", 64),
+      drand_signature: "sig",
+      drand_response: "{}"
+    })
+    |> Ash.update(authorize?: false)
   end
 
   # ── INV-6 ─────────────────────────────────────────────────────────
@@ -785,16 +829,42 @@ defmodule WallopCore.Invariants.LockAndGuardTest do
       assert %{rows: [["0"]]} = Repo.query!("SHOW max_prepared_transactions")
     end
 
-    test "INV-13 no lib code defers constraints or prepares a transaction" do
-      files = Path.wildcard(Path.join(@umbrella_root, "apps/*/lib/**/*"))
+    # Scans the shipped code: apps/*/lib and apps/*/priv. The test-support
+    # helpers under test/ turn triggers off on purpose and aren't scanned.
+    @risky ~r/set\s+constraints|prepare\s+transaction|session_replication_role|disable\s+trigger/i
+
+    # Existing migration lines that legitimately match: {file, trimmed line}.
+    @allowed MapSet.new([
+               {"apps/wallop_core/priv/repo/migrations/20260408204500_sandbox_draw_separation.exs",
+                "# for this one DELETE via session_replication_role = replica."},
+               {"apps/wallop_core/priv/repo/migrations/20260408204500_sandbox_draw_separation.exs",
+                "SET LOCAL session_replication_role = 'replica';"},
+               {"apps/wallop_core/priv/repo/migrations/20260409000000_db_level_immutability_hardening.exs",
+                "Operators with `session_replication_role = 'replica'` access can still"},
+               {"apps/wallop_core/priv/repo/migrations/20260330214430_migrate_entries_data.exs",
+                "execute \"ALTER TABLE entries DISABLE TRIGGER entries_immutability\""},
+               {"apps/wallop_core/priv/repo/migrations/20260330214430_migrate_entries_data.exs",
+                "execute \"ALTER TABLE draws DISABLE TRIGGER enforce_draw_immutability\""}
+             ])
+
+    test "INV-13 no shipped code defers constraints, prepares a transaction or turns triggers off" do
+      files =
+        Path.wildcard(Path.join(@umbrella_root, "apps/*/lib/**/*")) ++
+          Path.wildcard(Path.join(@umbrella_root, "apps/*/priv/**/*"))
+
       assert Enum.any?(files, &String.ends_with?(&1, ".ex"))
+      assert Enum.any?(files, &String.contains?(&1, "/priv/repo/migrations/"))
 
       hits =
         for path <- files,
             File.regular?(path),
-            {line, n} <- path |> File.read!() |> String.split("\n") |> Enum.with_index(1),
-            line =~ ~r/set\s+constraints|prepare\s+transaction/i,
-            do: "#{Path.relative_to(path, @umbrella_root)}:#{n}: #{String.trim(line)}"
+            contents <- [File.read!(path)],
+            String.valid?(contents),
+            {line, n} <- contents |> String.split("\n") |> Enum.with_index(1),
+            line =~ @risky,
+            file <- [Path.relative_to(path, @umbrella_root)],
+            not MapSet.member?(@allowed, {file, String.trim(line)}),
+            do: "#{file}:#{n}: #{String.trim(line)}"
 
       assert hits == []
     end
