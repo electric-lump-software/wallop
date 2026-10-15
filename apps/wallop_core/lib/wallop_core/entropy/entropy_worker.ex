@@ -231,7 +231,7 @@ defmodule WallopCore.Entropy.EntropyWorker do
 
   defp format_permanent({:unexpected_status, status}), do: "HTTP #{status} — check credentials"
   defp format_permanent(:invalid_response), do: "invalid response from API"
-  defp format_permanent(other), do: inspect(other)
+  defp format_permanent(_other), do: "unrecoverable error"
 
   defp log_transient_errors(draw, drand_err, weather_err) do
     case {drand_err, weather_err} do
@@ -270,8 +270,7 @@ defmodule WallopCore.Entropy.EntropyWorker do
       })
       |> Ash.update(domain: WallopCore.Domain, authorize?: false)
       |> case do
-        {:ok, completed_draw} ->
-          broadcast_update(completed_draw)
+        {:ok, _completed_draw} ->
           :ok
 
         {:error, reason} ->
@@ -301,8 +300,7 @@ defmodule WallopCore.Entropy.EntropyWorker do
       })
       |> Ash.update(domain: WallopCore.Domain, authorize?: false)
       |> case do
-        {:ok, completed_draw} ->
-          broadcast_update(completed_draw)
+        {:ok, _completed_draw} ->
           :ok
 
         {:error, reason} ->
@@ -369,12 +367,19 @@ defmodule WallopCore.Entropy.EntropyWorker do
 
   defp maybe_transition_to_pending(draw), do: draw
 
+  defp error_class(%{__struct__: module}), do: inspect(module)
+
+  defp error_class(tuple) when is_tuple(tuple) and tuple_size(tuple) > 0,
+    do: inspect(elem(tuple, 0))
+
+  defp error_class(_), do: "error"
+
   # `reason` is stored and public. `detail` is logged and set on the span only.
   defp fail_draw_with_reason(draw, reason, detail \\ nil) do
     if detail != nil do
-      Tracer.set_attributes(%{"error" => true, "error.message" => inspect(detail)})
+      Tracer.set_attributes(%{"error" => true, "error.type" => error_class(detail)})
 
-      Logger.error(
+      Logger.warning(
         "EntropyWorker: draw #{Log.redact_id(draw.id)} failing (#{reason}): #{inspect(detail)}"
       )
     end
@@ -385,8 +390,7 @@ defmodule WallopCore.Entropy.EntropyWorker do
     |> Ash.Changeset.for_update(:mark_failed, %{failure_reason: reason})
     |> Ash.update(domain: WallopCore.Domain, authorize?: false)
     |> case do
-      {:ok, failed_draw} ->
-        broadcast_update(failed_draw)
+      {:ok, _failed_draw} ->
         :ok
 
       {:error, _} ->
@@ -395,6 +399,8 @@ defmodule WallopCore.Entropy.EntropyWorker do
     end
   end
 
+  # `:expired` is listed for completeness: only open draws expire, so a draw
+  # this worker handles can't become expired.
   # The draw finished while this attempt was running (another attempt, or a
   # Lifeline rescue). Its outcome and webhook are already committed, so this
   # attempt succeeded at nothing and must not retry or fail the draw.
@@ -413,6 +419,7 @@ defmodule WallopCore.Entropy.EntropyWorker do
     end
   end
 
+  # Only for `transition_to_pending`, which has no broadcasting change.
   defp broadcast_update(draw) do
     Phoenix.PubSub.broadcast(WallopCore.PubSub, "draw:#{draw.id}", {:draw_updated, draw})
   end

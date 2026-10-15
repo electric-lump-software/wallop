@@ -30,6 +30,29 @@ defmodule WallopCore.Resources.Draw.EnqueueWebhookTest do
     assert_enqueued(worker: WebhookWorker, args: %{draw_id: draw.id})
   end
 
+  test "expiring an open draw enqueues its webhook" do
+    key = create_api_key()
+
+    draw =
+      WallopCore.Resources.Draw
+      |> Ash.Changeset.for_create(
+        :create,
+        %{winner_count: 1, callback_url: "https://example.com/hook"},
+        actor: key
+      )
+      |> Ash.create!()
+
+    assert draw.status == :open
+
+    assert {:ok, expired} =
+             draw
+             |> Ash.Changeset.for_update(:expire, %{})
+             |> Ash.update(domain: WallopCore.Domain, authorize?: false)
+
+    assert expired.status == :expired
+    assert_enqueued(worker: WebhookWorker, args: %{draw_id: draw.id})
+  end
+
   test "no callback_url, no webhook" do
     key = create_api_key()
     draw = create_draw(key)

@@ -4,7 +4,9 @@ defmodule WallopCore.Resources.Draw.Changes.ReportFailure do
   `[:wallop_core, :draw, :failed]`, so a failure is visible without reading
   the draws table. Runs after the transaction, and only when it committed:
   a failure that rolls back (for example because its webhook job couldn't
-  be inserted) is not reported.
+  be inserted) is not reported. Inside a caller's own transaction Ash runs
+  this hook immediately, before that outer commit, so call `mark_failed`
+  outside an enclosing transaction.
   """
   use Ash.Resource.Change
 

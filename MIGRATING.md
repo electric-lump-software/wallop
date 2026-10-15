@@ -35,6 +35,12 @@ Replaces the rate limiters with one `WallopWeb.RateLimiter`, adds per-key limits
 - Optional: share counters across nodes with `RATE_LIMIT_BACKEND=redis` and `REDIS_URL` (Redis 7 or later). Redis without `REDIS_URL` refuses to boot. If the store errors, requests are let through and `[:wallop_web, :rate_limiter, :backend_error]` is emitted; alert on it before enabling Redis.
 - Optional: `config :wallop_web, WallopWeb.IpAuthLimit, max_failures_per_minute:` changes the per-IP failure limit.
 
+### Draw outcomes
+
+- `failure_reason` is now fixed text (for example "drand unavailable after 10 attempts"); error details are in logs and traces only. If you match on the old strings, match on the new wording or, better, on `status`.
+- New telemetry event `[:wallop_core, :draw, :failed]` (`%{count: 1}`; metadata `draw_id`, `operator_id`, `failure_reason`), emitted once per committed failure. Attach a handler if you want to alert on failed draws.
+- Webhooks are now queued in the same transaction as the outcome, and live updates go out after commit. Nothing to do.
+
 ---
 
 ## 0.28.2 → 0.28.3

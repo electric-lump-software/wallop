@@ -375,8 +375,6 @@ defmodule WallopCore.Entropy.EntropyWorkerTest do
     end
   end
 
-  # -- Helpers --
-
   describe "losing a race to a finished draw" do
     test "is success when the draw is already terminal" do
       api_key = create_api_key()
@@ -395,6 +393,8 @@ defmodule WallopCore.Entropy.EntropyWorkerTest do
       assert {:error, :stale} = EntropyWorker.settle_after_error(draw.id, :stale)
     end
   end
+
+  # -- Helpers --
 
   defp fake_job(draw, opts \\ []) do
     attempt = Keyword.get(opts, :attempt, 1)
