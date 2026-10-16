@@ -149,4 +149,31 @@ defmodule WallopCore.Resources.Draw.ExecuteV6Test do
     assert payload["drand_round"] == done.drand_round
     assert payload["fair_pick_version"] == to_string(Application.spec(:fair_pick, :vsn))
   end
+
+  describe "entry hash" do
+    test "entries that still hash to entry_hash execute" do
+      pending = pending_v6(-(@w + 60), -10)
+      assert {:ok, done} = execute(pending)
+      assert done.status == :completed
+      assert done.entry_hash == pending.entry_hash
+    end
+
+    test "a mismatch is refused with V6ExecRefused, so it is never retried" do
+      pending = pending_v6(-(@w + 60), -10)
+
+      Repo.query!("SET session_replication_role = replica")
+
+      Repo.query!("UPDATE draws SET entry_hash = $2 WHERE id = $1", [
+        Ecto.UUID.dump!(pending.id),
+        String.duplicate("0", 64)
+      ])
+
+      Repo.query!("RESET session_replication_role")
+
+      assert {:error, error} = execute(Ash.get!(Draw, pending.id, authorize?: false))
+      assert has_error?(error, V6ExecRefused)
+      assert Exception.message(error) =~ "entry hash mismatch"
+      assert Ash.get!(Draw, pending.id, authorize?: false).status == :pending_entropy
+    end
+  end
 end

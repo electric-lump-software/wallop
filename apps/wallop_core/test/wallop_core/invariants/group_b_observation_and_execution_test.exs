@@ -455,7 +455,7 @@ defmodule WallopCore.Invariants.ObservationAndExecutionTest do
   # ── INV-9 ─────────────────────────────────────────────────────────
 
   # The draws guard's backstop refusal: the guard raises exactly this.
-  @no_fail_after_drand "a v6 draw can't fail once its drand randomness is stored"
+  @no_fail_after_pub "a v6 draw can't fail once its drand round is published"
 
   describe "INV-9 after drand is fetched, a v6 draw is never marked failed" do
     setup do
@@ -557,21 +557,32 @@ defmodule WallopCore.Invariants.ObservationAndExecutionTest do
       assert reload(draw).status == :pending_entropy
     end
 
-    @tag :pending_task_10
-    test "INV-9 the draws guard refuses failing a v6 draw whose drand is stored" do
-      draw = v6_draw(-(@w + 60), -10) |> to_pending!()
+    test "INV-9 drand failing on the last attempt after pub(R) never fails the draw" do
+      # Attempt 1 fetches drand and rolls back (the database refuses the
+      # completion); the last attempt then finds drand unavailable. Failing
+      # the draw there would be a selective abort made once the outcome was
+      # knowable.
+      draw = v6_draw(-(@w + 60), -10)
+      occupy_execution_receipt!(draw)
+      perform_job(ObservationDrawWorker, %{draw_id: draw.id}, attempt: 1)
+      assert_fetched(draw)
 
-      with_triggers_off(fn ->
-        Repo.query!("UPDATE draws SET drand_randomness = $2 WHERE id = $1", [
-          dump(draw.id),
-          @randomness
-        ])
-      end)
+      Req.Test.stub(DrandClient, fn conn -> Plug.Conn.send_resp(conn, 503, "") end)
+
+      for worker <- [ObservationDrawWorker, EntropyWorker] do
+        assert {:cancel, _} = perform_job(worker, %{draw_id: draw.id}, attempt: 10)
+        assert reload(draw).status == :pending_entropy
+      end
+    end
+
+    @tag :pending_task_10
+    test "INV-9 the draws guard refuses failing a v6 draw once its drand round is published" do
+      draw = v6_draw(-(@w + 60), -10) |> to_pending!()
 
       assert try_sql(
                "UPDATE draws SET status = 'failed', failed_at = now() WHERE id = $1",
                [dump(draw.id)]
-             ) == @no_fail_after_drand
+             ) == @no_fail_after_pub
 
       # Positive control: a forecast draw with drand stored still fails as
       # before; the backstop is a no-op without the v6 pair.
@@ -591,23 +602,18 @@ defmodule WallopCore.Invariants.ObservationAndExecutionTest do
     end
 
     @tag :pending_task_10
-    test "INV-9 before drand is fetched, drand exhaustion still fails the draw" do
-      # Positive control for the backstop: with no drand stored, failing is
-      # allowed, through the worker and through a raw UPDATE.
-      Req.Test.stub(DrandClient, fn conn -> Plug.Conn.send_resp(conn, 503, "") end)
-      draw = v6_draw(-(@w + 60), -10)
+    test "INV-9 before pub(R), failing a v6 draw is still allowed" do
+      # Positive control for the backstop: before the round publishes nothing
+      # is knowable, so failing is a visible abort, not a choice of outcome.
+      awaiting = v6_draw(-5 * 60, 600)
+      pending = v6_draw(-5 * 60, 600) |> to_pending!()
 
-      perform_job(ObservationDrawWorker, %{draw_id: draw.id}, attempt: 10)
-      failed = reload(draw)
-      assert failed.status == :failed
-      assert failed.drand_randomness == nil
-
-      other = v6_draw(-(@w + 60), -10) |> to_pending!()
-
-      assert try_sql(
-               "UPDATE draws SET status = 'failed', failed_at = now() WHERE id = $1",
-               [dump(other.id)]
-             ) == nil
+      for draw <- [awaiting, pending] do
+        assert try_sql(
+                 "UPDATE draws SET status = 'failed', failed_at = now() WHERE id = $1",
+                 [dump(draw.id)]
+               ) == nil
+      end
     end
 
     @tag :pending_task_10

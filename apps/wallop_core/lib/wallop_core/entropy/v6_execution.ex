@@ -11,28 +11,32 @@ defmodule WallopCore.Entropy.V6Execution do
   lock and falls back to drand alone only when nothing is stored and the
   database clock is past the fetch deadline.
 
-  ## A draw is never marked failed once drand has been fetched
+  ## A draw is never marked failed once its drand round is published
 
-  Two layers keep this true:
+  The worker only fetches drand after pub(R). From then on the outcome is
+  knowable, so stopping the draw by choice would be a selective abort. Two
+  layers keep this true:
 
-    1. **This module.** Only a failure *before* drand is fetched may fail
-       the draw: an unrecoverable drand error, or drand still unavailable on
-       the job's last attempt. Once drand has been fetched it never calls
-       `mark_failed`. A failed execution is retried; when the job runs out of
-       attempts Oban discards it and the draw stays in `pending_entropy`
-       for the re-drive cron to pick up. A refusal that retrying can't change
-       (`WallopCore.Errors.V6ExecRefused`: an unknown pair, the receipt
-       builder rejecting stored state, a `fair_pick_version` mismatch) emits
-       `[:wallop_core, :v6, :exec_refused]` and cancels the job at once,
-       leaving the draw as it is for the re-drive and an alert. A refusal
-       because the draw isn't due yet (`WallopCore.Errors.V6NotYet`, for
-       example the app clock behind the database's) snoozes, with nothing
-       written.
-    2. **The database.** The draws guard refuses moving an observation-weather
-       draw to `failed` once its drand randomness is stored, whatever path
-       tries it. Execution rolls back as one unit, so a refused execution
-       never leaves drand randomness stored, and the pre-drand failure above
-       stays allowed.
+    1. **This module.** It never marks a draw failed: there is no path from
+       here to `mark_failed`. Every outcome after pub(R) is one of:
+       * success;
+       * a retry (`{:error, _}`) for a transient drand failure or a failed
+         execution, which rolls back as one unit; when the job runs out of
+         attempts Oban discards it and the draw stays where it is;
+       * a refusal: drand still unavailable on the job's last attempt, an
+         unrecoverable drand error, or stored state that retrying can't
+         change (`WallopCore.Errors.V6ExecRefused`: an unknown pair, an
+         entry hash mismatch, the receipt builder rejecting stored state, a
+         `fair_pick_version` mismatch). It emits
+         `[:wallop_core, :v6, :exec_refused]` naming the cause and cancels
+         the job; the re-drive cron brings the draw back;
+       * a wait (`WallopCore.Errors.V6NotYet`, for example the app clock
+         behind the database's), which snoozes with nothing written.
+    2. **The database** (not yet in place: it comes with the execution
+       receipt guard). The draws guard will refuse moving an
+       observation-weather draw to `failed` once the database clock is at or
+       past pub(R), whatever path tries it. Failing before pub(R) stays
+       allowed: that is a visible abort before anything is knowable.
 
   Telemetry: `[:wallop_core, :v6, :executed]` (`%{station, fallback?}`),
   `[:wallop_core, :v6, :execute_error]` (`%{draw_id}`) and
@@ -41,6 +45,12 @@ defmodule WallopCore.Entropy.V6Execution do
   require Logger
 
   alias WallopCore.Entropy.{DrandClient, EntropyWorker, V6Rules}
+
+  # The wait after a post-fetch V6NotYet is measured on this node's clock,
+  # the clock execute_v6 checks executed_at on, plus a margin, and never
+  # shorter than the floor: a lagging app clock can't cause a tight loop.
+  @not_yet_margin_seconds 2
+  @not_yet_floor_seconds 5
   alias WallopCore.Errors.{V6ExecRefused, V6NotYet}
   alias WallopCore.Log
   alias WallopCore.Weather.Observations
@@ -48,9 +58,15 @@ defmodule WallopCore.Entropy.V6Execution do
   @spec run(map(), pos_integer(), pos_integer()) ::
           :ok | {:snooze, pos_integer()} | {:cancel, String.t()} | {:error, term()}
   def run(draw, attempt, max_attempts) do
-    case rules(draw) do
-      {:ok, rules} -> run(rules, draw, attempt, max_attempts)
-      {:error, message} -> refuse(draw, message)
+    case V6Rules.rules(draw) do
+      {:ok, rules} ->
+        run(rules, draw, attempt, max_attempts)
+
+      :error ->
+        refuse(
+          draw,
+          V6Rules.unknown_pair_message(draw.lock_schema_version, draw.entropy_composition)
+        )
     end
   end
 
@@ -66,13 +82,13 @@ defmodule WallopCore.Entropy.V6Execution do
     end
   end
 
-  defp rules(draw) do
-    {:ok, V6Rules.rules!(draw)}
-  rescue
-    e in ArgumentError -> {:error, Exception.message(e)}
-  end
-
   defp wait(until, now), do: max(DateTime.diff(until, now) + 1, 1)
+
+  @doc false
+  # Seconds to wait after execute_v6 said "not yet" for `retry_at`.
+  @spec not_yet_wait(DateTime.t(), DateTime.t()) :: pos_integer()
+  def not_yet_wait(retry_at, now),
+    do: max(DateTime.diff(retry_at, now) + @not_yet_margin_seconds, @not_yet_floor_seconds)
 
   defp fetch_and_execute(draw, attempt, max_attempts) do
     case DrandClient.fetch_with_failover(draw.drand_chain, draw.drand_round) do
@@ -108,7 +124,7 @@ defmodule WallopCore.Entropy.V6Execution do
         refuse(draw, refused.message)
 
       not_yet = find_error(error, V6NotYet) ->
-        {:snooze, wait(not_yet.retry_at, Observations.db_now())}
+        {:snooze, not_yet_wait(not_yet.retry_at, DateTime.utc_now())}
 
       true ->
         execute_error(draw, error)
@@ -154,27 +170,29 @@ defmodule WallopCore.Entropy.V6Execution do
     })
   end
 
+  # Only after pub(R): never fails the draw. A transient failure retries;
+  # an unrecoverable one, or one on the last attempt, is a refusal.
   defp drand_failed(draw, reason, attempt, max_attempts) do
     cond do
       match?({:unexpected_status, s} when s in [401, 403], reason) or
           reason == :invalid_response ->
-        EntropyWorker.fail_draw_with_reason(draw, "drand: unrecoverable error", reason)
+        refuse(draw, "drand unrecoverable error (#{drand_error(reason)})")
 
       attempt >= max_attempts ->
-        EntropyWorker.fail_draw_with_reason(
-          draw,
-          "drand unavailable after #{attempt} attempts",
-          reason
-        )
+        refuse(draw, "drand unavailable after #{attempt} attempts (#{drand_error(reason)})")
 
       true ->
         Logger.warning(
-          "V6Execution: drand failed for draw #{Log.redact_id(draw.id)}: #{inspect(reason)}"
+          "V6Execution: drand failed for draw #{Log.redact_id(draw.id)}: #{drand_error(reason)}"
         )
 
         {:error, "drand unavailable, will retry"}
     end
   end
+
+  defp drand_error({:unexpected_status, status}), do: "HTTP #{status}"
+  defp drand_error({:all_relays_failed, _}), do: "all relays failed"
+  defp drand_error(reason) when is_atom(reason), do: Atom.to_string(reason)
 
   defp to_pending(%{status: :awaiting_entropy} = draw) do
     case draw
@@ -189,7 +207,12 @@ defmodule WallopCore.Entropy.V6Execution do
 
         updated
 
-      {:error, _} ->
+      {:error, error} ->
+        Logger.warning(
+          "V6Execution: draw #{Log.redact_id(draw.id)} could not move to pending_entropy: " <>
+            error_class(error)
+        )
+
         draw
     end
   end

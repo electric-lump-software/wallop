@@ -24,13 +24,18 @@ defmodule WallopCore.Entropy.V6Rules do
           observation_time: DateTime.t()
         }
 
+  @doc "The rules for a draw's stored pair, or `:error` for any unknown pair."
+  @spec rules(map()) :: {:ok, rules()} | :error
+  def rules(%{lock_schema_version: schema, entropy_composition: tag}) do
+    if schema == "6" and tag == LandObs.tag(), do: {:ok, :landobs}, else: :error
+  end
+
   @doc "The rules for a draw's stored pair. Raises `ArgumentError` for any unknown pair."
   @spec rules!(map()) :: rules()
-  def rules!(%{lock_schema_version: schema, entropy_composition: tag}) do
-    if schema == "6" and tag == LandObs.tag() do
-      :landobs
-    else
-      raise ArgumentError, unknown_pair_message(schema, tag)
+  def rules!(%{lock_schema_version: schema, entropy_composition: tag} = draw) do
+    case rules(draw) do
+      {:ok, rules} -> rules
+      :error -> raise ArgumentError, unknown_pair_message(schema, tag)
     end
   end
 
@@ -68,6 +73,59 @@ defmodule WallopCore.Entropy.V6Rules do
 
   def seed(:landobs, entry_hash, randomness, %{value: value}),
     do: Protocol.compute_seed(entry_hash, randomness, value)
+
+  @doc """
+  The draw attributes the tag sets at completion: the reading's value, raw
+  response and observation time with no fallback reason, or all three nil
+  with the fallback reason when there is no reading.
+  """
+  @spec completion_attrs(rules(), reading() | nil) :: map()
+  def completion_attrs(:landobs, nil) do
+    %{
+      weather_value: nil,
+      weather_raw: nil,
+      weather_observation_time: nil,
+      weather_fallback_reason: fallback_reason(:landobs)
+    }
+  end
+
+  def completion_attrs(:landobs, %{} = reading) do
+    %{
+      weather_value: reading.value,
+      weather_raw: reading.raw,
+      weather_observation_time: reading.observation_time,
+      weather_fallback_reason: nil
+    }
+  end
+
+  @doc """
+  The tag's inputs to the execution receipt builder, from a completed draw:
+  `entropy_composition`, the weather fields, and the station whose reading
+  was used, read again from the store (the first station on a fallback).
+  `{:error, message}` when the draw's value isn't the stored reading.
+  """
+  @spec receipt_input(rules(), map()) :: {:ok, map()} | {:error, String.t()}
+  def receipt_input(:landobs, draw) do
+    with {:ok, station} <- receipt_station(:landobs, draw) do
+      {:ok,
+       %{
+         entropy_composition: draw.entropy_composition,
+         weather_station: station,
+         weather_observation_time: draw.weather_observation_time,
+         weather_value: draw.weather_value,
+         weather_fallback_reason: draw.weather_fallback_reason
+       }}
+    end
+  end
+
+  defp receipt_station(:landobs, %{weather_value: nil}), do: {:ok, fallback_station(:landobs)}
+
+  defp receipt_station(:landobs, draw) do
+    case reading(:landobs, draw) do
+      %{station: station, value: value} when value == draw.weather_value -> {:ok, station}
+      _ -> {:error, "the draw's weather_value is not the stored reading for its hour"}
+    end
+  end
 
   @doc "The fallback reason signed when there is no reading."
   @spec fallback_reason(rules()) :: String.t()

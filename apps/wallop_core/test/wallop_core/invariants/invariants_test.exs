@@ -131,11 +131,11 @@ defmodule WallopCore.Invariants.SuiteTest do
   # The executor and its worker (ObservationDrawWorker) landed before the
   # database backstop, and their invariants are on. The pending_task_10 tags
   # left are the backstop's, so the marker is its pinned refusal in the
-  # draws guard.
+  # draws guard: `can''t` in a single-quoted literal, `can't` if dollar-quoted.
   defp landed?(:pending_task_10) do
     Draw
     |> AshPostgres.DataLayer.Info.custom_statements()
-    |> Enum.any?(&String.contains?(&1.up, "can''t fail once its drand randomness is stored"))
+    |> Enum.any?(&(&1.up =~ ~r/can'?'t fail once its drand round is published/))
   end
 
   defp landed?(:pending_task_11),

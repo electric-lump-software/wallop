@@ -381,10 +381,7 @@ defmodule WallopCore.Entropy.EntropyWorker do
   defp error_class(_), do: "error"
 
   # `reason` is stored and public. `detail` is logged and set on the span only.
-  # Shared with V6Execution, so a failed draw notifies the same way on both
-  # protocols.
-  @doc false
-  def fail_draw_with_reason(draw, reason, detail \\ nil) do
+  defp fail_draw_with_reason(draw, reason, detail \\ nil) do
     if detail != nil do
       Tracer.set_attributes(%{"error" => true, "error.type" => error_class(detail)})
 
