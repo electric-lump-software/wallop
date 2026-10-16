@@ -135,7 +135,7 @@ defmodule WallopCore.Invariants.SuiteTest do
   defp landed?(:pending_task_10) do
     Draw
     |> AshPostgres.DataLayer.Info.custom_statements()
-    |> Enum.any?(&(&1.up =~ ~r/can'?'t fail once its drand round is published/))
+    |> Enum.any?(&(&1.up =~ ~r/can'?'t fail once its fetch deadline has passed/))
   end
 
   defp landed?(:pending_task_11),

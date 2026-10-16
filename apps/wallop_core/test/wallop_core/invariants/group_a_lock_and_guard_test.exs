@@ -412,9 +412,11 @@ defmodule WallopCore.Invariants.LockAndGuardTest do
   # defines it, enabled. A dropped, disabled or changed trigger fails here.
   @guard_triggers [
     "O CREATE TRIGGER draws_no_truncate BEFORE TRUNCATE ON public.draws FOR EACH STATEMENT EXECUTE FUNCTION prevent_draws_truncate()",
+    "O CREATE CONSTRAINT TRIGGER draws_v6_completed_commit AFTER UPDATE ON public.draws DEFERRABLE INITIALLY DEFERRED FOR EACH ROW WHEN (((new.status = 'completed'::text) AND (old.status IS DISTINCT FROM 'completed'::text) AND ((new.lock_schema_version IS NOT NULL) OR (new.entropy_composition IS NOT NULL)))) EXECUTE FUNCTION check_v6_draw_completed_commit()",
     "O CREATE CONSTRAINT TRIGGER draws_v6_failed_commit AFTER UPDATE ON public.draws DEFERRABLE INITIALLY DEFERRED FOR EACH ROW WHEN (((new.status = 'failed'::text) AND (old.status IS DISTINCT FROM 'failed'::text) AND ((new.lock_schema_version IS NOT NULL) OR (new.entropy_composition IS NOT NULL)))) EXECUTE FUNCTION check_v6_draw_failed_commit()",
     "O CREATE TRIGGER draws_v6_guard BEFORE DELETE OR UPDATE ON public.draws FOR EACH ROW EXECUTE FUNCTION guard_v6_draw()",
     "O CREATE TRIGGER draws_v6_insert_guard BEFORE INSERT ON public.draws FOR EACH ROW EXECUTE FUNCTION guard_v6_draw_insert()",
+    "O CREATE CONSTRAINT TRIGGER draws_v6_lock_commit AFTER UPDATE ON public.draws DEFERRABLE INITIALLY DEFERRED FOR EACH ROW WHEN (((old.status = 'open'::text) AND (new.status IS DISTINCT FROM 'open'::text) AND ((new.lock_schema_version IS NOT NULL) OR (new.entropy_composition IS NOT NULL)))) EXECUTE FUNCTION check_v6_draw_lock_commit()",
     "O CREATE TRIGGER enforce_draw_immutability BEFORE DELETE OR UPDATE ON public.draws FOR EACH ROW EXECUTE FUNCTION prevent_draw_mutation()",
     "O CREATE TRIGGER execution_receipt_immutability BEFORE DELETE OR UPDATE ON public.execution_receipts FOR EACH ROW EXECUTE FUNCTION prevent_execution_receipt_mutation()",
     "O CREATE TRIGGER execution_receipts_no_truncate BEFORE TRUNCATE ON public.execution_receipts FOR EACH STATEMENT EXECUTE FUNCTION prevent_execution_receipts_truncate()",

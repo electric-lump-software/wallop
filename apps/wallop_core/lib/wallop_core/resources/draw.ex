@@ -431,9 +431,16 @@ defmodule WallopCore.Resources.Draw do
         # execution receipt carries it.
         #
         # Once a v6 draw has left open it can't be deleted, and once the DB
-        # clock reaches pub(drand_round) it can't move to failed, from any
-        # status. Failing before pub(R) stays allowed: a visible abort
-        # before anything is knowable.
+        # clock reaches its fetch deadline F (weather_time + W) it can't move
+        # to failed, from any status. F is at least a minute before
+        # pub(drand_round), the same skew budget the observation store has,
+        # so a database clock lagging drand by less than that can't fail a
+        # draw whose round is already public. Failing before F stays
+        # allowed: a visible abort before anything is knowable.
+        #
+        # The lock's deadline is read on clock_timestamp(), after any wait
+        # for the row lock, not on the statement's start time; it is read
+        # again at commit (check_v6_draw_lock_commit).
         #
         # Each guard here is one statement holding its function and its
         # trigger(s), as a DO block (a statement is one command). `down`
@@ -493,7 +500,8 @@ defmodule WallopCore.Resources.Draw do
                 IF NEW.weather_station IS DISTINCT FROM wallop_landobs_primary_station() THEN
                   RAISE EXCEPTION 'v6 lock weather_station must be %', wallop_landobs_primary_station();
                 END IF;
-                IF wallop_landobs_lock_allowed(now_utc, NEW.weather_time) IS NOT TRUE THEN
+                IF wallop_landobs_lock_allowed(clock_timestamp() AT TIME ZONE 'UTC', NEW.weather_time)
+                   IS NOT TRUE THEN
                   RAISE EXCEPTION 'v6 lock is too late for this draw time';
                 END IF;
               ELSE
@@ -516,12 +524,14 @@ defmodule WallopCore.Resources.Draw do
             END IF;
 
             -- From pub(R) on the outcome is knowable: failing the draw then would
-            -- be a selective abort. Checked here on the statement's clock and
-            -- again at commit (check_v6_draw_failed_commit).
+            -- be a selective abort. Refused from F, a minute or more earlier,
+            -- so a database clock behind drand's leaves no window. Checked here
+            -- on the statement's clock and again at commit
+            -- (check_v6_draw_failed_commit).
             IF (OLD.lock_schema_version IS NOT NULL OR OLD.entropy_composition IS NOT NULL)
                AND NEW.status = 'failed' AND OLD.status IS DISTINCT FROM 'failed'
-               AND (now_utc < wallop_quicknet_pub_time(OLD.drand_round)) IS NOT TRUE THEN
-              RAISE EXCEPTION 'a v6 draw can''t fail once its drand round is published';
+               AND (now_utc < OLD.weather_time + wallop_landobs_fetch_window()) IS NOT TRUE THEN
+              RAISE EXCEPTION 'a v6 draw can''t fail once its fetch deadline has passed';
             END IF;
 
             IF OLD.lock_schema_version = '6' AND OLD.status <> 'completed' AND NEW.status = 'completed' THEN
@@ -577,17 +587,17 @@ defmodule WallopCore.Resources.Draw do
 
       statement :check_v6_draw_failed_commit do
         # The same rule as guard_v6_draw's, at COMMIT on the wall clock then
-        # (clock_timestamp()): a v6 draw moved to failed before pub(R) in a
-        # transaction held open past pub(R) is refused at commit, so nobody
-        # can see the round and then choose to keep the failure.
+        # (clock_timestamp()): a v6 draw moved to failed before F in a
+        # transaction held open past F is refused at commit, so nobody can
+        # wait for the round and then choose to keep the failure.
         up("""
         DO $do$
         BEGIN
           CREATE OR REPLACE FUNCTION check_v6_draw_failed_commit() RETURNS trigger AS $fn$
           BEGIN
-            IF (clock_timestamp() AT TIME ZONE 'UTC' < wallop_quicknet_pub_time(NEW.drand_round))
+            IF (clock_timestamp() AT TIME ZONE 'UTC' < NEW.weather_time + wallop_landobs_fetch_window())
                IS NOT TRUE THEN
-              RAISE EXCEPTION 'a v6 draw can''t fail once its drand round is published';
+              RAISE EXCEPTION 'a v6 draw can''t fail once its fetch deadline has passed';
             END IF;
 
             RETURN NULL;
@@ -610,6 +620,90 @@ defmodule WallopCore.Resources.Draw do
         BEGIN
           DROP TRIGGER IF EXISTS draws_v6_failed_commit ON draws;
           DROP FUNCTION IF EXISTS check_v6_draw_failed_commit();
+        END
+        $do$
+        """)
+      end
+
+      statement :check_v6_draw_completed_commit do
+        # The draws guard checks a v6 completion's weather fields and
+        # executed_at but not its seed or winners (no FairPick in SQL); the
+        # execution receipt guard binds those to a signature. So a v6 draw
+        # that becomes completed must have its execution receipt by COMMIT.
+        # Execution inserts the receipt in the completion's transaction.
+        up("""
+        DO $do$
+        BEGIN
+          CREATE OR REPLACE FUNCTION check_v6_draw_completed_commit() RETURNS trigger AS $fn$
+          BEGIN
+            IF NOT EXISTS (SELECT 1 FROM execution_receipts WHERE draw_id = NEW.id) THEN
+              RAISE EXCEPTION 'a v6 draw must commit its execution receipt with its completion';
+            END IF;
+
+            RETURN NULL;
+          END;
+          $fn$ LANGUAGE plpgsql;
+          DROP TRIGGER IF EXISTS draws_v6_completed_commit ON draws;
+          CREATE CONSTRAINT TRIGGER draws_v6_completed_commit
+            AFTER UPDATE ON draws
+            DEFERRABLE INITIALLY DEFERRED
+            FOR EACH ROW
+            WHEN (NEW.status = 'completed' AND OLD.status IS DISTINCT FROM 'completed'
+                  AND (NEW.lock_schema_version IS NOT NULL OR NEW.entropy_composition IS NOT NULL))
+            EXECUTE FUNCTION check_v6_draw_completed_commit();
+        END
+        $do$
+        """)
+
+        down("""
+        DO $do$
+        BEGIN
+          DROP TRIGGER IF EXISTS draws_v6_completed_commit ON draws;
+          DROP FUNCTION IF EXISTS check_v6_draw_completed_commit();
+        END
+        $do$
+        """)
+      end
+
+      statement :check_v6_draw_lock_commit do
+        # The lock deadline again, at COMMIT on the wall clock then
+        # (clock_timestamp()): a v6 lock made in time in a transaction held
+        # open past wt - 46m is refused at commit, so nobody can hold a lock
+        # until the weather is known and then choose to keep it.
+        up("""
+        DO $do$
+        BEGIN
+          CREATE OR REPLACE FUNCTION check_v6_draw_lock_commit() RETURNS trigger AS $fn$
+          BEGIN
+            IF NEW.entropy_composition IS NOT DISTINCT FROM wallop_landobs_tag() THEN
+              IF wallop_landobs_lock_allowed(clock_timestamp() AT TIME ZONE 'UTC', NEW.weather_time)
+                 IS NOT TRUE THEN
+                RAISE EXCEPTION 'v6 lock is too late for this draw time';
+              END IF;
+            ELSE
+              RAISE EXCEPTION 'no lock rules for entropy_composition %', NEW.entropy_composition;
+            END IF;
+
+            RETURN NULL;
+          END;
+          $fn$ LANGUAGE plpgsql;
+          DROP TRIGGER IF EXISTS draws_v6_lock_commit ON draws;
+          CREATE CONSTRAINT TRIGGER draws_v6_lock_commit
+            AFTER UPDATE ON draws
+            DEFERRABLE INITIALLY DEFERRED
+            FOR EACH ROW
+            WHEN (OLD.status = 'open' AND NEW.status IS DISTINCT FROM 'open'
+                  AND (NEW.lock_schema_version IS NOT NULL OR NEW.entropy_composition IS NOT NULL))
+            EXECUTE FUNCTION check_v6_draw_lock_commit();
+        END
+        $do$
+        """)
+
+        down("""
+        DO $do$
+        BEGIN
+          DROP TRIGGER IF EXISTS draws_v6_lock_commit ON draws;
+          DROP FUNCTION IF EXISTS check_v6_draw_lock_commit();
         END
         $do$
         """)

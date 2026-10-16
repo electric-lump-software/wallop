@@ -480,8 +480,9 @@ defmodule WallopCore.Invariants.ObservationAndExecutionTest do
 
   # ── INV-9 ─────────────────────────────────────────────────────────
 
-  # The draws guard's backstop refusal: the guard raises exactly this.
-  @no_fail_after_pub "a v6 draw can't fail once its drand round is published"
+  # The draws guard's backstop refusal: the guard raises exactly this, from
+  # the fetch deadline F on (a minute or more before pub(R)).
+  @no_fail_after_f "a v6 draw can't fail once its fetch deadline has passed"
 
   describe "INV-9 after drand is fetched, a v6 draw is never marked failed" do
     setup do
@@ -601,17 +602,20 @@ defmodule WallopCore.Invariants.ObservationAndExecutionTest do
       end
     end
 
-    test "INV-9 the draws guard refuses failing a v6 draw once its drand round is published" do
+    test "INV-9 the draws guard refuses failing a v6 draw once its fetch deadline has passed" do
       # From any status a v6 draw can be in: before drand is fetched
-      # (awaiting_entropy) as well as after (pending_entropy).
+      # (awaiting_entropy) as well as after (pending_entropy). Also between
+      # F and pub(R): a database clock lagging drand must not leave a window
+      # after the round is public.
       awaiting = v6_draw(-(@w + 60), -10)
       pending = v6_draw(-(@w + 60), -10) |> to_pending!()
+      before_pub = v6_draw(-(@w + 120), 6)
 
-      for draw <- [awaiting, pending] do
+      for draw <- [awaiting, pending, before_pub] do
         assert try_sql(
                  "UPDATE draws SET status = 'failed', failed_at = now() WHERE id = $1",
                  [dump(draw.id)]
-               ) == @no_fail_after_pub,
+               ) == @no_fail_after_f,
                "#{draw.status}"
 
         # Through the action too, the only path that fails a draw.
@@ -620,7 +624,7 @@ defmodule WallopCore.Invariants.ObservationAndExecutionTest do
                  |> Ash.Changeset.for_update(:mark_failed, %{failure_reason: "test"})
                  |> Ash.update(authorize?: false)
 
-        assert error_text(error) =~ @no_fail_after_pub
+        assert error_text(error) =~ @no_fail_after_f
         assert reload(draw).status == draw.status
       end
 
@@ -642,35 +646,36 @@ defmodule WallopCore.Invariants.ObservationAndExecutionTest do
     end
 
     @tag :slow
-    test "INV-9 a fail made before pub(R) but committed after it is refused at commit" do
-      # The round publishes a few seconds ahead: the UPDATE runs before
-      # pub(R), passing the statement-time check; the commit waits until
-      # pub(R) has passed, and the deferred check refuses it.
-      draw = unboxed_v6_draw(-5 * 60, 4)
-      pub = Quicknet.pub_time(draw.drand_round)
+    test "INV-9 a fail made before F but committed after it is refused at commit" do
+      # F is a few seconds ahead, as INV-8b places it: the UPDATE runs before
+      # F, passing the statement-time check; the commit waits until F has
+      # passed, and the deferred check refuses it.
+      draw = unboxed_v6_draw(-(@w - 4))
+      f = Schedule.fetch_deadline(draw.weather_time)
 
       outcome =
         fail_and_commit(draw, fn ->
-          assert DateTime.compare(db_now(), pub) == :lt
-          wait_until_db_clock_after(pub)
+          assert DateTime.compare(db_now(), f) == :lt
+          wait_until_db_clock_after(f)
         end)
 
-      assert outcome == {:refused, @no_fail_after_pub}
+      assert outcome == {:refused, @no_fail_after_f}
       assert unboxed(fn -> reload(draw).status end) == :awaiting_entropy
     end
 
     @tag :slow
-    test "INV-9 a fail committed before pub(R) is kept" do
-      # Positive control: same path, pub(R) an hour ahead, commit at once.
+    test "INV-9 a fail committed before F is kept" do
+      # Positive control: same path, F 35 minutes ahead, commit at once.
       draw = unboxed_v6_draw(-5 * 60)
 
       assert fail_and_commit(draw, fn -> :ok end) == :committed
       assert unboxed(fn -> reload(draw).status end) == :failed
     end
 
-    test "INV-9 before pub(R), failing a v6 draw is still allowed" do
-      # Positive control for the backstop: before the round publishes nothing
-      # is knowable, so failing is a visible abort, not a choice of outcome.
+    test "INV-9 before F, failing a v6 draw is still allowed" do
+      # Positive control for the backstop: before F (35 minutes ahead here)
+      # nothing is knowable, so failing is a visible abort, not a choice of
+      # outcome.
       awaiting = v6_draw(-5 * 60, 600)
       pending = v6_draw(-5 * 60, 600) |> to_pending!()
 
