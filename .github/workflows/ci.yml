@@ -98,6 +98,36 @@ jobs:
           otp-version: "27"
           elixir-version: "1.19"
 
+      - name: Rust toolchain
+        # The drand BLS NIF (apps/wallop_core/native/drand_bls) is built from
+        # source by `mix compile`. Same toolchain as its rust-toolchain.toml
+        # and the Dockerfile.
+        run: rustup toolchain install 1.94.1 --profile minimal --component rustfmt,clippy
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            ~/.cargo/bin/cargo-audit
+            wallop/apps/wallop_core/native/drand_bls/target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('wallop/apps/wallop_core/native/drand_bls/Cargo.lock', 'wallop/apps/wallop_core/native/drand_bls/rust-toolchain.toml') }}
+          restore-keys: ${{ runner.os }}-cargo-
+
+      - name: Rust format, lint and tests (drand BLS NIF)
+        working-directory: wallop/apps/wallop_core/native/drand_bls
+        run: |
+          cargo fmt --check
+          cargo clippy --locked --all-targets -- -D warnings
+          cargo test --locked
+
+      - name: Rust dependency advisory audit
+        working-directory: wallop/apps/wallop_core/native/drand_bls
+        run: |
+          command -v cargo-audit || cargo install cargo-audit --locked --version 0.22.1
+          cargo audit
+
       - name: Cache deps
         uses: actions/cache@v4
         with:

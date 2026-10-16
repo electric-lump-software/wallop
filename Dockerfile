@@ -4,8 +4,32 @@ ARG RUNNER_IMAGE="debian:bookworm-20260316-slim"
 # Build stage
 FROM ${BUILDER_IMAGE} AS builder
 
-RUN apt-get update -y && apt-get install -y build-essential git npm \
+RUN apt-get update -y && apt-get install -y build-essential git npm curl ca-certificates \
     && apt-get clean && rm -f /var/lib/apt/lists/*_*
+
+# Rust, to build wallop_core's drand BLS NIF (apps/wallop_core/native/drand_bls)
+# from source. rustup-init is pinned by version and checksum; the toolchain
+# is pinned to the one in the crate's rust-toolchain.toml.
+ARG RUSTUP_VERSION=1.28.2
+ARG RUST_TOOLCHAIN=1.94.1
+ENV RUSTUP_HOME=/usr/local/rustup \
+    CARGO_HOME=/usr/local/cargo \
+    PATH=/usr/local/cargo/bin:$PATH
+RUN set -eux; \
+    case "$(dpkg --print-architecture)" in \
+      amd64) triple=x86_64-unknown-linux-gnu; \
+             sha=20a06e644b0d9bd2fbdbfd52d42540bdde820ea7df86e92e533c073da0cdd43c ;; \
+      arm64) triple=aarch64-unknown-linux-gnu; \
+             sha=e3853c5a252fca15252d07cb23a1bdd9377a8c6f3efa01531109281ae47f841c ;; \
+      *) echo "unsupported architecture" >&2; exit 1 ;; \
+    esac; \
+    curl --proto '=https' --tlsv1.2 -sSf -o /tmp/rustup-init \
+      "https://static.rust-lang.org/rustup/archive/${RUSTUP_VERSION}/${triple}/rustup-init"; \
+    echo "${sha}  /tmp/rustup-init" | sha256sum -c -; \
+    chmod +x /tmp/rustup-init; \
+    /tmp/rustup-init -y --no-modify-path --profile minimal --default-toolchain "${RUST_TOOLCHAIN}"; \
+    rm /tmp/rustup-init; \
+    rustc --version; cargo --version
 
 WORKDIR /app
 
