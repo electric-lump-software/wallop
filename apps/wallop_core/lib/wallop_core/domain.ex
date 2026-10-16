@@ -29,6 +29,7 @@ defmodule WallopCore.Domain do
     resource(WallopCore.Resources.OperatorReceipt)
     resource(WallopCore.Resources.ExecutionReceipt)
     resource(WallopCore.Resources.WeatherObservation)
+    resource(WallopCore.Resources.FrequencyWindow)
     resource(WallopCore.Resources.InfrastructureSigningKey)
     resource(WallopCore.Resources.TransparencyAnchor)
     resource(WallopCore.Resources.WaitlistSignup)

@@ -125,12 +125,15 @@ defmodule WallopCore.Frequency.FreqDrawGuardTest do
       end
     end
 
-    test "a frequency draw has no completion rules before its window store", %{draw: d, s: s} do
+    test "a frequency draw in its lock window can't complete by the fallback", %{draw: d, s: s} do
       assert raw_freq_lock(d, s) == nil
 
       assert try_sql("UPDATE draws SET status = 'pending_entropy' WHERE id = $1", [dump(d.id)]) ==
                nil
 
+      Repo.query!("UPDATE draws SET status = 'pending_entropy' WHERE id = $1", [dump(d.id)])
+
+      # Nothing stored, and F + M is minutes away: the completion arm refuses.
       assert try_sql(
                "UPDATE draws SET status = 'completed', executed_at = $2, freq_fallback_reason = $3 WHERE id = $1",
                [
@@ -138,7 +141,7 @@ defmodule WallopCore.Frequency.FreqDrawGuardTest do
                  DateTime.to_naive(DateTime.add(Quicknet.pub_time(s.round), 1)),
                  Freq.fallback_reason()
                ]
-             ) == "no completion rules for entropy_composition #{Freq.tag()}"
+             ) == "v6 draw may fall back only after the fetch deadline with nothing stored"
     end
   end
 

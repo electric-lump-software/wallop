@@ -527,4 +527,25 @@ defmodule WallopCore.TestHelpers do
     })
     |> Ash.create!(authorize?: false)
   end
+
+  @doc """
+  Places T's window with every trigger off (tests only), for a T whose
+  window has closed, as `put_observation!/4` does for an hour. The CHECKs
+  still apply.
+  """
+  def put_frequency_window!(%DateTime{} = freq_start, value) do
+    with_triggers_off(fn ->
+      Repo.query!(
+        "INSERT INTO frequency_windows (id, freq_start, value, raw, stored_at) VALUES ($1, $2, $3, $4, $2)",
+        [
+          Ecto.UUID.dump!(Ecto.UUID.generate()),
+          DateTime.to_naive(freq_start),
+          value,
+          elexon_body(freq_start, value)
+        ]
+      )
+    end)
+
+    :ok
+  end
 end

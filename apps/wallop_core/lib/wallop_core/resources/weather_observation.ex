@@ -33,9 +33,10 @@ defmodule WallopCore.Resources.WeatherObservation do
 
   # Limits on the store transaction, so it can't be left open. The commit-time
   # check is what enforces F; these keep a stalled writer from holding the
-  # hour's draw rows and its index entry for long.
+  # hour's draw rows and its index entry for long. Both are 5 s, the same as
+  # the grid-frequency store's.
   @statement_timeout "5s"
-  @idle_in_transaction_timeout "10s"
+  @idle_in_transaction_timeout "5s"
 
   postgres do
     table("weather_observations")

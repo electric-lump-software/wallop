@@ -255,7 +255,7 @@ defmodule WallopCore.Weather.ObservationStoreTest do
       # LOCAL settings are still visible after it returns.
       assert {:ok, _} = store(@primary, v6_draw_with_weather_time(-5 * 60))
       assert Repo.query!("SHOW statement_timeout").rows == [["5s"]]
-      assert Repo.query!("SHOW idle_in_transaction_session_timeout").rows == [["10s"]]
+      assert Repo.query!("SHOW idle_in_transaction_session_timeout").rows == [["5s"]]
     end
   end
 
