@@ -17,7 +17,9 @@ defmodule WallopCore.Entropy.StuckDrawRedriver do
   A stuck observation-weather draw gets `ObservationDrawWorker` back. A
   draw whose `ObservationDrawWorker` job was cancelled is skipped: a
   cancelled job is how the executor refuses a draw, and the cancelled row
-  is the record of that refusal. Once the row is pruned, the draw is
+  is the record of that refusal. Any cancelled `ObservationDrawWorker` row
+  for the draw parks it, whatever cancelled it, including one cancelled by
+  hand with `Oban.cancel_job/1`. Once the row is pruned, the draw is
   re-driven once more. Re-running a refused draw after a fix is a manual
   re-insert.
 
@@ -69,7 +71,8 @@ defmodule WallopCore.Entropy.StuckDrawRedriver do
   @live_states ~w(available scheduled executing retryable suspended)
   @workers [inspect(ObservationDrawWorker), inspect(EntropyWorker)]
 
-  # Locked draws without a live execution job. An observation-weather draw
+  # Locked draws without a live execution job. The `args @>` containment
+  # predicates use Oban's GIN index on args. An observation-weather draw
   # (either half of the pair set) is left out once its ObservationDrawWorker
   # job has been cancelled. Forecast draws (pair NULL) are read only when $1.
   @stuck_sql """
@@ -81,7 +84,7 @@ defmodule WallopCore.Entropy.StuckDrawRedriver do
       SELECT 1 FROM oban_jobs j
       WHERE j.state::text = ANY($2)
         AND j.worker = ANY($3)
-        AND j.args->>'draw_id' = d.id::text
+        AND j.args @> jsonb_build_object('draw_id', d.id::text)
     )
     AND NOT (
       (d.lock_schema_version IS NOT NULL OR d.entropy_composition IS NOT NULL)
@@ -89,7 +92,7 @@ defmodule WallopCore.Entropy.StuckDrawRedriver do
         SELECT 1 FROM oban_jobs j
         WHERE j.state::text = 'cancelled'
           AND j.worker = $4
-          AND j.args->>'draw_id' = d.id::text
+          AND j.args @> jsonb_build_object('draw_id', d.id::text)
       )
     )
   """
