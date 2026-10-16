@@ -48,9 +48,11 @@ defmodule WallopCore.Weather.ObservationRaceTest do
   # seconds from now, with a round published ten seconds ago.
   defp pending_draw(key, wt_offset) do
     unboxed(fn ->
+      # The entries first, so their set-up time doesn't eat a near window.
+      open = open_draw_with_entries(key)
       wt = DateTime.utc_now() |> DateTime.add(wt_offset) |> DateTime.truncate(:second)
       round = Quicknet.round_at_or_after(DateTime.add(DateTime.utc_now(), -10))
-      draw = put_v6_awaiting!(open_draw_with_entries(key), wt, round)
+      draw = put_v6_awaiting!(open, wt, round)
 
       Repo.query!("UPDATE draws SET status = 'pending_entropy' WHERE id = $1", [
         Ecto.UUID.dump!(draw.id)
@@ -155,10 +157,11 @@ defmodule WallopCore.Weather.ObservationRaceTest do
     end
   end
 
-  # The cutover is a few seconds ahead: the primary's statement runs inside
-  # the primary window; the backup's after the cutover, inside its own.
+  # The cutover is 6 to 7 seconds ahead: the primary's statement runs inside
+  # the primary window; the backup's after the cutover, inside its own. The
+  # lead covers the fixture's signing and the spawn on a loaded machine.
   defp across_cutover(key) do
-    draw = pending_draw(key, -(@w - 10 * 60) + 3)
+    draw = pending_draw(key, -(@w - 10 * 60) + 7)
     cutover = Schedule.backup_cutover(draw.weather_time)
 
     t1 = in_transaction(insert(draw, Stations.primary().id))
