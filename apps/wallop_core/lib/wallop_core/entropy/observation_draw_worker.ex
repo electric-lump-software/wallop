@@ -9,8 +9,10 @@ defmodule WallopCore.Entropy.ObservationDrawWorker do
 
   A draw is never marked failed once its drand round is published. Two
   layers keep that true, described in `WallopCore.Entropy.V6Execution`: the
-  executor has no path to `mark_failed` (it retries, waits, or cancels and
-  leaves the draw for the re-drive), and the draws guard refuses `failed`
+  executor has no path to `mark_failed` (it retries and, out of attempts,
+  leaves a discarded job for the re-drive; it waits; or, for stored state
+  no retry can change, it cancels, and the cancelled job keeps the re-drive
+  away), and the draws guard refuses `failed`
   once the database clock is at or past the fetch deadline F, a minute or
   more before pub(R).
 

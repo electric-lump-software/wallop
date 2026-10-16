@@ -108,8 +108,13 @@ defmodule WallopCore.Attacks.DrandRelayTest do
   end
 
   describe "every relay sending a malformed body" do
-    test "is transient: retried, then refused on the last attempt, never failed" do
-      ref = :telemetry_test.attach_event_handlers(self(), [[:wallop_core, :v6, :exec_refused]])
+    test "is transient: retried, and the last attempt is an error reported as exhausted, never cancelled or failed" do
+      ref =
+        :telemetry_test.attach_event_handlers(self(), [
+          [:wallop_core, :v6, :exec_refused],
+          [:wallop_core, :v6, :drand_exhausted]
+        ])
+
       draw = v6_draw_ready()
       Req.Test.stub(DrandClient, &Req.Test.json(&1, []))
 
@@ -117,30 +122,37 @@ defmodule WallopCore.Attacks.DrandRelayTest do
       assert reload(draw).status == :pending_entropy
       refute_received {[:wallop_core, :v6, :exec_refused], ^ref, _, _}
 
-      assert {:cancel, reason} =
+      assert {:error, reason} =
                perform_job(ObservationDrawWorker, %{draw_id: draw.id}, attempt: 10)
 
       assert reason =~ "drand unavailable after 10 attempts (all relays failed)"
       assert reload(draw).status == :pending_entropy
-      assert_receive {[:wallop_core, :v6, :exec_refused], ^ref, _, _}
+      assert_receive {[:wallop_core, :v6, :drand_exhausted], ^ref, _, _}
+      refute_received {[:wallop_core, :v6, :exec_refused], ^ref, _, _}
     end
   end
 
   describe "a fetch that raises" do
-    test "is a transient drand failure: retried, then refused, never a crash" do
-      ref = :telemetry_test.attach_event_handlers(self(), [[:wallop_core, :v6, :exec_refused]])
+    test "is a transient drand failure: retried, the last attempt an error, never a crash or a cancel" do
+      ref =
+        :telemetry_test.attach_event_handlers(self(), [
+          [:wallop_core, :v6, :exec_refused],
+          [:wallop_core, :v6, :drand_exhausted]
+        ])
+
       draw = v6_draw_ready()
       Req.Test.stub(DrandClient, fn _conn -> raise "relay plug blew up" end)
 
       assert {:error, _} = perform_job(ObservationDrawWorker, %{draw_id: draw.id}, attempt: 1)
       assert reload(draw).status == :pending_entropy
 
-      assert {:cancel, reason} =
+      assert {:error, reason} =
                perform_job(ObservationDrawWorker, %{draw_id: draw.id}, attempt: 10)
 
       assert reason =~ "drand unavailable after 10 attempts (fetch raised RuntimeError)"
       assert reload(draw).status == :pending_entropy
-      assert_receive {[:wallop_core, :v6, :exec_refused], ^ref, _, _}
+      assert_receive {[:wallop_core, :v6, :drand_exhausted], ^ref, _, _}
+      refute_received {[:wallop_core, :v6, :exec_refused], ^ref, _, _}
     end
   end
 
@@ -333,20 +345,26 @@ defmodule WallopCore.Attacks.DrandRelayTest do
   end
 
   describe "exits" do
-    test "a fetch that exits is a transient drand failure: retried, then refused" do
-      ref = :telemetry_test.attach_event_handlers(self(), [[:wallop_core, :v6, :exec_refused]])
+    test "a fetch that exits is a transient drand failure: retried, the last attempt an error, never a cancel" do
+      ref =
+        :telemetry_test.attach_event_handlers(self(), [
+          [:wallop_core, :v6, :exec_refused],
+          [:wallop_core, :v6, :drand_exhausted]
+        ])
+
       draw = v6_draw_ready()
       Req.Test.stub(DrandClient, fn _conn -> exit(:relay_gone) end)
 
       assert {:error, _} = perform_job(ObservationDrawWorker, %{draw_id: draw.id}, attempt: 1)
       assert reload(draw).status == :pending_entropy
 
-      assert {:cancel, reason} =
+      assert {:error, reason} =
                perform_job(ObservationDrawWorker, %{draw_id: draw.id}, attempt: 10)
 
       assert reason =~ "drand unavailable after 10 attempts (fetch_exited)"
       assert reload(draw).status == :pending_entropy
-      assert_receive {[:wallop_core, :v6, :exec_refused], ^ref, _, _}
+      assert_receive {[:wallop_core, :v6, :drand_exhausted], ^ref, _, _}
+      refute_received {[:wallop_core, :v6, :exec_refused], ^ref, _, _}
     end
 
     test "a skew check that exits is ignored, and the draw completes" do

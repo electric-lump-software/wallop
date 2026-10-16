@@ -26,13 +26,18 @@ defmodule WallopCore.Entropy.V6Execution do
          relay failing, and the fetch raising or exiting, are transient)
          or a failed
          execution, which rolls back as one unit; when the job runs out of
-         attempts Oban discards it and the draw stays where it is;
-       * a refusal: drand still unavailable on the job's last attempt, or
-         stored state that retrying can't change (`WallopCore.Errors.V6ExecRefused`: an unknown pair, an
+         attempts Oban discards it and the draw stays where it is. drand
+         still unavailable on the last attempt is reported as
+         `[:wallop_core, :v6, :drand_exhausted]` and is still an error, not
+         a cancel: the discarded job is re-inserted by the re-drive cron
+         once the draw is stuck, so an outage needs no hand;
+       * a refusal: stored state that retrying can't change (`WallopCore.Errors.V6ExecRefused`: an unknown pair, an
          entry hash mismatch, the receipt builder rejecting stored state, a
          `fair_pick_version` mismatch). It emits
          `[:wallop_core, :v6, :exec_refused]` naming the cause and cancels
-         the job; the re-drive cron brings the draw back;
+         the job. The cancelled job marks the refusal: the re-drive leaves
+         the draw alone while it remains, and re-running it after a fix is
+         a manual re-insert;
        * a wait (`WallopCore.Errors.V6NotYet`, for example the app clock
          behind the database's), which snoozes with nothing written.
     2. **The database.** The draws guard refuses moving an
@@ -51,7 +56,8 @@ defmodule WallopCore.Entropy.V6Execution do
 
   Telemetry: `[:wallop_core, :v6, :executed]` (`%{station, fallback?}`),
   `[:wallop_core, :v6, :execute_error]` (`%{draw_id}`),
-  `[:wallop_core, :v6, :exec_refused]` (`%{draw_id, reason}`) and
+  `[:wallop_core, :v6, :exec_refused]` (`%{draw_id, reason}`),
+  `[:wallop_core, :v6, :drand_exhausted]` (`%{draw_id, reason}`) and
   `[:wallop_core, :v6, :clock_skew]` (measurements `%{skew_ms}`: the
   database clock minus pub(latest round), metadata `%{draw_id, round}`).
   """
@@ -248,11 +254,24 @@ defmodule WallopCore.Entropy.V6Execution do
     })
   end
 
-  # Only after pub(R): never fails the draw. A failure retries; on the last
-  # attempt it is a refusal.
+  # Only after pub(R): never fails the draw, and never cancels the job. A
+  # drand failure is transient however long it lasts: on the last attempt
+  # it is reported and returned as an error, so Oban discards the job and
+  # the re-drive inserts a new one once the draw is stuck.
   defp drand_failed(draw, reason, attempt, max_attempts) do
     if attempt >= max_attempts do
-      refuse(draw, "drand unavailable after #{attempt} attempts (#{drand_error(reason)})")
+      message = "drand unavailable after #{attempt} attempts (#{drand_error(reason)})"
+
+      Logger.error(
+        "V6Execution: draw #{Log.redact_id(draw.id)}: #{message}; left for the re-drive"
+      )
+
+      :telemetry.execute([:wallop_core, :v6, :drand_exhausted], %{count: 1}, %{
+        draw_id: draw.id,
+        reason: message
+      })
+
+      {:error, message}
     else
       Logger.warning(
         "V6Execution: drand failed for draw #{Log.redact_id(draw.id)}: #{drand_error(reason)}"

@@ -288,8 +288,13 @@ defmodule WallopCore.Entropy.ObservationDrawWorkerTest do
   end
 
   describe "failures" do
-    test "drand unavailable: earlier attempts retry, the last is a refusal, never a failed draw" do
-      ref = :telemetry_test.attach_event_handlers(self(), [[:wallop_core, :v6, :exec_refused]])
+    test "drand unavailable: every attempt is an error, the last reported as exhausted; never cancelled or failed" do
+      ref =
+        :telemetry_test.attach_event_handlers(self(), [
+          [:wallop_core, :v6, :exec_refused],
+          [:wallop_core, :v6, :drand_exhausted]
+        ])
+
       {_op, draw} = v6_draw_after_deadline(60)
       Req.Test.stub(DrandClient, fn conn -> Plug.Conn.send_resp(conn, 503, "") end)
 
@@ -297,14 +302,15 @@ defmodule WallopCore.Entropy.ObservationDrawWorkerTest do
       assert reload(draw).status == :pending_entropy
       refute_received {[:wallop_core, :v6, :exec_refused], ^ref, _, _}
 
-      assert {:cancel, reason} =
+      assert {:error, reason} =
                perform_job(ObservationDrawWorker, %{draw_id: draw.id}, attempt: 10)
 
       assert reason =~ "drand unavailable after 10 attempts (all relays failed)"
       left = reload(draw)
       assert left.status == :pending_entropy
       assert left.drand_randomness == nil
-      assert_receive {[:wallop_core, :v6, :exec_refused], ^ref, _, %{reason: msg}}
+      assert_receive {[:wallop_core, :v6, :drand_exhausted], ^ref, _, %{reason: msg}}
+      refute_received {[:wallop_core, :v6, :exec_refused], ^ref, _, _}
       assert msg =~ "drand unavailable"
     end
 
@@ -338,8 +344,13 @@ defmodule WallopCore.Entropy.ObservationDrawWorkerTest do
       assert reload(draw).status == :completed
     end
 
-    test "every relay invalid is transient: earlier attempts retry, the last is a refusal, never a failed draw" do
-      ref = :telemetry_test.attach_event_handlers(self(), [[:wallop_core, :v6, :exec_refused]])
+    test "every relay invalid is transient: the last attempt is an error reported as exhausted, never cancelled or failed" do
+      ref =
+        :telemetry_test.attach_event_handlers(self(), [
+          [:wallop_core, :v6, :exec_refused],
+          [:wallop_core, :v6, :drand_exhausted]
+        ])
+
       {_op, draw} = v6_draw_after_deadline(60)
 
       Req.Test.stub(DrandClient, fn conn ->
@@ -350,18 +361,24 @@ defmodule WallopCore.Entropy.ObservationDrawWorkerTest do
       assert reload(draw).status == :pending_entropy
       refute_received {[:wallop_core, :v6, :exec_refused], ^ref, _, _}
 
-      assert {:cancel, reason} =
+      assert {:error, reason} =
                perform_job(ObservationDrawWorker, %{draw_id: draw.id}, attempt: 10)
 
       assert reason =~ "drand unavailable after 10 attempts (all relays failed)"
       assert reload(draw).status == :pending_entropy
-      assert_receive {[:wallop_core, :v6, :exec_refused], ^ref, _, _}
+      assert_receive {[:wallop_core, :v6, :drand_exhausted], ^ref, _, _}
+      refute_received {[:wallop_core, :v6, :exec_refused], ^ref, _, _}
     end
 
-    test "every relay's 403 is transient: retried, a refusal only on the last attempt, never a failed draw" do
+    test "every relay's 403 is transient: the last attempt is an error reported as exhausted, never cancelled or failed" do
       # The public relays take no credentials, so a 403 is one relay's
       # answer, not a verdict on the fetch.
-      ref = :telemetry_test.attach_event_handlers(self(), [[:wallop_core, :v6, :exec_refused]])
+      ref =
+        :telemetry_test.attach_event_handlers(self(), [
+          [:wallop_core, :v6, :exec_refused],
+          [:wallop_core, :v6, :drand_exhausted]
+        ])
+
       {_op, draw} = v6_draw_after_deadline(60)
       Req.Test.stub(DrandClient, fn conn -> Plug.Conn.send_resp(conn, 403, "") end)
 
@@ -369,12 +386,13 @@ defmodule WallopCore.Entropy.ObservationDrawWorkerTest do
       assert reload(draw).status == :pending_entropy
       refute_received {[:wallop_core, :v6, :exec_refused], ^ref, _, _}
 
-      assert {:cancel, reason} =
+      assert {:error, reason} =
                perform_job(ObservationDrawWorker, %{draw_id: draw.id}, attempt: 10)
 
       assert reason =~ "drand unavailable after 10 attempts (all relays failed)"
       assert reload(draw).status == :pending_entropy
-      assert_receive {[:wallop_core, :v6, :exec_refused], ^ref, _, %{reason: msg}}
+      assert_receive {[:wallop_core, :v6, :drand_exhausted], ^ref, _, %{reason: msg}}
+      refute_received {[:wallop_core, :v6, :exec_refused], ^ref, _, _}
       assert msg =~ "drand"
     end
 
@@ -384,7 +402,7 @@ defmodule WallopCore.Entropy.ObservationDrawWorkerTest do
 
       assert {:error, _} = perform_job(ObservationDrawWorker, %{draw_id: draw.id}, attempt: 1)
 
-      assert {:cancel, reason} =
+      assert {:error, reason} =
                perform_job(ObservationDrawWorker, %{draw_id: draw.id}, attempt: 10)
 
       assert reason =~ "drand unavailable after 10 attempts (not_found)"
@@ -436,7 +454,8 @@ defmodule WallopCore.Entropy.ObservationDrawWorkerTest do
       ref =
         :telemetry_test.attach_event_handlers(self(), [
           [:wallop_core, :v6, :execute_error],
-          [:wallop_core, :v6, :exec_refused]
+          [:wallop_core, :v6, :exec_refused],
+          [:wallop_core, :v6, :drand_exhausted]
         ])
 
       {_op, draw} = v6_draw_after_deadline(60)
@@ -450,15 +469,17 @@ defmodule WallopCore.Entropy.ObservationDrawWorkerTest do
       assert reload(draw).drand_randomness == nil
 
       # The last attempt: drand is now unavailable. Failing the draw here
-      # would be a selective abort; it is refused and left for the re-drive.
+      # would be a selective abort; the job ends in an error, is discarded,
+      # and the draw is left for the re-drive.
       Req.Test.stub(DrandClient, fn conn -> Plug.Conn.send_resp(conn, 503, "") end)
 
-      assert {:cancel, reason} =
+      assert {:error, reason} =
                perform_job(ObservationDrawWorker, %{draw_id: draw.id}, attempt: 10)
 
       assert reason =~ "drand unavailable"
       assert reload(draw).status == :pending_entropy
-      assert_receive {[:wallop_core, :v6, :exec_refused], ^ref, _, %{draw_id: id}}
+      assert_receive {[:wallop_core, :v6, :drand_exhausted], ^ref, _, %{draw_id: id}}
+      refute_received {[:wallop_core, :v6, :exec_refused], ^ref, _, _}
       assert id == draw.id
     end
 
@@ -639,6 +660,82 @@ defmodule WallopCore.Entropy.ObservationDrawWorkerTest do
       assert {:cancel, reason} = perform_job(ObservationDrawWorker, job.args, attempt: 1)
       assert reason =~ "entry hash mismatch"
       assert reload(draw).status == :pending_entropy
+    end
+  end
+
+  describe "re-drive after an outage and after a refusal, through Oban" do
+    defp job_states(draw) do
+      %{rows: rows} =
+        Repo.query!(
+          "SELECT state FROM oban_jobs WHERE args->>'draw_id' = $1 ORDER BY id",
+          [draw.id]
+        )
+
+      List.flatten(rows)
+    end
+
+    @tag :capture_log
+    test "a drand outage past the last attempt is discarded and re-driven; a refusal is cancelled and isn't" do
+      ref =
+        :telemetry_test.attach_event_handlers(self(), [
+          [:wallop_core, :v6, :drand_exhausted],
+          [:wallop_core, :v6, :exec_refused]
+        ])
+
+      # Both rounds published 20 minutes ago. `refused` has stored state no
+      # retry can fix: its entries no longer hash to its entry_hash.
+      {_op, outage} = v6_draw_after_deadline(30 * 60, -20 * 60)
+      {_op, refused} = v6_draw_after_deadline(30 * 60, -20 * 60)
+      break_entry_hash!(refused)
+
+      for draw <- [outage, refused] do
+        Repo.query!("DELETE FROM oban_jobs WHERE args->>'draw_id' = $1", [draw.id])
+        # One attempt, so the first run is the last.
+        {:ok, _} = Oban.insert(ObservationDrawWorker.new(%{draw_id: draw.id}, max_attempts: 1))
+      end
+
+      # drand is down for the whole of the jobs' last attempts.
+      Req.Test.stub(DrandClient, fn conn -> Plug.Conn.send_resp(conn, 503, "") end)
+      Oban.drain_queue(queue: :entropy)
+
+      for draw <- [outage, refused] do
+        assert job_states(draw) == ["discarded"]
+        assert reload(draw).status == :pending_entropy
+      end
+
+      assert_received {[:wallop_core, :v6, :drand_exhausted], ^ref, _, _}
+      refute_received {[:wallop_core, :v6, :exec_refused], ^ref, _, _}
+
+      # drand is back. The re-drive puts both jobs back.
+      Req.Test.stub(DrandClient, fn conn ->
+        round = conn.path_info |> List.last() |> String.to_integer()
+
+        Req.Test.json(conn, %{
+          "round" => round,
+          "randomness" => @randomness,
+          "signature" => @signature
+        })
+      end)
+
+      redriven = StuckDrawRedriver.redrive()
+      assert outage.id in redriven
+      assert refused.id in redriven
+      Oban.drain_queue(queue: :entropy)
+
+      # The outage draw completes; the refused one is refused on stored
+      # state, and its job is cancelled.
+      assert reload(outage).status == :completed
+      assert job_states(outage) == ["discarded", "completed"]
+      assert reload(refused).status == :pending_entropy
+      assert job_states(refused) == ["discarded", "cancelled"]
+      assert_received {[:wallop_core, :v6, :exec_refused], ^ref, _, %{draw_id: id}}
+      assert id == refused.id
+
+      # The cancelled job marks the refusal: no re-drive while it remains.
+      redriven = StuckDrawRedriver.redrive()
+      refute outage.id in redriven
+      refute refused.id in redriven
+      assert job_states(refused) == ["discarded", "cancelled"]
     end
   end
 
