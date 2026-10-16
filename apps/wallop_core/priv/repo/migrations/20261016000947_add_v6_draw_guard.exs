@@ -247,7 +247,11 @@ defmodule WallopCore.Repo.Migrations.AddV6DrawGuard do
         END IF;
 
         IF OLD.entropy_composition = wallop_landobs_tag() THEN
-          SELECT value, observation_time INTO obs FROM weather_observations WHERE draw_id = NEW.id;
+          -- One row per observation hour: every draw of the hour
+          -- completes with it. VOLATILE, so this read takes a fresh
+          -- snapshot once a store holding this row's lock has ended.
+          SELECT station, value, observation_time INTO obs FROM weather_observations
+            WHERE observation_time = OLD.weather_time;
           IF FOUND THEN
             IF NEW.weather_value IS DISTINCT FROM obs.value
                OR NEW.weather_observation_time IS DISTINCT FROM obs.observation_time

@@ -18,37 +18,6 @@
       "generated?": false,
       "precision": null,
       "primary_key?": false,
-      "references": {
-        "deferrable": false,
-        "destination_attribute": "id",
-        "destination_attribute_default": null,
-        "destination_attribute_generated": null,
-        "index?": false,
-        "match_type": null,
-        "match_with": null,
-        "multitenancy": {
-          "attribute": null,
-          "global": null,
-          "strategy": null
-        },
-        "name": "weather_observations_draw_id_fkey",
-        "on_delete": "nothing",
-        "on_update": null,
-        "primary_key?": true,
-        "schema": "public",
-        "table": "draws"
-      },
-      "scale": null,
-      "size": null,
-      "source": "draw_id",
-      "type": "uuid"
-    },
-    {
-      "allow_nil?": false,
-      "default": "nil",
-      "generated?": false,
-      "precision": null,
-      "primary_key?": false,
       "references": null,
       "scale": null,
       "size": null,
@@ -136,7 +105,7 @@
       "code?": false,
       "down": "DROP FUNCTION IF EXISTS guard_weather_observation_insert()",
       "name": "guard_weather_observation_insert",
-      "up": "CREATE OR REPLACE FUNCTION guard_weather_observation_insert() RETURNS trigger AS $$\nDECLARE\n  now_utc timestamp := statement_timestamp() AT TIME ZONE 'UTC';\n  d RECORD;\nBEGIN\n  SELECT status, weather_time, lock_schema_version, entropy_composition INTO d\n    FROM draws WHERE id = NEW.draw_id FOR UPDATE;\n\n  IF NOT FOUND OR d.lock_schema_version IS DISTINCT FROM '6' THEN\n    RAISE EXCEPTION 'weather observations are stored only for v6 draws';\n  END IF;\n  IF d.entropy_composition IS DISTINCT FROM wallop_landobs_tag() THEN\n    RAISE EXCEPTION 'no observation rules for entropy_composition %', d.entropy_composition;\n  END IF;\n  IF d.status IS DISTINCT FROM 'awaiting_entropy' AND d.status IS DISTINCT FROM 'pending_entropy' THEN\n    RAISE EXCEPTION 'draw is not waiting for entropy';\n  END IF;\n  IF NEW.observation_time IS DISTINCT FROM d.weather_time THEN\n    RAISE EXCEPTION 'observation_time must equal the draw''s weather_time';\n  END IF;\n\n  PERFORM pg_advisory_xact_lock(hashtextextended(\n    'weather_observations|' || NEW.station || '|'\n      || to_char(NEW.observation_time, 'YYYY-MM-DD\"T\"HH24:MI:SS.US'), 0));\n\n  IF EXISTS (SELECT 1 FROM weather_observations WHERE draw_id = NEW.draw_id) THEN\n    RAISE EXCEPTION 'an observation is already stored for this draw';\n  END IF;\n  IF EXISTS (SELECT 1 FROM weather_observations\n             WHERE station = NEW.station AND observation_time = NEW.observation_time\n               AND value IS DISTINCT FROM NEW.value) THEN\n    RAISE EXCEPTION 'a different value is already stored for this station and hour';\n  END IF;\n  IF wallop_landobs_observation_allowed(NEW.station, d.weather_time, now_utc) IS NOT TRUE THEN\n    RAISE EXCEPTION '% observation outside its window', NEW.station;\n  END IF;\n\n  NEW.stored_at := now_utc;\n  RETURN NEW;\nEND;\n$$ LANGUAGE plpgsql\n"
+      "up": "CREATE OR REPLACE FUNCTION guard_weather_observation_insert() RETURNS trigger AS $$\nDECLARE\n  now_utc timestamp := statement_timestamp() AT TIME ZONE 'UTC';\nBEGIN\n  PERFORM 1 FROM draws\n    WHERE weather_time = NEW.observation_time\n      AND lock_schema_version = '6'\n      AND entropy_composition = wallop_landobs_tag()\n      AND status IN ('awaiting_entropy', 'pending_entropy')\n    ORDER BY id\n    FOR SHARE;\n\n  IF NOT FOUND THEN\n    RAISE EXCEPTION 'no observation-weather draw is waiting for this hour';\n  END IF;\n  IF wallop_landobs_observation_allowed(NEW.station, NEW.observation_time, now_utc) IS NOT TRUE THEN\n    RAISE EXCEPTION '% observation outside its window', NEW.station;\n  END IF;\n\n  NEW.stored_at := now_utc;\n  RETURN NEW;\nEND;\n$$ LANGUAGE plpgsql\n"
     },
     {
       "code?": false,
@@ -148,7 +117,7 @@
       "code?": false,
       "down": "DROP FUNCTION IF EXISTS check_weather_observation_commit()",
       "name": "check_weather_observation_commit",
-      "up": "CREATE OR REPLACE FUNCTION check_weather_observation_commit() RETURNS trigger AS $$\nDECLARE\n  d RECORD;\nBEGIN\n  SELECT weather_time, entropy_composition INTO d FROM draws WHERE id = NEW.draw_id;\n\n  IF d.entropy_composition IS NOT DISTINCT FROM wallop_landobs_tag() THEN\n    IF (clock_timestamp() AT TIME ZONE 'UTC' <= d.weather_time + wallop_landobs_fetch_window())\n       IS NOT TRUE THEN\n      RAISE EXCEPTION 'an observation must commit by its fetch deadline';\n    END IF;\n  ELSE\n    RAISE EXCEPTION 'no observation rules for entropy_composition %', d.entropy_composition;\n  END IF;\n\n  RETURN NULL;\nEND;\n$$ LANGUAGE plpgsql\n"
+      "up": "CREATE OR REPLACE FUNCTION check_weather_observation_commit() RETURNS trigger AS $$\nBEGIN\n  IF (clock_timestamp() AT TIME ZONE 'UTC' <= NEW.observation_time + wallop_landobs_fetch_window())\n     IS NOT TRUE THEN\n    RAISE EXCEPTION 'an observation must commit by its fetch deadline';\n  END IF;\n\n  RETURN NULL;\nEND;\n$$ LANGUAGE plpgsql\n"
     },
     {
       "code?": false,
@@ -176,19 +145,19 @@
     }
   ],
   "has_create_action": true,
-  "hash": "02DB1AA5078DDEB70E82420799E8DE93488A51E20C493D6D41EAAE1DD9352ADF",
+  "hash": "AB08017D21556ED0E543A53B4941257F7A6C62D2E224FC1094B574975042BD8A",
   "identities": [
     {
       "all_tenants?": false,
       "base_filter": null,
-      "index_name": "weather_observations_one_per_draw_index",
+      "index_name": "weather_observations_one_per_hour_index",
       "keys": [
         {
           "type": "atom",
-          "value": "draw_id"
+          "value": "observation_time"
         }
       ],
-      "name": "one_per_draw",
+      "name": "one_per_hour",
       "nils_distinct?": true,
       "where": null
     }

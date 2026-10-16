@@ -345,8 +345,11 @@ defmodule WallopCore.Resources.Draw do
         # Does nothing to a draw whose (lock_schema_version,
         # entropy_composition) is (NULL, NULL), which is every forecast and
         # historic draw, except refuse to set the pair outside a lock.
-        # The completion clauses read weather_observations; PL/pgSQL resolves
-        # the table only when a v6 draw completes.
+        # The completion clauses read weather_observations, by the draw's
+        # weather_time; PL/pgSQL resolves the table only when a v6 draw
+        # completes. The draws row keeps the lock's weather_station (frozen);
+        # the reading's station is fixed by the hour's single row, and the
+        # execution receipt carries it.
         up("""
         CREATE OR REPLACE FUNCTION guard_v6_draw() RETURNS trigger AS $$
         DECLARE
@@ -415,7 +418,11 @@ defmodule WallopCore.Resources.Draw do
             END IF;
 
             IF OLD.entropy_composition = wallop_landobs_tag() THEN
-              SELECT value, observation_time INTO obs FROM weather_observations WHERE draw_id = NEW.id;
+              -- One row per observation hour: every draw of the hour
+              -- completes with it. VOLATILE, so this read takes a fresh
+              -- snapshot once a store holding this row's lock has ended.
+              SELECT station, value, observation_time INTO obs FROM weather_observations
+                WHERE observation_time = OLD.weather_time;
               IF FOUND THEN
                 IF NEW.weather_value IS DISTINCT FROM obs.value
                    OR NEW.weather_observation_time IS DISTINCT FROM obs.observation_time
