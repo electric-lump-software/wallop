@@ -13,7 +13,7 @@ defmodule WallopCore.Weather.V6DrawGuardTest do
 
   alias WallopCore.Drand.Quicknet
   alias WallopCore.Protocol
-  alias WallopCore.Protocol.Tags.LandObs
+  alias WallopCore.Protocol.Tags.{Freq, LandObs}
   alias WallopCore.Resources.{Draw, Operator, OperatorSigningKey}
   alias WallopCore.Weather.{Schedule, Stations}
 
@@ -113,7 +113,7 @@ defmodule WallopCore.Weather.V6DrawGuardTest do
   end
 
   describe "the (lock_schema_version, entropy_composition) pair" do
-    test "only (NULL, NULL) and (6, the Land Observations tag) are accepted", %{
+    test "only (NULL, NULL), (6, Land Obs) and (6, grid frequency) are accepted", %{
       draw: d,
       s: s
     } do
@@ -122,7 +122,9 @@ defmodule WallopCore.Weather.V6DrawGuardTest do
             {"6", nil},
             {"5", LandObs.tag()},
             {"5", nil},
-            {nil, LandObs.tag()}
+            {nil, LandObs.tag()},
+            {"5", Freq.tag()},
+            {nil, Freq.tag()}
           ] do
         assert lock(d, s.weather_time, s.round, schema: schema, tag: tag) ==
                  "unknown lock_schema_version and entropy_composition pair: " <>

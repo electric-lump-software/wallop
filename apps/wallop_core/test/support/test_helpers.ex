@@ -5,6 +5,7 @@ defmodule WallopCore.TestHelpers do
 
   alias WallopCore.Drand.Quicknet
   alias WallopCore.Entries
+  alias WallopCore.Frequency.Schedule, as: FreqSchedule
   alias WallopCore.Protocol
   alias WallopCore.Repo
   alias WallopCore.Resources.{Draw, Operator, OperatorReceipt, OperatorSigningKey}
@@ -376,6 +377,138 @@ defmodule WallopCore.TestHelpers do
         drand_round: drand_round,
         weather_station: Stations.primary().id,
         weather_time: signed_wt,
+        wallop_core_version: to_string(Application.spec(:wallop_core, :vsn)),
+        fair_pick_version: to_string(Application.spec(:fair_pick, :vsn))
+      })
+
+    OperatorReceipt
+    |> Ash.Changeset.for_create(:create, %{
+      operator_id: operator.id,
+      draw_id: draw.id,
+      sequence: draw.operator_sequence,
+      commitment_hash: entry_hash,
+      entry_hash: entry_hash,
+      locked_at: locked_at,
+      signing_key_id: key.key_id,
+      payload_jcs: payload,
+      signature: Protocol.sign_receipt(payload, private)
+    })
+    |> Ash.create!(authorize?: false)
+  end
+
+  @doc "The 15-second boundary at or before now + `offset_seconds`."
+  def aligned_freq_start(offset_seconds) do
+    u = DateTime.to_unix(DateTime.utc_now()) + offset_seconds
+    DateTime.from_unix!((u - Integer.mod(u, 15)) * 1_000_000, :microsecond)
+  end
+
+  @doc """
+  An Elexon FREQ response body holding the 8 readings of `value` for the
+  window starting at `freq_start`, newest first, as Elexon sends them.
+  """
+  def elexon_body(%DateTime{} = freq_start, value) when is_binary(value) do
+    rows =
+      value
+      |> String.split(";")
+      |> Enum.with_index(fn mhz, i ->
+        n = String.to_integer(mhz)
+
+        text =
+          "#{div(n, 1000)}.#{n |> rem(1000) |> Integer.to_string() |> String.pad_leading(3, "0")}"
+
+        stamp = Calendar.strftime(DateTime.add(freq_start, 15 * i), "%Y-%m-%dT%H:%M:%SZ")
+        ~s({"dataset":"FREQ","measurementTime":"#{stamp}","frequency":#{text}})
+      end)
+      |> Enum.reverse()
+
+    ~s({"data":[#{Enum.join(rows, ",")}]})
+  end
+
+  @doc """
+  Puts an open draw into awaiting_entropy as a grid-frequency draw with the
+  given `freq_start` and `drand_round`, and stores a signed lock receipt,
+  with every trigger off, like `put_v6_awaiting!/4`, so tests can place the
+  store window around now.
+
+  **The stored `freq_start` may differ from the signed copy**, which is the
+  round's own window start. Assert on the signed value, or on the one
+  derived from `drand_round`.
+  """
+  def put_freq_awaiting!(draw, %DateTime{} = freq_start, drand_round)
+      when is_integer(drand_round) do
+    {hash, canonical} = Protocol.entry_hash({draw.id, Entries.load_for_draw(draw.id)})
+
+    with_triggers_off(fn ->
+      Repo.query!(
+        """
+        UPDATE draws SET status = 'awaiting_entropy', lock_schema_version = '6',
+          entropy_composition = $7, entry_hash = $2, entry_canonical = $3, drand_chain = $4,
+          drand_round = $5, freq_start = $6, weather_station = NULL, weather_time = NULL
+        WHERE id = $1
+        """,
+        [
+          Ecto.UUID.dump!(draw.id),
+          hash,
+          canonical,
+          Quicknet.chain_hash(),
+          drand_round,
+          DateTime.to_naive(freq_start),
+          Protocol.freq_entropy_composition()
+        ]
+      )
+
+      insert_freq_lock_receipt!(draw, hash, drand_round)
+    end)
+
+    Ash.get!(Draw, draw.id, authorize?: false, load: [:expected_result_at])
+  end
+
+  @doc """
+  A signed grid-frequency lock receipt for `draw`, inserted with whatever
+  triggers are on. The signed `freq_start` is the round's window start;
+  `locked_at` is now, or the latest in-time instant if now is too late.
+  Signs with the operator's current key, as the lock path chooses it.
+  """
+  def insert_freq_lock_receipt!(draw, entry_hash, drand_round) do
+    require Ash.Query
+
+    operator_id = draw.operator_id
+    now = DateTime.utc_now()
+
+    [key] =
+      OperatorSigningKey
+      |> Ash.Query.filter(operator_id == ^operator_id and valid_from <= ^now)
+      |> Ash.Query.sort(valid_from: :desc)
+      |> Ash.Query.limit(1)
+      |> Ash.read!(authorize?: false)
+
+    {:ok, private} = Vault.decrypt(key.private_key)
+    operator = Ash.get!(Operator, operator_id, authorize?: false)
+    signed_start = FreqSchedule.freq_start_for_round(drand_round)
+
+    locked_at =
+      Enum.min(
+        [DateTime.truncate(now, :microsecond), FreqSchedule.latest_lock_at(signed_start)],
+        DateTime
+      )
+
+    payload =
+      Protocol.build_v6_lock_payload(%{
+        entropy_composition: Protocol.freq_entropy_composition(),
+        operator_id: operator.id,
+        operator_slug: to_string(operator.slug),
+        sequence: draw.operator_sequence,
+        draw_id: draw.id,
+        commitment_hash: entry_hash,
+        entry_hash: entry_hash,
+        locked_at: locked_at,
+        signing_key_id: key.key_id,
+        winner_count: draw.winner_count,
+        drand_chain: Quicknet.chain_hash(),
+        drand_round: drand_round,
+        weather_station: nil,
+        weather_time: nil,
+        freq_start: signed_start,
         wallop_core_version: to_string(Application.spec(:wallop_core, :vsn)),
         fair_pick_version: to_string(Application.spec(:fair_pick, :vsn))
       })

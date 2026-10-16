@@ -60,6 +60,145 @@
             "additionalProperties": false,
             "description": "An attributes object for a draw",
             "properties": {
+              "entry_canonical": {
+                "anyOf": [
+                  {
+                    "nullable": true,
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "Field included by default."
+              },
+              "weather_raw": {
+                "anyOf": [
+                  {
+                    "nullable": true,
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "Field included by default."
+              },
+              "failure_reason": {
+                "anyOf": [
+                  {
+                    "nullable": true,
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "Field included by default."
+              },
+              "weather_time": {
+                "anyOf": [
+                  {},
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "Field included by default."
+              },
+              "seed_json": {
+                "anyOf": [
+                  {
+                    "nullable": true,
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "Field included by default."
+              },
+              "drand_response": {
+                "anyOf": [
+                  {
+                    "nullable": true,
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "Field included by default."
+              },
+              "freq_start": {
+                "description": "Grid-frequency draws only: the time of the first of the 8 GB grid frequency readings (Elexon FREQ, 15 seconds apart) that feed the seed. Null for other draws. Field included by default.",
+                "format": "date-time",
+                "nullable": true,
+                "type": "string"
+              },
+              "weather_observation_time": {
+                "anyOf": [
+                  {},
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "Field included by default."
+              },
+              "seed": {
+                "anyOf": [
+                  {
+                    "nullable": true,
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "64-character hex SHA-256 seed used to drive the draw algorithm. Derived from drand + weather entropy (seed_source: entropy) or supplied by the caller (seed_source: caller). Sandbox draws live in a separate resource — see `WallopCore.Resources.SandboxDraw`. Field included by default."
+              },
+              "freq_value": {
+                "anyOf": [
+                  {
+                    "nullable": true,
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "Grid-frequency draws only: the 8 readings in mHz, `;`-joined, in time order. Null when the draw fell back to drand alone, and for other draws. Field included by default."
+              },
+              "expected_result_at": {
+                "description": "Observation-weather draws only: when the result is due (the publication time of the committed drand round). Not signed; derived from drand_round. Null for other draws. Field included by default.",
+                "format": "date-time",
+                "nullable": true,
+                "type": "string"
+              },
+              "status": {
+                "description": "Current lifecycle state of the draw. Progresses through: open → locked → awaiting_entropy → pending_entropy → completed. Terminal states: failed, expired. Field included by default.",
+                "enum": [
+                  "open",
+                  "locked",
+                  "awaiting_entropy",
+                  "pending_entropy",
+                  "completed",
+                  "failed",
+                  "expired"
+                ],
+                "type": "string"
+              },
+              "name": {
+                "anyOf": [
+                  {
+                    "nullable": true,
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "Optional human-readable label for the draw. May only be set or changed while the draw is open. Field included by default."
+              },
               "callback_url": {
                 "anyOf": [
                   {
@@ -72,23 +211,11 @@
                 ],
                 "description": "Optional HTTPS URL to receive a webhook POST when the draw completes or fails. Must be a valid HTTPS URL. Field included by default."
               },
-              "check_url": {
+              "stage_timestamps": {
                 "anyOf": [
                   {
                     "nullable": true,
-                    "type": "string"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ],
-                "description": "Optional HTTPS URL to the operator's own \"check your ticket\" page. Rendered as an outbound link on the public proof page when a user checks a non-winning UUID — lets operators offer richer-than-flat- boolean lookup (e.g. confirm an entry was submitted, show position) which wallop itself does not provide publicly. Must be ≤ 2048 characters, must be `https://`, and must not contain whitespace. `javascript:`, `data:`, `file:`, `vbscript:`, and other non-https schemes are rejected. Note: `check_url` is display metadata, not part of the signed receipt or entry_hash — operators can point the URL's DNS elsewhere later. Treat it as operator-mutable-in-effect. Field included by default."
-              },
-              "drand_chain": {
-                "anyOf": [
-                  {
-                    "nullable": true,
-                    "type": "string"
+                    "type": "object"
                   },
                   {
                     "type": "null"
@@ -96,7 +223,7 @@
                 ],
                 "description": "Field included by default."
               },
-              "drand_randomness": {
+              "entry_hash": {
                 "anyOf": [
                   {
                     "nullable": true,
@@ -106,11 +233,19 @@
                     "type": "null"
                   }
                 ],
-                "description": "The 64-character hex random value published by drand for the declared round. Combined with weather_value to derive the draw seed. Field included by default."
+                "description": "SHA-256 hash of the canonicalised entry list (JCS). Published at lock time as a cryptographic commitment. Changing any entry would produce a different hash. Field included by default."
               },
-              "drand_response": {
+              "winner_count": {
+                "description": "Number of winners to select. Must be between 1 and 10,000 and no greater than the number of entries. Field included by default.",
+                "type": "integer"
+              },
+              "seed_source": {
                 "anyOf": [
                   {
+                    "enum": [
+                      "caller",
+                      "entropy"
+                    ],
                     "nullable": true,
                     "type": "string"
                   },
@@ -132,7 +267,7 @@
                 ],
                 "description": "The drand quicknet beacon round number used as entropy. Declared at lock time before the round resolves — the value is unpredictable at commitment time. Field included by default."
               },
-              "drand_signature": {
+              "weather_value": {
                 "anyOf": [
                   {
                     "nullable": true,
@@ -142,9 +277,9 @@
                     "type": "null"
                   }
                 ],
-                "description": "Field included by default."
+                "description": "Temperature observation (°C) from the Middle Wallop, Hampshire Met Office station, taken at the declared observation time. Combined with drand_randomness to derive the draw seed. Field included by default."
               },
-              "entry_canonical": {
+              "freq_fallback_reason": {
                 "anyOf": [
                   {
                     "nullable": true,
@@ -154,92 +289,7 @@
                     "type": "null"
                   }
                 ],
-                "description": "Field included by default."
-              },
-              "entry_count": {
-                "description": "Number of entries in this draw. Updated atomically when entries are added or removed. Field included by default.",
-                "type": "integer"
-              },
-              "entry_hash": {
-                "anyOf": [
-                  {
-                    "nullable": true,
-                    "type": "string"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ],
-                "description": "SHA-256 hash of the canonicalised entry list (JCS). Published at lock time as a cryptographic commitment. Changing any entry would produce a different hash. Field included by default."
-              },
-              "executed_at": {
-                "anyOf": [
-                  {},
-                  {
-                    "type": "null"
-                  }
-                ],
-                "description": "Field included by default."
-              },
-              "expected_result_at": {
-                "description": "Observation-weather draws only: when the result is due (the publication time of the committed drand round). Not signed; derived from drand_round. Null for other draws. Field included by default.",
-                "format": "date-time",
-                "nullable": true,
-                "type": "string"
-              },
-              "failed_at": {
-                "anyOf": [
-                  {},
-                  {
-                    "type": "null"
-                  }
-                ],
-                "description": "Field included by default."
-              },
-              "failure_reason": {
-                "anyOf": [
-                  {
-                    "nullable": true,
-                    "type": "string"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ],
-                "description": "Field included by default."
-              },
-              "metadata": {
-                "anyOf": [
-                  {
-                    "nullable": true,
-                    "type": "object"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ],
-                "description": "Arbitrary JSON object stored with the draw. Not used in seed computation. Useful for storing external references (e.g. your internal draw ID). Field included by default."
-              },
-              "name": {
-                "anyOf": [
-                  {
-                    "nullable": true,
-                    "type": "string"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ],
-                "description": "Optional human-readable label for the draw. May only be set or changed while the draw is open. Field included by default."
-              },
-              "operator_id": {
-                "description": "Field included by default.",
-                "format": "uuid",
-                "type": "string"
-              },
-              "operator_sequence": {
-                "description": "Per-operator monotonic sequence number assigned at create time. Gap-free by design — discarded slots are visible. Field included by default.",
-                "type": "integer"
+                "description": "Grid-frequency draws only: why no readings were used (`no_frequency_by_deadline`). Null otherwise. Field included by default."
               },
               "results": {
                 "anyOf": [
@@ -256,71 +306,6 @@
                 ],
                 "description": "Ordered list of winning entries, populated after draw execution. Each element mirrors the entry structure submitted. Field included by default."
               },
-              "seed": {
-                "anyOf": [
-                  {
-                    "nullable": true,
-                    "type": "string"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ],
-                "description": "64-character hex SHA-256 seed used to drive the draw algorithm. Derived from drand + weather entropy (seed_source: entropy) or supplied by the caller (seed_source: caller). Sandbox draws live in a separate resource — see `WallopCore.Resources.SandboxDraw`. Field included by default."
-              },
-              "seed_json": {
-                "anyOf": [
-                  {
-                    "nullable": true,
-                    "type": "string"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ],
-                "description": "Field included by default."
-              },
-              "seed_source": {
-                "anyOf": [
-                  {
-                    "enum": [
-                      "caller",
-                      "entropy"
-                    ],
-                    "nullable": true,
-                    "type": "string"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ],
-                "description": "Field included by default."
-              },
-              "stage_timestamps": {
-                "anyOf": [
-                  {
-                    "nullable": true,
-                    "type": "object"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ],
-                "description": "Field included by default."
-              },
-              "status": {
-                "description": "Current lifecycle state of the draw. Progresses through: open → locked → awaiting_entropy → pending_entropy → completed. Terminal states: failed, expired. Field included by default.",
-                "enum": [
-                  "open",
-                  "locked",
-                  "awaiting_entropy",
-                  "pending_entropy",
-                  "completed",
-                  "failed",
-                  "expired"
-                ],
-                "type": "string"
-              },
               "weather_fallback_reason": {
                 "anyOf": [
                   {
@@ -333,7 +318,7 @@
                 ],
                 "description": "Why weather entropy was unavailable. Null when weather was used. Field included by default."
               },
-              "weather_observation_time": {
+              "executed_at": {
                 "anyOf": [
                   {},
                   {
@@ -342,7 +327,11 @@
                 ],
                 "description": "Field included by default."
               },
-              "weather_raw": {
+              "operator_sequence": {
+                "description": "Per-operator monotonic sequence number assigned at create time. Gap-free by design — discarded slots are visible. Field included by default.",
+                "type": "integer"
+              },
+              "drand_signature": {
                 "anyOf": [
                   {
                     "nullable": true,
@@ -353,6 +342,55 @@
                   }
                 ],
                 "description": "Field included by default."
+              },
+              "drand_chain": {
+                "anyOf": [
+                  {
+                    "nullable": true,
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "Field included by default."
+              },
+              "entry_count": {
+                "description": "Number of entries in this draw. Updated atomically when entries are added or removed. Field included by default.",
+                "type": "integer"
+              },
+              "failed_at": {
+                "anyOf": [
+                  {},
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "Field included by default."
+              },
+              "check_url": {
+                "anyOf": [
+                  {
+                    "nullable": true,
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "Optional HTTPS URL to the operator's own \"check your ticket\" page. Rendered as an outbound link on the public proof page when a user checks a non-winning UUID — lets operators offer richer-than-flat- boolean lookup (e.g. confirm an entry was submitted, show position) which wallop itself does not provide publicly. Must be ≤ 2048 characters, must be `https://`, and must not contain whitespace. `javascript:`, `data:`, `file:`, `vbscript:`, and other non-https schemes are rejected. Note: `check_url` is display metadata, not part of the signed receipt or entry_hash — operators can point the URL's DNS elsewhere later. Treat it as operator-mutable-in-effect. Field included by default."
+              },
+              "metadata": {
+                "anyOf": [
+                  {
+                    "nullable": true,
+                    "type": "object"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "Arbitrary JSON object stored with the draw. Not used in seed computation. Useful for storing external references (e.g. your internal draw ID). Field included by default."
               },
               "weather_station": {
                 "anyOf": [
@@ -366,16 +404,12 @@
                 ],
                 "description": "Field included by default."
               },
-              "weather_time": {
-                "anyOf": [
-                  {},
-                  {
-                    "type": "null"
-                  }
-                ],
-                "description": "Field included by default."
+              "operator_id": {
+                "description": "Field included by default.",
+                "format": "uuid",
+                "type": "string"
               },
-              "weather_value": {
+              "drand_randomness": {
                 "anyOf": [
                   {
                     "nullable": true,
@@ -385,11 +419,7 @@
                     "type": "null"
                   }
                 ],
-                "description": "Temperature observation (°C) from the Middle Wallop, Hampshire Met Office station, taken at the declared observation time. Combined with drand_randomness to derive the draw seed. Field included by default."
-              },
-              "winner_count": {
-                "description": "Number of winners to select. Must be between 1 and 10,000 and no greater than the number of entries. Field included by default.",
-                "type": "integer"
+                "description": "The 64-character hex random value published by drand for the declared round. Combined with weather_value to derive the draw seed. Field included by default."
               }
             },
             "required": [
@@ -816,6 +846,28 @@
         },
         "type": "object"
       },
+      "draw-filter-freq_start": {
+        "additionalProperties": false,
+        "description": "Grid-frequency draws only: the time of the first of the 8 GB grid frequency readings (Elexon FREQ, 15 seconds apart) that feed the seed. Null for other draws.",
+        "properties": {
+          "eq": {},
+          "greater_than": {},
+          "greater_than_or_equal": {},
+          "in": {
+            "items": {},
+            "type": "array"
+          },
+          "is_distinct_from": {},
+          "is_nil": {
+            "type": "boolean"
+          },
+          "is_not_distinct_from": {},
+          "less_than": {},
+          "less_than_or_equal": {},
+          "not_eq": {}
+        },
+        "type": "object"
+      },
       "draw-filter-weather_station": {
         "additionalProperties": false,
         "properties": {
@@ -951,11 +1003,17 @@
           "drand_response": {
             "$ref": "#/components/schemas/draw-filter-drand_response"
           },
+          "freq_start": {
+            "$ref": "#/components/schemas/draw-filter-freq_start"
+          },
           "weather_observation_time": {
             "$ref": "#/components/schemas/draw-filter-weather_observation_time"
           },
           "seed": {
             "$ref": "#/components/schemas/draw-filter-seed"
+          },
+          "freq_value": {
+            "$ref": "#/components/schemas/draw-filter-freq_value"
           },
           "not": {
             "$ref": "#/components/schemas/draw-filter"
@@ -989,6 +1047,9 @@
           },
           "weather_value": {
             "$ref": "#/components/schemas/draw-filter-weather_value"
+          },
+          "freq_fallback_reason": {
+            "$ref": "#/components/schemas/draw-filter-freq_fallback_reason"
           },
           "weather_fallback_reason": {
             "$ref": "#/components/schemas/draw-filter-weather_fallback_reason"
@@ -1506,6 +1567,61 @@
         },
         "type": "object"
       },
+      "draw-filter-freq_fallback_reason": {
+        "additionalProperties": false,
+        "description": "Grid-frequency draws only: why no readings were used (`no_frequency_by_deadline`). Null otherwise.",
+        "properties": {
+          "contains": {
+            "type": "string"
+          },
+          "eq": {
+            "type": "string"
+          },
+          "greater_than": {
+            "type": "string"
+          },
+          "greater_than_or_equal": {
+            "type": "string"
+          },
+          "ilike": {
+            "type": "string"
+          },
+          "in": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "is_distinct_from": {
+            "type": "string"
+          },
+          "is_nil": {
+            "type": "boolean"
+          },
+          "is_not_distinct_from": {
+            "type": "string"
+          },
+          "less_than": {
+            "type": "string"
+          },
+          "less_than_or_equal": {
+            "type": "string"
+          },
+          "like": {
+            "type": "string"
+          },
+          "not_eq": {
+            "type": "string"
+          },
+          "string_ends_with": {
+            "type": "string"
+          },
+          "string_starts_with": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
       "draw-filter-winner_count": {
         "additionalProperties": false,
         "description": "Number of winners to select. Must be between 1 and 10,000 and no greater than the number of entries.",
@@ -1876,6 +1992,61 @@
         },
         "type": "object"
       },
+      "draw-filter-freq_value": {
+        "additionalProperties": false,
+        "description": "Grid-frequency draws only: the 8 readings in mHz, `;`-joined, in time order. Null when the draw fell back to drand alone, and for other draws.",
+        "properties": {
+          "contains": {
+            "type": "string"
+          },
+          "eq": {
+            "type": "string"
+          },
+          "greater_than": {
+            "type": "string"
+          },
+          "greater_than_or_equal": {
+            "type": "string"
+          },
+          "ilike": {
+            "type": "string"
+          },
+          "in": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "is_distinct_from": {
+            "type": "string"
+          },
+          "is_nil": {
+            "type": "boolean"
+          },
+          "is_not_distinct_from": {
+            "type": "string"
+          },
+          "less_than": {
+            "type": "string"
+          },
+          "less_than_or_equal": {
+            "type": "string"
+          },
+          "like": {
+            "type": "string"
+          },
+          "not_eq": {
+            "type": "string"
+          },
+          "string_ends_with": {
+            "type": "string"
+          },
+          "string_starts_with": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
       "draw-filter-entry_canonical": {
         "additionalProperties": false,
         "properties": {
@@ -2119,12 +2290,12 @@
             "schema": {
               "additionalProperties": true,
               "example": {
-                "draw": "id,status,name,entry_count,entry_hash,entry_canonical,winner_count,seed,seed_source,seed_json,results,drand_chain,drand_round,drand_randomness,drand_signature,drand_response,weather_station,weather_time,weather_value,weather_raw,weather_observation_time,weather_fallback_reason,callback_url,metadata,check_url,executed_at,failed_at,failure_reason,stage_timestamps,operator_sequence,operator_id,expected_result_at"
+                "draw": "id,status,name,entry_count,entry_hash,entry_canonical,winner_count,seed,seed_source,seed_json,results,drand_chain,drand_round,drand_randomness,drand_signature,drand_response,weather_station,weather_time,weather_value,weather_raw,weather_observation_time,weather_fallback_reason,freq_start,freq_value,freq_fallback_reason,callback_url,metadata,check_url,executed_at,failed_at,failure_reason,stage_timestamps,operator_sequence,operator_id,expected_result_at"
               },
               "properties": {
                 "draw": {
                   "description": "Comma separated field names for draw",
-                  "example": "id,status,name,entry_count,entry_hash,entry_canonical,winner_count,seed,seed_source,seed_json,results,drand_chain,drand_round,drand_randomness,drand_signature,drand_response,weather_station,weather_time,weather_value,weather_raw,weather_observation_time,weather_fallback_reason,callback_url,metadata,check_url,executed_at,failed_at,failure_reason,stage_timestamps,operator_sequence,operator_id,expected_result_at",
+                  "example": "id,status,name,entry_count,entry_hash,entry_canonical,winner_count,seed,seed_source,seed_json,results,drand_chain,drand_round,drand_randomness,drand_signature,drand_response,weather_station,weather_time,weather_value,weather_raw,weather_observation_time,weather_fallback_reason,freq_start,freq_value,freq_fallback_reason,callback_url,metadata,check_url,executed_at,failed_at,failure_reason,stage_timestamps,operator_sequence,operator_id,expected_result_at",
                   "type": "string"
                 }
               },
@@ -2231,12 +2402,12 @@
             "schema": {
               "additionalProperties": true,
               "example": {
-                "draw": "id,status,name,entry_count,entry_hash,entry_canonical,winner_count,seed,seed_source,seed_json,results,drand_chain,drand_round,drand_randomness,drand_signature,drand_response,weather_station,weather_time,weather_value,weather_raw,weather_observation_time,weather_fallback_reason,callback_url,metadata,check_url,executed_at,failed_at,failure_reason,stage_timestamps,operator_sequence,operator_id,expected_result_at"
+                "draw": "id,status,name,entry_count,entry_hash,entry_canonical,winner_count,seed,seed_source,seed_json,results,drand_chain,drand_round,drand_randomness,drand_signature,drand_response,weather_station,weather_time,weather_value,weather_raw,weather_observation_time,weather_fallback_reason,freq_start,freq_value,freq_fallback_reason,callback_url,metadata,check_url,executed_at,failed_at,failure_reason,stage_timestamps,operator_sequence,operator_id,expected_result_at"
               },
               "properties": {
                 "draw": {
                   "description": "Comma separated field names for draw",
-                  "example": "id,status,name,entry_count,entry_hash,entry_canonical,winner_count,seed,seed_source,seed_json,results,drand_chain,drand_round,drand_randomness,drand_signature,drand_response,weather_station,weather_time,weather_value,weather_raw,weather_observation_time,weather_fallback_reason,callback_url,metadata,check_url,executed_at,failed_at,failure_reason,stage_timestamps,operator_sequence,operator_id,expected_result_at",
+                  "example": "id,status,name,entry_count,entry_hash,entry_canonical,winner_count,seed,seed_source,seed_json,results,drand_chain,drand_round,drand_randomness,drand_signature,drand_response,weather_station,weather_time,weather_value,weather_raw,weather_observation_time,weather_fallback_reason,freq_start,freq_value,freq_fallback_reason,callback_url,metadata,check_url,executed_at,failed_at,failure_reason,stage_timestamps,operator_sequence,operator_id,expected_result_at",
                   "type": "string"
                 }
               },
@@ -2406,12 +2577,12 @@
             "schema": {
               "additionalProperties": true,
               "example": {
-                "draw": "id,status,name,entry_count,entry_hash,entry_canonical,winner_count,seed,seed_source,seed_json,results,drand_chain,drand_round,drand_randomness,drand_signature,drand_response,weather_station,weather_time,weather_value,weather_raw,weather_observation_time,weather_fallback_reason,callback_url,metadata,check_url,executed_at,failed_at,failure_reason,stage_timestamps,operator_sequence,operator_id,expected_result_at"
+                "draw": "id,status,name,entry_count,entry_hash,entry_canonical,winner_count,seed,seed_source,seed_json,results,drand_chain,drand_round,drand_randomness,drand_signature,drand_response,weather_station,weather_time,weather_value,weather_raw,weather_observation_time,weather_fallback_reason,freq_start,freq_value,freq_fallback_reason,callback_url,metadata,check_url,executed_at,failed_at,failure_reason,stage_timestamps,operator_sequence,operator_id,expected_result_at"
               },
               "properties": {
                 "draw": {
                   "description": "Comma separated field names for draw",
-                  "example": "id,status,name,entry_count,entry_hash,entry_canonical,winner_count,seed,seed_source,seed_json,results,drand_chain,drand_round,drand_randomness,drand_signature,drand_response,weather_station,weather_time,weather_value,weather_raw,weather_observation_time,weather_fallback_reason,callback_url,metadata,check_url,executed_at,failed_at,failure_reason,stage_timestamps,operator_sequence,operator_id,expected_result_at",
+                  "example": "id,status,name,entry_count,entry_hash,entry_canonical,winner_count,seed,seed_source,seed_json,results,drand_chain,drand_round,drand_randomness,drand_signature,drand_response,weather_station,weather_time,weather_value,weather_raw,weather_observation_time,weather_fallback_reason,freq_start,freq_value,freq_fallback_reason,callback_url,metadata,check_url,executed_at,failed_at,failure_reason,stage_timestamps,operator_sequence,operator_id,expected_result_at",
                   "type": "string"
                 }
               },
@@ -2491,12 +2662,12 @@
             "schema": {
               "additionalProperties": true,
               "example": {
-                "draw": "id,status,name,entry_count,entry_hash,entry_canonical,winner_count,seed,seed_source,seed_json,results,drand_chain,drand_round,drand_randomness,drand_signature,drand_response,weather_station,weather_time,weather_value,weather_raw,weather_observation_time,weather_fallback_reason,callback_url,metadata,check_url,executed_at,failed_at,failure_reason,stage_timestamps,operator_sequence,operator_id,expected_result_at"
+                "draw": "id,status,name,entry_count,entry_hash,entry_canonical,winner_count,seed,seed_source,seed_json,results,drand_chain,drand_round,drand_randomness,drand_signature,drand_response,weather_station,weather_time,weather_value,weather_raw,weather_observation_time,weather_fallback_reason,freq_start,freq_value,freq_fallback_reason,callback_url,metadata,check_url,executed_at,failed_at,failure_reason,stage_timestamps,operator_sequence,operator_id,expected_result_at"
               },
               "properties": {
                 "draw": {
                   "description": "Comma separated field names for draw",
-                  "example": "id,status,name,entry_count,entry_hash,entry_canonical,winner_count,seed,seed_source,seed_json,results,drand_chain,drand_round,drand_randomness,drand_signature,drand_response,weather_station,weather_time,weather_value,weather_raw,weather_observation_time,weather_fallback_reason,callback_url,metadata,check_url,executed_at,failed_at,failure_reason,stage_timestamps,operator_sequence,operator_id,expected_result_at",
+                  "example": "id,status,name,entry_count,entry_hash,entry_canonical,winner_count,seed,seed_source,seed_json,results,drand_chain,drand_round,drand_randomness,drand_signature,drand_response,weather_station,weather_time,weather_value,weather_raw,weather_observation_time,weather_fallback_reason,freq_start,freq_value,freq_fallback_reason,callback_url,metadata,check_url,executed_at,failed_at,failure_reason,stage_timestamps,operator_sequence,operator_id,expected_result_at",
                   "type": "string"
                 }
               },
@@ -2645,12 +2816,12 @@
             "schema": {
               "additionalProperties": true,
               "example": {
-                "draw": "id,status,name,entry_count,entry_hash,entry_canonical,winner_count,seed,seed_source,seed_json,results,drand_chain,drand_round,drand_randomness,drand_signature,drand_response,weather_station,weather_time,weather_value,weather_raw,weather_observation_time,weather_fallback_reason,callback_url,metadata,check_url,executed_at,failed_at,failure_reason,stage_timestamps,operator_sequence,operator_id,expected_result_at"
+                "draw": "id,status,name,entry_count,entry_hash,entry_canonical,winner_count,seed,seed_source,seed_json,results,drand_chain,drand_round,drand_randomness,drand_signature,drand_response,weather_station,weather_time,weather_value,weather_raw,weather_observation_time,weather_fallback_reason,freq_start,freq_value,freq_fallback_reason,callback_url,metadata,check_url,executed_at,failed_at,failure_reason,stage_timestamps,operator_sequence,operator_id,expected_result_at"
               },
               "properties": {
                 "draw": {
                   "description": "Comma separated field names for draw",
-                  "example": "id,status,name,entry_count,entry_hash,entry_canonical,winner_count,seed,seed_source,seed_json,results,drand_chain,drand_round,drand_randomness,drand_signature,drand_response,weather_station,weather_time,weather_value,weather_raw,weather_observation_time,weather_fallback_reason,callback_url,metadata,check_url,executed_at,failed_at,failure_reason,stage_timestamps,operator_sequence,operator_id,expected_result_at",
+                  "example": "id,status,name,entry_count,entry_hash,entry_canonical,winner_count,seed,seed_source,seed_json,results,drand_chain,drand_round,drand_randomness,drand_signature,drand_response,weather_station,weather_time,weather_value,weather_raw,weather_observation_time,weather_fallback_reason,freq_start,freq_value,freq_fallback_reason,callback_url,metadata,check_url,executed_at,failed_at,failure_reason,stage_timestamps,operator_sequence,operator_id,expected_result_at",
                   "type": "string"
                 }
               },
@@ -2790,12 +2961,12 @@
             "schema": {
               "additionalProperties": true,
               "example": {
-                "draw": "id,status,name,entry_count,entry_hash,entry_canonical,winner_count,seed,seed_source,seed_json,results,drand_chain,drand_round,drand_randomness,drand_signature,drand_response,weather_station,weather_time,weather_value,weather_raw,weather_observation_time,weather_fallback_reason,callback_url,metadata,check_url,executed_at,failed_at,failure_reason,stage_timestamps,operator_sequence,operator_id,expected_result_at"
+                "draw": "id,status,name,entry_count,entry_hash,entry_canonical,winner_count,seed,seed_source,seed_json,results,drand_chain,drand_round,drand_randomness,drand_signature,drand_response,weather_station,weather_time,weather_value,weather_raw,weather_observation_time,weather_fallback_reason,freq_start,freq_value,freq_fallback_reason,callback_url,metadata,check_url,executed_at,failed_at,failure_reason,stage_timestamps,operator_sequence,operator_id,expected_result_at"
               },
               "properties": {
                 "draw": {
                   "description": "Comma separated field names for draw",
-                  "example": "id,status,name,entry_count,entry_hash,entry_canonical,winner_count,seed,seed_source,seed_json,results,drand_chain,drand_round,drand_randomness,drand_signature,drand_response,weather_station,weather_time,weather_value,weather_raw,weather_observation_time,weather_fallback_reason,callback_url,metadata,check_url,executed_at,failed_at,failure_reason,stage_timestamps,operator_sequence,operator_id,expected_result_at",
+                  "example": "id,status,name,entry_count,entry_hash,entry_canonical,winner_count,seed,seed_source,seed_json,results,drand_chain,drand_round,drand_randomness,drand_signature,drand_response,weather_station,weather_time,weather_value,weather_raw,weather_observation_time,weather_fallback_reason,freq_start,freq_value,freq_fallback_reason,callback_url,metadata,check_url,executed_at,failed_at,failure_reason,stage_timestamps,operator_sequence,operator_id,expected_result_at",
                   "type": "string"
                 }
               },

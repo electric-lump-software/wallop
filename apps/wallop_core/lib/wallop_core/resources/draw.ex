@@ -46,6 +46,9 @@ defmodule WallopCore.Resources.Draw do
       :weather_raw,
       :weather_observation_time,
       :weather_fallback_reason,
+      :freq_start,
+      :freq_value,
+      :freq_fallback_reason,
       :callback_url,
       :metadata,
       :check_url,
@@ -311,6 +314,222 @@ defmodule WallopCore.Resources.Draw do
         down("DROP FUNCTION IF EXISTS wallop_landobs_exec_keys()")
       end
 
+      # The grid-frequency tag (drand-quicknet+elexon-freq-v1). Every constant
+      # mirrors WallopCore.Frequency.Schedule, WallopCore.Frequency.FreqGrammar
+      # or WallopCore.Protocol.Tags.Freq and has an equality test in
+      # sql_freq_property_test.exs. A LANGUAGE sql body is parsed when it is
+      # created, so each function here comes after the functions it calls.
+      statement :wallop_freq_tag do
+        up("""
+        CREATE OR REPLACE FUNCTION wallop_freq_tag() RETURNS text
+        LANGUAGE sql IMMUTABLE AS $$ SELECT text 'drand-quicknet+elexon-freq-v1' $$
+        """)
+
+        down("DROP FUNCTION IF EXISTS wallop_freq_tag()")
+      end
+
+      statement :wallop_freq_fetch_window do
+        # W_freq = WallopCore.Frequency.Schedule.fetch_window_seconds/0.
+        # Provisional until the 48 h Elexon poll is in; no CHECK calls it.
+        up("""
+        CREATE OR REPLACE FUNCTION wallop_freq_fetch_window() RETURNS interval
+        LANGUAGE sql IMMUTABLE AS $$ SELECT interval '240 seconds' $$
+        """)
+
+        down("DROP FUNCTION IF EXISTS wallop_freq_fetch_window()")
+      end
+
+      statement :wallop_freq_span do
+        up("""
+        CREATE OR REPLACE FUNCTION wallop_freq_span() RETURNS interval
+        LANGUAGE sql IMMUTABLE AS $$ SELECT interval '105 seconds' $$
+        """)
+
+        down("DROP FUNCTION IF EXISTS wallop_freq_span()")
+      end
+
+      statement :wallop_freq_margin do
+        # M = Frequency.Schedule.margin_seconds/0: F <= pub(R) - M, and the
+        # fallback waits until F + M.
+        up("""
+        CREATE OR REPLACE FUNCTION wallop_freq_margin() RETURNS interval
+        LANGUAGE sql IMMUTABLE AS $$ SELECT interval '15 seconds' $$
+        """)
+
+        down("DROP FUNCTION IF EXISTS wallop_freq_margin()")
+      end
+
+      statement :wallop_freq_lock_gap do
+        up("""
+        CREATE OR REPLACE FUNCTION wallop_freq_lock_gap() RETURNS interval
+        LANGUAGE sql IMMUTABLE AS $$ SELECT interval '60 seconds' $$
+        """)
+
+        down("DROP FUNCTION IF EXISTS wallop_freq_lock_gap()")
+      end
+
+      statement :wallop_freq_stuck_run do
+        # N = FreqGrammar.stuck_run/0, for code that isn't a CHECK. The
+        # frozen wallop_freq_valid_value writes the same N as a literal; the
+        # equality test ties them together.
+        up("""
+        CREATE OR REPLACE FUNCTION wallop_freq_stuck_run() RETURNS integer
+        LANGUAGE sql IMMUTABLE AS $$ SELECT 6 $$
+        """)
+
+        down("DROP FUNCTION IF EXISTS wallop_freq_stuck_run()")
+      end
+
+      statement :wallop_freq_fallback_reason do
+        up("""
+        CREATE OR REPLACE FUNCTION wallop_freq_fallback_reason() RETURNS text
+        LANGUAGE sql IMMUTABLE AS $$ SELECT text 'no_frequency_by_deadline' $$
+        """)
+
+        down("DROP FUNCTION IF EXISTS wallop_freq_fallback_reason()")
+      end
+
+      statement :wallop_freq_start do
+        # T = floor15(pub(R) - span - W_freq - M), in whole seconds from the
+        # epoch, built like wallop_quicknet_pub_time: no timestamptz.
+        up("""
+        CREATE OR REPLACE FUNCTION wallop_freq_start(drand_round bigint) RETURNS timestamp
+        LANGUAGE sql IMMUTABLE STRICT AS $$
+          SELECT timestamp '1970-01-01 00:00:00' + interval '1 second' * (x - mod(x, 15))
+          FROM (SELECT 1692803367 + (drand_round - 1) * 3
+                       - EXTRACT(EPOCH FROM wallop_freq_span() + wallop_freq_fetch_window()
+                                            + wallop_freq_margin())::bigint AS x) s
+        $$
+        """)
+
+        down("DROP FUNCTION IF EXISTS wallop_freq_start(bigint)")
+      end
+
+      statement :wallop_freq_fetch_deadline do
+        # F = T + span + W_freq.
+        up("""
+        CREATE OR REPLACE FUNCTION wallop_freq_fetch_deadline(freq_start timestamp) RETURNS timestamp
+        LANGUAGE sql IMMUTABLE STRICT AS $$
+          SELECT freq_start + wallop_freq_span() + wallop_freq_fetch_window()
+        $$
+        """)
+
+        down("DROP FUNCTION IF EXISTS wallop_freq_fetch_deadline(timestamp)")
+      end
+
+      statement :wallop_freq_lock_allowed do
+        # True when a lock at locked_at is in time for window start
+        # freq_start (locked_at <= T - 60 s, inclusive, to the microsecond).
+        up("""
+        CREATE OR REPLACE FUNCTION wallop_freq_lock_allowed(locked_at timestamp, freq_start timestamp)
+        RETURNS boolean
+        LANGUAGE sql IMMUTABLE STRICT AS $$
+          SELECT locked_at <= freq_start - wallop_freq_lock_gap()
+        $$
+        """)
+
+        down("DROP FUNCTION IF EXISTS wallop_freq_lock_allowed(timestamp, timestamp)")
+      end
+
+      statement :wallop_freq_valid_value do
+        # FreqGrammar.valid_value?/1. A CHECK on frequency_windows calls this,
+        # so it is frozen: its text never changes. N (6) and the bounds are
+        # literals, frozen by the tag; it calls no other function, because
+        # Postgres would not record that dependency.
+        up("""
+        CREATE OR REPLACE FUNCTION wallop_freq_valid_value(v text) RETURNS boolean
+        LANGUAGE plpgsql IMMUTABLE AS $$
+        DECLARE
+          parts text[];
+          run integer := 1;
+          n integer;
+        BEGIN
+          IF v IS NULL OR v !~ '^[0-9]{5}(;[0-9]{5}){7}$' THEN
+            RETURN false;
+          END IF;
+          parts := string_to_array(v, ';');
+          FOR i IN 1..8 LOOP
+            n := parts[i]::integer;
+            IF n < 47000 OR n > 52999 THEN
+              RETURN false;
+            END IF;
+            IF i > 1 AND parts[i] = parts[i - 1] THEN
+              run := run + 1;
+            ELSE
+              run := 1;
+            END IF;
+            IF run >= 6 THEN
+              RETURN false;
+            END IF;
+          END LOOP;
+          RETURN true;
+        END;
+        $$
+        """)
+
+        down("DROP FUNCTION IF EXISTS wallop_freq_valid_value(text)")
+      end
+
+      statement :wallop_freq_lock_keys do
+        # Tags.Freq.lock_keys/0, sorted bytewise (COLLATE "C").
+        up("""
+        CREATE OR REPLACE FUNCTION wallop_freq_lock_keys() RETURNS text[]
+        LANGUAGE sql IMMUTABLE AS $$
+          SELECT ARRAY[
+            'commitment_hash', 'drand_chain', 'drand_round', 'draw_id',
+            'entropy_composition', 'entry_hash', 'fair_pick_version', 'freq_start',
+            'jcs_version', 'locked_at', 'operator_id', 'operator_slug', 'schema_version',
+            'sequence', 'signature_algorithm', 'signing_key_id', 'wallop_core_version',
+            'weather_station', 'weather_time', 'winner_count'
+          ]::text[]
+        $$
+        """)
+
+        down("DROP FUNCTION IF EXISTS wallop_freq_lock_keys()")
+      end
+
+      statement :wallop_freq_exec_keys do
+        # Tags.Freq.exec_keys/0, sorted bytewise (COLLATE "C").
+        up("""
+        CREATE OR REPLACE FUNCTION wallop_freq_exec_keys() RETURNS text[]
+        LANGUAGE sql IMMUTABLE AS $$
+          SELECT ARRAY[
+            'drand_chain', 'drand_randomness', 'drand_round', 'drand_signature',
+            'drand_signature_algorithm', 'draw_id', 'entropy_composition', 'entry_hash',
+            'executed_at', 'fair_pick_version', 'freq_fallback_reason', 'freq_value',
+            'jcs_version', 'lock_receipt_hash', 'merkle_algorithm', 'operator_id',
+            'operator_slug', 'results', 'schema_version', 'seed', 'sequence',
+            'signature_algorithm', 'signing_key_id', 'wallop_core_version',
+            'weather_fallback_reason', 'weather_observation_time', 'weather_station',
+            'weather_value'
+          ]::text[]
+        $$
+        """)
+
+        down("DROP FUNCTION IF EXISTS wallop_freq_exec_keys()")
+      end
+
+      statement :wallop_v6_fetch_deadline do
+        # F for a v6 draw, chosen by its tag; NULL for any other tag, which
+        # every caller treats as a refusal. The SQL twin of
+        # WallopCore.Entropy.V6Rules.fetch_deadline/2.
+        up("""
+        CREATE OR REPLACE FUNCTION wallop_v6_fetch_deadline(
+          entropy_composition text, weather_time timestamp, freq_start timestamp)
+        RETURNS timestamp
+        LANGUAGE sql IMMUTABLE AS $$
+          SELECT CASE
+            WHEN entropy_composition = wallop_landobs_tag()
+              THEN weather_time + wallop_landobs_fetch_window()
+            WHEN entropy_composition = wallop_freq_tag()
+              THEN wallop_freq_fetch_deadline(freq_start)
+          END
+        $$
+        """)
+
+        down("DROP FUNCTION IF EXISTS wallop_v6_fetch_deadline(text, timestamp, timestamp)")
+      end
+
       statement :wallop_check_v6_lock_receipt do
         # Raises unless receipt r is the lock receipt of v6 draw d: every
         # signed field with a counterpart on the draw, the receipt row or the
@@ -325,6 +544,7 @@ defmodule WallopCore.Resources.Draw do
           raw text := convert_from(r.payload_jcs, 'UTF8');
           p jsonb := raw::jsonb;
           field text;
+          keys text[];
         BEGIN
           IF p->>'schema_version' IS DISTINCT FROM d.lock_schema_version
              OR p->>'entropy_composition' IS DISTINCT FROM d.entropy_composition THEN
@@ -334,10 +554,16 @@ defmodule WallopCore.Resources.Draw do
           -- Exactly the tag's keys, so no extra or look-alike field rides
           -- along. A duplicate key is not seen here (jsonb keeps the last
           -- value); the verifier refuses it.
-          IF d.entropy_composition IS NOT DISTINCT FROM wallop_landobs_tag()
-             AND (jsonb_typeof(p) IS DISTINCT FROM 'object'
-                  OR (SELECT array_agg(k ORDER BY k COLLATE "C") FROM jsonb_object_keys(p) k)
-                     IS DISTINCT FROM wallop_landobs_lock_keys()) THEN
+          IF d.entropy_composition IS NOT DISTINCT FROM wallop_landobs_tag() THEN
+            keys := wallop_landobs_lock_keys();
+          ELSIF d.entropy_composition IS NOT DISTINCT FROM wallop_freq_tag() THEN
+            keys := wallop_freq_lock_keys();
+          ELSE
+            RAISE EXCEPTION 'no lock receipt rules for entropy_composition %', d.entropy_composition;
+          END IF;
+          IF jsonb_typeof(p) IS DISTINCT FROM 'object'
+             OR (SELECT array_agg(k ORDER BY k COLLATE "C") FROM jsonb_object_keys(p) k)
+                IS DISTINCT FROM keys THEN
             RAISE EXCEPTION 'v6 lock receipt keys are not the tag''s key set';
           END IF;
 
@@ -381,6 +607,11 @@ defmodule WallopCore.Resources.Draw do
           IF wallop_parse_rfc3339_usec(p->>'weather_time') IS DISTINCT FROM d.weather_time THEN
             RAISE EXCEPTION 'v6 lock receipt field % does not match the draw', 'weather_time';
           END IF;
+          -- Under every other tag the key set has no freq_start and the
+          -- row's is NULL, so NULL meets NULL.
+          IF wallop_parse_rfc3339_usec(p->>'freq_start') IS DISTINCT FROM d.freq_start THEN
+            RAISE EXCEPTION 'v6 lock receipt field % does not match the draw', 'freq_start';
+          END IF;
           IF p->>'signing_key_id' IS DISTINCT FROM r.signing_key_id
              OR NOT EXISTS (SELECT 1 FROM operator_signing_keys k
                             WHERE k.operator_id = d.operator_id AND k.key_id = r.signing_key_id) THEN
@@ -410,6 +641,10 @@ defmodule WallopCore.Resources.Draw do
                IS NOT TRUE THEN
               RAISE EXCEPTION 'v6 signed locked_at is too late for this draw time';
             END IF;
+          ELSIF d.entropy_composition IS NOT DISTINCT FROM wallop_freq_tag() THEN
+            IF wallop_freq_lock_allowed(r.locked_at, wallop_freq_start(d.drand_round)) IS NOT TRUE THEN
+              RAISE EXCEPTION 'v6 signed locked_at is too late for this draw time';
+            END IF;
           ELSE
             RAISE EXCEPTION 'no lock receipt rules for entropy_composition %', d.entropy_composition;
           END IF;
@@ -422,8 +657,10 @@ defmodule WallopCore.Resources.Draw do
 
       statement :guard_v6_draw do
         # Does nothing to a draw whose (lock_schema_version,
-        # entropy_composition) is (NULL, NULL), which is every forecast and
-        # historic draw, except refuse to set the pair outside a lock.
+        # entropy_composition) is (NULL, NULL) before and after, which is
+        # every forecast and historic draw: it returns early, after refusing
+        # the grid-frequency columns on such a row, and never reaches a tag
+        # arm. Setting the pair outside a lock is refused below.
         # The completion clauses read weather_observations, by the draw's
         # weather_time; PL/pgSQL resolves the table only when a v6 draw
         # completes. The draws row keeps the lock's weather_station (frozen);
@@ -431,16 +668,21 @@ defmodule WallopCore.Resources.Draw do
         # execution receipt carries it.
         #
         # Once a v6 draw has left open it can't be deleted, and once the DB
-        # clock reaches its fetch deadline F (weather_time + W) it can't move
-        # to failed, from any status. F is at least a minute before
-        # pub(drand_round), the same skew budget the observation store has,
-        # so a database clock lagging drand by less than that can't fail a
-        # draw whose round is already public. Failing before F stays
-        # allowed: a visible abort before anything is knowable.
+        # clock reaches its fetch deadline F it can't move to failed, from
+        # any status. F is chosen by tag (wallop_v6_fetch_deadline): for Land
+        # Obs it is weather_time + W, at least a minute before
+        # pub(drand_round); for grid frequency it is freq_start + span +
+        # W_freq, at least M = 15 s before pub(drand_round). Each is the same
+        # skew budget its store has, so a database clock lagging drand by
+        # less than that can't fail a draw whose round is already public.
+        # Failing before F stays allowed: a visible abort before anything is
+        # knowable.
         #
-        # The lock's deadline is read on clock_timestamp(), after any wait
-        # for the row lock, not on the statement's start time; it is read
-        # again at commit (check_v6_draw_lock_commit).
+        # For both tags the lock's deadline is read on clock_timestamp(),
+        # after any wait for the row lock, not on the statement's start
+        # time; it is read again at commit (check_v6_draw_lock_commit).
+        # The grid-frequency completion has no arm yet: it reaches the
+        # completion block's ELSE and is refused.
         #
         # Each guard here is one statement holding its function and its
         # trigger(s), as a DO block (a statement is one command). `down`
@@ -465,6 +707,18 @@ defmodule WallopCore.Resources.Draw do
               RETURN OLD;
             END IF;
 
+            -- A draw with no lock schema before or after (every forecast and
+            -- historic draw) meets no tag rule: it returns here. It may never
+            -- carry the grid-frequency columns.
+            IF OLD.lock_schema_version IS NULL AND OLD.entropy_composition IS NULL
+               AND NEW.lock_schema_version IS NULL AND NEW.entropy_composition IS NULL THEN
+              IF NEW.freq_start IS NOT NULL OR NEW.freq_value IS NOT NULL
+                 OR NEW.freq_fallback_reason IS NOT NULL THEN
+                RAISE EXCEPTION 'frequency fields are set only on grid-frequency draws';
+              END IF;
+              RETURN NEW;
+            END IF;
+
             IF OLD.status <> 'open'
                AND (NEW.lock_schema_version IS DISTINCT FROM OLD.lock_schema_version
                     OR NEW.entropy_composition IS DISTINCT FROM OLD.entropy_composition) THEN
@@ -478,9 +732,23 @@ defmodule WallopCore.Resources.Draw do
 
             IF NOT ((NEW.lock_schema_version IS NULL AND NEW.entropy_composition IS NULL)
                     OR (NEW.lock_schema_version IS NOT DISTINCT FROM '6'
-                        AND NEW.entropy_composition IS NOT DISTINCT FROM wallop_landobs_tag())) THEN
+                        AND (NEW.entropy_composition IS NOT DISTINCT FROM wallop_landobs_tag()
+                             OR NEW.entropy_composition IS NOT DISTINCT FROM wallop_freq_tag()))) THEN
               RAISE EXCEPTION 'unknown lock_schema_version and entropy_composition pair: (%, %)',
                 NEW.lock_schema_version, NEW.entropy_composition;
+            END IF;
+
+            IF NEW.entropy_composition IS DISTINCT FROM wallop_freq_tag()
+               AND (NEW.freq_start IS NOT NULL OR NEW.freq_value IS NOT NULL
+                    OR NEW.freq_fallback_reason IS NOT NULL) THEN
+              RAISE EXCEPTION 'frequency fields are set only on grid-frequency draws';
+            END IF;
+            IF OLD.status <> 'open' AND NEW.freq_start IS DISTINCT FROM OLD.freq_start THEN
+              RAISE EXCEPTION 'freq_start is frozen once a draw has left open';
+            END IF;
+            IF NEW.status <> 'completed'
+               AND (NEW.freq_value IS NOT NULL OR NEW.freq_fallback_reason IS NOT NULL) THEN
+              RAISE EXCEPTION 'frequency results are set only when a draw completes';
             END IF;
 
             -- Whenever a v6 draw leaves open, by any path.
@@ -489,10 +757,12 @@ defmodule WallopCore.Resources.Draw do
                 RAISE EXCEPTION 'a v6 draw leaves open only by locking';
               END IF;
 
+              -- Every lock schema 6 tag is a drand quicknet tag.
+              IF NEW.drand_chain IS DISTINCT FROM wallop_quicknet_chain_hash() THEN
+                RAISE EXCEPTION 'v6 drand_chain must be the quicknet chain';
+              END IF;
+
               IF NEW.entropy_composition = wallop_landobs_tag() THEN
-                IF NEW.drand_chain IS DISTINCT FROM wallop_quicknet_chain_hash() THEN
-                  RAISE EXCEPTION 'v6 drand_chain must be the quicknet chain';
-                END IF;
                 IF NEW.drand_round IS NULL OR NEW.drand_round < 1
                    OR NEW.weather_time IS DISTINCT FROM wallop_landobs_weather_time(NEW.drand_round) THEN
                   RAISE EXCEPTION 'v6 weather_time must follow from drand_round';
@@ -501,6 +771,18 @@ defmodule WallopCore.Resources.Draw do
                   RAISE EXCEPTION 'v6 lock weather_station must be %', wallop_landobs_primary_station();
                 END IF;
                 IF wallop_landobs_lock_allowed(clock_timestamp() AT TIME ZONE 'UTC', NEW.weather_time)
+                   IS NOT TRUE THEN
+                  RAISE EXCEPTION 'v6 lock is too late for this draw time';
+                END IF;
+              ELSIF NEW.entropy_composition = wallop_freq_tag() THEN
+                IF NEW.drand_round IS NULL OR NEW.drand_round < 1
+                   OR NEW.freq_start IS DISTINCT FROM wallop_freq_start(NEW.drand_round) THEN
+                  RAISE EXCEPTION 'freq_start must follow from drand_round';
+                END IF;
+                IF NEW.weather_station IS NOT NULL OR NEW.weather_time IS NOT NULL THEN
+                  RAISE EXCEPTION 'a grid-frequency draw carries no weather fields';
+                END IF;
+                IF wallop_freq_lock_allowed(clock_timestamp() AT TIME ZONE 'UTC', NEW.freq_start)
                    IS NOT TRUE THEN
                   RAISE EXCEPTION 'v6 lock is too late for this draw time';
                 END IF;
@@ -524,13 +806,15 @@ defmodule WallopCore.Resources.Draw do
             END IF;
 
             -- From pub(R) on the outcome is knowable: failing the draw then would
-            -- be a selective abort. Refused from F, a minute or more earlier,
-            -- so a database clock behind drand's leaves no window. Checked here
-            -- on the statement's clock and again at commit
-            -- (check_v6_draw_failed_commit).
+            -- be a selective abort. Refused from F (chosen by tag), a minute or
+            -- more earlier for Land Obs and at least M = 15 s earlier for grid
+            -- frequency, so a database clock behind drand's leaves no window.
+            -- An unknown tag gives a NULL F, which refuses. Checked here on the
+            -- statement's clock and again at commit (check_v6_draw_failed_commit).
             IF (OLD.lock_schema_version IS NOT NULL OR OLD.entropy_composition IS NOT NULL)
                AND NEW.status = 'failed' AND OLD.status IS DISTINCT FROM 'failed'
-               AND (now_utc < OLD.weather_time + wallop_landobs_fetch_window()) IS NOT TRUE THEN
+               AND (now_utc < wallop_v6_fetch_deadline(OLD.entropy_composition, OLD.weather_time,
+                                                       OLD.freq_start)) IS NOT TRUE THEN
               RAISE EXCEPTION 'a v6 draw can''t fail once its fetch deadline has passed';
             END IF;
 
@@ -586,16 +870,18 @@ defmodule WallopCore.Resources.Draw do
       end
 
       statement :check_v6_draw_failed_commit do
-        # The same rule as guard_v6_draw's, at COMMIT on the wall clock then
-        # (clock_timestamp()): a v6 draw moved to failed before F in a
-        # transaction held open past F is refused at commit, so nobody can
-        # wait for the round and then choose to keep the failure.
+        # The same rule as guard_v6_draw's, F chosen by tag, at COMMIT on
+        # the wall clock then (clock_timestamp()): a v6 draw moved to failed
+        # before F in a transaction held open past F is refused at commit,
+        # so nobody can wait for the round and then choose to keep the
+        # failure.
         up("""
         DO $do$
         BEGIN
           CREATE OR REPLACE FUNCTION check_v6_draw_failed_commit() RETURNS trigger AS $fn$
           BEGIN
-            IF (clock_timestamp() AT TIME ZONE 'UTC' < NEW.weather_time + wallop_landobs_fetch_window())
+            IF (clock_timestamp() AT TIME ZONE 'UTC'
+                < wallop_v6_fetch_deadline(NEW.entropy_composition, NEW.weather_time, NEW.freq_start))
                IS NOT TRUE THEN
               RAISE EXCEPTION 'a v6 draw can''t fail once its fetch deadline has passed';
             END IF;
@@ -668,8 +954,9 @@ defmodule WallopCore.Resources.Draw do
       statement :check_v6_draw_lock_commit do
         # The lock deadline again, at COMMIT on the wall clock then
         # (clock_timestamp()): a v6 lock made in time in a transaction held
-        # open past wt - 46m is refused at commit, so nobody can hold a lock
-        # until the weather is known and then choose to keep it.
+        # open past its deadline (wt - 46m for Land Obs, freq_start - 60 s for
+        # grid frequency) is refused at commit, so nobody can hold a lock
+        # until the entropy is known and then choose to keep it.
         up("""
         DO $do$
         BEGIN
@@ -677,6 +964,11 @@ defmodule WallopCore.Resources.Draw do
           BEGIN
             IF NEW.entropy_composition IS NOT DISTINCT FROM wallop_landobs_tag() THEN
               IF wallop_landobs_lock_allowed(clock_timestamp() AT TIME ZONE 'UTC', NEW.weather_time)
+                 IS NOT TRUE THEN
+                RAISE EXCEPTION 'v6 lock is too late for this draw time';
+              END IF;
+            ELSIF NEW.entropy_composition IS NOT DISTINCT FROM wallop_freq_tag() THEN
+              IF wallop_freq_lock_allowed(clock_timestamp() AT TIME ZONE 'UTC', NEW.freq_start)
                  IS NOT TRUE THEN
                 RAISE EXCEPTION 'v6 lock is too late for this draw time';
               END IF;
@@ -757,7 +1049,8 @@ defmodule WallopCore.Resources.Draw do
       end
 
       statement :guard_v6_draw_insert do
-        # A draw is created open, so it never starts with a lock schema.
+        # A draw is created open, so it never starts with a lock schema, nor
+        # with any grid-frequency column.
         up("""
         DO $do$
         BEGIN
@@ -765,6 +1058,10 @@ defmodule WallopCore.Resources.Draw do
           BEGIN
             IF NEW.lock_schema_version IS NOT NULL OR NEW.entropy_composition IS NOT NULL THEN
               RAISE EXCEPTION 'lock_schema_version and entropy_composition are set only when a draw leaves open';
+            END IF;
+            IF NEW.freq_start IS NOT NULL OR NEW.freq_value IS NOT NULL
+               OR NEW.freq_fallback_reason IS NOT NULL THEN
+              RAISE EXCEPTION 'frequency fields are set only on grid-frequency draws';
             END IF;
             RETURN NEW;
           END;
@@ -1495,10 +1792,39 @@ defmodule WallopCore.Resources.Draw do
       public?(true)
     end
 
+    attribute :freq_start, :utc_datetime_usec do
+      description(
+        "Grid-frequency draws only: the time of the first of the 8 GB grid frequency readings " <>
+          "(Elexon FREQ, 15 seconds apart) that feed the seed. Null for other draws."
+      )
+
+      allow_nil?(true)
+      public?(true)
+    end
+
+    attribute :freq_value, :string do
+      description(
+        "Grid-frequency draws only: the 8 readings in mHz, `;`-joined, in time order. " <>
+          "Null when the draw fell back to drand alone, and for other draws."
+      )
+
+      allow_nil?(true)
+      public?(true)
+    end
+
+    attribute :freq_fallback_reason, :string do
+      description(
+        "Grid-frequency draws only: why no readings were used (`no_frequency_by_deadline`). Null otherwise."
+      )
+
+      allow_nil?(true)
+      public?(true)
+    end
+
     attribute :lock_schema_version, :string do
       description(
-        "Lock receipt schema this draw was locked under: \"6\" for observation weather, " <>
-          "nil for every other draw. Set as the draw leaves open, then frozen."
+        "Lock receipt schema this draw was locked under: \"6\" for observation weather " <>
+          "and grid frequency, nil for every other draw. Set as the draw leaves open, then frozen."
       )
 
       allow_nil?(true)
@@ -1508,8 +1834,8 @@ defmodule WallopCore.Resources.Draw do
     attribute :entropy_composition, :string do
       description(
         "The entropy tag this draw was locked under, when lock_schema_version is set " <>
-          "(\"drand-quicknet+metoffice-landobs-v1\" today); nil otherwise. Set as the " <>
-          "draw leaves open, then frozen."
+          ~s{("drand-quicknet+metoffice-landobs-v1" or "drand-quicknet+elexon-freq-v1"); } <>
+          "nil otherwise. Set as the draw leaves open, then frozen."
       )
 
       allow_nil?(true)

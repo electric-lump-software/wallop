@@ -136,6 +136,10 @@ defmodule WallopWeb.Api.LockV6Test do
       assert attrs["status"] == "awaiting_entropy"
       assert attrs["expected_result_at"] == nil
       assert attrs["weather_station"] == "middle-wallop"
+
+      # The grid-frequency columns are in every draw's JSON, null here.
+      assert Map.take(attrs, ~w(freq_start freq_value freq_fallback_reason)) ==
+               %{"freq_start" => nil, "freq_value" => nil, "freq_fallback_reason" => nil}
     end
 
     test "weather_time errors are unchanged", %{key: key, draw: draw} do
@@ -154,7 +158,8 @@ defmodule WallopWeb.Api.LockV6Test do
   defp forecast_lock_keys,
     do: ~w(callback_url check_url drand_chain drand_randomness drand_response drand_round
            drand_signature entry_canonical entry_count entry_hash executed_at
-           expected_result_at failed_at failure_reason metadata name operator_id
+           expected_result_at failed_at failure_reason freq_fallback_reason freq_start
+           freq_value metadata name operator_id
            operator_sequence results seed seed_json seed_source stage_timestamps status
            weather_fallback_reason weather_observation_time weather_raw weather_station
            weather_time weather_value winner_count)
