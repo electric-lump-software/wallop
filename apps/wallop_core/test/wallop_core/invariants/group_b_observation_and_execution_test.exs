@@ -734,7 +734,6 @@ defmodule WallopCore.Invariants.ObservationAndExecutionTest do
       end
     end
 
-    @tag :pending_task_11
     test "INV-10 a v6 draw stays v6 after its operator moves to forecast" do
       ensure_infrastructure_key()
       {op, key} = create_v6_operator()
@@ -754,7 +753,6 @@ defmodule WallopCore.Invariants.ObservationAndExecutionTest do
                {s.round, s.weather_time, Stations.primary().id}
     end
 
-    @tag :pending_task_11
     test "INV-10 a forecast draw stays forecast after its operator moves to observation" do
       ensure_infrastructure_key()
       {op, key} = create_v6_operator()
@@ -796,7 +794,6 @@ defmodule WallopCore.Invariants.ObservationAndExecutionTest do
       assert reload(pending).expected_result_at == s.expected_result_at
     end
 
-    @tag :pending_task_11
     test "INV-11 expected_result_at survives a flag flip and the move to pending" do
       ensure_infrastructure_key()
       {op, key} = create_v6_operator()
