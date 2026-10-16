@@ -102,6 +102,20 @@ defmodule WallopCore.Entropy.DrandClientTest do
 
       assert {:error, {:unexpected_status, 500}} = DrandClient.fetch(@chain_hash, 1000)
     end
+
+    test "a body that isn't a JSON object is invalid, never a crash" do
+      for respond <- [
+            &Req.Test.json(&1, []),
+            &Req.Test.json(&1, nil),
+            &Req.Test.json(&1, "a string"),
+            &(&1
+              |> Plug.Conn.put_resp_content_type("text/html")
+              |> Plug.Conn.send_resp(200, "<html>captive portal</html>"))
+          ] do
+        Req.Test.stub(DrandClient, respond)
+        assert {:error, :invalid_response} = DrandClient.fetch(@chain_hash, 1000)
+      end
+    end
   end
 
   describe "fetch_with_failover/3" do
