@@ -24,8 +24,10 @@ defmodule WallopCore.Resources.Draw.Changes.SignAndStoreReceipt do
   use Ash.Resource.Change
 
   alias Ash.Error.Changes.InvalidArgument
+  alias WallopCore.Entropy.V6Rules
   alias WallopCore.Frequency.Schedule, as: FreqSchedule
   alias WallopCore.Protocol
+  alias WallopCore.Resources.Draw.Validations.EntropyRulesAre
   alias WallopCore.Resources.{OperatorReceipt, OperatorSigningKey}
   alias WallopCore.Vault
   alias WallopCore.Weather.Schedule
@@ -111,28 +113,29 @@ defmodule WallopCore.Resources.Draw.Changes.SignAndStoreReceipt do
   # on the default draw time is refused at the action level.
   defp lock_time_error("6", locked_at, changeset) do
     field = if Ash.Changeset.get_argument(changeset, :draw_at), do: :draw_at
-    tag = Ash.Changeset.get_attribute(changeset, :entropy_composition)
+    pair = EntropyRulesAre.pair(changeset)
 
-    cond do
-      tag == Protocol.landobs_entropy_composition() ->
+    case V6Rules.rules(pair) do
+      {:ok, :landobs} ->
         v6_lock_time_error(
           locked_at,
           Ash.Changeset.get_attribute(changeset, :weather_time),
           field
         )
 
-      tag == Protocol.freq_entropy_composition() ->
+      {:ok, :freq} ->
         freq_lock_time_error(
           locked_at,
           Ash.Changeset.get_attribute(changeset, :freq_start),
           field
         )
 
-      # ResolveLockSchema records only known tags; never sign under another.
-      true ->
+      # ResolveLockSchema records only known pairs; never sign under another.
+      :error ->
         InvalidArgument.exception(
           field: nil,
-          message: "no lock rules for this entropy_composition"
+          message:
+            V6Rules.unknown_pair_message(pair.lock_schema_version, pair.entropy_composition)
         )
     end
   end

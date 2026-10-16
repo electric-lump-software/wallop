@@ -15,8 +15,9 @@ defmodule WallopCore.Resources.Draw.Validations.DrawAt do
       drand quicknet's 3-second grid, the round cap (`within_cap?/2`), and
       the tag's latest lock time (the observation hour minus 46 minutes;
       the window start T minus 60 seconds). A late lock is refused with
-      `latest_lock_at`; the draw stays open. A tag with no rules is
-      refused, never checked against another tag's schedule.
+      `latest_lock_at`; the draw stays open. A pair with no rules
+      (`WallopCore.Entropy.V6Rules.rules/1`) is refused with the unknown
+      pair message, never checked against another tag's schedule.
 
   The lock time is checked again where `locked_at` is signed
   (`SignAndStoreReceipt.v6_lock_time_error/3` and
@@ -27,9 +28,10 @@ defmodule WallopCore.Resources.Draw.Validations.DrawAt do
   use Ash.Resource.Validation
 
   alias Ash.Error.Changes.InvalidArgument
+  alias WallopCore.Entropy.V6Rules
   alias WallopCore.Frequency.Schedule, as: FreqSchedule
-  alias WallopCore.Protocol
   alias WallopCore.Resources.Draw.Changes.SignAndStoreReceipt
+  alias WallopCore.Resources.Draw.Validations.EntropyRulesAre
   alias WallopCore.Weather.Schedule
 
   @impl true
@@ -49,7 +51,7 @@ defmodule WallopCore.Resources.Draw.Validations.DrawAt do
 
       v6? and not is_nil(draw_at) ->
         changeset
-        |> Ash.Changeset.get_attribute(:entropy_composition)
+        |> EntropyRulesAre.pair()
         |> tag_rules()
         |> check(draw_at, DateTime.utc_now())
 
@@ -58,23 +60,28 @@ defmodule WallopCore.Resources.Draw.Validations.DrawAt do
     end
   end
 
-  # The schedule module and the late check of a tag. ResolveLockSchema
-  # records only known tags; anything else is refused, never guessed.
-  defp tag_rules(tag) do
-    cond do
-      tag == Protocol.landobs_entropy_composition() ->
+  # The schedule module and the late check of the recorded pair's rules.
+  # ResolveLockSchema records only known pairs; anything else is refused,
+  # never guessed.
+  defp tag_rules(pair) do
+    case V6Rules.rules(pair) do
+      {:ok, :landobs} ->
         {Schedule, &SignAndStoreReceipt.v6_lock_time_error(&1, &2.weather_time)}
 
-      tag == Protocol.freq_entropy_composition() ->
+      {:ok, :freq} ->
         {FreqSchedule, &SignAndStoreReceipt.freq_lock_time_error(&1, &2.freq_start)}
 
-      true ->
-        :unknown
+      :error ->
+        {:unknown, pair}
     end
   end
 
-  defp check(:unknown, _draw_at, _now),
-    do: error(:draw_at, "has no rules for this operator's protocol")
+  defp check({:unknown, pair}, _draw_at, _now),
+    do:
+      error(
+        :draw_at,
+        V6Rules.unknown_pair_message(pair.lock_schema_version, pair.entropy_composition)
+      )
 
   defp check({schedule, late_error}, draw_at, now) do
     case schedule.schedule(draw_at) do

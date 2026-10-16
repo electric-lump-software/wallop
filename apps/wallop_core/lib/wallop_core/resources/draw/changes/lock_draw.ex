@@ -53,11 +53,17 @@ defmodule WallopCore.Resources.Draw.Changes.LockDraw do
         changeset
         |> Ash.Changeset.force_change_attribute(:entry_hash, hash)
         |> Ash.Changeset.force_change_attribute(:entry_canonical, canonical)
-        |> Ash.Changeset.after_action(fn _changeset, draw ->
-          WallopCore.DrawPubSub.broadcast(draw)
-          {:ok, draw}
-        end)
+        |> Ash.Changeset.after_action(fn _changeset, draw -> announce(draw) end)
     end
+  end
+
+  # A lock schema 6 lock is announced after commit by its DeclareEntropyV6
+  # or DeclareEntropyFreq change instead; every other lock as before.
+  defp announce(%{lock_schema_version: "6"} = draw), do: {:ok, draw}
+
+  defp announce(draw) do
+    WallopCore.DrawPubSub.broadcast(draw)
+    {:ok, draw}
   end
 
   defp prune_idempotency_rows(draw_id) do

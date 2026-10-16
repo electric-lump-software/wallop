@@ -14,6 +14,7 @@ defmodule WallopCore.Resources.Draw.LockFreqTest do
     WeatherObservationWorker
   }
 
+  alias WallopCore.Entropy.V6Rules
   alias WallopCore.Frequency.Schedule
   alias WallopCore.Protocol
   alias WallopCore.Protocol.Tags.{Freq, LandObs}
@@ -155,11 +156,21 @@ defmodule WallopCore.Resources.Draw.LockFreqTest do
 
   test "without draw_at the earliest allowed draw time is used" do
     {_op, key} = create_freq_operator()
+    draw = open_draw_with_entries(key)
     before = DateTime.utc_now()
-    {:ok, locked} = lock(open_draw_with_entries(key), key, %{})
+    {:ok, locked} = lock(draw, key, %{})
+    later = DateTime.utc_now()
     assert Schedule.freq_start_for_round(locked.drand_round) == locked.freq_start
-    # The earliest window starting at least 90 s after the request.
-    assert DateTime.diff(locked.freq_start, before) in 89..105
+
+    # The lock reads the clock once, somewhere between `before` and `later`,
+    # so its draw time is the default for one of them: no wall-clock range.
+    defaults =
+      for now <- [before, later] do
+        {:ok, s} = Schedule.schedule(Schedule.default_draw_at(now))
+        {s.round, s.freq_start}
+      end
+
+    assert {locked.drand_round, locked.freq_start} in defaults
     assert_enqueued(worker: ObservationDrawWorker, args: %{draw_id: locked.id})
 
     assert_enqueued(
@@ -330,7 +341,7 @@ defmodule WallopCore.Resources.Draw.LockFreqTest do
       assert {:error, %InvalidArgument{field: :draw_at, message: message}} =
                DrawAt.validate(changeset, [], %{})
 
-      assert message == "has no rules for this operator's protocol"
+      assert message == V6Rules.unknown_pair_message("6", @unknown)
     end
 
     test "the signer refuses to sign under it; nothing is written" do
@@ -344,8 +355,70 @@ defmodule WallopCore.Resources.Draw.LockFreqTest do
                |> Ash.Changeset.force_change_attribute(:entropy_composition, @unknown)
                |> Ash.update()
 
-      assert {error.field, error.message} == {nil, "no lock rules for this entropy_composition"}
+      assert {error.field, error.message} == {nil, V6Rules.unknown_pair_message("6", @unknown)}
       assert_untouched(draw)
+    end
+  end
+
+  describe "the lock broadcast" do
+    defp subscribe(draw), do: Phoenix.PubSub.subscribe(WallopCore.PubSub, "draw:#{draw.id}")
+
+    defp broadcasts(id) do
+      receive do
+        {:draw_updated, %{id: ^id} = d} -> [d | broadcasts(id)]
+      after
+        100 -> []
+      end
+    end
+
+    # Fails the lock after every other after_action has run (the enqueue,
+    # LockDraw's and the receipt insert), so the whole lock rolls back last.
+    # A before_action added here runs after the lock's own; the after_action
+    # it adds is the last one registered.
+    defp fail_last(changeset) do
+      Ash.Changeset.before_action(changeset, fn cs ->
+        Ash.Changeset.after_action(cs, fn _cs, _draw -> {:error, "rolled back last"} end)
+      end)
+    end
+
+    for {name, setup} <- [
+          {"grid-frequency", {:freq, 3600}},
+          {"observation-weather", {:observation, 3}}
+        ] do
+      @setup setup
+      test "a committed #{name} lock is announced once, as locked" do
+        {draw, key, args} = v6_lock_setup(@setup)
+        subscribe(draw)
+        assert {:ok, _} = lock(draw, key, args)
+        assert [%{status: :awaiting_entropy}] = broadcasts(draw.id)
+      end
+
+      test "a rolled-back #{name} lock is never announced" do
+        {draw, key, args} = v6_lock_setup(@setup)
+        changeset = Ash.Changeset.for_update(draw, :lock, args, actor: key)
+        subscribe(draw)
+        assert {:error, _} = changeset |> fail_last() |> Ash.update()
+        assert Ash.get!(Draw, draw.id, authorize?: false).status == :open
+        assert broadcasts(draw.id) == []
+      end
+    end
+
+    test "a forecast lock is announced as before" do
+      key = create_api_key()
+      draw = open_draw_with_entries(key)
+      subscribe(draw)
+      assert {:ok, _} = lock(draw, key, %{})
+      assert length(broadcasts(draw.id)) == 2
+    end
+
+    defp v6_lock_setup({:freq, seconds}) do
+      {_op, key} = create_freq_operator()
+      {open_draw_with_entries(key), key, %{draw_at: draw_at_in(seconds)}}
+    end
+
+    defp v6_lock_setup({:observation, hours}) do
+      {_op, key} = create_v6_operator()
+      {open_draw_with_entries(key), key, %{draw_at: next_hour_draw_at(hours)}}
     end
   end
 

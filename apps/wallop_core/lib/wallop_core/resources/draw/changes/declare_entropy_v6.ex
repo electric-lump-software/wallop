@@ -24,7 +24,8 @@ defmodule WallopCore.Resources.Draw.Changes.DeclareEntropyV6 do
       plus `Schedule.execution_delay_seconds/0`.
 
   It never inserts an `EntropyWorker` job. If either insert fails, the lock
-  rolls back.
+  rolls back. The lock is broadcast once it has committed (an
+  `after_transaction` hook), never from inside the transaction.
   """
   use Ash.Resource.Change
 
@@ -49,6 +50,7 @@ defmodule WallopCore.Resources.Draw.Changes.DeclareEntropyV6 do
         |> Ash.Changeset.force_change_attribute(:weather_time, s.weather_time)
         |> Ash.Changeset.force_change_attribute(:status, :awaiting_entropy)
         |> Ash.Changeset.after_action(fn _changeset, draw -> enqueue(draw) end)
+        |> Ash.Changeset.after_transaction(&announce/2)
 
       # Never lock without a schedule.
       {:error, reason} ->
@@ -68,8 +70,16 @@ defmodule WallopCore.Resources.Draw.Changes.DeclareEntropyV6 do
 
     with {:ok, _} <- Oban.insert(WeatherObservationWorker.new_for_hour(draw.weather_time)),
          {:ok, _} <- Oban.insert(execute) do
-      WallopCore.DrawPubSub.broadcast(draw)
       {:ok, draw}
     end
   end
+
+  # The lock is announced once it has committed: a lock that rolls back,
+  # at any step, is never announced.
+  defp announce(_changeset, {:ok, draw} = result) do
+    WallopCore.DrawPubSub.broadcast(draw)
+    result
+  end
+
+  defp announce(_changeset, error), do: error
 end
