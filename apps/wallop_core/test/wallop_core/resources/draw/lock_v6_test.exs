@@ -88,10 +88,17 @@ defmodule WallopCore.Resources.Draw.LockV6Test do
     {_op, key} = create_v6_operator()
     before = DateTime.utc_now()
     {:ok, locked} = lock(open_draw_with_entries(key), key, %{})
+    later = DateTime.utc_now()
     assert locked.lock_schema_version == "6"
     assert DateTime.diff(locked.weather_time, before) >= 46 * 60
     assert DateTime.diff(locked.weather_time, before) < 46 * 60 + 3600 + 60
-    assert locked.drand_round == Quicknet.round_at_or_after(Schedule.default_draw_at(before))
+
+    # The lock reads the clock once, between `before` and `later`; the
+    # default moves on at hh:13:30, which may fall between the two.
+    defaults =
+      for now <- [before, later], do: Quicknet.round_at_or_after(Schedule.default_draw_at(now))
+
+    assert locked.drand_round in defaults
     assert_enqueued(worker: ObservationDrawWorker, args: %{draw_id: locked.id})
     refute_enqueued(worker: EntropyWorker, args: %{draw_id: locked.id})
   end

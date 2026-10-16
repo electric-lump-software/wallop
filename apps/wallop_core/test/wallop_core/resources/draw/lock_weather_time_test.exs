@@ -43,17 +43,23 @@ defmodule WallopCore.Resources.Draw.LockWeatherTimeTest do
         )
         |> Ash.update!()
 
-      before_lock = DateTime.utc_now()
+      # The default is truncate(now + 180..300 s), so compare whole seconds:
+      # against an untruncated clock, a 180 s delay reads as 179 s.
+      before_lock = DateTime.truncate(DateTime.utc_now(), :second)
 
       locked =
         draw
         |> Ash.Changeset.for_update(:lock, %{}, actor: api_key)
         |> Ash.update!()
 
-      diff = DateTime.diff(locked.weather_time, before_lock, :second)
+      after_lock = DateTime.truncate(DateTime.utc_now(), :second)
+      earliest = DateTime.add(before_lock, 180)
+      latest = DateTime.add(after_lock, 300)
 
-      assert diff >= 180 and diff <= 305,
-             "expected jittered weather_time in 3-5 min from lock, got #{diff}s"
+      assert DateTime.compare(locked.weather_time, earliest) != :lt and
+               DateTime.compare(locked.weather_time, latest) != :gt,
+             "expected jittered weather_time in 3-5 min from lock, got " <>
+               "#{DateTime.diff(locked.weather_time, before_lock)}s"
 
       # drand_round derived from weather_time, not now.
       assert_drand_round_matches_weather_time(locked.drand_round, locked.weather_time)
