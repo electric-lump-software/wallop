@@ -31,6 +31,7 @@ defmodule WallopCore.Weather.LandObsGrammar do
   @plain_decimal ~r/\A(-?)([0-9]+)(?:\.([0-9]+))?\z/
   @token ~r/"(?:[^"\\]|\\.)*"|[\[\]{}:,]|[^\s"\[\]{}:,]+/u
   @max_digits 15
+  @max_depth 8
 
   @doc "The inclusive bounds on each canonical part, after scaling."
   @spec bounds() :: %{t: Range.t(), mslp: Range.t(), rh: Range.t(), vis: Range.t()}
@@ -56,11 +57,12 @@ defmodule WallopCore.Weather.LandObsGrammar do
   Decodes JSON, keeping every number as `{:number, text}`, its exact JSON
   text. Strings, booleans, null, arrays and objects decode as usual.
   """
-  @spec decode(binary()) :: {:ok, term()} | {:error, term()}
+  @spec decode(binary()) :: {:ok, term()} | {:error, :too_deep | term()}
   def decode(body) when is_binary(body) do
     # Decimals, so that a valid number too large for a float (in a field
     # nobody reads) does not reject the whole body.
-    with {:ok, _} <- Jason.decode(body, floats: :decimals) do
+    with :ok <- within_depth(body, 0),
+         {:ok, _} <- Jason.decode(body, floats: :decimals) do
       # Deliberate crash on a validator/token-reader inconsistency; not reachable from input.
       {term, []} = @token |> Regex.scan(body) |> List.flatten() |> parse_value()
       {:ok, term}
@@ -151,6 +153,27 @@ defmodule WallopCore.Weather.LandObsGrammar do
 
   defp in_bounds(key, n, range),
     do: if(n in range, do: :ok, else: {:error, {:out_of_bounds, key}})
+
+  # A bound on how bodies are handled in core, not a protocol rule: the
+  # verifier's `row_to_value` takes a field getter and never sees a body.
+  # Land Observations responses are an array of flat objects (depth 2).
+  # Brackets inside strings are ignored; malformed input is left to Jason.
+  defp within_depth(<<>>, _depth), do: :ok
+  defp within_depth(<<?", rest::binary>>, depth), do: skip_string(rest, depth)
+
+  defp within_depth(<<c, rest::binary>>, depth) when c in [?[, ?{] do
+    if depth + 1 > @max_depth, do: {:error, :too_deep}, else: within_depth(rest, depth + 1)
+  end
+
+  defp within_depth(<<c, rest::binary>>, depth) when c in [?], ?}],
+    do: within_depth(rest, depth - 1)
+
+  defp within_depth(<<_, rest::binary>>, depth), do: within_depth(rest, depth)
+
+  defp skip_string(<<>>, _depth), do: :ok
+  defp skip_string(<<?\\, _, rest::binary>>, depth), do: skip_string(rest, depth)
+  defp skip_string(<<?", rest::binary>>, depth), do: within_depth(rest, depth)
+  defp skip_string(<<_, rest::binary>>, depth), do: skip_string(rest, depth)
 
   # A tiny recursive-descent reader over tokens of JSON that Jason has
   # already validated. It differs from Jason only in keeping number text.

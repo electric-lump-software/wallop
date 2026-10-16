@@ -10,10 +10,7 @@ defmodule WallopCore.Entropy.LandObsClientTest do
   @key "test-obs-key"
 
   setup do
-    Application.put_env(:wallop_core, LandObsClient,
-      plug: {Req.Test, LandObsClient},
-      req_options: [retry: false]
-    )
+    Application.put_env(:wallop_core, LandObsClient, plug: {Req.Test, LandObsClient})
 
     previous_key = Application.get_env(:wallop_core, :met_office_obs_api_key)
     Application.put_env(:wallop_core, :met_office_obs_api_key, @key)
@@ -165,8 +162,9 @@ defmodule WallopCore.Entropy.LandObsClientTest do
   end
 
   test "the key never appears in an error or a log" do
+    previous_level = Logger.level()
     Logger.configure(level: :debug)
-    on_exit(fn -> Logger.configure(level: :warning) end)
+    on_exit(fn -> Logger.configure(level: previous_level) end)
 
     log =
       capture_log(fn ->
@@ -176,10 +174,99 @@ defmodule WallopCore.Entropy.LandObsClientTest do
 
         Req.Test.stub(LandObsClient, &Req.Test.transport_error(&1, :timeout))
         result = LandObsClient.fetch_hour("gcnfur", ~U[2026-10-14 19:00:00Z])
-        assert {:error, _} = result
+        assert {:error, {:transport, :timeout}} = result
         refute inspect(result) =~ @key
       end)
 
     refute log =~ @key
+  end
+
+  test "a key with a non-visible character is refused without quoting it" do
+    previous_level = Logger.level()
+    Logger.configure(level: :debug)
+    on_exit(fn -> Logger.configure(level: previous_level) end)
+
+    Req.Test.stub(LandObsClient, fn _conn -> flunk("sent a request with an invalid key") end)
+
+    for key <- ["k\n", "secret-key\r\nx-evil: 1", "has space", "caf\u00e9"] do
+      Application.put_env(:wallop_core, :met_office_obs_api_key, key)
+
+      log =
+        capture_log(fn ->
+          result = LandObsClient.fetch_hour("gcnfur", ~U[2026-10-14 19:00:00Z])
+          assert result == {:error, :invalid_api_key}
+        end)
+
+      refute log =~ key
+      refute log =~ inspect(key)
+    end
+  end
+
+  test "a transport error without an atom reason becomes :http_error" do
+    leaky = %Mint.HTTPError{
+      reason: {:invalid_header_value, "apikey", @key <> "\n"},
+      module: Mint.HTTP1
+    }
+
+    Req.Test.stub(LandObsClient, fn conn -> put_in(conn.private[:req_test_exception], leaky) end)
+    result = LandObsClient.fetch_hour("gcnfur", ~U[2026-10-14 19:00:00Z])
+    assert {:error, {:transport, :http_error}} = result
+    refute inspect(result) =~ @key
+
+    Req.Test.stub(LandObsClient, &Req.Test.transport_error(&1, {:bad_alpn_protocol, "h3"}))
+
+    assert {:error, {:transport, :http_error}} =
+             LandObsClient.fetch_hour("gcnfur", ~U[2026-10-14 19:00:00Z])
+
+    mint = %Mint.TransportError{reason: :econnrefused}
+    Req.Test.stub(LandObsClient, fn conn -> put_in(conn.private[:req_test_exception], mint) end)
+
+    assert {:error, {:transport, :econnrefused}} =
+             LandObsClient.fetch_hour("gcnfur", ~U[2026-10-14 19:00:00Z])
+  end
+
+  test "config can't override retries, redirects, compression or add a proxy" do
+    Application.put_env(:wallop_core, LandObsClient,
+      plug: {Req.Test, LandObsClient},
+      req_options: [
+        retry: :transient,
+        max_retries: 5,
+        redirect: true,
+        compressed: true,
+        decode_body: true,
+        headers: [{"x-extra", "1"}],
+        receive_timeout: 2_000,
+        connect_options: [timeout: 1_000, proxy: {:http, "proxy.example", 8080, []}]
+      ]
+    )
+
+    assert Enum.sort(LandObsClient.request_options()) ==
+             Enum.sort(
+               connect_options: [timeout: 1_000],
+               receive_timeout: 2_000,
+               redirect: false,
+               retry: false,
+               compressed: false,
+               decode_body: false,
+               plug: {Req.Test, LandObsClient}
+             )
+
+    counter = :counters.new(1, [])
+
+    Req.Test.stub(LandObsClient, fn conn ->
+      :counters.add(counter, 1, 1)
+      assert [] = Plug.Conn.get_req_header(conn, "x-extra")
+      Plug.Conn.send_resp(conn, 503, "{}")
+    end)
+
+    assert {:error, {:unexpected_status, 503}} =
+             LandObsClient.fetch_hour("gcnfur", ~U[2026-10-14 19:00:00Z])
+
+    assert :counters.get(counter, 1) == 1
+  end
+
+  test "a body nested too deeply is refused" do
+    serve(String.duplicate("[", 9) <> String.duplicate("]", 9))
+    assert {:error, :too_deep} = LandObsClient.fetch_hour("gcnfur", ~U[2026-10-14 19:00:00Z])
   end
 end

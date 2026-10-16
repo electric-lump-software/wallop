@@ -27,17 +27,20 @@ defmodule WallopCore.Entropy.LandObsClient do
   @type observation :: %{value: String.t(), raw: binary(), observation_time: DateTime.t()}
   @type error ::
           :no_api_key
+          | :invalid_api_key
           | :unknown_station
           | :not_an_hour
           | :insecure_url
           | :body_too_large
           | :invalid_json
+          | :too_deep
           | :invalid_response
           | :missing_hour
           | :duplicate_hour
           | {:unexpected_status, integer()}
+          | {:transport, atom()}
+          | {:transport, :http_error}
           | LandObsGrammar.error_reason()
-          | term()
 
   @doc "The largest response body accepted, in bytes."
   @spec max_body_bytes() :: pos_integer()
@@ -74,6 +77,7 @@ defmodule WallopCore.Entropy.LandObsClient do
     case LandObsGrammar.decode(body) do
       {:ok, rows} when is_list(rows) -> {:ok, rows}
       {:ok, _} -> {:error, :invalid_response}
+      {:error, :too_deep} -> {:error, :too_deep}
       {:error, _} -> {:error, :invalid_json}
     end
   end
@@ -97,7 +101,7 @@ defmodule WallopCore.Entropy.LandObsClient do
       ]
 
       url
-      |> Req.get(req_options(opts))
+      |> Req.get(Keyword.merge(request_options(), opts))
       |> handle_response()
     end
   end
@@ -111,9 +115,16 @@ defmodule WallopCore.Entropy.LandObsClient do
   defp handle_response({:ok, %Req.Response{status: status}}),
     do: {:error, {:unexpected_status, status}}
 
-  # Req and Mint transport errors carry only a reason, never the request.
-  defp handle_response({:error, %{reason: reason}}), do: {:error, {:transport, reason}}
-  defp handle_response({:error, _}), do: {:error, :transport}
+  # Only an atom reason from a transport error is passed on. Any other
+  # reason (for example a Mint header error, which quotes the header value)
+  # could carry the key, so it is replaced.
+  defp handle_response({:error, %Req.TransportError{reason: reason}}) when is_atom(reason),
+    do: {:error, {:transport, reason}}
+
+  defp handle_response({:error, %Mint.TransportError{reason: reason}}) when is_atom(reason),
+    do: {:error, {:transport, reason}}
+
+  defp handle_response({:error, _}), do: {:error, {:transport, :http_error}}
 
   defp collect_capped({:data, data}, {req, resp}) do
     body = resp.body
@@ -127,10 +138,23 @@ defmodule WallopCore.Entropy.LandObsClient do
 
   defp api_key do
     case Application.get_env(:wallop_core, :met_office_obs_api_key) do
-      key when is_binary(key) and byte_size(key) > 0 -> {:ok, key}
-      _ -> {:error, :no_api_key}
+      nil ->
+        {:error, :no_api_key}
+
+      "" ->
+        {:error, :no_api_key}
+
+      key when is_binary(key) ->
+        if visible_ascii?(key), do: {:ok, key}, else: {:error, :invalid_api_key}
+
+      _ ->
+        {:error, :invalid_api_key}
     end
   end
+
+  # Visible ASCII only, so the key can never be refused (and quoted) by the
+  # HTTP client as an invalid header value.
+  defp visible_ascii?(key), do: Regex.match?(~r/\A[\x21-\x7E]+\z/, key)
 
   defp https_url(url) do
     case URI.parse(url) do
@@ -146,31 +170,27 @@ defmodule WallopCore.Entropy.LandObsClient do
   defp base_url, do: Keyword.get(config(), :base_url, @base_url)
   defp config, do: Application.get_env(:wallop_core, __MODULE__, [])
 
-  defp req_options(extra) do
-    base = [
-      connect_options: [timeout: @connect_timeout],
-      receive_timeout: @receive_timeout,
+  @doc false
+  # The effective Req options. Config may set only `:plug`,
+  # `req_options: [receive_timeout: ...]` and
+  # `req_options: [connect_options: [timeout: ...]]`; everything else is
+  # fixed here.
+  @spec request_options() :: keyword()
+  def request_options do
+    overrides = Keyword.get(config(), :req_options, [])
+    connect = Keyword.get(overrides, :connect_options, [])
+
+    [
+      connect_options: [timeout: Keyword.get(connect, :timeout, @connect_timeout)],
+      receive_timeout: Keyword.get(overrides, :receive_timeout, @receive_timeout),
       redirect: false,
       retry: false,
       compressed: false,
       decode_body: false
     ]
-
-    base = if plug = Keyword.get(config(), :plug), do: Keyword.put(base, :plug, plug), else: base
-
-    # Overrides may tune timeouts or the test plug, but never the safety rails.
-    overrides =
-      Keyword.drop(Keyword.get(config(), :req_options, []), [
-        :redirect,
-        :compressed,
-        :decode_body,
-        :headers,
-        :into,
-        :url,
-        :base_url,
-        :params
-      ])
-
-    base |> Keyword.merge(overrides) |> Keyword.merge(extra)
+    |> put_plug(Keyword.get(config(), :plug))
   end
+
+  defp put_plug(opts, nil), do: opts
+  defp put_plug(opts, plug), do: Keyword.put(opts, :plug, plug)
 end

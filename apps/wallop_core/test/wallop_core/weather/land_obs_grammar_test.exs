@@ -224,6 +224,17 @@ defmodule WallopCore.Weather.LandObsGrammarTest do
     end
   end
 
+  test "decode refuses nesting deeper than 8, ignoring brackets inside strings" do
+    deep = fn n -> String.duplicate("[", n) <> String.duplicate("]", n) end
+    assert {:ok, _} = G.decode(deep.(8))
+    assert {:error, :too_deep} = G.decode(deep.(9))
+    assert {:error, :too_deep} = G.decode(String.duplicate("[", 100_000))
+
+    in_string = ~s([{"note": "#{String.duplicate("[{", 50)} \\" ]]}"}])
+    assert {:ok, [%{"note" => _}]} = G.decode(in_string)
+    assert {:error, :too_deep} = G.decode(~s([[[[[[[[{"a": 1}]]]]]]]]))
+  end
+
   test "NaN and Infinity are not JSON" do
     assert {:error, _} = G.decode(~s({"temperature": NaN}))
     assert {:error, _} = G.decode(~s({"temperature": Infinity}))
