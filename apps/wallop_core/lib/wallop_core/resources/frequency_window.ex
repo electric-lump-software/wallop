@@ -223,8 +223,9 @@ defmodule WallopCore.Resources.FrequencyWindow do
     uuid_primary_key(:id)
     attribute(:freq_start, :utc_datetime_usec, allow_nil?: false)
     attribute(:value, :string, allow_nil?: false)
-    # The Elexon response body, byte for byte.
-    attribute(:raw, :string, allow_nil?: false)
+    # The Elexon response body, byte for byte: not trimmed (Ash trims a
+    # :string by default), so the stored bytes are exactly the ones received.
+    attribute(:raw, :string, allow_nil?: false, constraints: [trim?: false, allow_empty?: true])
     # Set by the insert trigger from the database clock.
     attribute(:stored_at, :utc_datetime_usec, allow_nil?: true)
   end

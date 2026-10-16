@@ -238,7 +238,10 @@ defmodule WallopCore.Resources.WeatherObservation do
     attribute(:station, :string, allow_nil?: false)
     attribute(:observation_time, :utc_datetime_usec, allow_nil?: false)
     attribute(:value, :string, allow_nil?: false)
-    attribute(:raw, :string, allow_nil?: false)
+    # The Land Observations response body, byte for byte: not trimmed (Ash
+    # trims a :string by default), so the stored bytes are exactly the ones
+    # received.
+    attribute(:raw, :string, allow_nil?: false, constraints: [trim?: false, allow_empty?: true])
     # Set by the insert trigger from the database clock.
     attribute(:stored_at, :utc_datetime_usec, allow_nil?: true)
   end
