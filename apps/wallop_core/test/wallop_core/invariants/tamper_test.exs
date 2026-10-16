@@ -33,9 +33,12 @@ defmodule WallopCore.Invariants.TamperTest do
       written as a float or an exponent are refused by both triggers.
     * **Raw SQL sequences.** The lock, the receipt and each attack, in every
       order, against the draws and `operator_receipts` triggers.
-    * **The tamper vectors.** The committed file is what the generator
-      writes, each case changes exactly one signed field and stays signed,
-      and every signed field has a case or is listed as verifier-blind.
+    * **The tamper vectors.** One file per entropy tag, each built from
+      the tag's `WallopCore.TamperProfiles` module. Each committed file is
+      what the generator writes, each case changes exactly one signed field
+      and stays signed, and every signed field of each tag has a case or is
+      listed as verifier-blind. The grid-frequency builder and database
+      tables are in `WallopCore.Invariants.TamperFreqTest`.
   """
   use WallopCore.InvariantCase, async: false
   use ExUnitProperties
@@ -46,6 +49,7 @@ defmodule WallopCore.Invariants.TamperTest do
   alias WallopCore.ProofBundle
   alias WallopCore.Protocol
   alias WallopCore.Protocol.Tags.LandObs
+  alias WallopCore.TamperProfiles
   alias WallopCore.TamperVectors
   alias WallopCore.Weather.{Schedule, Stations}
 
@@ -1026,7 +1030,8 @@ defmodule WallopCore.Invariants.TamperTest do
 
   # ── The tamper vectors ─────────────────────────────────────────────
 
-  defp vector, do: TamperVectors.path() |> File.read!() |> Jason.decode!()
+  defp vector(profile),
+    do: profile |> TamperVectors.path() |> File.read!() |> Jason.decode!()
 
   defp receipts(bundle_jcs) do
     b = Jason.decode!(bundle_jcs)
@@ -1048,79 +1053,96 @@ defmodule WallopCore.Invariants.TamperTest do
 
   describe "INV-2 the tamper vectors" do
     test "INV-2 (tamper vectors) the committed file is what the generator writes" do
-      assert File.read!(TamperVectors.path()) == TamperVectors.encode()
+      for profile <- TamperVectors.profiles() do
+        assert File.read!(TamperVectors.path(profile)) == TamperVectors.encode(profile),
+               profile.tag()
+      end
     end
 
     test "INV-2 (tamper vectors) the bases come from the real builders on a real round published after the lock" do
-      v = vector()
-
       assert DateTime.compare(Quicknet.pub_time(TamperVectors.round()), TamperVectors.locked_at()) ==
                :gt
 
-      for base <- v["bases"] do
-        {lock_jcs, exec_jcs} = TamperVectors.base(String.to_existing_atom(base["name"]))
-        {_, lock, exec} = receipts(base["bundle"])
-        assert Jcs.encode(lock) == lock_jcs
-        assert Jcs.encode(exec) == exec_jcs
+      for profile <- TamperVectors.profiles() do
+        assert DateTime.compare(Quicknet.pub_time(TamperVectors.round()), profile.locked_at()) ==
+                 :gt,
+               profile.tag()
 
-        assert exec["lock_receipt_hash"] ==
-                 :crypto.hash(:sha256, lock_jcs) |> Base.encode16(case: :lower)
+        for base <- vector(profile)["bases"] do
+          {lock_jcs, exec_jcs} = TamperVectors.base_by_name(base["name"])
+          {_, lock, exec} = receipts(base["bundle"])
+          assert Jcs.encode(lock) == lock_jcs
+          assert Jcs.encode(exec) == exec_jcs
+          assert lock["entropy_composition"] == profile.tag()
+          assert exec["entropy_composition"] == profile.tag()
+
+          assert exec["lock_receipt_hash"] ==
+                   :crypto.hash(:sha256, lock_jcs) |> Base.encode16(case: :lower)
+        end
       end
     end
 
     test "INV-2 (tamper vectors) each case changes one signed field of one receipt and stays signed" do
-      v = vector()
-      [op, infra] = v["keys"]
-      assert {op["key_class"], infra["key_class"]} == {"operator", "infrastructure"}
-      bases = Map.new(v["bases"], &{&1["name"], receipts(&1["bundle"])})
+      for profile <- TamperVectors.profiles() do
+        v = vector(profile)
+        [op, infra] = v["keys"]
+        assert {op["key_class"], infra["key_class"]} == {"operator", "infrastructure"}
+        bases = Map.new(v["bases"], &{&1["name"], receipts(&1["bundle"])})
 
-      for case <- v["cases"] do
-        {envelope, lock, exec} = receipts(case["bundle"])
-        {base_envelope, base_lock, base_exec} = Map.fetch!(bases, case["base"])
-        name = case["name"]
+        for case <- v["cases"] do
+          {envelope, lock, exec} = receipts(case["bundle"])
+          {base_envelope, base_lock, base_exec} = Map.fetch!(bases, case["base"])
+          name = case["name"]
 
-        assert verified?(envelope["lock_receipt"], op["public_key_hex"]), name
-        assert verified?(envelope["execution_receipt"], infra["public_key_hex"]), name
+          assert verified?(envelope["lock_receipt"], op["public_key_hex"]), name
+          assert verified?(envelope["execution_receipt"], infra["public_key_hex"]), name
 
-        assert Map.drop(envelope, ~w(lock_receipt execution_receipt)) ==
-                 Map.drop(base_envelope, ~w(lock_receipt execution_receipt)),
-               name
+          assert Map.drop(envelope, ~w(lock_receipt execution_receipt)) ==
+                   Map.drop(base_envelope, ~w(lock_receipt execution_receipt)),
+                 name
 
-        case case["receipt"] do
-          "lock" ->
-            assert changed(lock, base_lock) == [case["field"]], name
-            assert changed(exec, base_exec) == ["lock_receipt_hash"], name
+          case case["receipt"] do
+            "lock" ->
+              assert changed(lock, base_lock) == [case["field"]], name
+              assert changed(exec, base_exec) == ["lock_receipt_hash"], name
 
-            assert exec["lock_receipt_hash"] ==
-                     :crypto.hash(:sha256, envelope["lock_receipt"]["payload_jcs"])
-                     |> Base.encode16(case: :lower),
-                   name
+              assert exec["lock_receipt_hash"] ==
+                       :crypto.hash(:sha256, envelope["lock_receipt"]["payload_jcs"])
+                       |> Base.encode16(case: :lower),
+                     name
 
-          "exec" ->
-            assert lock == base_lock, name
-            assert changed(exec, base_exec) == [case["field"]], name
+            "exec" ->
+              assert lock == base_lock, name
+              assert changed(exec, base_exec) == [case["field"]], name
 
-          "both" ->
-            assert changed(lock, base_lock) == [case["field"]], name
+            "both" ->
+              assert changed(lock, base_lock) == [case["field"]], name
 
-            assert changed(exec, base_exec) == Enum.sort([case["field"], "lock_receipt_hash"]),
-                   name
+              assert changed(exec, base_exec) == Enum.sort([case["field"], "lock_receipt_hash"]),
+                     name
+          end
+
+          assert case["expected_failing_steps"] != [], name
         end
-
-        assert case["expected_failing_steps"] != [], name
       end
     end
 
     test "INV-2 (tamper vectors) every signed field has a refusing case, or is verifier-blind" do
-      cases = vector()["cases"]
+      for profile <- TamperVectors.profiles() do
+        names = Enum.map([:observed, :fallback], &profile.base_name/1)
+        own = Enum.filter(vector(profile)["cases"], &(&1["base"] in names))
+        assert own != [], profile.tag()
 
-      for {receipt, keys} <- [lock: LandObs.lock_keys(), exec: LandObs.exec_keys()],
-          key <- keys do
-        covered? =
-          Enum.any?(cases, &(&1["receipt"] in ["#{receipt}", "both"] and &1["field"] == key))
+        for {receipt, keys} <- [lock: profile.lock_keys(), exec: profile.exec_keys()],
+            key <- keys do
+          covered? =
+            Enum.any?(own, &(&1["receipt"] in ["#{receipt}", "both"] and &1["field"] == key))
 
-        blind? = key in Map.fetch!(@verifier_blind, receipt)
-        assert covered? != blind?, "#{receipt}.#{key}: covered #{covered?}, blind #{blind?}"
+          blind? = key in Map.fetch!(@verifier_blind, receipt)
+
+          assert covered? != blind?,
+                 "#{profile.tag()} #{receipt}.#{key}: covered #{covered?}, blind #{blind?}"
+        end
       end
 
       # A verifier-blind lock field is refused by the database or listed
@@ -1132,9 +1154,41 @@ defmodule WallopCore.Invariants.TamperTest do
       assert @verifier_blind.exec == @no_layer_refuses.exec
     end
 
+    test "INV-2 (tamper vectors) every grid-frequency signed field the Land Obs tag lacks, and every weather field it must keep null, is refused" do
+      cases = vector(TamperProfiles.Freq)["cases"]
+
+      tampered =
+        for c <- cases, c["receipt"] in ["exec", "both"], do: c["field"], uniq: true
+
+      for field <- ~w(freq_value freq_fallback_reason weather_station weather_value
+                      weather_observation_time weather_fallback_reason entropy_composition),
+          do: assert(field in tampered, "exec.#{field}")
+
+      tampered = for c <- cases, c["receipt"] in ["lock", "both"], do: c["field"], uniq: true
+
+      for field <- ~w(freq_start locked_at drand_round weather_station weather_time
+                      entropy_composition),
+          do: assert(field in tampered, "lock.#{field}")
+    end
+
+    test "INV-2 (tamper vectors) the Land Obs bases and cases are unchanged by the profile split" do
+      landobs = TamperProfiles.LandObs
+      v = vector(landobs)
+
+      assert Enum.map(v["bases"], & &1["name"]) == ~w(observed fallback)
+      names = Enum.map(landobs.cases(), fn {n, _, _, f, _, _, _} -> {n, f} end)
+
+      for c <- v["cases"] do
+        assert c["base"] in ~w(observed fallback), c["name"]
+        assert {c["name"], c["field"]} in names, c["name"]
+      end
+
+      assert length(v["cases"]) == length(landobs.cases())
+    end
+
     @tag :pending_task_13
     test "INV-2 (tamper vectors) each base bundle is the bytes ProofBundle.assemble/1 produces" do
-      for base <- vector()["bases"] do
+      for profile <- TamperVectors.profiles(), base <- vector(profile)["bases"] do
         {envelope, _, _} = receipts(base["bundle"])
 
         assembled =
