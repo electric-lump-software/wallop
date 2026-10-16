@@ -234,7 +234,8 @@ defmodule WallopCore.Entropy.V6Execution do
 
   defp refuse(draw, message) do
     Logger.error(
-      "V6Execution: draw #{Log.redact_id(draw.id)} refused, left for the re-drive: #{message}"
+      "V6Execution: draw #{Log.redact_id(draw.id)} refused on its stored state: #{message}; " <>
+        "it is not re-driven: re-insert its job by hand after a fix"
     )
 
     :telemetry.execute([:wallop_core, :v6, :exec_refused], %{count: 1}, %{
