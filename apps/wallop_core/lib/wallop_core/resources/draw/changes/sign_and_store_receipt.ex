@@ -105,11 +105,18 @@ defmodule WallopCore.Resources.Draw.Changes.SignAndStoreReceipt do
     end
   end
 
-  # Lock schema 6 only: the locked_at about to be signed must be no later
-  # than the draw's latest lock time (weather_time - 46 minutes).
-  defp lock_time_error("6", locked_at, changeset) do
-    weather_time = Ash.Changeset.get_attribute(changeset, :weather_time)
+  defp lock_time_error("6", locked_at, changeset),
+    do: v6_lock_time_error(locked_at, Ash.Changeset.get_attribute(changeset, :weather_time))
 
+  defp lock_time_error(nil, _locked_at, _changeset), do: nil
+
+  @doc false
+  # Lock schema 6: a lock at `locked_at` must be no later than the draw's
+  # latest lock time (weather_time - 46 minutes). nil when it is in time,
+  # else the refusal, on `draw_at` with `latest_lock_at`. Used on the signed
+  # `locked_at` here and on the request time by the `DrawAt` validation.
+  @spec v6_lock_time_error(DateTime.t(), DateTime.t()) :: Exception.t() | nil
+  def v6_lock_time_error(locked_at, weather_time) do
     if Schedule.lock_allowed?(locked_at, weather_time) do
       nil
     else
@@ -122,8 +129,6 @@ defmodule WallopCore.Resources.Draw.Changes.SignAndStoreReceipt do
       )
     end
   end
-
-  defp lock_time_error(nil, _locked_at, _changeset), do: nil
 
   defp build_payload("6", input, changeset) do
     input

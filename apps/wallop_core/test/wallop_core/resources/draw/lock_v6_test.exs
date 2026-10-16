@@ -110,7 +110,9 @@ defmodule WallopCore.Resources.Draw.LockV6Test do
     end
   end
 
-  test "a late draw_at is refused at signing; the draw stays open and nothing is enqueued" do
+  # Refused by the DrawAt validation before the lock runs; the same check on
+  # the signed locked_at is unit-tested in LockV6RefusalsTest.
+  test "a late draw_at is refused; the draw stays open and nothing is enqueued" do
     {_op, key} = create_v6_operator()
     draw = open_draw_with_entries(key)
     # The latest observation hour whose lock time has passed.
@@ -167,7 +169,17 @@ defmodule WallopCore.Resources.Draw.LockV6Test do
     assert payload["entropy_composition"] == "drand-quicknet+openmeteo-v1"
     assert_enqueued(worker: EntropyWorker, args: %{draw_id: locked.id})
     refute_enqueued(worker: ObservationDrawWorker, args: %{draw_id: locked.id})
-    refute_enqueued(worker: WeatherObservationWorker)
+
+    # No fetch job for any hour this lock could have touched. Scoped by hour:
+    # the test database is shared.
+    hour = DateTime.utc_now() |> DateTime.truncate(:second) |> then(&%{&1 | minute: 0, second: 0})
+
+    for h <- -1..3 do
+      refute_enqueued(
+        worker: WeatherObservationWorker,
+        args: %{weather_time: WeatherObservationWorker.hour_arg(DateTime.add(hour, h * 3600))}
+      )
+    end
 
     assert Map.keys(locked.stage_timestamps) -- ["opened_at"] == [
              "entropy_declared_at",

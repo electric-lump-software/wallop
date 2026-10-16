@@ -463,6 +463,7 @@ defmodule WallopCore.Invariants.ObservationAndExecutionTest do
           )
 
       for sql <- [
+            "DELETE FROM oban_jobs WHERE args->>'draw_id' IN (SELECT id::text FROM draws WHERE operator_id = $1)",
             "DELETE FROM operator_receipts WHERE operator_id = $1",
             "DELETE FROM add_entries_idempotency WHERE draw_id IN (#{draws})",
             "DELETE FROM entries WHERE draw_id IN (#{draws})",
