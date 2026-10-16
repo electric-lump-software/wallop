@@ -33,7 +33,7 @@ defmodule WallopCore.Resources.Draw.Validations.DrawAt do
 
     cond do
       not v6? and not is_nil(draw_at) ->
-        error(:draw_at, "is only available to operators on the observation weather protocol")
+        error(:draw_at, "is only available to operators on the observation-weather protocol")
 
       v6? and not is_nil(Ash.Changeset.get_argument(changeset, :weather_time)) ->
         error(:weather_time, "can't be set for this operator; send draw_at instead")
@@ -65,7 +65,7 @@ defmodule WallopCore.Resources.Draw.Validations.DrawAt do
   defp check_schedule(s, now) do
     cond do
       not Schedule.within_cap?(now, s.expected_result_at) ->
-        error(:draw_at, "must be within 7 days (201,600 drand quicknet rounds)")
+        error(:draw_at, "must be no more than 7 days (201,600 drand quicknet rounds) from now")
 
       late = SignAndStoreReceipt.v6_lock_time_error(now, s.weather_time) ->
         {:error, late}

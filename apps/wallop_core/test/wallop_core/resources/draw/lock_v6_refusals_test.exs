@@ -28,6 +28,16 @@ defmodule WallopCore.Resources.Draw.LockV6RefusalsTest do
     refute_enqueued(worker: EntropyWorker, args: %{draw_id: draw.id})
   end
 
+  defp idempotency_rows(draw) do
+    %{rows: rows} =
+      WallopCore.Repo.query!(
+        "SELECT * FROM add_entries_idempotency WHERE draw_id = $1 ORDER BY 1",
+        [Ecto.UUID.dump!(draw.id)]
+      )
+
+    rows
+  end
+
   defp refute_hour_enqueued(weather_time),
     do:
       refute_enqueued(
@@ -53,7 +63,7 @@ defmodule WallopCore.Resources.Draw.LockV6RefusalsTest do
     assert error.field == :draw_at
 
     assert Keyword.get(error.vars, :latest_lock_at) ==
-             WallopCore.Time.to_rfc3339_usec(s.latest_lock_at)
+             DateTime.to_iso8601(DateTime.truncate(s.latest_lock_at, :second))
 
     assert_untouched(draw)
     refute_hour_enqueued(s.weather_time)
@@ -75,7 +85,7 @@ defmodule WallopCore.Resources.Draw.LockV6RefusalsTest do
           {%{draw_at: ~U[2020-01-01 00:00:00.000000Z]}, :draw_at,
            "is before drand quicknet's first round"},
           {%{draw_at: next_hour_draw_at(24 * 7 + 2)}, :draw_at,
-           "must be within 7 days (201,600 drand quicknet rounds)"}
+           "must be no more than 7 days (201,600 drand quicknet rounds) from now"}
         ] do
       assert {:error, %Ash.Error.Invalid{errors: errors}} = lock(draw, key, args)
 
@@ -101,7 +111,7 @@ defmodule WallopCore.Resources.Draw.LockV6RefusalsTest do
              lock(draw, key, %{draw_at: next_hour_draw_at(3)})
 
     assert error.field == :draw_at
-    assert error.message == "is only available to operators on the observation weather protocol"
+    assert error.message == "is only available to operators on the observation-weather protocol"
     assert_untouched(draw)
   end
 
@@ -112,14 +122,53 @@ defmodule WallopCore.Resources.Draw.LockV6RefusalsTest do
     assert_enqueued(worker: EntropyWorker, args: %{draw_id: locked.id})
   end
 
+  # The validation passes, then the signer finds the lock late. Without a
+  # clock seam, the changeset is built in time and its weather_time (which
+  # the signer checks its own locked_at against) is then moved to an hour
+  # whose latest lock time has passed: the state a slow lock reaches when
+  # the clock crosses latest_lock_at between validation and signing.
+  for sent? <- [true, false] do
+    test "validation passes, the signer refuses (draw_at sent: #{sent?}): nothing is written" do
+      {_op, key} = create_v6_operator()
+      draw = open_draw_with_entries(key)
+      idempotency = idempotency_rows(draw)
+      assert idempotency != []
+
+      args = if unquote(sent?), do: %{draw_at: next_hour_draw_at(3)}, else: %{}
+      changeset = Ash.Changeset.for_update(draw, :lock, args, actor: key)
+      assert changeset.valid?
+      built_wt = Ash.Changeset.get_attribute(changeset, :weather_time)
+      late_wt = next_hour_draw_at(-1)
+
+      assert {:error, %Ash.Error.Invalid{errors: [%InvalidArgument{} = error]}} =
+               changeset
+               |> Ash.Changeset.force_change_attribute(:weather_time, late_wt)
+               |> Ash.update()
+
+      assert error.message == "is too late: this draw must be locked by %{latest_lock_at}"
+      assert error.field == if(unquote(sent?), do: :draw_at, else: nil)
+
+      assert Keyword.get(error.vars, :latest_lock_at) ==
+               late_wt
+               |> Schedule.latest_lock_at()
+               |> DateTime.truncate(:second)
+               |> DateTime.to_iso8601()
+
+      assert_untouched(draw)
+      refute_hour_enqueued(built_wt)
+      refute_hour_enqueued(late_wt)
+      assert idempotency_rows(draw) == idempotency
+    end
+  end
+
   test "the signed locked_at is checked: one microsecond late is refused" do
     wt = ~U[2026-10-14 19:00:00.000000Z]
     assert SignAndStoreReceipt.v6_lock_time_error(~U[2026-10-14 18:14:00.000000Z], wt) == nil
 
     assert %InvalidArgument{
              field: :draw_at,
-             message: "is too late to lock for: lock by %{latest_lock_at} for this draw time",
-             vars: [latest_lock_at: "2026-10-14T18:14:00.000000Z"]
+             message: "is too late: this draw must be locked by %{latest_lock_at}",
+             vars: [latest_lock_at: "2026-10-14T18:14:00Z"]
            } = SignAndStoreReceipt.v6_lock_time_error(~U[2026-10-14 18:14:00.000001Z], wt)
   end
 end
