@@ -34,15 +34,17 @@ defmodule WallopCore.Entropy.WeatherObservationWorker do
   Telemetry:
 
     * `[:wallop_core, :weather, :poll]`, `%{count: 1}`,
-      `%{station, ok?, error}`: one per station per poll;
+      `%{station, weather_time, ok?, error}`: one per station per poll,
+      including a fetch that raised (`error: {:raised, kind}`);
     * `[:wallop_core, :weather, :stored]`, `%{count: 1}`,
       `%{station, weather_time}`: the hour's reading was stored by this run;
     * `[:wallop_core, :weather, :store_refused]`, `%{count: 1}`,
       `%{station, weather_time, reason}`: a store was refused and the hour
       still has no row (`reason` is `:nested_transaction` or `:refused`);
     * `[:wallop_core, :weather, :poll_error]`, `%{count: 1}`,
-      `%{weather_time, kind}`: a fetch or the run raised (`:error`), exited
-      (`:exit`) or threw (`:throw`).
+      `%{weather_time, station, kind}`: a fetch (`station` set) or the run
+      (`station: nil`) raised (`:error`), exited (`:exit`) or threw
+      (`:throw`).
   """
   use Oban.Worker,
     queue: :weather,
@@ -59,6 +61,14 @@ defmodule WallopCore.Entropy.WeatherObservationWorker do
   # WallopCore.Test.WindowedLandObsClient. Fixed at compile time.
   @client Application.compile_env(:wallop_core, [__MODULE__, :land_obs_client], LandObsClient)
 
+  if @client != LandObsClient and Mix.env() != :test do
+    raise CompileError,
+      description:
+        "#{inspect(__MODULE__)}: :land_obs_client may be set only in the test " <>
+          "environment (got #{inspect(@client)} in #{Mix.env()}). Outside tests the " <>
+          "worker always uses #{inspect(LandObsClient)}."
+  end
+
   # The client's own timeouts are per chunk (connect 5 s, receive 10 s), so
   # each fetch is also capped here; both stations are fetched at once.
   # Fetch cap + store (5 s statement timeout) + reads stay under the job
@@ -68,12 +78,23 @@ defmodule WallopCore.Entropy.WeatherObservationWorker do
   # The last poll is made at least this long before F.
   @deadline_margin_seconds 5
 
-  @doc "The job for observation hour `weather_time`."
+  @doc """
+  The job for observation hour `weather_time`, which must be a whole UTC
+  hour (raises `ArgumentError` otherwise).
+  """
   @spec new_for_hour(DateTime.t()) :: Ecto.Changeset.t()
-  def new_for_hour(%DateTime{} = weather_time) do
+  def new_for_hour(
+        %DateTime{time_zone: "Etc/UTC", minute: 0, second: 0, microsecond: {0, _}} =
+          weather_time
+      ) do
     new(%{weather_time: hour_arg(weather_time)},
       scheduled_at: first_poll_at(weather_time)
     )
+  end
+
+  def new_for_hour(%DateTime{} = weather_time) do
+    raise ArgumentError,
+          "weather_time must be a whole UTC hour, got #{DateTime.to_iso8601(weather_time)}"
   end
 
   @doc """
@@ -208,17 +229,24 @@ defmodule WallopCore.Entropy.WeatherObservationWorker do
     result
   end
 
-  defp report(wt, _station_id, {:raised, kind, module}), do: poll_error(wt, kind, module)
+  defp report(wt, station_id, {:raised, kind, module} = result) do
+    poll_error(wt, kind, module, station_id)
+    emit_poll(wt, station_id, result)
+  end
 
-  defp report(_wt, station_id, result) do
+  defp report(wt, station_id, result), do: emit_poll(wt, station_id, result)
+
+  defp emit_poll(wt, station_id, result) do
     error =
       case result do
         {:ok, _} -> nil
         {:error, reason} -> reason
+        {:raised, kind, _module} -> {:raised, kind}
       end
 
     :telemetry.execute([:wallop_core, :weather, :poll], %{count: 1}, %{
       station: station_id,
+      weather_time: wt,
       ok?: error == nil,
       error: error
     })
@@ -253,33 +281,45 @@ defmodule WallopCore.Entropy.WeatherObservationWorker do
     })
   end
 
+  # Stops only when the database clock says F has passed. If the database
+  # can't be read (it may be what failed), it snoozes: the next run's
+  # database-clock check ends the job once F has passed. The BEAM clock is
+  # never used.
   defp poll_failed(wt, kind, module) do
-    poll_error(wt, kind, module)
+    poll_error(wt, kind, module, nil)
 
-    if DateTime.compare(clock_after_failure(), Schedule.fetch_deadline(wt)) == :gt,
-      do: :ok,
-      else: {:snooze, Schedule.poll_interval_seconds()}
+    case db_clock() do
+      {:ok, now} ->
+        if DateTime.compare(now, Schedule.fetch_deadline(wt)) == :gt,
+          do: :ok,
+          else: {:snooze, Schedule.poll_interval_seconds()}
+
+      :error ->
+        {:snooze, Schedule.poll_interval_seconds()}
+    end
   end
 
-  defp poll_error(wt, kind, module) do
+  defp poll_error(wt, kind, module, station_id) do
     detail = if module, do: " #{inspect(module)}", else: ""
+    where = if station_id, do: " from #{station_id}", else: ""
 
-    Logger.error("WeatherObservationWorker: poll for #{hour_arg(wt)} failed (#{kind}#{detail})")
+    Logger.error(
+      "WeatherObservationWorker: poll for #{hour_arg(wt)}#{where} failed (#{kind}#{detail})"
+    )
 
     :telemetry.execute([:wallop_core, :weather, :poll_error], %{count: 1}, %{
       weather_time: wt,
+      station: station_id,
       kind: kind
     })
   end
 
-  # Only decides whether to keep polling after a failure (the database may
-  # be what failed). What may be stored is decided on the database clock.
-  defp clock_after_failure do
-    Observations.db_now()
+  defp db_clock do
+    {:ok, Observations.db_now()}
   rescue
-    _ -> DateTime.utc_now()
+    _ -> :error
   catch
-    :exit, _ -> DateTime.utc_now()
+    :exit, _ -> :error
   end
 
   defp first_poll_at(wt), do: DateTime.add(wt, Schedule.first_poll_after_weather_time_seconds())

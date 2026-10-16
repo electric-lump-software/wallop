@@ -53,7 +53,7 @@ If your app includes `wallop_core` as a dependency and shares the same database,
 config :wallop_core, Oban,
   repo: WallopCore.Repo,
   prefix: "oban_app",
-  queues: [entropy: 10, webhooks: 5, default: 5],
+  queues: [entropy: 10, webhooks: 5, default: 5, weather: 5],
   plugins: []
 ```
 
