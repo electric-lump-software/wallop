@@ -79,8 +79,25 @@ defmodule WallopCore.Frequency.FreqGrammar do
   @doc """
   The `freq_value` of the window starting at `freq_start`, from decoded
   Elexon rows (`%{"measurementTime" => "YYYY-MM-DDTHH:MM:SSZ", "frequency" =>
-  {:number, text}}`), or the first reason the window is invalid. Rows are
-  matched by exact timestamp text; other rows are ignored.
+  {:number, text}}`), or the first reason the window is invalid.
+
+  The row rule:
+
+    * a row that is not a JSON object is ignored;
+    * an object row belongs to a reading time when its `measurementTime` is
+      exactly that time's text, `YYYY-MM-DDTHH:MM:SSZ` (so
+      `...T19:55:00.000Z` matches nothing); object rows at no reading time
+      are ignored;
+    * every object row that matches counts, whatever else it holds. One
+      matching row gives the reading, and a missing, null, quoted or
+      malformed `frequency` makes the window invalid. Two or more
+      matching rows make it `:duplicate`, even if their values are equal or
+      one of them has no `frequency`.
+
+  Reading times are checked in time order and the first failure is
+  returned; a stuck run is checked once all 8 readings are good. This is
+  the canonical rule: the verifier and `spec/vectors/freq-window-v1.json`
+  follow it.
   """
   @spec window_from_rows(list(), DateTime.t()) :: {:ok, String.t()} | {:error, window_error()}
   def window_from_rows(rows, %DateTime{} = freq_start) when is_list(rows) do

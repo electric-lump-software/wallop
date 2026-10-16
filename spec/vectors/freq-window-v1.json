@@ -1,0 +1,196 @@
+{
+  "description": "Grid-frequency window rule for the drand-quicknet+elexon-freq-v1 tag: raw Elexon FREQ bodies and the freq_value of the window starting at freq_start, or why the window is invalid. The rows are body.data, decoded keeping each JSON number's exact text (never through a float).",
+  "rules": [
+    "A row that is not a JSON object is ignored.",
+    "An object row belongs to a reading time when its measurementTime is exactly YYYY-MM-DDTHH:MM:SSZ for that time; other object rows are ignored.",
+    "Every matching object row counts: one gives the reading (a missing, null, quoted or malformed frequency invalidates the window); two or more are a duplicate.",
+    "A reading is the JSON number text as whole mHz: digits, at most 3 decimal places padded with zeros, no exponent, sign or leading zero; 0 is a zero reading; it must be in [47000, 52999].",
+    "8 readings 15 s apart from freq_start, in time order, joined by ';'. A run of 6 or more identical readings is stuck.",
+    "invalid.reason (and invalid.at, the reading time) is the first failure in time order, then stuck; a verifier must refuse every invalid case and may report its own reason."
+  ],
+  "freq_start": "2026-10-14T19:54:15Z",
+  "cases": [
+    {
+      "name": "real readings, newest first (49.98 reads as 49980)",
+      "body": "{\"data\":[{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:56:00Z\",\"frequency\":49.887},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:55:45Z\",\"frequency\":49.883},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:55:30Z\",\"frequency\":49.912},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:55:15Z\",\"frequency\":49.953},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:55:00Z\",\"frequency\":49.98},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:54:45Z\",\"frequency\":49.983},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:54:30Z\",\"frequency\":50.012},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:54:15Z\",\"frequency\":50.018}]}",
+      "value": "50018;50012;49983;49980;49953;49912;49883;49887"
+    },
+    {
+      "name": "rows outside the window are ignored",
+      "body": "{\"data\":[{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:56:15Z\",\"frequency\":50.002},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:56:00Z\",\"frequency\":49.887},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:55:45Z\",\"frequency\":49.883},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:55:30Z\",\"frequency\":49.912},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:55:15Z\",\"frequency\":49.953},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:55:00Z\",\"frequency\":49.98},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:54:45Z\",\"frequency\":49.983},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:54:30Z\",\"frequency\":50.012},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:54:15Z\",\"frequency\":50.018},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:54:00Z\",\"frequency\":50.001}]}",
+      "value": "50018;50012;49983;49980;49953;49912;49883;49887"
+    },
+    {
+      "name": "rows that are not objects are ignored",
+      "body": "{\"data\":[42,null,\"50.0\",[],true,{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:56:00Z\",\"frequency\":49.887},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:55:45Z\",\"frequency\":49.883},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:55:30Z\",\"frequency\":49.912},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:55:15Z\",\"frequency\":49.953},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:55:00Z\",\"frequency\":49.98},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:54:45Z\",\"frequency\":49.983},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:54:30Z\",\"frequency\":50.012},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:54:15Z\",\"frequency\":50.018}]}",
+      "value": "50018;50012;49983;49980;49953;49912;49883;49887"
+    },
+    {
+      "name": "a .000Z row alongside the real row is ignored",
+      "body": "{\"data\":[{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:55:00.000Z\",\"frequency\":50.5},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:56:00Z\",\"frequency\":49.887},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:55:45Z\",\"frequency\":49.883},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:55:30Z\",\"frequency\":49.912},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:55:15Z\",\"frequency\":49.953},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:55:00Z\",\"frequency\":49.98},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:54:45Z\",\"frequency\":49.983},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:54:30Z\",\"frequency\":50.012},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:54:15Z\",\"frequency\":50.018}]}",
+      "value": "50018;50012;49983;49980;49953;49912;49883;49887"
+    },
+    {
+      "name": "a matching row with no frequency",
+      "body": "{\"data\":[{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:56:00Z\",\"frequency\":49.887},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:55:45Z\",\"frequency\":49.883},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:55:30Z\",\"frequency\":49.912},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:55:15Z\",\"frequency\":49.953},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:55:00Z\",\"frequency\":49.98},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:54:45Z\"},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:54:30Z\",\"frequency\":50.012},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:54:15Z\",\"frequency\":50.018}]}",
+      "invalid": {
+        "reason": "invalid",
+        "at": "2026-10-14T19:54:45Z"
+      }
+    },
+    {
+      "name": "a matching row with no frequency alongside a good row",
+      "body": "{\"data\":[{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:54:45Z\"},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:56:00Z\",\"frequency\":49.887},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:55:45Z\",\"frequency\":49.883},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:55:30Z\",\"frequency\":49.912},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:55:15Z\",\"frequency\":49.953},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:55:00Z\",\"frequency\":49.98},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:54:45Z\",\"frequency\":49.983},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:54:30Z\",\"frequency\":50.012},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:54:15Z\",\"frequency\":50.018}]}",
+      "invalid": {
+        "reason": "duplicate",
+        "at": "2026-10-14T19:54:45Z"
+      }
+    },
+    {
+      "name": "a matching row with frequency null",
+      "body": "{\"data\":[{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:56:00Z\",\"frequency\":49.887},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:55:45Z\",\"frequency\":49.883},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:55:30Z\",\"frequency\":49.912},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:55:15Z\",\"frequency\":49.953},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:55:00Z\",\"frequency\":49.98},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:54:45Z\",\"frequency\":null},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:54:30Z\",\"frequency\":50.012},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:54:15Z\",\"frequency\":50.018}]}",
+      "invalid": {
+        "reason": "invalid",
+        "at": "2026-10-14T19:54:45Z"
+      }
+    },
+    {
+      "name": "a quoted frequency",
+      "body": "{\"data\":[{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:56:00Z\",\"frequency\":49.887},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:55:45Z\",\"frequency\":49.883},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:55:30Z\",\"frequency\":49.912},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:55:15Z\",\"frequency\":49.953},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:55:00Z\",\"frequency\":49.98},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:54:45Z\",\"frequency\":\"49.983\"},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:54:30Z\",\"frequency\":50.012},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:54:15Z\",\"frequency\":50.018}]}",
+      "invalid": {
+        "reason": "invalid",
+        "at": "2026-10-14T19:54:45Z"
+      }
+    },
+    {
+      "name": "a timestamp with fractional seconds does not match",
+      "body": "{\"data\":[{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:56:00Z\",\"frequency\":49.887},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:55:45Z\",\"frequency\":49.883},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:55:30Z\",\"frequency\":49.912},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:55:15Z\",\"frequency\":49.953},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:55:00.000Z\",\"frequency\":49.98},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:54:45Z\",\"frequency\":49.983},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:54:30Z\",\"frequency\":50.012},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:54:15Z\",\"frequency\":50.018}]}",
+      "invalid": {
+        "reason": "missing",
+        "at": "2026-10-14T19:55:00Z"
+      }
+    },
+    {
+      "name": "a missing reading",
+      "body": "{\"data\":[{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:56:00Z\",\"frequency\":49.887},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:55:45Z\",\"frequency\":49.883},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:55:30Z\",\"frequency\":49.912},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:55:15Z\",\"frequency\":49.953},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:54:45Z\",\"frequency\":49.983},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:54:30Z\",\"frequency\":50.012},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:54:15Z\",\"frequency\":50.018}]}",
+      "invalid": {
+        "reason": "missing",
+        "at": "2026-10-14T19:55:00Z"
+      }
+    },
+    {
+      "name": "a repeated timestamp with an equal value",
+      "body": "{\"data\":[{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:55:00Z\",\"frequency\":49.98},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:56:00Z\",\"frequency\":49.887},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:55:45Z\",\"frequency\":49.883},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:55:30Z\",\"frequency\":49.912},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:55:15Z\",\"frequency\":49.953},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:55:00Z\",\"frequency\":49.98},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:54:45Z\",\"frequency\":49.983},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:54:30Z\",\"frequency\":50.012},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:54:15Z\",\"frequency\":50.018}]}",
+      "invalid": {
+        "reason": "duplicate",
+        "at": "2026-10-14T19:55:00Z"
+      }
+    },
+    {
+      "name": "integer and one-decimal texts",
+      "body": "{\"data\":[{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:56:00Z\",\"frequency\":49.887},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:55:45Z\",\"frequency\":49.883},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:55:30Z\",\"frequency\":49.912},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:55:15Z\",\"frequency\":49.953},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:55:00Z\",\"frequency\":49.98},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:54:45Z\",\"frequency\":49.983},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:54:30Z\",\"frequency\":50.0},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:54:15Z\",\"frequency\":50}]}",
+      "value": "50000;50000;49983;49980;49953;49912;49883;49887"
+    },
+    {
+      "name": "lower bound 47 and upper bound 52.999",
+      "body": "{\"data\":[{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:56:00Z\",\"frequency\":49.887},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:55:45Z\",\"frequency\":49.883},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:55:30Z\",\"frequency\":49.912},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:55:15Z\",\"frequency\":49.953},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:55:00Z\",\"frequency\":49.98},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:54:45Z\",\"frequency\":49.983},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:54:30Z\",\"frequency\":52.999},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:54:15Z\",\"frequency\":47}]}",
+      "value": "47000;52999;49983;49980;49953;49912;49883;49887"
+    },
+    {
+      "name": "46.999 is out of bounds",
+      "body": "{\"data\":[{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:56:00Z\",\"frequency\":49.887},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:55:45Z\",\"frequency\":49.883},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:55:30Z\",\"frequency\":49.912},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:55:15Z\",\"frequency\":49.953},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:55:00Z\",\"frequency\":49.98},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:54:45Z\",\"frequency\":49.983},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:54:30Z\",\"frequency\":50.012},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:54:15Z\",\"frequency\":46.999}]}",
+      "invalid": {
+        "reason": "out_of_bounds",
+        "at": "2026-10-14T19:54:15Z"
+      }
+    },
+    {
+      "name": "53 is out of bounds",
+      "body": "{\"data\":[{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:56:00Z\",\"frequency\":49.887},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:55:45Z\",\"frequency\":49.883},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:55:30Z\",\"frequency\":49.912},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:55:15Z\",\"frequency\":49.953},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:55:00Z\",\"frequency\":49.98},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:54:45Z\",\"frequency\":49.983},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:54:30Z\",\"frequency\":50.012},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:54:15Z\",\"frequency\":53}]}",
+      "invalid": {
+        "reason": "out_of_bounds",
+        "at": "2026-10-14T19:54:15Z"
+      }
+    },
+    {
+      "name": "53.1 is out of bounds",
+      "body": "{\"data\":[{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:56:00Z\",\"frequency\":49.887},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:55:45Z\",\"frequency\":49.883},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:55:30Z\",\"frequency\":49.912},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:55:15Z\",\"frequency\":49.953},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:55:00Z\",\"frequency\":49.98},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:54:45Z\",\"frequency\":53.1},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:54:30Z\",\"frequency\":50.012},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:54:15Z\",\"frequency\":50.018}]}",
+      "invalid": {
+        "reason": "out_of_bounds",
+        "at": "2026-10-14T19:54:45Z"
+      }
+    },
+    {
+      "name": "0 is a zero reading",
+      "body": "{\"data\":[{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:56:00Z\",\"frequency\":49.887},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:55:45Z\",\"frequency\":49.883},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:55:30Z\",\"frequency\":49.912},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:55:15Z\",\"frequency\":49.953},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:55:00Z\",\"frequency\":49.98},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:54:45Z\",\"frequency\":0},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:54:30Z\",\"frequency\":50.012},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:54:15Z\",\"frequency\":50.018}]}",
+      "invalid": {
+        "reason": "zero",
+        "at": "2026-10-14T19:54:45Z"
+      }
+    },
+    {
+      "name": "0.000 is a zero reading",
+      "body": "{\"data\":[{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:56:00Z\",\"frequency\":49.887},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:55:45Z\",\"frequency\":49.883},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:55:30Z\",\"frequency\":49.912},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:55:15Z\",\"frequency\":49.953},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:55:00Z\",\"frequency\":49.98},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:54:45Z\",\"frequency\":0.000},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:54:30Z\",\"frequency\":50.012},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:54:15Z\",\"frequency\":50.018}]}",
+      "invalid": {
+        "reason": "zero",
+        "at": "2026-10-14T19:54:45Z"
+      }
+    },
+    {
+      "name": "an exponent is invalid",
+      "body": "{\"data\":[{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:56:00Z\",\"frequency\":49.887},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:55:45Z\",\"frequency\":49.883},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:55:30Z\",\"frequency\":49.912},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:55:15Z\",\"frequency\":49.953},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:55:00Z\",\"frequency\":49.98},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:54:45Z\",\"frequency\":4.9983e1},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:54:30Z\",\"frequency\":50.012},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:54:15Z\",\"frequency\":50.018}]}",
+      "invalid": {
+        "reason": "invalid",
+        "at": "2026-10-14T19:54:45Z"
+      }
+    },
+    {
+      "name": "an upper-case exponent is invalid",
+      "body": "{\"data\":[{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:56:00Z\",\"frequency\":49.887},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:55:45Z\",\"frequency\":49.883},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:55:30Z\",\"frequency\":49.912},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:55:15Z\",\"frequency\":49.953},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:55:00Z\",\"frequency\":49.98},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:54:45Z\",\"frequency\":5E1},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:54:30Z\",\"frequency\":50.012},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:54:15Z\",\"frequency\":50.018}]}",
+      "invalid": {
+        "reason": "invalid",
+        "at": "2026-10-14T19:54:45Z"
+      }
+    },
+    {
+      "name": "four decimal places are invalid",
+      "body": "{\"data\":[{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:56:00Z\",\"frequency\":49.887},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:55:45Z\",\"frequency\":49.883},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:55:30Z\",\"frequency\":49.912},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:55:15Z\",\"frequency\":49.953},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:55:00Z\",\"frequency\":49.98},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:54:45Z\",\"frequency\":49.9871},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:54:30Z\",\"frequency\":50.012},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:54:15Z\",\"frequency\":50.018}]}",
+      "invalid": {
+        "reason": "invalid",
+        "at": "2026-10-14T19:54:45Z"
+      }
+    },
+    {
+      "name": "a sign is invalid",
+      "body": "{\"data\":[{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:56:00Z\",\"frequency\":49.887},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:55:45Z\",\"frequency\":49.883},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:55:30Z\",\"frequency\":49.912},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:55:15Z\",\"frequency\":49.953},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:55:00Z\",\"frequency\":49.98},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:54:45Z\",\"frequency\":-49.9},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:54:30Z\",\"frequency\":50.012},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:54:15Z\",\"frequency\":50.018}]}",
+      "invalid": {
+        "reason": "invalid",
+        "at": "2026-10-14T19:54:45Z"
+      }
+    },
+    {
+      "name": "a run of 5 identical readings is not stuck",
+      "body": "{\"data\":[{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:56:00Z\",\"frequency\":50.013},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:55:45Z\",\"frequency\":50.012},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:55:30Z\",\"frequency\":50.011},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:55:15Z\",\"frequency\":50.0},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:55:00Z\",\"frequency\":50.0},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:54:45Z\",\"frequency\":50.0},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:54:30Z\",\"frequency\":50.0},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:54:15Z\",\"frequency\":50.0}]}",
+      "value": "50000;50000;50000;50000;50000;50011;50012;50013"
+    },
+    {
+      "name": "a run of 6 identical readings is stuck",
+      "body": "{\"data\":[{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:56:00Z\",\"frequency\":50.013},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:55:45Z\",\"frequency\":50.012},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:55:30Z\",\"frequency\":50.0},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:55:15Z\",\"frequency\":50.0},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:55:00Z\",\"frequency\":50.0},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:54:45Z\",\"frequency\":50.0},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:54:30Z\",\"frequency\":50.0},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:54:15Z\",\"frequency\":50.0}]}",
+      "invalid": {
+        "reason": "stuck"
+      }
+    },
+    {
+      "name": "a run of 6 at the end is stuck, equal texts or not",
+      "body": "{\"data\":[{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:56:00Z\",\"frequency\":50},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:55:45Z\",\"frequency\":50.0},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:55:30Z\",\"frequency\":50.000},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:55:15Z\",\"frequency\":50.00},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:55:00Z\",\"frequency\":50},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:54:45Z\",\"frequency\":50.0},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:54:30Z\",\"frequency\":50.012},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:54:15Z\",\"frequency\":50.011}]}",
+      "invalid": {
+        "reason": "stuck"
+      }
+    },
+    {
+      "name": "an alternating window is not stuck",
+      "body": "{\"data\":[{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:56:00Z\",\"frequency\":50.001},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:55:45Z\",\"frequency\":50},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:55:30Z\",\"frequency\":50.001},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:55:15Z\",\"frequency\":50},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:55:00Z\",\"frequency\":50.001},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:54:45Z\",\"frequency\":50},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:54:30Z\",\"frequency\":50.001},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:54:15Z\",\"frequency\":50}]}",
+      "value": "50000;50001;50000;50001;50000;50001;50000;50001"
+    }
+  ]
+}
