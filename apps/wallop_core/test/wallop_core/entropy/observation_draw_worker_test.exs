@@ -837,7 +837,7 @@ defmodule WallopCore.Entropy.ObservationDrawWorkerTest do
 
       # drand is down for the whole of the jobs' last attempts.
       Req.Test.stub(DrandClient, fn conn -> Plug.Conn.send_resp(conn, 503, "") end)
-      Oban.drain_queue(queue: :entropy)
+      Oban.drain_queue(queue: :v6_execution)
 
       for draw <- [outage, refused] do
         assert job_states(draw) == ["discarded"]
@@ -861,7 +861,7 @@ defmodule WallopCore.Entropy.ObservationDrawWorkerTest do
       redriven = StuckDrawRedriver.redrive()
       assert outage.id in redriven
       assert refused.id in redriven
-      Oban.drain_queue(queue: :entropy)
+      Oban.drain_queue(queue: :v6_execution)
 
       # The outage draw completes; the refused one is refused on stored
       # state, and its job is cancelled.

@@ -39,7 +39,8 @@ defmodule WallopCore.Entropy.FrequencyWindowWorker do
       `%{freq_start, kind}`: the run raised, exited or threw.
   """
   use Oban.Worker,
-    queue: :weather,
+    # Its own queue: Elexon polls never hold Land Obs fetch slots.
+    queue: :frequency,
     # Snoozes don't count against this; only crashes and timeouts do.
     max_attempts: 100,
     unique: [period: :infinity, keys: [:freq_start], states: :incomplete]
