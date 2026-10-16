@@ -8,8 +8,8 @@ defmodule WallopCore.Entropy.V6Rules do
   `:freq`.
 
   The pair is read from the draw, never from the operator's current flag.
-  An unknown pair raises `ArgumentError`; nothing falls through to another
-  tag's rules. A new tag adds one clause to `rules/1` and one to each
+  For an unknown pair `rules/1` returns `:error` and `rules!/1` raises
+  `ArgumentError`; nothing falls through to another tag's rules. A new tag adds one clause to `rules/1` and one to each
   function below.
   """
 
@@ -50,6 +50,16 @@ defmodule WallopCore.Entropy.V6Rules do
       :error -> raise ArgumentError, unknown_pair_message(schema, tag)
     end
   end
+
+  def rules!(draw) when is_map(draw),
+    do:
+      raise(
+        ArgumentError,
+        unknown_pair_message(
+          Map.get(draw, :lock_schema_version),
+          Map.get(draw, :entropy_composition)
+        )
+      )
 
   @doc """
   The refusal for an unknown pair. Same text as the draws guard's, which
@@ -137,7 +147,9 @@ defmodule WallopCore.Entropy.V6Rules do
   The tag's inputs to the execution receipt builder, from a completed draw:
   `entropy_composition`, the weather fields, and the station whose reading
   was used, read again from the store (the first station on a fallback).
-  `{:error, message}` when the draw's value isn't the stored reading.
+  `{:error, message}` when the draw's value isn't the stored reading, or
+  when the draw's seed isn't the seed of its inputs, computed again (the
+  weather seed with a value, the drand-only seed without).
 
   Grid frequency: every weather field nil, and `freq_value` and
   `freq_fallback_reason` from the draw, once `freq_value` is checked
@@ -147,7 +159,8 @@ defmodule WallopCore.Entropy.V6Rules do
   """
   @spec receipt_input(rules(), map()) :: {:ok, map()} | {:error, String.t()}
   def receipt_input(:landobs, draw) do
-    with {:ok, station} <- receipt_station(:landobs, draw) do
+    with {:ok, station} <- receipt_station(:landobs, draw),
+         :ok <- receipt_seed(:landobs, draw) do
       {:ok,
        %{
          entropy_composition: draw.entropy_composition,
@@ -161,7 +174,7 @@ defmodule WallopCore.Entropy.V6Rules do
 
   def receipt_input(:freq, draw) do
     with :ok <- receipt_window(draw),
-         :ok <- receipt_seed(draw) do
+         :ok <- receipt_seed(:freq, draw) do
       {:ok,
        %{
          entropy_composition: draw.entropy_composition,
@@ -199,17 +212,26 @@ defmodule WallopCore.Entropy.V6Rules do
   # The signer's seed re-check: the seed it signs is the tag's seed of the
   # signed inputs, computed here straight from Protocol rather than through
   # seed/4, so a wrong seed clause can't sign its own output.
-  defp receipt_seed(draw) do
-    {bytes, _json} =
-      case draw.freq_value do
-        nil -> Protocol.compute_seed(draw.entry_hash, draw.drand_randomness)
-        value -> Protocol.compute_freq_seed(draw.entry_hash, draw.drand_randomness, value)
-      end
-
-    if Base.encode16(bytes, case: :lower) == draw.seed,
-      do: :ok,
-      else: {:error, "the draw's seed is not the grid-frequency seed of its inputs"}
+  defp receipt_seed(:landobs, draw) do
+    draw.weather_value
+    |> case do
+      nil -> Protocol.compute_seed(draw.entry_hash, draw.drand_randomness)
+      value -> Protocol.compute_seed(draw.entry_hash, draw.drand_randomness, value)
+    end
+    |> same_seed(draw, "the draw's seed is not the Land Observations seed of its inputs")
   end
+
+  defp receipt_seed(:freq, draw) do
+    draw.freq_value
+    |> case do
+      nil -> Protocol.compute_seed(draw.entry_hash, draw.drand_randomness)
+      value -> Protocol.compute_freq_seed(draw.entry_hash, draw.drand_randomness, value)
+    end
+    |> same_seed(draw, "the draw's seed is not the grid-frequency seed of its inputs")
+  end
+
+  defp same_seed({bytes, _json}, draw, message),
+    do: if(Base.encode16(bytes, case: :lower) == draw.seed, do: :ok, else: {:error, message})
 
   @doc "The fallback reason signed when there is no reading."
   @spec fallback_reason(rules()) :: String.t()

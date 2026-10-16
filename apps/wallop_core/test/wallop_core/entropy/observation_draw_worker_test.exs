@@ -12,7 +12,8 @@ defmodule WallopCore.Entropy.ObservationDrawWorkerTest do
     EntropyWorker,
     ObservationDrawWorker,
     StuckDrawRedriver,
-    V6Execution
+    V6Execution,
+    V6Rules
   }
 
   alias WallopCore.Protocol
@@ -198,6 +199,27 @@ defmodule WallopCore.Entropy.ObservationDrawWorkerTest do
 
         assert_receive {[:wallop_core, :v6, :executed], ^ref, _,
                         %{station: @station, fallback?: false}}
+      end
+    end
+
+    test "the signer recomputes the seed: the weather seed matches, any other is refused" do
+      draw = v6_draw_on_round_hour(Stations.primary().id)
+      assert :ok = perform_job(ObservationDrawWorker, %{draw_id: draw.id})
+      done = reload(draw)
+
+      # Match: the completed draw's own seed is the weather seed of its inputs.
+      assert {:ok, %{weather_value: @value}} = V6Rules.receipt_input(:landobs, done)
+
+      # Mismatch: the drand-only seed, the frequency seed, or any other.
+      for {bytes, _} <- [
+            Protocol.compute_seed(done.entry_hash, @randomness),
+            Protocol.compute_freq_seed(done.entry_hash, @randomness, @value),
+            {String.duplicate(<<0>>, 32), ""}
+          ] do
+        wrong = %{done | seed: Base.encode16(bytes, case: :lower)}
+
+        assert V6Rules.receipt_input(:landobs, wrong) ==
+                 {:error, "the draw's seed is not the Land Observations seed of its inputs"}
       end
     end
 

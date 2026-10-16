@@ -379,6 +379,13 @@ defmodule WallopCore.Invariants.FrequencyTest do
 
   # A grid-frequency draw committed outside the sandbox, whose stored F is
   # `f_in` seconds from now, for its own operator, deleted on exit.
+  #
+  # The stored freq_start is deliberately not the round's window start: the
+  # round publishes an hour from now, so F derived from the round would be
+  # far ahead. Only F read from the stored freq_start (as the guard and its
+  # commit-time twin do, through wallop_v6_fetch_deadline) is a few seconds
+  # away, so the straddle tells "F from freq_start" apart from "F from the
+  # round".
   defp unboxed_freq_draw(f_in) do
     {operator, key} = unboxed(fn -> create_freq_operator() end)
     on_exit(fn -> unboxed(fn -> delete_operator!(operator.id) end) end)

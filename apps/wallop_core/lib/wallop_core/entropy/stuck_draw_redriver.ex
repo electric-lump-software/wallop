@@ -188,8 +188,8 @@ defmodule WallopCore.Entropy.StuckDrawRedriver do
     }
   end
 
-  # When the draw was due: pub(R) by its rules for an observation-weather
-  # draw, weather_time for a forecast draw.
+  # When the draw was due: pub(R) by its rules for a lock schema 6 draw,
+  # weather_time for a forecast draw.
   defp due_time(%{lock_schema_version: nil, entropy_composition: nil} = draw),
     do: {:ok, :forecast, draw.weather_time}
 
