@@ -298,6 +298,49 @@ defmodule WallopCore.Entropy.ObservationDrawWorkerTest do
       assert msg =~ "drand unavailable"
     end
 
+    test "one relay's invalid response doesn't end the attempt: the next relay is tried" do
+      {_op, draw} = v6_draw_after_deadline(60)
+      calls = :counters.new(1, [:atomics])
+
+      Req.Test.stub(DrandClient, fn conn ->
+        :counters.add(calls, 1, 1)
+        round = conn.path_info |> List.last() |> String.to_integer()
+        # The first relay answers with another round, which the client
+        # rejects as invalid; the next one answers properly.
+        round = if :counters.get(calls, 1) == 1, do: round + 1, else: round
+
+        Req.Test.json(conn, %{
+          "round" => round,
+          "randomness" => @randomness,
+          "signature" => String.duplicate("ab", 48)
+        })
+      end)
+
+      assert :ok = perform_job(ObservationDrawWorker, %{draw_id: draw.id}, attempt: 1)
+      assert :counters.get(calls, 1) == 2
+      assert reload(draw).status == :completed
+    end
+
+    test "every relay invalid is transient: earlier attempts retry, the last is a refusal, never a failed draw" do
+      ref = :telemetry_test.attach_event_handlers(self(), [[:wallop_core, :v6, :exec_refused]])
+      {_op, draw} = v6_draw_after_deadline(60)
+
+      Req.Test.stub(DrandClient, fn conn ->
+        Req.Test.json(conn, %{"round" => 1, "randomness" => "nope", "signature" => "ab"})
+      end)
+
+      assert {:error, _} = perform_job(ObservationDrawWorker, %{draw_id: draw.id}, attempt: 1)
+      assert reload(draw).status == :pending_entropy
+      refute_received {[:wallop_core, :v6, :exec_refused], ^ref, _, _}
+
+      assert {:cancel, reason} =
+               perform_job(ObservationDrawWorker, %{draw_id: draw.id}, attempt: 10)
+
+      assert reason =~ "drand unavailable after 10 attempts (all relays failed)"
+      assert reload(draw).status == :pending_entropy
+      assert_receive {[:wallop_core, :v6, :exec_refused], ^ref, _, _}
+    end
+
     test "an unrecoverable drand error is a refusal on the first attempt, never a failed draw" do
       ref = :telemetry_test.attach_event_handlers(self(), [[:wallop_core, :v6, :exec_refused]])
       {_op, draw} = v6_draw_after_deadline(60)

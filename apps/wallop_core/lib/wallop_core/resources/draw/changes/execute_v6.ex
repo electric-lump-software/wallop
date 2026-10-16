@@ -20,9 +20,10 @@ defmodule WallopCore.Resources.Draw.Changes.ExecuteV6 do
   attributes the tag sets come from `V6Rules.completion_attrs/2`.
 
   The draws guard refuses any completion that differs from the stored
-  reading or the fallback rule. The guard on the execution receipt that
-  binds its signed fields to the draw and the stored reading is not yet in
-  place; it comes with the database backstop for failed draws.
+  reading or the fallback rule, and refuses the fallback until a minute past
+  F. The execution receipt guard binds the signed receipt to the completed
+  draw, its lock receipt and the hour's stored reading (or the fallback
+  rule), so a receipt that disagrees with any of them is refused too.
   """
   use Ash.Resource.Change
 

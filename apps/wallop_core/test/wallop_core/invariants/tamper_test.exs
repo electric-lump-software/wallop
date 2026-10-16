@@ -18,12 +18,19 @@ defmodule WallopCore.Invariants.TamperTest do
           must carry a case for it, which the Rust verifier refuses;
         - `{:producer, field}`: another valid value (a later `executed_at`,
           the other listed station). No offline check can tell it from the
-          truth; only the producer, from the draw row, knows it;
+          truth; only the producer, from the draw row, knows it, and the
+          execution receipt trigger binds it to the row;
         - `{:no_layer, field}`: refused by no layer today. These are listed
           in `@no_layer_refuses` and reported, never silently accepted.
     * **Database.** Real v6 draws, locked in time on generated schedules,
       take a receipt built by the real builder (the positive control); every
       `{:db, field}` mutation is then refused with its exact message.
+      Completed v6 draws (observed from either station, or fallback) take
+      the execution receipt the signer would build; every execution
+      mutation the builder can't see (`{:verifier, _}`, `{:producer, _}`) is
+      then refused by the execution receipt trigger with its exact message,
+      except the informational `wallop_core_version`. Signed integers
+      written as a float or an exponent are refused by both triggers.
     * **Raw SQL sequences.** The lock, the receipt and each attack, in every
       order, against the draws and `operator_receipts` triggers.
     * **The tamper vectors.** The committed file is what the generator
@@ -56,7 +63,7 @@ defmodule WallopCore.Invariants.TamperTest do
                weather_station weather_time winner_count)
 
   # Execution fields that only the producer can know: another valid value
-  # is indistinguishable offline.
+  # is indistinguishable offline. The execution receipt trigger binds both.
   @producer_only ~w(executed_at weather_station)
 
   # Mutations no layer refuses today. Reported as findings. A change that
@@ -622,26 +629,157 @@ defmodule WallopCore.Invariants.TamperTest do
     end
   end
 
-  describe "INV-2 the receipt trigger and whole floats" do
+  # A signed integer written another way in the bytes: a whole float, or
+  # an exponent (which jsonb reads back as the plain integer).
+  @non_canonical [".0", ".00", "e0", "E0"]
+
+  defp retype(json, field, n, form) do
+    tampered = String.replace(json, ~s("#{field}":#{n}), ~s("#{field}":#{n}#{form}))
+    refute tampered == json
+    tampered
+  end
+
+  describe "INV-2 the receipt triggers and non-canonical integers" do
     setup do
       {_operator, key} = create_v6_operator()
       %{key: key, s: in_time_schedule()}
     end
 
-    # Reported finding, pinned as today's behaviour: the trigger compares
-    # integers as jsonb, so `7.0` equals `7`. The builder never signs it
-    # (JCS renders a whole float as an integer), and the verifier refuses
-    # it (the tamper vector's *_float cases).
-    test "INV-2 (tamper, database) a whole float in place of a signed integer is not refused",
+    # jsonb compares 7.0 equal to 7, so the triggers type the signed
+    # integers: a JSON number whose text is a canonical positive integer,
+    # in the bytes too. The builder never signs anything else (JCS renders
+    # a whole float as an integer) and the verifier refuses it (the tamper
+    # vector's *_float cases).
+    test "INV-2 (tamper, database) a lock receipt integer written as a float or an exponent is refused",
          %{key: key, s: s} do
       d = open_draw_with_entries(key)
       assert raw_lock(d, s.weather_time, s.round) == nil
       {payload, cols} = valid_receipt(d, s)
+      json = Jason.encode!(payload)
+      assert insert_receipt_json(json, cols) == nil
 
-      for field <- ~w(sequence winner_count drand_round) do
-        float = Map.update!(payload, field, &(&1 * 1.0))
-        assert Jason.encode!(float) =~ ~s("#{field}":#{payload[field]}.0), field
-        assert insert_receipt(float, cols) == nil, field
+      for field <- ~w(sequence winner_count drand_round), form <- @non_canonical do
+        assert insert_receipt_json(retype(json, field, payload[field], form), cols) ==
+                 "v6 lock receipt field #{field} must be a canonical positive integer",
+               "#{field}#{form}"
+      end
+    end
+
+    test "INV-2 (tamper, database) an execution receipt integer written as a float or an exponent is refused" do
+      for kind <- [:observed, :fallback] do
+        x = completed_v6_receipt_input(kind, hours_ago: if(kind == :observed, do: 2, else: 3))
+        json = build_exec(x.input)
+        assert insert_exec_receipt(json, x.cols) == nil, "#{kind}"
+
+        for field <- ~w(sequence drand_round), form <- @non_canonical do
+          assert insert_exec_receipt(
+                   retype(json, field, x.input[String.to_atom(field)], form),
+                   x.cols
+                 ) ==
+                   "v6 execution receipt field #{field} must be a canonical positive integer",
+                 "#{kind} #{field}#{form}"
+        end
+      end
+    end
+  end
+
+  # ── Database: the execution receipt ───────────────────────────────
+
+  @exec_weather ~w(weather_station weather_value weather_observation_time weather_fallback_reason)
+
+  defp exec_db_message(field) when field in @exec_weather,
+    do: "v6 execution receipt field #{field} does not match the stored observation"
+
+  defp exec_db_message(field), do: "v6 execution receipt field #{field} does not match the draw"
+
+  # Signed execution fields the trigger leaves alone: informational only.
+  @exec_db_unbound ~w(wallop_core_version)
+
+  describe "INV-2 the execution receipt trigger refuses every execution mutation the builder can't see" do
+    setup do
+      {_operator, key} = create_v6_operator()
+      %{key: key}
+    end
+
+    property "INV-2 (tamper, database) each builder-invisible execution mutation is refused, with a positive control",
+             %{key: key} do
+      check all(
+              kind <- member_of([:observed, :fallback]),
+              station <- member_of(Stations.ids()),
+              value <- weather_value(),
+              max_runs: 12
+            ) do
+        # An hour of its own for each run: one reading per hour.
+        hours_ago = 24 + System.unique_integer([:positive, :monotonic])
+
+        x =
+          completed_v6_receipt_input(kind,
+            api_key: key,
+            station: station,
+            value: value,
+            hours_ago: hours_ago
+          )
+
+        c = %{exec: x.input, kind: kind, round: x.round, wt: x.wt, exec_after: x.exec_after}
+
+        # Positive control: the real builder's receipt for the draw.
+        assert insert_exec_receipt(build_exec(x.input), x.cols) == nil
+
+        for {label, input, expected} <- exec_mutations(c) do
+          case expected do
+            {layer, field} when layer in [:verifier, :producer, :no_layer] ->
+              expected = if field in @exec_db_unbound, do: nil, else: exec_db_message(field)
+              assert insert_exec_receipt(build_exec(input), x.cols) == expected, label
+
+            {:raise, _} ->
+              :builder
+
+            :same_bytes ->
+              :builder
+          end
+        end
+      end
+    end
+
+    test "INV-2 (tamper, database) mutations the builder refuses, and the receipt columns, are refused by the trigger too" do
+      x = completed_v6_receipt_input(:observed, hours_ago: 4)
+      payload = x.input |> build_exec() |> Jason.decode!()
+      cols = x.cols
+      pair = "a v6 execution receipt must be schema 5 and carry its draw's entropy_composition"
+      before = rfc(DateTime.add(Quicknet.pub_time(x.round), -1, :microsecond))
+      forecast = create_draw(create_api_key())
+
+      for {label, tampered, tampered_cols, message} <- [
+            {"schema 4", %{payload | "schema_version" => "4"}, cols, pair},
+            {"forecast tag", %{payload | "entropy_composition" => Protocol.entropy_composition()},
+             cols, pair},
+            {"v2 tag", %{payload | "entropy_composition" => @v2_tag}, cols, pair},
+            {"executed_at before pub(R)", %{payload | "executed_at" => before}, cols,
+             exec_db_message("executed_at")},
+            {"station unlisted", %{payload | "weather_station" => "wmo-03772"}, cols,
+             exec_db_message("weather_station")},
+            {"reading with a fallback reason",
+             %{payload | "weather_fallback_reason" => LandObs.fallback_reason()}, cols,
+             exec_db_message("weather_fallback_reason")},
+            {"the fallback, with a reading stored",
+             %{
+               payload
+               | "weather_value" => nil,
+                 "weather_observation_time" => nil,
+                 "weather_fallback_reason" => LandObs.fallback_reason()
+             }, cols, exec_db_message("weather_value")},
+            {"column sequence", payload, %{cols | sequence: cols.sequence + 1},
+             exec_db_message("sequence")},
+            {"column operator_id", payload, %{cols | operator_id: Ecto.UUID.generate()},
+             exec_db_message("operator_id")},
+            {"column lock_receipt_hash", payload, %{cols | lock_receipt_hash: @other_hash},
+             exec_db_message("lock_receipt_hash")},
+            {"column signing_key_id", payload, %{cols | signing_key_id: "deadbeef"},
+             exec_db_message("signing_key_id")},
+            {"another (forecast) draw", payload, %{cols | draw_id: forecast.id},
+             "a schema 5 execution receipt needs a draw locked under schema 6"}
+          ] do
+        assert insert_exec_receipt(Jason.encode!(tampered), tampered_cols) == message, label
       end
     end
   end
@@ -654,7 +792,7 @@ defmodule WallopCore.Invariants.TamperTest do
   @frozen "lock_schema_version and entropy_composition are frozen once a draw has left open"
   @set_only "lock_schema_version and entropy_composition are set only when a draw leaves open"
   @append_only "operator_receipts is append-only"
-  @restrict ~s(update or delete on table "draws" violates RESTRICT setting of foreign key constraint "operator_receipts_draw_id_fkey" on table "operator_receipts")
+  @no_delete "a v6 draw can't be deleted once it has left open"
   @no_truncate "operator_receipts cannot be TRUNCATEd — use row-level DELETE with appropriate permissions"
 
   @attacks ~w(receipt2 update_round update_weather_time update_station update_chain
@@ -746,13 +884,11 @@ defmodule WallopCore.Invariants.TamperTest do
   end
 
   defp step(:delete_draw, d, _ctx, st) do
-    # Reported finding: only the receipt's foreign key protects a locked
-    # draw from DELETE, so a locked v6 draw with no receipt yet is deletable
-    # (the lock path inserts the receipt in the lock's own transaction, so
-    # that state is never committed there).
+    # A v6 draw that has left open can't be deleted, with or without its
+    # receipt; the receipt's foreign key RESTRICT is behind that.
     {expected, st} =
-      if st.receipt,
-        do: {@restrict, st},
+      if st.locked,
+        do: {@no_delete, st},
         else: {nil, %{st | exists: false, locked: false}}
 
     {keep_sql("DELETE FROM draws WHERE id = $1", [dump(d.id)]), expected, st}
@@ -988,7 +1124,8 @@ defmodule WallopCore.Invariants.TamperTest do
       end
 
       # A verifier-blind lock field is refused by the database or listed
-      # as refused by no layer; an execution one has no database layer yet.
+      # as refused by no layer. On the execution receipt the only one is
+      # wallop_core_version, which the database leaves alone too.
       for key <- @verifier_blind.lock,
           do: assert(key in @db_bound or key in @no_layer_refuses.lock, key)
 

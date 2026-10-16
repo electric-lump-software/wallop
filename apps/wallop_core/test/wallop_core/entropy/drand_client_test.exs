@@ -104,7 +104,7 @@ defmodule WallopCore.Entropy.DrandClientTest do
     end
   end
 
-  describe "fetch_with_failover/2" do
+  describe "fetch_with_failover/3" do
     test "succeeds on first relay" do
       assert {:ok, result} = DrandClient.fetch_with_failover(@chain_hash, 1000)
       assert result.randomness == "a" <> String.duplicate("0", 63)
@@ -146,6 +146,47 @@ defmodule WallopCore.Entropy.DrandClientTest do
       end)
 
       assert {:error, :not_found} = DrandClient.fetch_with_failover(@chain_hash, 999)
+    end
+
+    test "by default an invalid response ends the fetch at that relay" do
+      calls = :counters.new(1, [:atomics])
+
+      Req.Test.stub(DrandClient, fn conn ->
+        :counters.add(calls, 1, 1)
+        Req.Test.json(conn, %{"round" => 1, "randomness" => "nope", "signature" => "ab"})
+      end)
+
+      assert {:error, :invalid_response} = DrandClient.fetch_with_failover(@chain_hash, 1000)
+      assert :counters.get(calls, 1) == 1
+    end
+
+    test "with on_invalid: :next, a relay's invalid response moves on to the next relay" do
+      calls = :counters.new(1, [:atomics])
+
+      Req.Test.stub(DrandClient, fn conn ->
+        :counters.add(calls, 1, 1)
+
+        if :counters.get(calls, 1) == 1,
+          do: Req.Test.json(conn, %{"round" => 999, "randomness" => "nope", "signature" => "ab"}),
+          else: handle_request(conn)
+      end)
+
+      assert {:ok, %{round: 1000}} =
+               DrandClient.fetch_with_failover(@chain_hash, 1000, on_invalid: :next)
+
+      assert :counters.get(calls, 1) == 2
+    end
+
+    test "with on_invalid: :next, every relay invalid is all_relays_failed" do
+      Req.Test.stub(DrandClient, fn conn ->
+        Req.Test.json(conn, %{"round" => 999, "randomness" => "nope", "signature" => "ab"})
+      end)
+
+      assert {:error, {:all_relays_failed, errors}} =
+               DrandClient.fetch_with_failover(@chain_hash, 1000, on_invalid: :next)
+
+      assert errors != []
+      assert Enum.all?(errors, &match?({_relay, :invalid_response}, &1))
     end
 
     test "returns error when all relays fail" do

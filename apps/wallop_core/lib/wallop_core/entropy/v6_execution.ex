@@ -20,7 +20,9 @@ defmodule WallopCore.Entropy.V6Execution do
     1. **This module.** It never marks a draw failed: there is no path from
        here to `mark_failed`. Every outcome after pub(R) is one of:
        * success;
-       * a retry (`{:error, _}`) for a transient drand failure or a failed
+       * a retry (`{:error, _}`) for a transient drand failure (one relay's
+         invalid response moves on to the next relay; every relay failing,
+         invalid responses included, is transient) or a failed
          execution, which rolls back as one unit; when the job runs out of
          attempts Oban discards it and the draw stays where it is;
        * a refusal: drand still unavailable on the job's last attempt, an
@@ -32,11 +34,11 @@ defmodule WallopCore.Entropy.V6Execution do
          the job; the re-drive cron brings the draw back;
        * a wait (`WallopCore.Errors.V6NotYet`, for example the app clock
          behind the database's), which snoozes with nothing written.
-    2. **The database** (not yet in place: it comes with the execution
-       receipt guard). The draws guard will refuse moving an
+    2. **The database.** The draws guard refuses moving an
        observation-weather draw to `failed` once the database clock is at or
-       past pub(R), whatever path tries it. Failing before pub(R) stays
-       allowed: that is a visible abort before anything is knowable.
+       past pub(R), from any status and whatever path tries it. Failing
+       before pub(R) stays allowed: that is a visible abort before anything
+       is knowable.
 
   Telemetry: `[:wallop_core, :v6, :executed]` (`%{station, fallback?}`),
   `[:wallop_core, :v6, :execute_error]` (`%{draw_id}`) and
@@ -91,7 +93,9 @@ defmodule WallopCore.Entropy.V6Execution do
     do: max(DateTime.diff(retry_at, now) + @not_yet_margin_seconds, @not_yet_floor_seconds)
 
   defp fetch_and_execute(draw, attempt, max_attempts) do
-    case DrandClient.fetch_with_failover(draw.drand_chain, draw.drand_round) do
+    # One relay's invalid response must not end the attempt: try the next.
+    # If every relay fails, that is transient like any other outage.
+    case DrandClient.fetch_with_failover(draw.drand_chain, draw.drand_round, on_invalid: :next) do
       {:ok, drand} -> execute(draw, drand)
       {:error, reason} -> drand_failed(draw, reason, attempt, max_attempts)
     end
@@ -174,8 +178,7 @@ defmodule WallopCore.Entropy.V6Execution do
   # an unrecoverable one, or one on the last attempt, is a refusal.
   defp drand_failed(draw, reason, attempt, max_attempts) do
     cond do
-      match?({:unexpected_status, s} when s in [401, 403], reason) or
-          reason == :invalid_response ->
+      match?({:unexpected_status, s} when s in [401, 403], reason) ->
         refuse(draw, "drand unrecoverable error (#{drand_error(reason)})")
 
       attempt >= max_attempts ->
