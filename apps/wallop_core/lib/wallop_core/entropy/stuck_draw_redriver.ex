@@ -56,8 +56,8 @@ defmodule WallopCore.Entropy.StuckDrawRedriver do
   Each insert emits `[:wallop_core, :redrive, :reinserted]` with
   `%{count: 1}` and metadata `%{kind: :execution | :fetch, protocol:
   :observation | :frequency | :forecast}`, plus `draw_id` or
-  `weather_time`, and logs a
-  warning. A draw re-driven again and again is a fault worth an alert.
+  `weather_time`, and logs a warning. A draw re-driven again and again is
+  a fault worth an alert.
   """
   use Oban.Worker, queue: :default, max_attempts: 3
 
@@ -222,14 +222,14 @@ defmodule WallopCore.Entropy.StuckDrawRedriver do
 
   defp before?(a, b), do: DateTime.compare(a, b) == :lt
 
-  # The live-job check above already ran. Each worker is unique on draw_id
-  # among live jobs, so a race with another inserter is a conflict, not a
-  # second job. EntropyWorker's own uniqueness also counts completed jobs,
-  # so the re-drive narrows it to live ones, as ObservationDrawWorker has.
   # The telemetry label of a schema 6 draw's rules.
   defp protocol(:landobs), do: :observation
   defp protocol(:freq), do: :frequency
 
+  # The live-job check above already ran. Each worker is unique on draw_id
+  # among live jobs, so a race with another inserter is a conflict, not a
+  # second job. EntropyWorker's own uniqueness also counts completed jobs,
+  # so the re-drive narrows it to live ones, as ObservationDrawWorker has.
   defp insert_execution(protocol, id) when protocol in [:observation, :frequency],
     do: Oban.insert(ObservationDrawWorker.new(%{draw_id: id}))
 

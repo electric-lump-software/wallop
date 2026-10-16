@@ -93,7 +93,8 @@ defmodule WallopCore.Resources.Draw.LockFreqRefusalsTest do
           "Observation-weather and grid-frequency operators only",
           "a forecast operator's lock is refused if it sends draw_at",
           "the observation hour minus 46 minutes (observation weather)",
-          "60 seconds before the first of the 8 grid-frequency readings",
+          "60 seconds before the first of the 8 grid-frequency readings " <>
+            "(at least 7 minutes before the result)",
           "meta.latest_lock_at"
         ] do
       assert text =~ phrase, phrase
