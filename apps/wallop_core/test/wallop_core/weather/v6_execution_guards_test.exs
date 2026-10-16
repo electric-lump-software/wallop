@@ -403,7 +403,7 @@ defmodule WallopCore.Weather.V6ExecutionGuardsTest do
       assert insert_exec_receipt(build(later.input), later.cols) == nil
     end
 
-    test "failing is refused from pub(R), allowed before it" do
+    test "failing is refused from F, allowed before it" do
       {_op, key} = create_v6_operator()
       fail = "UPDATE draws SET status = 'failed' WHERE id = $1"
 
@@ -411,7 +411,14 @@ defmodule WallopCore.Weather.V6ExecutionGuardsTest do
         put_v6_awaiting!(open_draw_with_entries(key), wt_with_deadline_ago(60), round_at(-10))
 
       assert try_sql(fail, [dump(published.id)]) ==
-               "a v6 draw can't fail once its drand round is published"
+               "a v6 draw can't fail once its fetch deadline has passed"
+
+      # Past F, its round still 6 seconds off.
+      past_f =
+        put_v6_awaiting!(open_draw_with_entries(key), wt_with_deadline_ago(60), round_at(6))
+
+      assert try_sql(fail, [dump(past_f.id)]) ==
+               "a v6 draw can't fail once its fetch deadline has passed"
 
       ahead =
         put_v6_awaiting!(open_draw_with_entries(key), wt_with_deadline_ago(-600), round_at(600))

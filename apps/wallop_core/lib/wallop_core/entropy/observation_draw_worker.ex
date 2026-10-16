@@ -11,7 +11,8 @@ defmodule WallopCore.Entropy.ObservationDrawWorker do
   layers keep that true, described in `WallopCore.Entropy.V6Execution`: the
   executor has no path to `mark_failed` (it retries, waits, or cancels and
   leaves the draw for the re-drive), and the draws guard refuses `failed`
-  once the database clock is at or past pub(R).
+  once the database clock is at or past the fetch deadline F, a minute or
+  more before pub(R).
 
   Unique on `draw_id` among live jobs only (Oban's `:incomplete` group:
   available, scheduled, executing, retryable, suspended), so a cancelled or
