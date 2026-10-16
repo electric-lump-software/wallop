@@ -8,8 +8,13 @@ defmodule WallopCore.Entropy.DrandClient do
 
   Bodies are read through a size cap (`max_body_bytes/0`; a beacon is about
   200 bytes) and only uncompressed, so a relay can't make the node buffer
-  an unbounded response. A body over the cap, or one that isn't a JSON
-  object, is `{:error, :invalid_response}`.
+  an unbounded response.
+
+  A body over the cap, or one that isn't a JSON object (an array, null, a
+  CDN's HTML page), is `{:error, :malformed_body}`: a transient fault of
+  the relay or the network in between, like a 5xx, so it fails over to the
+  next relay and callers retry. `{:error, :invalid_response}` is kept for a
+  JSON object that is the wrong beacon (wrong round, bad randomness).
   """
 
   @base_url "https://api.drand.sh"
@@ -36,7 +41,8 @@ defmodule WallopCore.Entropy.DrandClient do
   @doc """
   Fetch a specific round, trying multiple relays on failure.
 
-  Fails over on transport errors, timeouts, and 5xx responses.
+  Fails over on transport errors, timeouts, 5xx responses and malformed
+  bodies (`:malformed_body`).
   By default does NOT fail over on 404 (round not yet produced), 401/403,
   or invalid responses.
 
@@ -106,7 +112,7 @@ defmodule WallopCore.Entropy.DrandClient do
 
     case get(url) do
       {:ok, %Req.Response{private: %{body_too_large: true}}} ->
-        {:error, :invalid_response}
+        {:error, :malformed_body}
 
       {:ok, %Req.Response{status: 200, body: body}} ->
         parse_and_validate(body, chain_hash, round)
@@ -135,7 +141,7 @@ defmodule WallopCore.Entropy.DrandClient do
 
     case get(url) do
       {:ok, %Req.Response{private: %{body_too_large: true}}} ->
-        {:error, :invalid_response}
+        {:error, :malformed_body}
 
       {:ok, %Req.Response{status: 200, body: %{"round" => round}}} when is_integer(round) ->
         {:ok, round}
@@ -149,9 +155,9 @@ defmodule WallopCore.Entropy.DrandClient do
   end
 
   # Anything but a JSON object (an array, a string, null, a non-JSON page)
-  # is invalid, never a crash.
+  # is malformed, never a crash.
   defp parse_and_validate(body, _chain_hash, _expected_round) when not is_map(body),
-    do: {:error, :invalid_response}
+    do: {:error, :malformed_body}
 
   defp parse_and_validate(body, _chain_hash, expected_round) do
     with {:ok, randomness} <- Map.fetch(body, "randomness"),

@@ -21,8 +21,9 @@ defmodule WallopCore.Entropy.V6Execution do
        here to `mark_failed`. Every outcome after pub(R) is one of:
        * success;
        * a retry (`{:error, _}`) for a transient drand failure (one relay's
-         invalid response, 404, 401 or 403 moves on to the next relay; every
-         relay failing, and the fetch raising, are transient) or a failed
+         invalid response, malformed body, 404, 401 or 403 moves on to the
+         next relay; every relay failing, and the fetch raising, are
+         transient) or a failed
          execution, which rolls back as one unit; when the job runs out of
          attempts Oban discards it and the draw stays where it is;
        * a refusal: drand still unavailable on the job's last attempt, or

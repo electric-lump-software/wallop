@@ -233,6 +233,9 @@ defmodule WallopCore.Entropy.EntropyWorker do
 
   defp permanent_error?({:unexpected_status, status}) when status in [401, 403], do: true
   defp permanent_error?(:invalid_response), do: true
+  # A body that isn't a JSON object, or is over the cap: a relay or CDN
+  # glitch, retried like a network error.
+  defp permanent_error?(:malformed_body), do: false
   defp permanent_error?(_), do: false
 
   defp format_permanent({:unexpected_status, status}), do: "HTTP #{status} — check credentials"
