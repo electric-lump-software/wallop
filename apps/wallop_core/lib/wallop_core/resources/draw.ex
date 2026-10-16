@@ -1037,13 +1037,42 @@ defmodule WallopCore.Resources.Draw do
         )
       end
 
+      argument :draw_at, :utc_datetime_usec do
+        allow_nil?(true)
+
+        description(
+          "Observation-weather operators only. When the result should be produced (UTC, second " <>
+            "precision, on drand quicknet's 3-second grid; any whole minute is). Entries close at " <>
+            "the observation hour minus 46 minutes; a later lock is refused with meta.latest_lock_at. " <>
+            "Defaults to the earliest allowed time. Can't be combined with weather_time."
+        )
+      end
+
+      # Records the operator's protocol on the draw (lock schema "6", or
+      # nothing for forecast). Every change below follows the recorded value.
+      change({WallopCore.Resources.Draw.Changes.ResolveLockSchema, []})
       validate({WallopCore.Resources.Draw.Validations.WeatherTime, []})
 
       change({WallopCore.Resources.Draw.Changes.LockDraw, []})
-      change({WallopCore.Resources.Draw.Changes.DeclareEntropy, []})
+
+      change({WallopCore.Resources.Draw.Changes.DeclareEntropy, []},
+        where: [{WallopCore.Resources.Draw.Validations.LockSchemaIs, version: nil}]
+      )
+
+      change({WallopCore.Resources.Draw.Changes.DeclareEntropyV6, []},
+        where: [{WallopCore.Resources.Draw.Validations.LockSchemaIs, version: "6"}]
+      )
+
       change({WallopCore.Resources.Draw.Changes.RecordStageTimestamp, key: "locked_at"})
       change({WallopCore.Resources.Draw.Changes.RecordStageTimestamp, key: "entropy_declared_at"})
-      change({WallopCore.Resources.Draw.Changes.SignAndStoreReceipt, []})
+
+      change({WallopCore.Resources.Draw.Changes.SignAndStoreReceipt, []},
+        where: [{WallopCore.Resources.Draw.Validations.LockSchemaIs, version: nil}]
+      )
+
+      change({WallopCore.Resources.Draw.Changes.SignAndStoreReceipt, version: "6"},
+        where: [{WallopCore.Resources.Draw.Validations.LockSchemaIs, version: "6"}]
+      )
     end
 
     update :transition_to_pending do

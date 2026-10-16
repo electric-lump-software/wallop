@@ -37,7 +37,6 @@ defmodule WallopCore.Invariants.LockAndGuardTest do
   # ── INV-1 ─────────────────────────────────────────────────────────
 
   describe "INV-1 a v6 draw can't leave open once the DB clock is past weather_time - 46m" do
-    @tag :pending_task_11
     test "INV-1 (Ash lock) the lock action refuses a draw time whose latest lock has passed",
          %{draw: d, key: key, s: s} do
       for late <- missed_schedules() do
