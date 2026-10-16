@@ -504,6 +504,7 @@ defmodule WallopCore.Protocol do
     input
     |> lock_fields(@v6_lock_schema_version, tag)
     |> merge_tag_fields!(module.lock_fields(input))
+    |> assert_tag_timestamps!()
     |> Jcs.encode()
   end
 
@@ -523,6 +524,7 @@ defmodule WallopCore.Protocol do
     input
     |> execution_fields(@v6_execution_schema_version, tag)
     |> merge_tag_fields!(module.exec_fields(input))
+    |> assert_tag_timestamps!()
     |> Jcs.encode()
   end
 
@@ -574,6 +576,19 @@ defmodule WallopCore.Protocol do
 
   defp require_quicknet_chain!(_input) do
     raise ArgumentError, "lock v6 / execution v5 input must carry :drand_chain"
+  end
+
+  # Signed timestamps a tag may add. Each one present goes through the same
+  # canonical-form tripwire as the base timestamps.
+  @v6_tag_timestamp_keys ["freq_start"]
+
+  defp assert_tag_timestamps!(payload) do
+    assert_canonical_timestamps!(
+      payload,
+      Enum.filter(@v6_tag_timestamp_keys, &Map.has_key?(payload, &1))
+    )
+
+    payload
   end
 
   # A tag may add fields, never replace a base field. Keys must be strings,
