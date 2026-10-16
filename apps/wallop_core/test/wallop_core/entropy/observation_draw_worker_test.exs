@@ -305,17 +305,24 @@ defmodule WallopCore.Entropy.ObservationDrawWorkerTest do
       calls = :counters.new(1, [:atomics])
 
       Req.Test.stub(DrandClient, fn conn ->
-        :counters.add(calls, 1, 1)
-        round = conn.path_info |> List.last() |> String.to_integer()
-        # The first relay answers with another round, which the client
-        # rejects as invalid; the next one answers properly.
-        round = if :counters.get(calls, 1) == 1, do: round + 1, else: round
+        case List.last(conn.path_info) do
+          # The clock skew check's request, not a fetch of the round.
+          "latest" ->
+            Plug.Conn.send_resp(conn, 404, "")
 
-        Req.Test.json(conn, %{
-          "round" => round,
-          "randomness" => @randomness,
-          "signature" => @signature
-        })
+          last ->
+            :counters.add(calls, 1, 1)
+            round = String.to_integer(last)
+            # The first relay answers with another round, which the client
+            # rejects as invalid; the next one answers properly.
+            round = if :counters.get(calls, 1) == 1, do: round + 1, else: round
+
+            Req.Test.json(conn, %{
+              "round" => round,
+              "randomness" => @randomness,
+              "signature" => @signature
+            })
+        end
       end)
 
       assert :ok = perform_job(ObservationDrawWorker, %{draw_id: draw.id}, attempt: 1)
@@ -343,18 +350,37 @@ defmodule WallopCore.Entropy.ObservationDrawWorkerTest do
       assert_receive {[:wallop_core, :v6, :exec_refused], ^ref, _, _}
     end
 
-    test "an unrecoverable drand error is a refusal on the first attempt, never a failed draw" do
+    test "every relay's 403 is transient: retried, a refusal only on the last attempt, never a failed draw" do
+      # The public relays take no credentials, so a 403 is one relay's
+      # answer, not a verdict on the fetch.
       ref = :telemetry_test.attach_event_handlers(self(), [[:wallop_core, :v6, :exec_refused]])
       {_op, draw} = v6_draw_after_deadline(60)
       Req.Test.stub(DrandClient, fn conn -> Plug.Conn.send_resp(conn, 403, "") end)
 
-      assert {:cancel, reason} =
-               perform_job(ObservationDrawWorker, %{draw_id: draw.id}, attempt: 1)
+      assert {:error, _} = perform_job(ObservationDrawWorker, %{draw_id: draw.id}, attempt: 1)
+      assert reload(draw).status == :pending_entropy
+      refute_received {[:wallop_core, :v6, :exec_refused], ^ref, _, _}
 
-      assert reason =~ "drand unrecoverable error"
+      assert {:cancel, reason} =
+               perform_job(ObservationDrawWorker, %{draw_id: draw.id}, attempt: 10)
+
+      assert reason =~ "drand unavailable after 10 attempts (all relays failed)"
       assert reload(draw).status == :pending_entropy
       assert_receive {[:wallop_core, :v6, :exec_refused], ^ref, _, %{reason: msg}}
       assert msg =~ "drand"
+    end
+
+    test "every relay's 404 after pub(R) is transient too" do
+      {_op, draw} = v6_draw_after_deadline(60)
+      Req.Test.stub(DrandClient, fn conn -> Plug.Conn.send_resp(conn, 404, "") end)
+
+      assert {:error, _} = perform_job(ObservationDrawWorker, %{draw_id: draw.id}, attempt: 1)
+
+      assert {:cancel, reason} =
+               perform_job(ObservationDrawWorker, %{draw_id: draw.id}, attempt: 10)
+
+      assert reason =~ "drand unavailable after 10 attempts (not_found)"
+      assert reload(draw).status == :pending_entropy
     end
 
     test "an entry hash mismatch after the fetch is a refusal, never a retry or a failed draw" do
@@ -553,6 +579,69 @@ defmodule WallopCore.Entropy.ObservationDrawWorkerTest do
         source = File.read!(Path.join(lib, file))
         refute source =~ ~r/fail_draw_with_reason|:mark_failed|mark_failed\(/, file
       end
+    end
+  end
+
+  describe "clock skew alarm" do
+    # Answers the round fetch as usual and drand's latest round as given.
+    defp stub_latest(latest) do
+      Req.Test.stub(DrandClient, fn conn ->
+        round =
+          case List.last(conn.path_info) do
+            "latest" -> latest
+            last -> String.to_integer(last)
+          end
+
+        Req.Test.json(conn, %{
+          "round" => round,
+          "randomness" => @randomness,
+          "signature" => @signature
+        })
+      end)
+    end
+
+    test "a database clock far from drand's latest round is reported, and the draw still runs" do
+      ref = :telemetry_test.attach_event_handlers(self(), [[:wallop_core, :v6, :clock_skew]])
+      {_op, draw} = v6_draw_after_deadline(60)
+      # drand says its latest round published a minute ago: the database
+      # clock is a minute ahead of drand (or the relay a minute behind).
+      stub_latest(round_at(-60))
+
+      assert :ok = perform_job(ObservationDrawWorker, %{draw_id: draw.id}, attempt: 1)
+      assert reload(draw).status == :completed
+
+      assert_receive {[:wallop_core, :v6, :clock_skew], ^ref, %{skew_ms: skew_ms}, %{draw_id: id}}
+
+      assert id == draw.id
+      assert skew_ms > 55_000
+    end
+
+    test "a database clock behind drand's latest round is reported with a negative skew" do
+      ref = :telemetry_test.attach_event_handlers(self(), [[:wallop_core, :v6, :clock_skew]])
+      {_op, draw} = v6_draw_after_deadline(60)
+      stub_latest(round_at(30))
+
+      assert :ok = perform_job(ObservationDrawWorker, %{draw_id: draw.id}, attempt: 1)
+      assert_receive {[:wallop_core, :v6, :clock_skew], ^ref, %{skew_ms: skew_ms}, _}
+      assert skew_ms < -25_000
+    end
+
+    test "a database clock in step with drand is not reported" do
+      ref = :telemetry_test.attach_event_handlers(self(), [[:wallop_core, :v6, :clock_skew]])
+      {_op, draw} = v6_draw_after_deadline(60)
+      stub_latest(round_at(-3))
+
+      assert :ok = perform_job(ObservationDrawWorker, %{draw_id: draw.id}, attempt: 1)
+      refute_received {[:wallop_core, :v6, :clock_skew], ^ref, _, _}
+    end
+
+    test "a failed latest-round request changes nothing" do
+      ref = :telemetry_test.attach_event_handlers(self(), [[:wallop_core, :v6, :clock_skew]])
+      {_op, draw} = v6_draw_after_deadline(60)
+      # The setup stub can't answer "latest": the check's request raises.
+      assert :ok = perform_job(ObservationDrawWorker, %{draw_id: draw.id}, attempt: 1)
+      assert reload(draw).status == :completed
+      refute_received {[:wallop_core, :v6, :clock_skew], ^ref, _, _}
     end
   end
 end

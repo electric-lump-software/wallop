@@ -3,9 +3,12 @@ defmodule WallopCore.Entropy.WeatherObservationWorker do
   Fetches the Land Observations reading for one observation hour and stores
   it once for that hour, for every observation-weather draw waiting on it.
 
-  One job per hour (unique on `weather_time`), however many draws lock for
-  it. Build it with `new_for_hour/1`, which writes the hour in one canonical
-  form and schedules the first poll for weather_time + 5 min.
+  One live job per hour (unique on `weather_time` among incomplete jobs),
+  however many draws lock for it. A finished job (completed, cancelled or
+  discarded) never blocks a new one for its hour, so a stray finished row
+  can't silently swallow the hour's fetch. A second job is harmless: the
+  store is first write wins, so it can't change a stored reading. Build it with `new_for_hour/1`, which writes the hour in one
+  canonical form and schedules the first poll for weather_time + 5 min.
 
   Each run polls both stations (the backup too, so its latency is measured)
   and then reads the database clock. That clock alone decides what may be
@@ -50,7 +53,7 @@ defmodule WallopCore.Entropy.WeatherObservationWorker do
     queue: :weather,
     # Snoozes don't count against this; only crashes and timeouts do.
     max_attempts: 100,
-    unique: [period: :infinity, keys: [:weather_time]]
+    unique: [period: :infinity, keys: [:weather_time], states: :incomplete]
 
   require Logger
 
