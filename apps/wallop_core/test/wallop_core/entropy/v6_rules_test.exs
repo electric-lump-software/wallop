@@ -63,13 +63,28 @@ defmodule WallopCore.Entropy.V6RulesTest do
            }
   end
 
+  # A completed Land Obs fallback draw as the signer sees it.
+  defp landobs_fallback(overrides \\ %{}) do
+    hash = String.duplicate("ab", 32)
+    r = String.duplicate("c", 64)
+    {seed, _} = Protocol.compute_seed(hash, r)
+
+    Map.merge(
+      %{
+        entropy_composition: @landobs,
+        entry_hash: hash,
+        drand_randomness: r,
+        seed: Base.encode16(seed, case: :lower),
+        weather_value: nil,
+        weather_observation_time: nil,
+        weather_fallback_reason: Protocol.landobs_fallback_reason()
+      },
+      overrides
+    )
+  end
+
   test "a fallback's receipt input names the first station and carries the draw's tag" do
-    draw = %{
-      entropy_composition: @landobs,
-      weather_value: nil,
-      weather_observation_time: nil,
-      weather_fallback_reason: Protocol.landobs_fallback_reason()
-    }
+    draw = landobs_fallback()
 
     assert V6Rules.receipt_input(:landobs, draw) ==
              {:ok,
@@ -80,6 +95,30 @@ defmodule WallopCore.Entropy.V6RulesTest do
                 weather_observation_time: nil,
                 weather_fallback_reason: Protocol.landobs_fallback_reason()
               }}
+  end
+
+  test "the signer recomputes a Land Obs fallback's seed: any other seed is refused" do
+    hash = String.duplicate("ab", 32)
+    r = String.duplicate("c", 64)
+
+    for {bytes, _} <- [
+          Protocol.compute_seed(hash, r, "141;1025;85;2432"),
+          Protocol.compute_freq_seed(hash, r, "141;1025;85;2432"),
+          {String.duplicate(<<0>>, 32), ""}
+        ] do
+      seed = Base.encode16(bytes, case: :lower)
+
+      assert V6Rules.receipt_input(:landobs, landobs_fallback(%{seed: seed})) ==
+               {:error, "the draw's seed is not the Land Observations seed of its inputs"}
+    end
+
+    assert {:error, _} = V6Rules.receipt_input(:landobs, landobs_fallback(%{seed: nil}))
+  end
+
+  test "rules!/1 raises ArgumentError for a map without the pair keys" do
+    assert_raise ArgumentError, V6Rules.unknown_pair_message(nil, nil), fn ->
+      V6Rules.rules!(%{})
+    end
   end
 
   test "seeds: with the reading, or drand alone" do
