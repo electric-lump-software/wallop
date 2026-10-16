@@ -46,7 +46,10 @@ defmodule WallopCore.Invariants.LockAndGuardTest do
                  |> Ash.update()
 
         assert error.field == :draw_at
-        assert Keyword.get(error.vars, :latest_lock_at) == rfc(late.latest_lock_at)
+
+        assert Keyword.get(error.vars, :latest_lock_at) ==
+                 DateTime.to_iso8601(DateTime.truncate(late.latest_lock_at, :second))
+
         assert_still_open(d)
       end
 

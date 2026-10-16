@@ -127,7 +127,7 @@ defmodule WallopCore.Resources.Draw.LockV6Test do
     assert error.field == :draw_at
 
     assert Keyword.get(error.vars, :latest_lock_at) ==
-             WallopCore.Time.to_rfc3339_usec(s.latest_lock_at)
+             DateTime.to_iso8601(DateTime.truncate(s.latest_lock_at, :second))
 
     open = reload(draw)
     assert open.status == :open

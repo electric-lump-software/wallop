@@ -44,7 +44,9 @@ defmodule WallopWeb.Api.LockV6Test do
     } do
       late = top_of_hour(-1)
       {:ok, s} = Schedule.schedule(late)
-      latest = WallopCore.Time.to_rfc3339_usec(s.latest_lock_at)
+      latest = s.latest_lock_at |> DateTime.truncate(:second) |> DateTime.to_iso8601()
+      # Whole seconds: the observation hour minus 46 minutes.
+      assert latest =~ ~r/\A\d{4}-\d\d-\d\dT\d\d:14:00Z\z/
 
       [error] = lock(key, draw, %{"draw_at" => DateTime.to_iso8601(late)}, 400)["errors"]
 
@@ -53,7 +55,7 @@ defmodule WallopWeb.Api.LockV6Test do
       assert error["source"]["pointer"] == "/data/attributes/draw_at"
       assert error["meta"]["latest_lock_at"] == latest
       assert {:ok, _, 0} = DateTime.from_iso8601(error["meta"]["latest_lock_at"])
-      assert error["detail"] == "is too late to lock for: lock by #{latest} for this draw time"
+      assert error["detail"] == "is too late: this draw must be locked by #{latest}"
 
       ok = lock(key, draw, %{}, 200)
       assert ok["data"]["attributes"]["status"] == "awaiting_entropy"
@@ -76,6 +78,38 @@ defmodule WallopWeb.Api.LockV6Test do
     end
   end
 
+  describe "a late refusal at signing" do
+    alias WallopCore.Resources.Draw.Changes.SignAndStoreReceipt
+
+    defp render(error),
+      do:
+        AshJsonApi.Error.to_json_api_errors(
+          WallopCore.Domain,
+          WallopCore.Resources.Draw,
+          %Ash.Error.Invalid{errors: [error]},
+          :update
+        )
+
+    @wt ~U[2026-10-14 19:00:00.000000Z]
+    @late ~U[2026-10-14 18:14:00.000001Z]
+
+    test "with draw_at sent, it points at draw_at" do
+      [error] = render(SignAndStoreReceipt.v6_lock_time_error(@late, @wt, :draw_at))
+      assert error.source_pointer == "/data/attributes/draw_at"
+      assert error.code == "invalid_argument"
+      assert error.meta[:latest_lock_at] == "2026-10-14T18:14:00Z"
+    end
+
+    test "without draw_at, it is an action-level error with no pointer" do
+      [error] = render(SignAndStoreReceipt.v6_lock_time_error(@late, @wt, nil))
+      assert error.source_pointer in [nil, :undefined]
+      assert error.status_code == 400
+      assert error.code == "invalid_argument"
+      assert error.meta[:latest_lock_at] == "2026-10-14T18:14:00Z"
+      assert error.detail =~ "is too late: this draw must be locked by"
+    end
+  end
+
   describe "forecast operators" do
     setup do
       key = create_api_key()
@@ -90,7 +124,7 @@ defmodule WallopWeb.Api.LockV6Test do
       assert error["source"]["pointer"] == "/data/attributes/draw_at"
 
       assert error["detail"] ==
-               "is only available to operators on the observation weather protocol"
+               "is only available to operators on the observation-weather protocol"
 
       assert error["meta"] == %{}
     end
