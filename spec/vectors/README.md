@@ -41,7 +41,7 @@ the current protocol.
 
 ### Entropy grammars
 
-- `freq-window-v1.json` — the grid-frequency window rule (tag `drand-quicknet+elexon-freq-v1`): raw Elexon FREQ bodies and the `freq_value` of the window at `freq_start`, or `invalid` with the first failing reason (and reading time). Shape: `{description, rules, freq_start, cases: [{name, body, value} | {name, body, invalid: {reason, at?}}]}`; `body` is the response text, its rows are `body.data`, and every number is read from its JSON text. Covers the row rule (non-objects ignored; every matching object row counts, so a row with no `frequency` invalidates the window or makes it a duplicate), exact-text timestamps (`...T19:55:00.000Z` matches nothing), the bounds, the number grammar and stuck runs of 5 and 6. A verifier must refuse every `invalid` case; the reason is core's.
+- `freq-window-v1.json` — the grid-frequency window rule (tag `drand-quicknet+elexon-freq-v1`): raw Elexon FREQ bodies and the `freq_value` of the window at `freq_start`, or `invalid` with the first failing reason (and reading time). Shape: `{description, rules, freq_start, cases: [{name, body, value} | {name, body, invalid: {reason, at?}}]}`; `body` is the response text, its rows are `body.data`, and every number is read from its JSON text. Covers the row rule (non-objects ignored; every matching object row counts, so a row with no `frequency` invalidates the window or makes it a duplicate), exact-text timestamps (`...T19:55:00.000Z` matches nothing), repeated keys in an object (the last value wins, for `frequency` and `measurementTime` alike), the bounds, the number grammar and stuck runs of 5 and 6. A verifier must refuse every `invalid` case; the reason is core's.
 
 ### End-to-end
 
