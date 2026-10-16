@@ -1516,9 +1516,9 @@ defmodule WallopCore.Resources.Draw do
           "Observation-weather and grid-frequency operators only; a forecast operator's lock is " <>
             "refused if it sends draw_at. When the result should be produced (UTC, second " <>
             "precision, on drand quicknet's 3-second grid; any whole minute is). The lock must " <>
-            "happen by the observation hour minus 46 minutes (observation weather), or 60 seconds " <>
-            "before the first of the 8 grid-frequency readings, about 7 minutes before the result " <>
-            "(grid frequency); a later lock is refused with meta.latest_lock_at. Defaults to the " <>
+            "happen by the observation hour minus 46 minutes (observation weather) or, for grid " <>
+            "frequency, 60 seconds before the first of the 8 grid-frequency readings (at least 7 " <>
+            "minutes before the result); a later lock is refused with meta.latest_lock_at. Defaults to the " <>
             "earliest allowed time. Can't be combined with weather_time."
         )
       end
