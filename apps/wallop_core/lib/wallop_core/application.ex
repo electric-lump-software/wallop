@@ -14,15 +14,23 @@ defmodule WallopCore.Application do
     OpentelemetryOban.setup(plugin: :disabled)
     EctoHandler.setup([:wallop_core, :repo])
 
-    children = [
-      WallopCore.Repo,
-      WallopCore.Vault,
-      pubsub_child_spec(),
-      {Oban, Application.fetch_env!(:wallop_core, Oban)}
-    ]
+    children =
+      [
+        WallopCore.Repo,
+        WallopCore.Vault,
+        pubsub_child_spec(),
+        {Oban, Application.fetch_env!(:wallop_core, Oban)}
+      ] ++ prepared_transactions_check()
 
     opts = [strategy: :one_for_one, name: WallopCore.Supervisor]
     Supervisor.start_link(children, opts)
+  end
+
+  # Off in the test config; on everywhere else.
+  defp prepared_transactions_check do
+    if Application.get_env(:wallop_core, :prepared_transactions_check, true),
+      do: [WallopCore.PreparedTransactionsCheck],
+      else: []
   end
 
   # `runtime.exs` raises if `VAULT_KEY` is unset, but only on a release-
