@@ -137,8 +137,10 @@ defmodule WallopCore.Invariants.FrequencyTest do
     {operator, key} = unboxed(fn -> create_freq_operator() end)
     on_exit(fn -> unboxed(fn -> delete_operator!(operator.id) end) end)
 
+    # F is 6 to 21 s away: the lead covers the fixture's set-up on a loaded
+    # machine, so the insert still runs before F.
     now = DateTime.to_unix(DateTime.utc_now())
-    lead = FreqSchedule.span_seconds() + FreqSchedule.fetch_window_seconds() - 3
+    lead = FreqSchedule.span_seconds() + FreqSchedule.fetch_window_seconds() - 6
 
     t =
       DateTime.from_unix!((now - lead + Integer.mod(-(now - lead), 15)) * 1_000_000, :microsecond)
@@ -148,7 +150,7 @@ defmodule WallopCore.Invariants.FrequencyTest do
     outcome =
       unboxed(fn ->
         try do
-          # F is up to 18 s away, past the default 15 s transaction timeout.
+          # F is up to 21 s away, past the default 15 s transaction timeout.
           {:ok, _} =
             Repo.transaction(
               fn ->
@@ -374,7 +376,7 @@ defmodule WallopCore.Invariants.FrequencyTest do
   # sandbox, on fixtures this test deletes.
   @tag :slow
   test "INV-F7 a grid-frequency fail made before F but committed after it is refused at commit" do
-    draw = unboxed_freq_draw(4)
+    draw = unboxed_freq_draw(7)
     f = FreqSchedule.fetch_deadline(draw.freq_start)
 
     outcome =
@@ -411,13 +413,18 @@ defmodule WallopCore.Invariants.FrequencyTest do
     {operator, key} = unboxed(fn -> create_freq_operator() end)
     on_exit(fn -> unboxed(fn -> delete_operator!(operator.id) end) end)
 
-    t =
-      DateTime.utc_now()
-      |> DateTime.add(f_in - FreqSchedule.span_seconds() - FreqSchedule.fetch_window_seconds())
-      |> DateTime.truncate(:second)
+    unboxed(fn ->
+      # The entries first, so their set-up time doesn't eat a near F.
+      open = open_draw_with_entries(key)
 
-    round = Quicknet.round_at_or_after(DateTime.add(DateTime.utc_now(), 3600))
-    unboxed(fn -> put_freq_awaiting!(open_draw_with_entries(key), t, round) end)
+      t =
+        DateTime.utc_now()
+        |> DateTime.add(f_in - FreqSchedule.span_seconds() - FreqSchedule.fetch_window_seconds())
+        |> DateTime.truncate(:second)
+
+      round = Quicknet.round_at_or_after(DateTime.add(DateTime.utc_now(), 3600))
+      put_freq_awaiting!(open, t, round)
+    end)
   end
 
   # Fails the draw in a real transaction, runs `before_commit` inside it,

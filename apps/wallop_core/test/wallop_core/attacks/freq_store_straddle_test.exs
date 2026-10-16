@@ -58,10 +58,11 @@ defmodule WallopCore.Attacks.FreqStoreStraddleTest do
         ]).rows
       end)
 
-  # A T on the 15 s grid whose F is 3 to 18 s away.
+  # A T on the 15 s grid whose F is 6 to 21 s away: the lead covers the
+  # fixture's set-up on a loaded machine, so the insert still runs before F.
   defp t_closing_soon do
     now = DateTime.to_unix(DateTime.utc_now())
-    lead = Schedule.span_seconds() + Schedule.fetch_window_seconds() - 3
+    lead = Schedule.span_seconds() + Schedule.fetch_window_seconds() - 6
     t = now - lead + Integer.mod(-(now - lead), 15)
     DateTime.from_unix!(t * 1_000_000, :microsecond)
   end

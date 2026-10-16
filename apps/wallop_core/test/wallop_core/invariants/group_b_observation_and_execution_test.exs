@@ -43,8 +43,10 @@ defmodule WallopCore.Invariants.ObservationAndExecutionTest do
   # weather_time is placed for the window under test.
   defp v6_draw(wt_offset, pub_offset, key \\ nil) do
     key = key || elem(create_v6_operator(), 1)
+    # The entries first, so their set-up time doesn't eat a near deadline.
+    open = open_draw_with_entries(key)
     wt = DateTime.utc_now() |> DateTime.add(wt_offset) |> DateTime.truncate(:second)
-    put_v6_awaiting!(open_draw_with_entries(key), wt, round_at(pub_offset))
+    put_v6_awaiting!(open, wt, round_at(pub_offset))
   end
 
   defp to_pending!(draw) do
@@ -321,9 +323,9 @@ defmodule WallopCore.Invariants.ObservationAndExecutionTest do
     # Every time comparison uses the database clock.
     @tag :slow
     test "INV-8b an insert made before F but committed after F is refused at commit" do
-      # F is a few seconds ahead: the store's statement runs inside the
+      # F is 6 to 7 seconds ahead: the store's statement runs inside the
       # backup window, before F; the commit waits until F has passed.
-      draw = unboxed_v6_draw(-(@w - 4))
+      draw = unboxed_v6_draw(-(@w - 7))
       f = Schedule.fetch_deadline(draw.weather_time)
 
       outcome =
@@ -650,7 +652,7 @@ defmodule WallopCore.Invariants.ObservationAndExecutionTest do
       # F is a few seconds ahead, as INV-8b places it: the UPDATE runs before
       # F, passing the statement-time check; the commit waits until F has
       # passed, and the deferred check refuses it.
-      draw = unboxed_v6_draw(-(@w - 4))
+      draw = unboxed_v6_draw(-(@w - 7))
       f = Schedule.fetch_deadline(draw.weather_time)
 
       outcome =
