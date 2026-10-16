@@ -61,8 +61,8 @@ defmodule WallopCore.Attacks.DrandRelayTest do
   defp reload(d), do: Ash.get!(Draw, d.id, authorize?: false)
 
   describe "one bad relay does not stall a v6 draw when the others have the round" do
-    # A 200 whose body is a JSON array, null, or a non-JSON page is an
-    # invalid response, never a crash, so the next relay is tried.
+    # A 200 whose body is a JSON array, null, or a non-JSON page is a
+    # malformed body, never a crash, so the next relay is tried.
     for {label, respond} <- [
           {"a JSON array", quote(do: fn conn -> Req.Test.json(conn, []) end)},
           {"JSON null", quote(do: fn conn -> Req.Test.json(conn, nil) end)},
@@ -101,6 +101,25 @@ defmodule WallopCore.Attacks.DrandRelayTest do
 
       assert :ok = perform_job(ObservationDrawWorker, %{draw_id: draw.id}, attempt: 1)
       assert reload(draw).status == :completed
+    end
+  end
+
+  describe "every relay sending a malformed body" do
+    test "is transient: retried, then refused on the last attempt, never failed" do
+      ref = :telemetry_test.attach_event_handlers(self(), [[:wallop_core, :v6, :exec_refused]])
+      draw = v6_draw_ready()
+      Req.Test.stub(DrandClient, &Req.Test.json(&1, []))
+
+      assert {:error, _} = perform_job(ObservationDrawWorker, %{draw_id: draw.id}, attempt: 1)
+      assert reload(draw).status == :pending_entropy
+      refute_received {[:wallop_core, :v6, :exec_refused], ^ref, _, _}
+
+      assert {:cancel, reason} =
+               perform_job(ObservationDrawWorker, %{draw_id: draw.id}, attempt: 10)
+
+      assert reason =~ "drand unavailable after 10 attempts (all relays failed)"
+      assert reload(draw).status == :pending_entropy
+      assert_receive {[:wallop_core, :v6, :exec_refused], ^ref, _, _}
     end
   end
 
@@ -143,8 +162,8 @@ defmodule WallopCore.Attacks.DrandRelayTest do
 
       refute response =~ "hostile relay"
 
-      # The relay that padded its body is refused outright, v5 or v6.
-      assert {:error, :invalid_response} =
+      # The relay that padded its body is refused, v5 or v6.
+      assert {:error, :malformed_body} =
                DrandClient.fetch(Quicknet.chain_hash(), round, "https://" <> @first_relay)
     end
 

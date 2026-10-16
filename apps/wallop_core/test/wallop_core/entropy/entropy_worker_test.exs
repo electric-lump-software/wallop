@@ -264,9 +264,10 @@ defmodule WallopCore.Entropy.EntropyWorkerTest do
   end
 
   describe "a drand body that isn't a JSON object, or is over the cap" do
-    # Handled like any other invalid drand response on the forecast path
-    # (a permanent error that fails the draw), where it used to crash the
-    # job. The default failover stops at the first relay's invalid answer.
+    # A malformed body (a CDN glitch, a captive portal, a hostile relay) is
+    # transient on the forecast path: the client fails over to the next
+    # relay, and if every relay sends one the job retries, as for a network
+    # error. It used to crash the job; it never fails the draw at once.
     for {label, respond} <- [
           {"a JSON array", quote(do: &Req.Test.json(&1, []))},
           {"an HTML page",
@@ -290,18 +291,49 @@ defmodule WallopCore.Entropy.EntropyWorkerTest do
              end
            )}
         ] do
-      test "#{label} is an invalid response, not a crash" do
+      test "#{label} from every relay is retried, and the draw is not failed" do
         Req.Test.stub(DrandClient, unquote(respond))
 
         api_key = create_api_key()
         draw = create_draw(api_key, %{entropy: true})
 
-        assert :ok = EntropyWorker.perform(fake_job(draw))
-
-        failed = reload_draw(draw, api_key)
-        assert failed.status == :failed
-        assert failed.failure_reason =~ "drand"
+        for attempt <- [1, 9] do
+          assert {:error, _} = EntropyWorker.perform(fake_job(draw, attempt: attempt))
+          assert reload_draw(draw, api_key).status in [:awaiting_entropy, :pending_entropy]
+        end
       end
+
+      test "#{label} from the first relay moves on to the next, which completes the draw" do
+        respond = unquote(respond)
+
+        Req.Test.stub(DrandClient, fn conn ->
+          if conn.host == "api.drand.sh", do: respond.(conn), else: honest_drand(conn)
+        end)
+
+        api_key = create_api_key()
+        draw = create_draw(api_key, %{entropy: true})
+
+        assert :ok = EntropyWorker.perform(fake_job(draw))
+        assert reload_draw(draw, api_key).status == :completed
+      end
+    end
+
+    test "an invalid beacon (a JSON object with the wrong round) is still permanent" do
+      Req.Test.stub(DrandClient, fn conn ->
+        Req.Test.json(conn, %{
+          "round" => 1,
+          "randomness" => @drand_randomness,
+          "signature" => @drand_signature
+        })
+      end)
+
+      api_key = create_api_key()
+      draw = create_draw(api_key, %{entropy: true})
+
+      assert :ok = EntropyWorker.perform(fake_job(draw))
+      failed = reload_draw(draw, api_key)
+      assert failed.status == :failed
+      assert failed.failure_reason =~ "drand"
     end
   end
 
@@ -463,24 +495,24 @@ defmodule WallopCore.Entropy.EntropyWorkerTest do
     )
   end
 
-  defp stub_drand_success do
-    Req.Test.stub(DrandClient, fn conn ->
-      round =
-        conn.request_path
-        |> String.split("/")
-        |> List.last()
-        |> String.to_integer()
+  defp stub_drand_success, do: Req.Test.stub(DrandClient, &honest_drand/1)
 
-      body = %{
-        "randomness" => @drand_randomness,
-        "signature" => @drand_signature,
-        "round" => round
-      }
+  defp honest_drand(conn) do
+    round =
+      conn.request_path
+      |> String.split("/")
+      |> List.last()
+      |> String.to_integer()
 
-      conn
-      |> Plug.Conn.put_resp_content_type("application/json")
-      |> Plug.Conn.send_resp(200, Jason.encode!(body))
-    end)
+    body = %{
+      "randomness" => @drand_randomness,
+      "signature" => @drand_signature,
+      "round" => round
+    }
+
+    conn
+    |> Plug.Conn.put_resp_content_type("application/json")
+    |> Plug.Conn.send_resp(200, Jason.encode!(body))
   end
 
   defp stub_drand_error(:not_found) do

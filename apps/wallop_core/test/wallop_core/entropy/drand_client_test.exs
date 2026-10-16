@@ -246,7 +246,7 @@ defmodule WallopCore.Entropy.DrandClientTest do
       assert {_, {:unexpected_status, 500}} = List.last(errors)
     end
 
-    test "a body that isn't a JSON object is invalid, never a crash" do
+    test "a body that isn't a JSON object is malformed, never a crash" do
       for respond <- [
             &Req.Test.json(&1, []),
             &Req.Test.json(&1, nil),
@@ -256,7 +256,35 @@ defmodule WallopCore.Entropy.DrandClientTest do
               |> Plug.Conn.send_resp(200, "<html>captive portal</html>"))
           ] do
         Req.Test.stub(DrandClient, respond)
-        assert {:error, :invalid_response} = DrandClient.fetch(@chain_hash, 1000)
+        assert {:error, :malformed_body} = DrandClient.fetch(@chain_hash, 1000)
+      end
+    end
+
+    test "a malformed body moves on to the next relay, by default too" do
+      for opts <- [[], [on_invalid: :next]] do
+        calls = :counters.new(1, [:atomics])
+
+        Req.Test.stub(DrandClient, fn conn ->
+          :counters.add(calls, 1, 1)
+
+          if :counters.get(calls, 1) == 1,
+            do: Req.Test.json(conn, []),
+            else: handle_request(conn)
+        end)
+
+        assert {:ok, %{round: 1000}} = DrandClient.fetch_with_failover(@chain_hash, 1000, opts)
+        assert :counters.get(calls, 1) == 2
+      end
+    end
+
+    test "every relay malformed is all_relays_failed, by default too" do
+      Req.Test.stub(DrandClient, &Req.Test.json(&1, nil))
+
+      for opts <- [[], [on_invalid: :next]] do
+        assert {:error, {:all_relays_failed, errors}} =
+                 DrandClient.fetch_with_failover(@chain_hash, 1000, opts)
+
+        assert Enum.all?(errors, &match?({_relay, :malformed_body}, &1))
       end
     end
 
