@@ -4,12 +4,16 @@ defmodule WallopCore.Application do
 
   require Logger
 
+  alias WallopCore.Drand.Bls
   alias WallopCore.Telemetry.EctoHandler
 
   @impl true
   def start(_type, _args) do
     warn_if_default_oban_prefix()
     assert_vault_key_present!()
+    # No draw may run on a node that can't check drand signatures: a missing
+    # or broken NIF stops the boot here rather than failing every check.
+    Bls.self_test!()
 
     OpentelemetryOban.setup(plugin: :disabled)
     EctoHandler.setup([:wallop_core, :repo])

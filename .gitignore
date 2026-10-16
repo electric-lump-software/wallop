@@ -11,6 +11,11 @@ erl_crash.dump
 CLAUDE.md
 .claude/
 
+# The drand BLS NIF: cargo's build output, and the library Rustler copies
+# into priv at compile time
+/apps/wallop_core/native/drand_bls/target/
+/apps/wallop_core/priv/native/
+
 # Dialyzer PLT files
 /priv/plts/
 

@@ -37,6 +37,7 @@ defmodule WallopCore.MixProject do
       {:jason, "~> 1.4"},
       {:oban, "~> 2.23"},
       {:req, "~> 0.6.1"},
+      {:rustler, "~> 0.36", runtime: false},
       {:ash_cloak, "~> 0.2"},
       {:cloak_ecto, "~> 1.3"},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},

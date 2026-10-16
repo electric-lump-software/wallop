@@ -1,0 +1,53 @@
+{
+  "comment": "Real drand beacons, fetched 2026-10-16 from the URLs given. quicknet_t is drand's quicknet testnet: the same scheme under a different key, for the wrong-key negative case.",
+  "quicknet": {
+    "chain_hash": "52db9ba70e0cc0f6eaf7803dd07447a1f5477735fd3f661792ba94600c84e971",
+    "public_key": "83cf0f2896adee7eb8b5f01fcad3912212c437e0073e911fb90022d3e760183c8c4b450b6a0a6c3ac6a5776a2d1064510d1fec758c921cc22b0e17e63aaf4bcb5ed66304de9cf809bd274ca73bab4af5a6e9c76a4bc09e76eae8991ef5ece45a",
+    "info_url": "https://api.drand.sh/52db9ba70e0cc0f6eaf7803dd07447a1f5477735fd3f661792ba94600c84e971/info",
+    "rounds": [
+      {
+        "source": "https://api.drand.sh/52db9ba70e0cc0f6eaf7803dd07447a1f5477735fd3f661792ba94600c84e971/public/1",
+        "round": 1,
+        "randomness": "1466a6cd24e327188770752f6134001c64d6efcc590ccc26b721611ad96f165a",
+        "signature": "b55e7cb2d5c613ee0b2e28d6750aabbb78c39dcc96bd9d38c2c2e12198df95571de8e8e402a0cc48871c7089a2b3af4b"
+      },
+      {
+        "source": "https://api.drand.sh/52db9ba70e0cc0f6eaf7803dd07447a1f5477735fd3f661792ba94600c84e971/public/1000",
+        "round": 1000,
+        "randomness": "fe290beca10872ef2fb164d2aa4442de4566183ec51c56ff3cd603d930e54fdd",
+        "signature": "b44679b9a59af2ec876b1a6b1ad52ea9b1615fc3982b19576350f93447cb1125e342b73a8dd2bacbe47e4b6b63ed5e39"
+      },
+      {
+        "source": "https://api.drand.sh/52db9ba70e0cc0f6eaf7803dd07447a1f5477735fd3f661792ba94600c84e971/public/33068212",
+        "round": 33068212,
+        "randomness": "140117383b03a0c0c7a899a32b8cbd2ffff9e2569504037c358ee8c7c2efe2fd",
+        "signature": "b6541e41bb68ff318e8bd74b9f6e168ae6424476c432241420c38427df58c6ef33fe009ce202a7101120ab481702fddf"
+      },
+      {
+        "source": "https://api.drand.sh/52db9ba70e0cc0f6eaf7803dd07447a1f5477735fd3f661792ba94600c84e971/public/33107467",
+        "round": 33107467,
+        "randomness": "83acaac1207be3889a6467aa2682dc50685f922d0d705e66e78ea35c806d9b1f",
+        "signature": "82108c75dfe9e153102818e8758dc4e0dda646e6022be94adfba9cacb6993b4066f2060807394815701f2e8066b1408a"
+      }
+    ]
+  },
+  "quicknet_t": {
+    "chain_hash": "cc9c398442737cbd141526600919edd69f1d6f9b4adb67e4d912fbc64341a9a5",
+    "public_key": "b15b65b46fb29104f6a4b5d1e11a8da6344463973d423661bb0804846a0ecd1ef93c25057f1c0baab2ac53e56c662b66072f6d84ee791a3382bfb055afab1e6a375538d8ffc451104ac971d2dc9b168e2d3246b0be2015969cbaac298f6502da",
+    "info_url": "https://pl-us.testnet.drand.sh/cc9c398442737cbd141526600919edd69f1d6f9b4adb67e4d912fbc64341a9a5/info",
+    "rounds": [
+      {
+        "source": "https://pl-us.testnet.drand.sh/cc9c398442737cbd141526600919edd69f1d6f9b4adb67e4d912fbc64341a9a5/public/1000",
+        "round": 1000,
+        "randomness": "739ba6e75a6b8a9ae1e1fe408163f820d0584935b28d50bcd26339bfc48aca15",
+        "signature": "95eefb5d443bb029594b17c83bc20aa5976997cb62cd07bd9f77e66089d49e02292d5f329fd0219daf11ff61ffafe6fe"
+      },
+      {
+        "source": "https://pl-us.testnet.drand.sh/cc9c398442737cbd141526600919edd69f1d6f9b4adb67e4d912fbc64341a9a5/public/33068212",
+        "round": 33068212,
+        "randomness": "52d49a84fb5470d6510aa4594f230add2473599fc97265a73bfecbf76a0022ec",
+        "signature": "846c38e1513dabfe4233608176787867a717546cb62d8f33faa4e248af6b4f87431b086af838b765fcd9456697234580"
+      }
+    ]
+  }
+}
