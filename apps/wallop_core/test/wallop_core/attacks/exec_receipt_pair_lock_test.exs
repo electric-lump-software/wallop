@@ -115,7 +115,7 @@ defmodule WallopCore.Attacks.ExecReceiptPairLockTest do
 
     send(stale, :go)
     assert_receive {:result, ^stale, result}, 10_000
-    assert {:error, {:refused, _code}} = result
+    assert {:error, {:refused, :serialization_failure}} = result
     assert receipts(draw) == [[0]]
   end
 
