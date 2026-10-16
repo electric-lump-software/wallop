@@ -2,7 +2,8 @@ defmodule WallopCore.Resources.Draw.Changes.ResolveLockSchema do
   @moduledoc """
   Reads the operator's draw protocol at lock and records it on the draw:
   lock schema "6" with the Land Observations entropy composition for an
-  observation operator, nothing for a forecast one.
+  observation operator, nothing for a forecast one. A grid-frequency
+  operator's lock is refused for now, never treated as forecast.
 
   Everything after this in the lock (the entropy declaration, the receipt,
   the jobs) follows the recorded value, never the operator's current flag.
@@ -47,6 +48,7 @@ defmodule WallopCore.Resources.Draw.Changes.ResolveLockSchema do
   end
 
   defp protocol(%{draw_protocol: :observation}), do: :observation
+  defp protocol(%{draw_protocol: :frequency}), do: :frequency
   defp protocol(_), do: :forecast
 
   defp record(changeset, :observation, operator_id) do
@@ -57,6 +59,15 @@ defmodule WallopCore.Resources.Draw.Changes.ResolveLockSchema do
       Protocol.landobs_entropy_composition()
     )
     |> Ash.Changeset.before_action(&confirm(&1, operator_id))
+  end
+
+  # Until the grid-frequency lock path exists, a frequency operator can't
+  # lock at all. It must never fall through to the forecast path.
+  defp record(changeset, :frequency, _operator_id) do
+    Ash.Changeset.add_error(changeset,
+      field: :draw_protocol,
+      message: "grid-frequency draws can't be locked yet"
+    )
   end
 
   defp record(changeset, :forecast, _operator_id), do: changeset
