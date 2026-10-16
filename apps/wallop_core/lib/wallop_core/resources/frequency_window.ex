@@ -16,6 +16,9 @@ defmodule WallopCore.Resources.FrequencyWindow do
     * the transaction must commit by F: a deferred check at COMMIT, on the
       wall clock then (clock_timestamp()), so no insert can be held open
       until drand publishes and then kept or dropped.
+    * the transaction must be READ COMMITTED, as must every v6 draw update
+      and v6 execution receipt insert, so no guard decides on a snapshot
+      taken before a store committed.
 
   Both clocks are read in UTC; no timestamptz anywhere. A draw completes
   with T's row or, with no row by F + M, the fallback rule (the draws
@@ -89,6 +92,13 @@ defmodule WallopCore.Resources.FrequencyWindow do
           DECLARE
             now_utc timestamp := statement_timestamp() AT TIME ZONE 'UTC';
           BEGIN
+            -- The draws read below, and every completion's read of this
+            -- store, must see what has committed: no REPEATABLE READ or
+            -- SERIALIZABLE snapshot.
+            IF current_setting('transaction_isolation') IS DISTINCT FROM 'read committed' THEN
+              RAISE EXCEPTION 'a v6 write must run under READ COMMITTED isolation';
+            END IF;
+
             PERFORM 1 FROM draws
               WHERE freq_start = NEW.freq_start
                 AND lock_schema_version = '6'

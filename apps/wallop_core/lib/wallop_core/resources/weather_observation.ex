@@ -103,6 +103,13 @@ defmodule WallopCore.Resources.WeatherObservation do
           DECLARE
             now_utc timestamp := statement_timestamp() AT TIME ZONE 'UTC';
           BEGIN
+            -- The draws read below, and every completion's read of this
+            -- store, must see what has committed: no REPEATABLE READ or
+            -- SERIALIZABLE snapshot.
+            IF current_setting('transaction_isolation') IS DISTINCT FROM 'read committed' THEN
+              RAISE EXCEPTION 'a v6 write must run under READ COMMITTED isolation';
+            END IF;
+
             PERFORM 1 FROM draws
               WHERE weather_time = NEW.observation_time
                 AND lock_schema_version = '6'
