@@ -14,6 +14,9 @@ defmodule WallopCore.Entropy.StuckDrawRedriverTest do
   alias WallopCore.Weather.{Schedule, Stations}
 
   @live_states ~w(available scheduled executing retryable suspended)
+  # For a schema 6 draw a suspended job doesn't count (nothing resumes one):
+  # it is replaced, as are jobs that can't run soon (attacks/parked_job_test).
+  @runnable_v6_states ~w(available scheduled executing retryable)
   @event [:wallop_core, :redrive, :reinserted]
 
   setup do
@@ -134,8 +137,8 @@ defmodule WallopCore.Entropy.StuckDrawRedriverTest do
       assert jobs_for(ObservationDrawWorker, draw.id) == ["available"]
     end
 
-    test "a live job of either worker, in any live state, means the draw is left alone" do
-      for worker <- [ObservationDrawWorker, EntropyWorker], state <- @live_states do
+    test "a runnable job of either worker, in any runnable state, means the draw is left alone" do
+      for worker <- [ObservationDrawWorker, EntropyWorker], state <- @runnable_v6_states do
         draw = stuck_v6(-20 * 60)
         put_job!(worker, draw.id, state)
 
@@ -333,6 +336,26 @@ defmodule WallopCore.Entropy.StuckDrawRedriverTest do
       assert jobs_for(EntropyWorker, id) == ["available"]
     end
 
+    test "on: a forecast draw's live job counts whatever its schedule or queue; no overdue report" do
+      forecast_on()
+      ref = :telemetry_test.attach_event_handlers(self(), [[:wallop_core, :v6, :overdue]])
+
+      for set <- [
+            "state = 'scheduled', scheduled_at = '2099-01-01 00:00:00'",
+            "queue = 'nowhere'",
+            "attempt = max_attempts"
+          ] do
+        draw = stuck_forecast(-20 * 60)
+        job = put_job!(EntropyWorker, draw.id, "scheduled")
+        Repo.query!("UPDATE oban_jobs SET #{set} WHERE id = $1", [job.id])
+
+        refute draw.id in StuckDrawRedriver.redrive(), set
+        assert jobs_for(EntropyWorker, draw.id) == ["scheduled"]
+        id = draw.id
+        refute_received {[:wallop_core, :v6, :overdue], ^ref, _, %{draw_id: ^id}}
+      end
+    end
+
     test "on: a live job blocks it, a finished one doesn't, and a cancelled v6 worker job is no marker" do
       forecast_on()
 
@@ -448,8 +471,8 @@ defmodule WallopCore.Entropy.StuckDrawRedriverTest do
       assert jobs_for(ObservationDrawWorker, draw.id) == []
     end
 
-    test "a live job in any live state means the frequency draw is left alone" do
-      for state <- @live_states do
+    test "a runnable job in any runnable state means the frequency draw is left alone" do
+      for state <- @runnable_v6_states do
         draw = freq_draw(-20 * 60)
         put_job!(ObservationDrawWorker, draw.id, state)
         refute draw.id in StuckDrawRedriver.redrive(), state
