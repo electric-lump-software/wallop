@@ -66,6 +66,12 @@ defmodule WallopCore.Entropy.StuckDrawRedriver do
   carries none, so its draw is still reported. Re-driven draws are reported
   too: a re-drive is not a result.
 
+  Known blind spot, forecast draws: they keep the old rule (any live job
+  counts) and get no overdue report, so a forecast job parked far in the
+  future is neither re-driven nor reported. With the forecast re-drive off
+  (the default) forecast draws aren't read at all. If it is ever turned
+  on, the runnable-job rule above must be applied to forecast draws too.
+
   Forecast draws are re-driven (with `EntropyWorker`) only when
   `config :wallop_core, :redrive_forecast_draws, true`. It is off by
   default: a forecast draw that has sat stuck for days would otherwise run

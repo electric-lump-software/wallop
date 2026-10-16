@@ -21,11 +21,11 @@ config :wallop_core, Oban,
   # Each entropy source has its own queue, so one source being slow (a
   # trickled Elexon response, a hostile drand relay) never holds another's
   # slots. :entropy is the forecast EntropyWorker; :weather the Land Obs
-  # fetch; :frequency the grid-frequency window polls (up to about 14
-  # windows live at once, each poll up to its 15 s job timeout every 20 s,
-  # so 15 covers them all); :v6_execution the schema 6 executions
-  # (ObservationDrawWorker, both tags), sized like :entropy.
-  queues: [entropy: 10, webhooks: 5, default: 5, weather: 5, frequency: 15, v6_execution: 10],
+  # fetch; :frequency the grid-frequency window polls; :v6_execution the
+  # schema 6 executions (ObservationDrawWorker, both tags).
+  # Every running job can hold a database connection: the sum of all queue
+  # limits must stay well under the Repo pool size (POOL_SIZE).
+  queues: [entropy: 10, webhooks: 5, default: 5, weather: 5, frequency: 6, v6_execution: 5],
   plugins: [
     {Oban.Plugins.Cron,
      crontab: [
