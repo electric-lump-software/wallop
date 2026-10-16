@@ -13,7 +13,10 @@ defmodule WallopCore.UnboxedHelpers do
   def unboxed(fun), do: Sandbox.unboxed_run(Repo, fun)
 
   @doc """
-  Runs `statement` in a real transaction in a new process. Sends
+  Runs `statement` in a real transaction in a new process, linked to the
+  caller: if the test fails or exits first, the process dies with it, and
+  its connection's transaction (and any lock it holds) is rolled back
+  rather than left open. Sends
   `{:done_statement, pid}` once it returns, then waits for `:commit` or
   `:rollback`, and sends `{:result, pid, :committed | :rolled_back |
   {:refused, message}}`.
@@ -21,7 +24,7 @@ defmodule WallopCore.UnboxedHelpers do
   def in_transaction(statement) do
     parent = self()
 
-    spawn(fn ->
+    spawn_link(fn ->
       me = self()
 
       result =

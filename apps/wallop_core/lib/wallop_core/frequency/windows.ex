@@ -15,7 +15,7 @@ defmodule WallopCore.Frequency.Windows do
 
   @doc "The database clock, in UTC: the clock the store's window is checked on."
   @spec db_now() :: DateTime.t()
-  defdelegate db_now(), to: WallopCore.Weather.Observations
+  defdelegate db_now(), to: WallopCore.DbClock, as: :now
 
   @doc "The window stored for start T, or nil."
   @spec for_start(DateTime.t()) :: FrequencyWindow.t() | nil

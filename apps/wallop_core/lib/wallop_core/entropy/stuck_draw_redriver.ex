@@ -54,6 +54,8 @@ defmodule WallopCore.Entropy.StuckDrawRedriver do
 
   require Logger
 
+  alias WallopCore.DbClock
+
   alias WallopCore.Entropy.{
     EntropyWorker,
     ObservationDrawWorker,
@@ -117,7 +119,7 @@ defmodule WallopCore.Entropy.StuckDrawRedriver do
   """
   @spec redrive() :: [String.t()]
   def redrive do
-    now = Observations.db_now()
+    now = DbClock.now()
     redriven = redrive_executions(now)
     redrive_fetches(now)
     redriven
@@ -159,7 +161,7 @@ defmodule WallopCore.Entropy.StuckDrawRedriver do
           do: {rules, draw.weather_time}
 
     Enum.each(hours, fn {rules, wt} ->
-      if Observations.pending_v6_draw_ids(wt) != [] and inserted?(insert_fetch(rules, wt)) do
+      if Observations.pending_draw_ids(wt) != [] and inserted?(insert_fetch(rules, wt)) do
         reinserted(
           :fetch,
           :observation,

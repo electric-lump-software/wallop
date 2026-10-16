@@ -28,6 +28,10 @@ defmodule WallopCore.Frequency.WindowStoreTest do
 
   defp message({:error, error}), do: Exception.message(error)
 
+  # The name of the CHECK a refused store broke.
+  defp constraint({:error, %Ash.Error.Invalid{errors: [%{private_vars: vars}]}}),
+    do: vars[:constraint]
+
   test "SQL wallop_freq_store_allowed: exact boundaries [T + 105 s, F], in a non-UTC session" do
     Repo.query!("SET LOCAL TIME ZONE 'Asia/Kolkata'")
     t = ~N[2026-10-14 19:54:00.000000]
@@ -86,12 +90,12 @@ defmodule WallopCore.Frequency.WindowStoreTest do
           "53000;50012;49983;49980;49953;49912;49883;49887",
           "50000;50000;50000;50000;50000;50000;50012;50013"
         ] do
-      assert {:error, _} = db_store(t, bad), bad
+      assert constraint(db_store(t, bad)) == "frequency_windows_value_grammar", bad
     end
 
     off_grid = DateTime.add(t, 1)
     freq_draw(off_grid)
-    assert {:error, _} = db_store(off_grid, @value)
+    assert constraint(db_store(off_grid, @value)) == "frequency_windows_on_grid"
   end
 
   test "no waiting grid-frequency draw for the window: refused" do

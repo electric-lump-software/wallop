@@ -16,10 +16,7 @@ defmodule WallopCore.Weather.Observations do
 
   @doc "The database clock, in UTC: the clock the store's window is checked on."
   @spec db_now() :: DateTime.t()
-  def db_now do
-    %{rows: [[naive]]} = Repo.query!("SELECT statement_timestamp() AT TIME ZONE 'UTC'")
-    DateTime.from_naive!(naive, "Etc/UTC")
-  end
+  defdelegate db_now(), to: WallopCore.DbClock, as: :now
 
   @doc "The reading stored for an observation hour, or nil."
   @spec for_hour(DateTime.t()) :: WeatherObservation.t() | nil
@@ -78,8 +75,8 @@ defmodule WallopCore.Weather.Observations do
   The ids of observation-weather draws for `weather_time` that are waiting for
   entropy, while nothing is stored for the hour; [] once it is.
   """
-  @spec pending_v6_draw_ids(DateTime.t()) :: [String.t()]
-  def pending_v6_draw_ids(%DateTime{} = weather_time) do
+  @spec pending_draw_ids(DateTime.t()) :: [String.t()]
+  def pending_draw_ids(%DateTime{} = weather_time) do
     if for_hour(weather_time) do
       []
     else
@@ -95,4 +92,9 @@ defmodule WallopCore.Weather.Observations do
       |> Enum.map(& &1.id)
     end
   end
+
+  @doc false
+  @deprecated "Use pending_draw_ids/1"
+  @spec pending_v6_draw_ids(DateTime.t()) :: [String.t()]
+  def pending_v6_draw_ids(weather_time), do: pending_draw_ids(weather_time)
 end
