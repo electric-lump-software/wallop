@@ -27,26 +27,40 @@ defmodule WallopCore.Entropy.DrandClient do
   Fetch a specific round, trying multiple relays on failure.
 
   Fails over on transport errors, timeouts, and 5xx responses.
-  Does NOT failover on 404 (round not yet produced) or invalid responses.
+  Does NOT failover on 404 (round not yet produced) or, by default, on
+  invalid responses.
+
+  Options:
+
+    * `:on_invalid` - `:stop` (the default) returns `{:error,
+      :invalid_response}` from the first relay that sends one. `:next`
+      tries the next relay instead, so one bad relay can't end the fetch;
+      if every relay fails, the result is `{:error, {:all_relays_failed,
+      errors}}`. Observation-weather draws use `:next`.
   """
-  def fetch_with_failover(chain_hash, round) when is_binary(chain_hash) and is_integer(round) do
+  def fetch_with_failover(chain_hash, round, opts \\ [])
+      when is_binary(chain_hash) and is_integer(round) do
     config = Application.get_env(:wallop_core, __MODULE__, [])
     relays = Keyword.get(config, :relays, @default_relays)
+    on_invalid = Keyword.get(opts, :on_invalid, :stop)
 
-    try_relays(relays, chain_hash, round, [])
+    try_relays(relays, chain_hash, round, on_invalid, [])
   end
 
-  defp try_relays([], _chain_hash, _round, errors) do
+  defp try_relays([], _chain_hash, _round, _on_invalid, errors) do
     {:error, {:all_relays_failed, errors}}
   end
 
-  defp try_relays([relay | rest], chain_hash, round, errors) do
+  defp try_relays([relay | rest], chain_hash, round, on_invalid, errors) do
     case fetch(chain_hash, round, relay) do
       {:ok, _} = success ->
         success
 
       {:error, :not_found} = not_found ->
         not_found
+
+      {:error, :invalid_response} when on_invalid == :next ->
+        try_relays(rest, chain_hash, round, on_invalid, [{relay, :invalid_response} | errors])
 
       {:error, :invalid_response} = invalid ->
         invalid
@@ -56,7 +70,7 @@ defmodule WallopCore.Entropy.DrandClient do
         auth_err
 
       {:error, reason} ->
-        try_relays(rest, chain_hash, round, [{relay, reason} | errors])
+        try_relays(rest, chain_hash, round, on_invalid, [{relay, reason} | errors])
     end
   end
 

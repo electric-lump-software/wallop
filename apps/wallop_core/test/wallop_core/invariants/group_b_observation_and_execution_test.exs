@@ -575,14 +575,28 @@ defmodule WallopCore.Invariants.ObservationAndExecutionTest do
       end
     end
 
-    @tag :pending_task_10
     test "INV-9 the draws guard refuses failing a v6 draw once its drand round is published" do
-      draw = v6_draw(-(@w + 60), -10) |> to_pending!()
+      # From any status a v6 draw can be in: before drand is fetched
+      # (awaiting_entropy) as well as after (pending_entropy).
+      awaiting = v6_draw(-(@w + 60), -10)
+      pending = v6_draw(-(@w + 60), -10) |> to_pending!()
 
-      assert try_sql(
-               "UPDATE draws SET status = 'failed', failed_at = now() WHERE id = $1",
-               [dump(draw.id)]
-             ) == @no_fail_after_pub
+      for draw <- [awaiting, pending] do
+        assert try_sql(
+                 "UPDATE draws SET status = 'failed', failed_at = now() WHERE id = $1",
+                 [dump(draw.id)]
+               ) == @no_fail_after_pub,
+               "#{draw.status}"
+
+        # Through the action too, the only path that fails a draw.
+        assert {:error, error} =
+                 draw
+                 |> Ash.Changeset.for_update(:mark_failed, %{failure_reason: "test"})
+                 |> Ash.update(authorize?: false)
+
+        assert error_text(error) =~ @no_fail_after_pub
+        assert reload(draw).status == draw.status
+      end
 
       # Positive control: a forecast draw with drand stored still fails as
       # before; the backstop is a no-op without the v6 pair.
@@ -601,7 +615,6 @@ defmodule WallopCore.Invariants.ObservationAndExecutionTest do
              ) == nil
     end
 
-    @tag :pending_task_10
     test "INV-9 before pub(R), failing a v6 draw is still allowed" do
       # Positive control for the backstop: before the round publishes nothing
       # is knowable, so failing is a visible abort, not a choice of outcome.
@@ -616,7 +629,6 @@ defmodule WallopCore.Invariants.ObservationAndExecutionTest do
       end
     end
 
-    @tag :pending_task_10
     @tag :pending_task_18
     test "INV-9 a discarded job is re-driven, and the draw is still not failed" do
       # Stuck: pub(R) more than 15 minutes ago, and no live job.

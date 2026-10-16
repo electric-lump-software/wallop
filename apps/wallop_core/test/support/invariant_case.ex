@@ -15,11 +15,19 @@ defmodule WallopCore.InvariantCase do
   alias WallopCore.Resources.{Operator, OperatorSigningKey}
   alias WallopCore.Weather.{Schedule, Stations}
 
+  import WallopCore.TestHelpers,
+    only: [
+      create_v6_operator: 0,
+      ensure_infrastructure_key: 0,
+      open_draw_with_entries: 1,
+      put_observation!: 3,
+      put_v6_awaiting!: 3
+    ]
+
   # One tag per task that still owes the suite an invariant. A task removes
   # its tag from the tests it delivers; once no test uses a tag, it may be
   # removed here too.
   @pending_tags [
-    :pending_task_10,
     :pending_task_11,
     :pending_task_13,
     :pending_task_18
@@ -191,7 +199,10 @@ defmodule WallopCore.InvariantCase do
   when accepted, or the refusal's message. The database does not check the
   signature, so it is a placeholder.
   """
-  def insert_receipt(payload, cols) do
+  def insert_receipt(payload, cols), do: insert_receipt_json(Jason.encode!(payload), cols)
+
+  @doc "`insert_receipt/2` with the payload bytes given as they are."
+  def insert_receipt_json(json, cols) do
     try_sql(
       """
       INSERT INTO operator_receipts (id, operator_id, draw_id, sequence, commitment_hash,
@@ -207,8 +218,170 @@ defmodule WallopCore.InvariantCase do
         cols.entry_hash,
         DateTime.to_naive(cols.locked_at),
         cols.signing_key_id,
-        Jason.encode!(payload),
+        json,
         :binary.copy(<<0>>, 64)
+      ]
+    )
+  end
+
+  @doc """
+  A v6 draw completed the way execution leaves it, ready for its execution
+  receipt, built through every draws guard. Its round published a few
+  seconds ago and its weather_time is that round's observation hour, so the
+  fetch deadline and the fallback grace have passed. `kind` is `:observed`
+  (a reading from `opts[:station]`, default the primary, with
+  `opts[:value]`, is stored for the hour) or `:fallback` (nothing stored).
+  `opts[:hours_ago]` moves the round that many hours back, so several
+  draws in one test can each have an hour of their own. `opts[:weather_time]`
+  stores another weather_time (the receipt still signs the round's own
+  hour), and `opts[:triggers_off]` completes the draw with every trigger
+  off, for placing a state the draws guard would refuse.
+
+  Returns `%{draw, input, cols, round, wt, exec_after}`: `input` is the
+  execution v5 builder input the signer would build from the draw, `cols`
+  the receipt row's columns, `exec_after` the µs from pub(R) to
+  `executed_at`.
+  """
+  def completed_v6_receipt_input(kind, opts \\ []) when kind in [:observed, :fallback] do
+    require Ash.Query
+
+    station = Keyword.get(opts, :station, Stations.primary().id)
+    value = Keyword.get(opts, :value, "141;1025;85;2432")
+    api_key = Keyword.get_lazy(opts, :api_key, fn -> elem(create_v6_operator(), 1) end)
+    hours_ago = Keyword.get(opts, :hours_ago, 0)
+    ensure_infrastructure_key()
+
+    round =
+      Quicknet.round_at_or_after(DateTime.add(DateTime.utc_now(), -10 - hours_ago * 3600))
+
+    wt = Keyword.get(opts, :weather_time, Schedule.weather_time_for_round(round))
+    draw = put_v6_awaiting!(open_draw_with_entries(api_key), wt, round)
+    if kind == :observed, do: put_observation!(station, wt, value)
+    complete = if opts[:triggers_off], do: &with_triggers_off/1, else: & &1.()
+
+    executed_at = DateTime.utc_now()
+    ids = draw.id |> WallopCore.Entries.load_for_draw() |> Enum.map(& &1.uuid)
+    winners = Enum.take(Enum.reverse(ids), 2)
+
+    results =
+      winners
+      |> Enum.with_index(1)
+      |> Enum.map(fn {id, p} -> %{"position" => p, "entry_id" => id} end)
+
+    seed = :crypto.hash(:sha256, draw.id) |> Base.encode16(case: :lower)
+    randomness = String.duplicate("c4", 32)
+    signature = String.duplicate("cd", 48)
+
+    {obs_value, obs_time, reason, exec_station} =
+      case kind do
+        :observed -> {value, wt, nil, station}
+        :fallback -> {nil, nil, LandObs.fallback_reason(), Stations.primary().id}
+      end
+
+    Repo.query!("UPDATE draws SET status = 'pending_entropy' WHERE id = $1", [dump(draw.id)])
+
+    complete.(fn ->
+      Repo.query!(
+        """
+        UPDATE draws SET status = 'completed', executed_at = $2, seed = $3, seed_source = 'entropy',
+          results = $4, drand_randomness = $5, drand_signature = $6, weather_value = $7,
+          weather_observation_time = $8, weather_fallback_reason = $9
+        WHERE id = $1
+        """,
+        [
+          dump(draw.id),
+          DateTime.to_naive(executed_at),
+          seed,
+          results,
+          randomness,
+          signature,
+          obs_value,
+          obs_time && DateTime.to_naive(obs_time),
+          reason
+        ]
+      )
+    end)
+
+    draw_id = draw.id
+
+    lock =
+      WallopCore.Resources.OperatorReceipt
+      |> Ash.Query.filter(draw_id == ^draw_id)
+      |> Ash.read_one!(authorize?: false)
+
+    lock_payload = Jason.decode!(lock.payload_jcs)
+    lock_hash = :crypto.hash(:sha256, lock.payload_jcs) |> Base.encode16(case: :lower)
+
+    infra =
+      WallopCore.Resources.InfrastructureSigningKey
+      |> Ash.Query.filter(valid_from <= ^executed_at)
+      |> Ash.Query.sort(valid_from: :desc)
+      |> Ash.Query.limit(1)
+      |> Ash.read_one!(authorize?: false)
+
+    input = %{
+      entropy_composition: draw.entropy_composition,
+      draw_id: draw.id,
+      operator_id: draw.operator_id,
+      operator_slug: lock_payload["operator_slug"],
+      sequence: draw.operator_sequence,
+      lock_receipt_hash: lock_hash,
+      entry_hash: draw.entry_hash,
+      drand_chain: draw.drand_chain,
+      drand_round: round,
+      drand_randomness: randomness,
+      drand_signature: signature,
+      weather_station: exec_station,
+      weather_observation_time: obs_time,
+      weather_value: obs_value,
+      weather_fallback_reason: reason,
+      wallop_core_version: to_string(Application.spec(:wallop_core, :vsn)),
+      fair_pick_version: lock_payload["fair_pick_version"],
+      seed: seed,
+      results: winners,
+      executed_at: executed_at,
+      signing_key_id: infra.key_id
+    }
+
+    cols = %{
+      draw_id: draw.id,
+      operator_id: draw.operator_id,
+      sequence: draw.operator_sequence,
+      lock_receipt_hash: lock_hash,
+      signing_key_id: infra.key_id
+    }
+
+    %{
+      draw: draw,
+      input: input,
+      cols: cols,
+      round: round,
+      wt: wt,
+      exec_after: DateTime.diff(executed_at, Quicknet.pub_time(round), :microsecond)
+    }
+  end
+
+  @doc """
+  Tries to insert an execution receipt row with payload bytes `json` and
+  the given columns, always rolled back. Returns nil when accepted, or the
+  refusal's message. The signature is a placeholder.
+  """
+  def insert_exec_receipt(json, cols) do
+    try_sql(
+      """
+      INSERT INTO execution_receipts (id, draw_id, operator_id, sequence, lock_receipt_hash,
+        payload_jcs, signature, signing_key_id)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+      """,
+      [
+        dump(Ecto.UUID.generate()),
+        dump(cols.draw_id),
+        dump(cols.operator_id),
+        cols.sequence,
+        cols.lock_receipt_hash,
+        json,
+        :binary.copy(<<0>>, 64),
+        cols.signing_key_id
       ]
     )
   end

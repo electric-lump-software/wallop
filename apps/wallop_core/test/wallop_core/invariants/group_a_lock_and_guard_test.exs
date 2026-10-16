@@ -507,6 +507,44 @@ defmodule WallopCore.Invariants.LockAndGuardTest do
                "UPDATE draws SET status = 'completed', executed_at = $2 WHERE id = $1",
                [dump(draw.id), DateTime.to_naive(late.weather_time)]
              ) == nil
+
+      # Execution receipt: anything not schema 5 goes in, as before.
+      for payload <- [Jason.encode!(%{"schema_version" => "4", "sequence" => 7.0}), "not json"] do
+        assert insert_exec_receipt(payload, %{
+                 draw_id: draw.id,
+                 operator_id: draw.operator_id,
+                 sequence: draw.operator_sequence,
+                 lock_receipt_hash: "x",
+                 signing_key_id: "k"
+               }) == nil
+      end
+
+      # Failing long after its round published (round 1, in 2023), from
+      # awaiting_entropy: as before.
+      locked = create_draw(key)
+
+      with_triggers_off(fn ->
+        Repo.query!("UPDATE draws SET drand_round = 1 WHERE id = $1", [dump(locked.id)])
+      end)
+
+      assert try_sql("UPDATE draws SET status = 'failed' WHERE id = $1", [dump(locked.id)]) ==
+               nil
+
+      # Delete of a draw out of open, with no receipt: as before.
+      copy = Ecto.UUID.generate()
+
+      Repo.query!(
+        """
+        INSERT INTO draws (id, status, winner_count, entry_count, api_key_id, operator_id,
+          operator_sequence, stage_timestamps, inserted_at, updated_at)
+        SELECT $2, 'pending_entropy', winner_count, entry_count, api_key_id, operator_id,
+          operator_sequence + 200000, stage_timestamps, inserted_at, updated_at
+        FROM draws WHERE id = $1
+        """,
+        [dump(draw.id), dump(copy)]
+      )
+
+      assert try_sql("DELETE FROM draws WHERE id = $1", [dump(copy)]) == nil
     end
   end
 
@@ -700,6 +738,27 @@ defmodule WallopCore.Invariants.LockAndGuardTest do
 
       assert insert_receipt(%{payload | "entropy_composition" => other}, cols) ==
                "no lock receipt rules for entropy_composition #{other}"
+    end
+
+    test "INV-5 (execution receipt trigger) a draw stored under an unknown pair takes no execution receipt" do
+      x = completed_v6_receipt_input(:fallback)
+      json = Protocol.build_v6_execution_payload(x.input)
+      assert insert_exec_receipt(json, x.cols) == nil
+
+      other = "drand-quicknet+metoffice-landobs-v2"
+
+      for {schema, tag} <- [{"6", other}, {"6", nil}, {"5", LandObs.tag()}, {nil, LandObs.tag()}] do
+        with_triggers_off(fn ->
+          Repo.query!(
+            "UPDATE draws SET lock_schema_version = $2, entropy_composition = $3 WHERE id = $1",
+            [dump(x.draw.id), schema, tag]
+          )
+        end)
+
+        assert insert_exec_receipt(json, x.cols) ==
+                 "no execution receipt rules for (#{schema || "<NULL>"}, #{tag || "<NULL>"})",
+               inspect({schema, tag})
+      end
     end
 
     test "INV-5 (execution) a stored unknown pair is never executed", %{key: key} do
