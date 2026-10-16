@@ -124,7 +124,7 @@ defmodule WallopWeb.Api.LockV6Test do
       assert error["source"]["pointer"] == "/data/attributes/draw_at"
 
       assert error["detail"] ==
-               "is only available to operators on the observation-weather protocol"
+               "is only available to operators on the observation-weather or grid-frequency protocol"
 
       assert error["meta"] == %{}
     end

@@ -34,30 +34,6 @@ defmodule WallopCore.Resources.Draw.LockV6Test do
     :ok
   end
 
-  # Pins the refusal that stands in for the grid-frequency lock path; the
-  # task that builds that path replaces the clause and this test.
-  test "a frequency operator can't lock before the frequency lock path exists; nothing falls through to forecast" do
-    {op, key} = create_v6_operator()
-    set_protocol!(op, :frequency)
-
-    for args <- [%{}, %{draw_at: Schedule.default_draw_at(DateTime.utc_now())}] do
-      draw = open_draw_with_entries(key)
-
-      assert {:error, %Ash.Error.Invalid{} = error} = lock(draw, key, args)
-
-      if args == %{},
-        do: assert(Exception.message(error) =~ "grid-frequency draws can't be locked yet")
-
-      reloaded = reload(draw)
-      assert reloaded.status == :open
-      assert {reloaded.lock_schema_version, reloaded.entropy_composition} == {nil, nil}
-      assert reloaded.receipt == nil
-      assert reloaded.entry_hash == nil
-      refute_enqueued(worker: EntropyWorker, args: %{draw_id: draw.id})
-      refute_enqueued(worker: ObservationDrawWorker, args: %{draw_id: draw.id})
-    end
-  end
-
   test "a v6 lock with draw_at signs lock v6, derives everything, and enqueues both jobs" do
     {_op, key} = create_v6_operator()
     draw_at = next_hour_draw_at(3)

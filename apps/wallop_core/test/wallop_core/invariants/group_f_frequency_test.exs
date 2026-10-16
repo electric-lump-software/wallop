@@ -208,6 +208,27 @@ defmodule WallopCore.Invariants.FrequencyTest do
     end
   end
 
+  test "INV-F4 through the real lock: the signed freq_start, locked_at, drand_round and drand_chain equal the row" do
+    ensure_infrastructure_key()
+    {_op, key} = create_freq_operator()
+    s = in_time_freq_schedule()
+
+    {:ok, locked} =
+      open_draw_with_entries(key)
+      |> Ash.Changeset.for_update(:lock, %{draw_at: s.draw_at}, actor: key)
+      |> Ash.update()
+
+    locked = Ash.load!(locked, [:receipt], authorize?: false)
+    p = Jason.decode!(locked.receipt.payload_jcs)
+
+    assert p["freq_start"] == rfc(locked.freq_start)
+    assert locked.freq_start == FreqSchedule.freq_start_for_round(locked.drand_round)
+    assert p["locked_at"] == rfc(locked.receipt.locked_at)
+    assert FreqSchedule.lock_allowed?(locked.receipt.locked_at, locked.freq_start)
+    assert {p["drand_round"], p["drand_chain"]} == {locked.drand_round, locked.drand_chain}
+    assert {p["drand_round"], p["entropy_composition"]} == {s.round, Freq.tag()}
+  end
+
   test "INV-F5 SQL frequency timing equals Elixir under a non-UTC session" do
     Repo.query!("SET LOCAL TIME ZONE 'Asia/Kolkata'")
 

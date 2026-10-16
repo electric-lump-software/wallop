@@ -1533,7 +1533,11 @@ defmodule WallopCore.Resources.Draw do
       )
 
       change({WallopCore.Resources.Draw.Changes.DeclareEntropyV6, []},
-        where: [{WallopCore.Resources.Draw.Validations.LockSchemaIs, version: "6"}]
+        where: [{WallopCore.Resources.Draw.Validations.EntropyRulesAre, rules: :landobs}]
+      )
+
+      change({WallopCore.Resources.Draw.Changes.DeclareEntropyFreq, []},
+        where: [{WallopCore.Resources.Draw.Validations.EntropyRulesAre, rules: :freq}]
       )
 
       change({WallopCore.Resources.Draw.Changes.RecordStageTimestamp, key: "locked_at"})
