@@ -19,8 +19,9 @@
 | `lock` | update | open | owner | entry_hash, entry_canonical, status→awaiting_entropy, drand_*/weather_* declarations (`weather_time` operator-supplied if argument provided, else jittered default; `drand_round` derived from `weather_time`), operator receipt; same-tx DELETE of add_entries_idempotency rows for this draw (ADR-0012) | LockDraw, DeclareEntropy (validates supplied weather_time via Validations.WeatherTime), RecordStageTimestamp(locked_at, entropy_declared_at), SignAndStoreReceipt |
 | `execute` | update | locked | owner | seed (caller), seed_source=caller, results, status→completed, executed_at | ExecuteDraw (validates NoEntropyDeclared) |
 | `transition_to_pending` | update | awaiting_entropy | **internal only** | status→pending_entropy | — |
-| `execute_with_entropy` | update | pending_entropy | **internal only** | drand_randomness, drand_signature, drand_response, weather_value, weather_raw, weather_observation_time, seed, results, status→completed | ExecuteWithEntropy, SignAndStoreExecutionReceipt, BroadcastUpdate |
-| `execute_drand_only` | update | pending_entropy | **internal only** | drand_randomness, drand_signature, drand_response, weather_fallback_reason, seed, results, status→completed | ExecuteDrandOnly, RecordStageTimestamp(executed_at), SignAndStoreExecutionReceipt, BroadcastUpdate |
+| `execute_with_entropy` | update | pending_entropy and lock_schema_version nil | **internal only** | drand_randomness, drand_signature, drand_response, weather_value, weather_raw, weather_observation_time, seed, results, status→completed | ExecuteWithEntropy, SignAndStoreExecutionReceipt, BroadcastUpdate |
+| `execute_drand_only` | update | pending_entropy and lock_schema_version nil | **internal only** | drand_randomness, drand_signature, drand_response, weather_fallback_reason, seed, results, status→completed | ExecuteDrandOnly, RecordStageTimestamp(executed_at), SignAndStoreExecutionReceipt, BroadcastUpdate |
+| `execute_v6` | update | pending_entropy, lock_schema_version 6 | **internal only** (ObservationDrawWorker, EntropyWorker for v6 draws); `forbid_if(always())` | drand_randomness, drand_signature, drand_response; weather_value, weather_raw, weather_observation_time from the stored reading, or weather_fallback_reason by rule; seed, results, status→completed, executed_at | ExecuteV6, RecordStageTimestamp(executed_at), SignAndStoreExecutionReceipt(version 6), EnqueueWebhook, BroadcastUpdate |
 | `expire` | update | open | **internal only** | status→expired | BroadcastUpdate |
 | `mark_failed` | update | pending_entropy, awaiting_entropy | **internal only** | status→failed, failed_at, failure_reason | BroadcastUpdate |
 | `read` | read | — | owner (api_key_id == actor) | — | — |
@@ -41,11 +42,12 @@ open ──→ awaiting_entropy ──→ pending_entropy ──→ completed
 These have `forbid_if(always())` policies — only reachable via
 `authorize?: false` (Oban workers, change modules):
 
-- `transition_to_pending` (EntropyWorker)
+- `transition_to_pending` (EntropyWorker, V6Execution)
 - `execute_with_entropy` (EntropyWorker)
 - `execute_drand_only` (EntropyWorker)
+- `execute_v6` (ObservationDrawWorker, and EntropyWorker for v6 draws, both through V6Execution)
 - `expire` (ExpiryWorker)
-- `mark_failed` (EntropyWorker)
+- `mark_failed` (EntropyWorker; V6Execution only before drand is fetched)
 
 ### DB trigger enforcement
 

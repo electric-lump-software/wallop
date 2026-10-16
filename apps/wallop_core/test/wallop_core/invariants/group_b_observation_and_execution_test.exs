@@ -13,11 +13,7 @@ defmodule WallopCore.Invariants.ObservationAndExecutionTest do
   @moduletag :invariant
 
   # Planned modules, not yet in lib. Remove each from this list once it exists.
-  @compile {:no_warn_undefined,
-            [
-              WallopCore.Entropy.ObservationDrawWorker,
-              WallopCore.Entropy.StuckDrawRedriver
-            ]}
+  @compile {:no_warn_undefined, [WallopCore.Entropy.StuckDrawRedriver]}
 
   alias Ecto.Adapters.SQL.Sandbox
   alias WallopCore.Drand.Quicknet
@@ -256,20 +252,31 @@ defmodule WallopCore.Invariants.ObservationAndExecutionTest do
       assert complete(after_f, fallback, [LandObs.fallback_reason()]) == nil
     end
 
-    @tag :pending_task_10
     test "INV-8 execute_v6 records the stored observation, at or after pub(R)" do
       ensure_infrastructure_key()
-      draw = v6_draw(-(@w - 5 * 60), -10)
-      {:ok, obs} = store(Stations.backup().id, draw)
-      shift_window_back!(draw)
+
+      # As a real lock leaves it, the stored weather_time is the round's own
+      # hour: the execution receipt signs the observation time, and its
+      # builder refuses one that isn't the round's hour. The round published
+      # 10 seconds ago, so the hour's window closed before it; the reading is
+      # placed directly (the store refuses writes after F), from the backup.
+      {_op, key} = create_v6_operator()
+      round = round_at(-10)
+      wt = Schedule.weather_time_for_round(round)
+      draw = put_v6_awaiting!(open_draw_with_entries(key), wt, round)
+      put_observation!(Stations.backup().id, wt, @value)
+      obs = Observations.for_draw(draw)
 
       done = execute_v6!(draw)
       assert done.status == :completed
       assert {done.weather_value, done.weather_fallback_reason} == {obs.value, nil}
+      assert done.weather_observation_time == obs.observation_time
       assert DateTime.compare(done.executed_at, Quicknet.pub_time(done.drand_round)) != :lt
+
+      %{execution_receipt: receipt} = Ash.load!(done, :execution_receipt, authorize?: false)
+      assert Jason.decode!(receipt.payload_jcs)["weather_station"] == obs.station
     end
 
-    @tag :pending_task_10
     test "INV-8 execute_v6 falls back by rule when nothing is stored by F, at or after pub(R)" do
       ensure_infrastructure_key()
       done = execute_v6!(v6_draw(-(@w + 60), -10))
@@ -280,7 +287,6 @@ defmodule WallopCore.Invariants.ObservationAndExecutionTest do
       assert DateTime.compare(done.executed_at, Quicknet.pub_time(done.drand_round)) != :lt
     end
 
-    @tag :pending_task_10
     test "INV-8 execute_v6 refuses before pub(R), even after F" do
       draw = v6_draw(-(@w + 60), 600)
       pending = draw |> to_pending!()
@@ -520,7 +526,6 @@ defmodule WallopCore.Invariants.ObservationAndExecutionTest do
     defp delete_jobs_for!(draw),
       do: Repo.query!("DELETE FROM oban_jobs WHERE args->>'draw_id' = $1", [draw.id])
 
-    @tag :pending_task_10
     test "INV-9 an execute error after the fetch leaves the draw pending, on every attempt" do
       draw = v6_draw(-(@w + 60), -10)
       break_entry_hash!(draw)
@@ -532,7 +537,6 @@ defmodule WallopCore.Invariants.ObservationAndExecutionTest do
       end
     end
 
-    @tag :pending_task_10
     test "INV-9 a database refusal after the fetch leaves the draw pending, on every attempt" do
       draw = v6_draw(-(@w + 60), -10)
       occupy_execution_receipt!(draw)
@@ -544,7 +548,6 @@ defmodule WallopCore.Invariants.ObservationAndExecutionTest do
       end
     end
 
-    @tag :pending_task_10
     test "INV-9 the forecast worker, handed a v6 draw, never fails it either" do
       draw = v6_draw(-(@w + 60), -10)
       break_entry_hash!(draw)

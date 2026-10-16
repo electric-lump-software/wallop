@@ -47,7 +47,7 @@ defmodule WallopCore.Invariants.SuiteTest do
   @moduletag :invariant
 
   alias Ash.Resource.Info
-  alias WallopCore.Entropy.{ObservationDrawWorker, StuckDrawRedriver}
+  alias WallopCore.Entropy.StuckDrawRedriver
   alias WallopCore.InvariantCase
   alias WallopCore.ProofBundle
   alias WallopCore.Resources.Draw
@@ -128,8 +128,15 @@ defmodule WallopCore.Invariants.SuiteTest do
   # What each pending task delivers: once it exists, that task has landed.
   defp landed?(:pending_task_6), do: Code.ensure_loaded?(Observations)
 
-  defp landed?(:pending_task_10),
-    do: Code.ensure_loaded?(ObservationDrawWorker)
+  # The executor and its worker (ObservationDrawWorker) landed before the
+  # database backstop, and their invariants are on. The pending_task_10 tags
+  # left are the backstop's, so the marker is its pinned refusal in the
+  # draws guard.
+  defp landed?(:pending_task_10) do
+    Draw
+    |> AshPostgres.DataLayer.Info.custom_statements()
+    |> Enum.any?(&String.contains?(&1.up, "can''t fail once its drand randomness is stored"))
+  end
 
   defp landed?(:pending_task_11),
     do: Enum.any?(Info.action(Draw, :lock).arguments, &(&1.name == :draw_at))
