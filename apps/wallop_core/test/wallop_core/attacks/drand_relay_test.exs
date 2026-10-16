@@ -6,8 +6,11 @@ defmodule WallopCore.Attacks.DrandRelayTest do
 
   `V6Execution` fetches with `on_invalid: :next`: one relay's bad answer
   (a body that isn't a JSON object, a 404, a 401 or 403) moves on to the
-  next relay. Every body is read through a 16 KiB cap, and the stored
-  `drand_response` is the beacon re-encoded, never the relay's bytes.
+  next relay. Each relay gets a total deadline and no Req retries, so a
+  relay that drips bytes or asks for a long `Retry-After` is abandoned.
+  Every body is read through a 16 KiB cap, and the stored `drand_response`
+  is the beacon re-encoded, never the relay's bytes. A fetch or skew check
+  that exits never crashes the job.
   """
   use WallopCore.DataCase, async: false
   use Oban.Testing, repo: WallopCore.Repo
@@ -227,6 +230,134 @@ defmodule WallopCore.Attacks.DrandRelayTest do
 
       assert {:ok, %{response: response}} = DrandClient.fetch(Quicknet.chain_hash(), 1000)
       assert Jason.decode!(response)["previous_signature"] == "ab"
+    end
+  end
+
+  describe "each relay is bounded" do
+    defp honest(conn) do
+      round = conn.path_info |> List.last() |> String.to_integer()
+
+      Req.Test.json(conn, %{
+        "round" => round,
+        "randomness" => @randomness,
+        "signature" => @signature
+      })
+    end
+
+    defp put_config(extra) do
+      Application.put_env(
+        :wallop_core,
+        DrandClient,
+        Keyword.merge([req_options: [plug: {Req.Test, DrandClient}, retry: false]], extra)
+      )
+    end
+
+    defp elapsed_ms(fun) do
+      {us, result} = :timer.tc(fun)
+      {div(us, 1000), result}
+    end
+
+    test "a relay that drips bytes slower than the deadline is abandoned for the next" do
+      put_config(relay_deadline_ms: 300)
+
+      first_relay_hostile(fn conn ->
+        conn = Plug.Conn.send_chunked(conn, 200)
+
+        Enum.reduce(1..10, conn, fn _, conn ->
+          Process.sleep(100)
+          {:ok, conn} = Plug.Conn.chunk(conn, " ")
+          conn
+        end)
+      end)
+
+      round = Quicknet.round_at_or_after(DateTime.add(DateTime.utc_now(), -10))
+
+      {ms, result} =
+        elapsed_ms(fn ->
+          DrandClient.fetch_with_failover(Quicknet.chain_hash(), round, on_invalid: :next)
+        end)
+
+      assert {:ok, %{round: ^round}} = result
+      assert ms < 900, "took #{ms} ms"
+    end
+
+    test "a 503 with Retry-After: 30 moves straight on, with no sleep" do
+      # Req's own retries left on in config, as they are outside tests:
+      # the bounded fetch turns them off for each relay.
+      put_config(req_options: [plug: {Req.Test, DrandClient}])
+
+      first_relay_hostile(fn conn ->
+        conn
+        |> Plug.Conn.put_resp_header("retry-after", "30")
+        |> Plug.Conn.send_resp(503, "")
+      end)
+
+      round = Quicknet.round_at_or_after(DateTime.add(DateTime.utc_now(), -10))
+
+      {ms, result} =
+        elapsed_ms(fn ->
+          DrandClient.fetch_with_failover(Quicknet.chain_hash(), round, on_invalid: :next)
+        end)
+
+      assert {:ok, %{round: ^round}} = result
+      assert ms < 2_000, "took #{ms} ms"
+    end
+
+    test "every relay hanging ends the attempt within the relay deadlines" do
+      put_config(relay_deadline_ms: 200)
+      draw = v6_draw_ready()
+
+      Req.Test.stub(DrandClient, fn conn ->
+        Process.sleep(5_000)
+        honest(conn)
+      end)
+
+      {ms, result} =
+        elapsed_ms(fn ->
+          perform_job(ObservationDrawWorker, %{draw_id: draw.id}, attempt: 1)
+        end)
+
+      assert {:error, _} = result
+      assert reload(draw).status == :pending_entropy
+      assert ms < 2_000, "took #{ms} ms"
+    end
+
+    test "the worst case attempt fits well inside the job timeout" do
+      # Every relay at its full deadline, plus the skew check's cap.
+      worst = length(DrandClient.relays()) * DrandClient.relay_deadline_ms() + 3_000
+      job_timeout = ObservationDrawWorker.timeout(%Oban.Job{})
+
+      assert DrandClient.relay_deadline_ms() == 10_000
+      assert worst * 2 <= job_timeout, "#{worst} ms of #{job_timeout} ms"
+    end
+  end
+
+  describe "exits" do
+    test "a fetch that exits is a transient drand failure: retried, then refused" do
+      ref = :telemetry_test.attach_event_handlers(self(), [[:wallop_core, :v6, :exec_refused]])
+      draw = v6_draw_ready()
+      Req.Test.stub(DrandClient, fn _conn -> exit(:relay_gone) end)
+
+      assert {:error, _} = perform_job(ObservationDrawWorker, %{draw_id: draw.id}, attempt: 1)
+      assert reload(draw).status == :pending_entropy
+
+      assert {:cancel, reason} =
+               perform_job(ObservationDrawWorker, %{draw_id: draw.id}, attempt: 10)
+
+      assert reason =~ "drand unavailable after 10 attempts (fetch_exited)"
+      assert reload(draw).status == :pending_entropy
+      assert_receive {[:wallop_core, :v6, :exec_refused], ^ref, _, _}
+    end
+
+    test "a skew check that exits is ignored, and the draw completes" do
+      draw = v6_draw_ready()
+
+      Req.Test.stub(DrandClient, fn conn ->
+        if List.last(conn.path_info) == "latest", do: exit(:relay_gone), else: honest(conn)
+      end)
+
+      assert :ok = perform_job(ObservationDrawWorker, %{draw_id: draw.id}, attempt: 1)
+      assert reload(draw).status == :completed
     end
   end
 end

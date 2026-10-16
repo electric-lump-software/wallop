@@ -21,6 +21,9 @@ defmodule WallopCore.Entropy.DrandClient do
   @connect_timeout 5_000
   @receive_timeout 10_000
   @max_body_bytes 16_384
+  # With `on_invalid: :next`, each relay gets this long in total, then the
+  # next one is asked.
+  @relay_deadline_ms 10_000
 
   @default_relays [
     "https://api.drand.sh",
@@ -37,6 +40,20 @@ defmodule WallopCore.Entropy.DrandClient do
   @doc "The largest response body accepted, in bytes."
   @spec max_body_bytes() :: pos_integer()
   def max_body_bytes, do: @max_body_bytes
+
+  @doc false
+  # The total time one relay gets under `on_invalid: :next`. Configurable
+  # (`relay_deadline_ms`) only so tests can shorten it.
+  @spec relay_deadline_ms() :: pos_integer()
+  def relay_deadline_ms do
+    Application.get_env(:wallop_core, __MODULE__, [])
+    |> Keyword.get(:relay_deadline_ms, @relay_deadline_ms)
+  end
+
+  @doc false
+  @spec relays() :: [String.t()]
+  def relays,
+    do: Application.get_env(:wallop_core, __MODULE__, []) |> Keyword.get(:relays, @default_relays)
 
   @doc """
   Fetch a specific round, trying multiple relays on failure.
@@ -55,14 +72,18 @@ defmodule WallopCore.Entropy.DrandClient do
       back only when every relay said not found; any other mix of failures
       is `{:error, {:all_relays_failed, errors}}`. Observation-weather
       draws use `:next`.
+
+      `:next` also bounds each relay: no Req retries (failover is the
+      retry, so a `Retry-After` never makes it sleep), and a total
+      deadline per relay (`relay_deadline_ms/0`, 10 s), after which that
+      relay's error is `:relay_timeout` and the next one is asked. A fetch
+      that raises or exits still raises or exits here, as under `:stop`.
   """
   def fetch_with_failover(chain_hash, round, opts \\ [])
       when is_binary(chain_hash) and is_integer(round) do
-    config = Application.get_env(:wallop_core, __MODULE__, [])
-    relays = Keyword.get(config, :relays, @default_relays)
     on_invalid = Keyword.get(opts, :on_invalid, :stop)
 
-    try_relays(relays, chain_hash, round, on_invalid, [])
+    try_relays(relays(), chain_hash, round, on_invalid, [])
   end
 
   defp try_relays([], _chain_hash, _round, :next, [_ | _] = errors) do
@@ -76,7 +97,7 @@ defmodule WallopCore.Entropy.DrandClient do
   end
 
   defp try_relays([relay | rest], chain_hash, round, on_invalid, errors) do
-    case fetch(chain_hash, round, relay) do
+    case fetch_relay(chain_hash, round, relay, on_invalid) do
       {:ok, _} = success ->
         success
 
@@ -99,6 +120,33 @@ defmodule WallopCore.Entropy.DrandClient do
     end
   end
 
+  defp fetch_relay(chain_hash, round, relay, :next), do: bounded_fetch(chain_hash, round, relay)
+  defp fetch_relay(chain_hash, round, relay, _on_invalid), do: fetch(chain_hash, round, relay)
+
+  # One relay, no Req retries, within the relay deadline. The request runs
+  # in a task so a relay dripping bytes can be abandoned; a raise, exit or
+  # throw inside it is passed on to the caller unchanged.
+  defp bounded_fetch(chain_hash, round, relay) do
+    task =
+      Task.async(fn ->
+        try do
+          {:done, do_fetch(chain_hash, round, relay, retry: false)}
+        rescue
+          e -> {:raised, e, __STACKTRACE__}
+        catch
+          kind, reason -> {kind, reason}
+        end
+      end)
+
+    case Task.yield(task, relay_deadline_ms()) || Task.shutdown(task, :brutal_kill) do
+      {:ok, {:done, result}} -> result
+      {:ok, {:raised, e, stacktrace}} -> reraise e, stacktrace
+      {:ok, {:exit, reason}} -> exit(reason)
+      {:ok, {:throw, value}} -> throw(value)
+      nil -> {:error, :relay_timeout}
+    end
+  end
+
   @doc """
   Fetch a specific round from a drand chain.
 
@@ -106,11 +154,14 @@ defmodule WallopCore.Entropy.DrandClient do
   or `{:error, reason}`.
   """
   def fetch(chain_hash, round, relay_url \\ nil)
-      when is_binary(chain_hash) and is_integer(round) do
+      when is_binary(chain_hash) and is_integer(round),
+      do: do_fetch(chain_hash, round, relay_url, [])
+
+  defp do_fetch(chain_hash, round, relay_url, extra_opts) do
     base = relay_url || base_url()
     url = "#{base}/#{chain_hash}/public/#{round}"
 
-    case get(url) do
+    case get(url, extra_opts) do
       {:ok, %Req.Response{private: %{body_too_large: true}}} ->
         {:error, :malformed_body}
 
@@ -184,8 +235,9 @@ defmodule WallopCore.Entropy.DrandClient do
   # type as before. Compression stays off (Req's default), so a body sent
   # compressed anyway is never inflated: Req leaves it encoded, which isn't
   # a map, which is refused.
-  defp get(url) do
-    Req.get(url, Keyword.merge(req_options(), into: &collect_capped/2, compressed: false))
+  defp get(url, extra_opts \\ []) do
+    opts = Keyword.merge([into: &collect_capped/2, compressed: false], extra_opts)
+    Req.get(url, Keyword.merge(req_options(), opts))
   end
 
   defp collect_capped({:data, data}, {req, resp}) do

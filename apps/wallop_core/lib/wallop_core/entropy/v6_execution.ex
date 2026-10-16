@@ -22,8 +22,9 @@ defmodule WallopCore.Entropy.V6Execution do
        * success;
        * a retry (`{:error, _}`) for a transient drand failure (one relay's
          invalid response, malformed body, 404, 401 or 403 moves on to the
-         next relay; every relay failing, and the fetch raising, are
-         transient) or a failed
+         next relay, as does a relay that misses its 10 s deadline; every
+         relay failing, and the fetch raising or exiting, are transient)
+         or a failed
          execution, which rolls back as one unit; when the job runs out of
          attempts Oban discards it and the draw stays where it is;
        * a refusal: drand still unavailable on the job's last attempt, or
@@ -119,11 +120,13 @@ defmodule WallopCore.Entropy.V6Execution do
     end
   end
 
-  # A fetch that raises is a transient drand failure like any other.
+  # A fetch that raises or exits is a transient drand failure like any other.
   defp fetch_drand(draw) do
     DrandClient.fetch_with_failover(draw.drand_chain, draw.drand_round, on_invalid: :next)
   rescue
     e -> {:error, {:raised, e.__struct__}}
+  catch
+    :exit, _ -> {:error, :fetch_exited}
   end
 
   # Telemetry only: never changes the outcome, never waits long.
@@ -134,6 +137,8 @@ defmodule WallopCore.Entropy.V6Execution do
           DrandClient.current_round(draw.drand_chain)
         rescue
           _ -> :error
+        catch
+          :exit, _ -> :error
         end
       end)
 
@@ -156,6 +161,8 @@ defmodule WallopCore.Entropy.V6Execution do
     :ok
   rescue
     _ -> :ok
+  catch
+    :exit, _ -> :ok
   end
 
   # The beacon itself, re-encoded: the relay's own bytes (and anything it
