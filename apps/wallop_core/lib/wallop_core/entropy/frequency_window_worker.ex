@@ -147,7 +147,7 @@ defmodule WallopCore.Entropy.FrequencyWindowWorker do
     case window_state(now, t) do
       :open ->
         with {:ok, window} <- result, do: store(t, window)
-        if Windows.pending_draw_ids(t) == [], do: :ok, else: {:snooze, next_poll_in(now, t)}
+        if Windows.pending_draw_ids(t) == [], do: :ok, else: next_poll(now, t)
 
       :closed ->
         :ok
@@ -264,9 +264,13 @@ defmodule WallopCore.Entropy.FrequencyWindowWorker do
   defp first_poll_at(t),
     do: DateTime.add(Schedule.store_from(t), Schedule.first_poll_after_store_from_seconds())
 
-  defp next_poll_in(now, t) do
+  @doc false
+  # The next poll, at least @deadline_margin_seconds before F; when there is
+  # no whole second left for that, polling stops.
+  @spec next_poll(DateTime.t(), DateTime.t()) :: {:snooze, pos_integer()} | :ok
+  def next_poll(now, t) do
     left = DateTime.diff(Schedule.fetch_deadline(t), now) - @deadline_margin_seconds
-    max(min(Schedule.poll_interval_seconds(), left), 1)
+    if left >= 1, do: {:snooze, min(Schedule.poll_interval_seconds(), left)}, else: :ok
   end
 
   defp seconds_until(t, now), do: max(DateTime.diff(t, now), 1)
