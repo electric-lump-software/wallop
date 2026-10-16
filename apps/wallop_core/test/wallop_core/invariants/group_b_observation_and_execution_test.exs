@@ -593,8 +593,11 @@ defmodule WallopCore.Invariants.ObservationAndExecutionTest do
 
       Req.Test.stub(DrandClient, fn conn -> Plug.Conn.send_resp(conn, 503, "") end)
 
+      # An error, never a cancel: Oban discards the job and the re-drive
+      # brings the draw back once drand answers.
       for worker <- [ObservationDrawWorker, EntropyWorker] do
-        assert {:cancel, _} = perform_job(worker, %{draw_id: draw.id}, attempt: 10)
+        assert {:error, reason} = perform_job(worker, %{draw_id: draw.id}, attempt: 10)
+        assert reason =~ "drand unavailable after 10 attempts"
         assert reload(draw).status == :pending_entropy
       end
     end
