@@ -16,6 +16,8 @@ defmodule WallopCore.Invariants.SuiteTest do
       mutated one step at a time and in pairs, is refused by the builder,
       the database or (through `spec/vectors/proof-bundle-v6-tamper.json`)
       the verifier (INV-2), and raw SQL attack sequences in every order.
+    * Group F, `group_f_frequency_test.exs`: the grid-frequency tag (INV-F1
+      to INV-F7), with ids `INV-F<n>` and pending tags `pending_task_F<n>`.
 
   The rule: an invariant that a later task delivers is written now, against
   that task's planned interface, and tagged `@tag :pending_task_<N>` on the
@@ -53,7 +55,8 @@ defmodule WallopCore.Invariants.SuiteTest do
   alias WallopCore.Weather.Observations
 
   @dir __DIR__
-  @ids ~w(INV-1 INV-2 INV-3 INV-4 INV-5 INV-6 INV-7 INV-8 INV-8b INV-9 INV-10 INV-11 INV-12 INV-13)
+  @ids ~w(INV-1 INV-2 INV-3 INV-4 INV-5 INV-6 INV-7 INV-8 INV-8b INV-9 INV-10 INV-11 INV-12 INV-13
+          INV-F1 INV-F2 INV-F3 INV-F4 INV-F5 INV-F6 INV-F7)
 
   defp sources do
     for path <- Path.wildcard(Path.join(@dir, "*_test.exs")),
@@ -63,7 +66,7 @@ defmodule WallopCore.Invariants.SuiteTest do
 
   defp used_pending_tags do
     sources()
-    |> Enum.flat_map(fn {_, source} -> Regex.scan(~r/@tag :(pending_task_\d+)/, source) end)
+    |> Enum.flat_map(fn {_, source} -> Regex.scan(~r/@tag :(pending_task_F?\d+)/, source) end)
     |> Enum.map(fn [_, tag] -> String.to_atom(tag) end)
     |> Enum.uniq()
   end
@@ -76,7 +79,7 @@ defmodule WallopCore.Invariants.SuiteTest do
 
   test "INV-* every invariant test is named after its invariant" do
     for {file, source} <- sources(), name <- names(source) do
-      assert name =~ ~r/^INV-\d+b? /, "#{file}: #{inspect(name)}"
+      assert name =~ ~r/^INV-F?\d+b? /, "#{file}: #{inspect(name)}"
     end
   end
 
@@ -109,8 +112,8 @@ defmodule WallopCore.Invariants.SuiteTest do
       lines = String.split(source, "\n")
 
       for {line, i} <- Enum.with_index(lines),
-          line =~ ~r/pending_task_\d/ do
-        assert line =~ ~r/^\s*@tag :pending_task_\d+$/, "#{file}:#{i + 1}: #{String.trim(line)}"
+          line =~ ~r/pending_task_F?\d/ do
+        assert line =~ ~r/^\s*@tag :pending_task_F?\d+$/, "#{file}:#{i + 1}: #{String.trim(line)}"
 
         next =
           lines
@@ -142,6 +145,28 @@ defmodule WallopCore.Invariants.SuiteTest do
 
   defp landed?(:pending_task_13),
     do: Code.ensure_loaded?(ProofBundle) and function_exported?(ProofBundle, :assemble, 1)
+
+  # Part F. Each marker is the first thing its task delivers. The modules
+  # are named by string so this file compiles before they exist.
+  defp landed?(:pending_task_F5) do
+    Draw
+    |> AshPostgres.DataLayer.Info.custom_statements()
+    |> Enum.any?(&(&1.name == :wallop_freq_start))
+  end
+
+  defp landed?(:pending_task_F6),
+    do: Code.ensure_loaded?(Module.concat([WallopCore, Frequency, Windows]))
+
+  defp landed?(:pending_task_F9) do
+    rules = Module.concat([WallopCore, Entropy, V6Rules])
+
+    Code.ensure_loaded?(rules) and
+      rules.rules(%{
+        lock_schema_version: "6",
+        entropy_composition: "drand-quicknet+elexon-freq-v1"
+      }) ==
+        {:ok, :freq}
+  end
 
   test "INV-* a landed task has removed its pending tags" do
     used = used_pending_tags()
