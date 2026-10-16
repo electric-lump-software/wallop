@@ -21,13 +21,12 @@ defmodule WallopCore.Entropy.V6Execution do
        here to `mark_failed`. Every outcome after pub(R) is one of:
        * success;
        * a retry (`{:error, _}`) for a transient drand failure (one relay's
-         invalid response moves on to the next relay; every relay failing,
-         invalid responses included, is transient) or a failed
+         invalid response, 404, 401 or 403 moves on to the next relay; every
+         relay failing, and the fetch raising, are transient) or a failed
          execution, which rolls back as one unit; when the job runs out of
          attempts Oban discards it and the draw stays where it is;
-       * a refusal: drand still unavailable on the job's last attempt, an
-         unrecoverable drand error, or stored state that retrying can't
-         change (`WallopCore.Errors.V6ExecRefused`: an unknown pair, an
+       * a refusal: drand still unavailable on the job's last attempt, or
+         stored state that retrying can't change (`WallopCore.Errors.V6ExecRefused`: an unknown pair, an
          entry hash mismatch, the receipt builder rejecting stored state, a
          `fair_pick_version` mismatch). It emits
          `[:wallop_core, :v6, :exec_refused]` naming the cause and cancels
@@ -36,16 +35,27 @@ defmodule WallopCore.Entropy.V6Execution do
          behind the database's), which snoozes with nothing written.
     2. **The database.** The draws guard refuses moving an
        observation-weather draw to `failed` once the database clock is at or
-       past pub(R), from any status and whatever path tries it. Failing
-       before pub(R) stays allowed: that is a visible abort before anything
-       is knowable.
+       past its fetch deadline F, a minute or more before pub(R), from any
+       status and whatever path tries it. Failing before F stays allowed:
+       that is a visible abort before anything is knowable.
+
+  The stored `drand_response` is the beacon re-encoded as
+  `{"randomness", "round", "signature"}`, never the relay's own bytes, so
+  nothing a relay adds is stored or served.
+
+  Each successful fetch also compares the database clock with the
+  publication time of drand's latest round. The guards above trust that
+  clock, so a skew over 5 s is reported.
 
   Telemetry: `[:wallop_core, :v6, :executed]` (`%{station, fallback?}`),
-  `[:wallop_core, :v6, :execute_error]` (`%{draw_id}`) and
-  `[:wallop_core, :v6, :exec_refused]` (`%{draw_id, reason}`).
+  `[:wallop_core, :v6, :execute_error]` (`%{draw_id}`),
+  `[:wallop_core, :v6, :exec_refused]` (`%{draw_id, reason}`) and
+  `[:wallop_core, :v6, :clock_skew]` (measurements `%{skew_ms}`: the
+  database clock minus pub(latest round), metadata `%{draw_id, round}`).
   """
   require Logger
 
+  alias WallopCore.Drand.Quicknet
   alias WallopCore.Entropy.{DrandClient, EntropyWorker, V6Rules}
 
   # The wait after a post-fetch V6NotYet is measured on this node's clock,
@@ -53,6 +63,9 @@ defmodule WallopCore.Entropy.V6Execution do
   # shorter than the floor: a lagging app clock can't cause a tight loop.
   @not_yet_margin_seconds 2
   @not_yet_floor_seconds 5
+  # The clock skew check: report beyond this, and never wait longer for it.
+  @skew_alarm_ms 5_000
+  @skew_check_timeout_ms 3_000
   alias WallopCore.Errors.{V6ExecRefused, V6NotYet}
   alias WallopCore.Log
   alias WallopCore.Weather.Observations
@@ -95,10 +108,63 @@ defmodule WallopCore.Entropy.V6Execution do
   defp fetch_and_execute(draw, attempt, max_attempts) do
     # One relay's invalid response must not end the attempt: try the next.
     # If every relay fails, that is transient like any other outage.
-    case DrandClient.fetch_with_failover(draw.drand_chain, draw.drand_round, on_invalid: :next) do
-      {:ok, drand} -> execute(draw, drand)
-      {:error, reason} -> drand_failed(draw, reason, attempt, max_attempts)
+    case fetch_drand(draw) do
+      {:ok, drand} ->
+        check_clock_skew(draw)
+        execute(draw, drand)
+
+      {:error, reason} ->
+        drand_failed(draw, reason, attempt, max_attempts)
     end
+  end
+
+  # A fetch that raises is a transient drand failure like any other.
+  defp fetch_drand(draw) do
+    DrandClient.fetch_with_failover(draw.drand_chain, draw.drand_round, on_invalid: :next)
+  rescue
+    e -> {:error, {:raised, e.__struct__}}
+  end
+
+  # Telemetry only: never changes the outcome, never waits long.
+  defp check_clock_skew(draw) do
+    task =
+      Task.async(fn ->
+        try do
+          DrandClient.current_round(draw.drand_chain)
+        rescue
+          _ -> :error
+        end
+      end)
+
+    with {:ok, {:ok, latest}} when is_integer(latest) and latest >= 1 <-
+           Task.yield(task, @skew_check_timeout_ms) || Task.shutdown(task, :brutal_kill) do
+      skew_ms = DateTime.diff(Observations.db_now(), Quicknet.pub_time(latest), :millisecond)
+
+      if abs(skew_ms) > @skew_alarm_ms do
+        Logger.warning(
+          "V6Execution: database clock is #{skew_ms} ms from drand round #{latest}'s publication"
+        )
+
+        :telemetry.execute([:wallop_core, :v6, :clock_skew], %{skew_ms: skew_ms}, %{
+          draw_id: draw.id,
+          round: latest
+        })
+      end
+    end
+
+    :ok
+  rescue
+    _ -> :ok
+  end
+
+  # The beacon itself, re-encoded: the relay's own bytes (and anything it
+  # added to them) are never stored.
+  defp beacon_json(drand) do
+    Jason.encode!(%{
+      "randomness" => drand.randomness,
+      "round" => drand.round,
+      "signature" => drand.signature
+    })
   end
 
   # drand is known from here on: never mark the draw failed.
@@ -107,7 +173,7 @@ defmodule WallopCore.Entropy.V6Execution do
     |> Ash.Changeset.for_update(:execute_v6, %{
       drand_randomness: drand.randomness,
       drand_signature: drand.signature,
-      drand_response: drand.response
+      drand_response: beacon_json(drand)
     })
     |> Ash.update(domain: WallopCore.Domain, authorize?: false)
     |> case do
@@ -174,27 +240,23 @@ defmodule WallopCore.Entropy.V6Execution do
     })
   end
 
-  # Only after pub(R): never fails the draw. A transient failure retries;
-  # an unrecoverable one, or one on the last attempt, is a refusal.
+  # Only after pub(R): never fails the draw. A failure retries; on the last
+  # attempt it is a refusal.
   defp drand_failed(draw, reason, attempt, max_attempts) do
-    cond do
-      match?({:unexpected_status, s} when s in [401, 403], reason) ->
-        refuse(draw, "drand unrecoverable error (#{drand_error(reason)})")
+    if attempt >= max_attempts do
+      refuse(draw, "drand unavailable after #{attempt} attempts (#{drand_error(reason)})")
+    else
+      Logger.warning(
+        "V6Execution: drand failed for draw #{Log.redact_id(draw.id)}: #{drand_error(reason)}"
+      )
 
-      attempt >= max_attempts ->
-        refuse(draw, "drand unavailable after #{attempt} attempts (#{drand_error(reason)})")
-
-      true ->
-        Logger.warning(
-          "V6Execution: drand failed for draw #{Log.redact_id(draw.id)}: #{drand_error(reason)}"
-        )
-
-        {:error, "drand unavailable, will retry"}
+      {:error, "drand unavailable, will retry"}
     end
   end
 
   defp drand_error({:unexpected_status, status}), do: "HTTP #{status}"
   defp drand_error({:all_relays_failed, _}), do: "all relays failed"
+  defp drand_error({:raised, module}), do: "fetch raised #{inspect(module)}"
   defp drand_error(reason) when is_atom(reason), do: Atom.to_string(reason)
 
   defp to_pending(%{status: :awaiting_entropy} = draw) do

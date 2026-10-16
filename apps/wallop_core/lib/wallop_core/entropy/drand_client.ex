@@ -5,11 +5,17 @@ defmodule WallopCore.Entropy.DrandClient do
   Fetches cryptographically verified random values from the League of Entropy
   (https://drand.love). Each round produces a unique, unpredictable random value
   that can be independently verified.
+
+  Bodies are read through a size cap (`max_body_bytes/0`; a beacon is about
+  200 bytes) and only uncompressed, so a relay can't make the node buffer
+  an unbounded response. A body over the cap, or one that isn't a JSON
+  object, is `{:error, :invalid_response}`.
   """
 
   @base_url "https://api.drand.sh"
   @connect_timeout 5_000
   @receive_timeout 10_000
+  @max_body_bytes 16_384
 
   @default_relays [
     "https://api.drand.sh",
@@ -23,20 +29,26 @@ defmodule WallopCore.Entropy.DrandClient do
   @doc "The chain hash for the quicknet chain (3-second rounds)."
   def quicknet_chain_hash, do: @quicknet_chain_hash
 
+  @doc "The largest response body accepted, in bytes."
+  @spec max_body_bytes() :: pos_integer()
+  def max_body_bytes, do: @max_body_bytes
+
   @doc """
   Fetch a specific round, trying multiple relays on failure.
 
   Fails over on transport errors, timeouts, and 5xx responses.
-  Does NOT failover on 404 (round not yet produced) or, by default, on
-  invalid responses.
+  By default does NOT fail over on 404 (round not yet produced), 401/403,
+  or invalid responses.
 
   Options:
 
-    * `:on_invalid` - `:stop` (the default) returns `{:error,
-      :invalid_response}` from the first relay that sends one. `:next`
-      tries the next relay instead, so one bad relay can't end the fetch;
-      if every relay fails, the result is `{:error, {:all_relays_failed,
-      errors}}`. Observation-weather draws use `:next`.
+    * `:on_invalid` - `:stop` (the default) returns the first relay's
+      `{:error, :invalid_response}`, `{:error, :not_found}` or 401/403.
+      `:next` tries the next relay on any of these, so one bad or lagging
+      relay can't end the fetch. With `:next`, `{:error, :not_found}` comes
+      back only when every relay said not found; any other mix of failures
+      is `{:error, {:all_relays_failed, errors}}`. Observation-weather
+      draws use `:next`.
   """
   def fetch_with_failover(chain_hash, round, opts \\ [])
       when is_binary(chain_hash) and is_integer(round) do
@@ -45,6 +57,12 @@ defmodule WallopCore.Entropy.DrandClient do
     on_invalid = Keyword.get(opts, :on_invalid, :stop)
 
     try_relays(relays, chain_hash, round, on_invalid, [])
+  end
+
+  defp try_relays([], _chain_hash, _round, :next, [_ | _] = errors) do
+    if Enum.all?(errors, &match?({_relay, :not_found}, &1)),
+      do: {:error, :not_found},
+      else: {:error, {:all_relays_failed, errors}}
   end
 
   defp try_relays([], _chain_hash, _round, _on_invalid, errors) do
@@ -56,11 +74,12 @@ defmodule WallopCore.Entropy.DrandClient do
       {:ok, _} = success ->
         success
 
+      # One relay's refusal (lagging, broken or hostile) is not the round's.
+      {:error, reason} when on_invalid == :next ->
+        try_relays(rest, chain_hash, round, on_invalid, [{relay, reason} | errors])
+
       {:error, :not_found} = not_found ->
         not_found
-
-      {:error, :invalid_response} when on_invalid == :next ->
-        try_relays(rest, chain_hash, round, on_invalid, [{relay, :invalid_response} | errors])
 
       {:error, :invalid_response} = invalid ->
         invalid
@@ -85,7 +104,10 @@ defmodule WallopCore.Entropy.DrandClient do
     base = relay_url || base_url()
     url = "#{base}/#{chain_hash}/public/#{round}"
 
-    case Req.get(url, req_options()) do
+    case get(url) do
+      {:ok, %Req.Response{private: %{body_too_large: true}}} ->
+        {:error, :invalid_response}
+
       {:ok, %Req.Response{status: 200, body: body}} ->
         parse_and_validate(body, chain_hash, round)
 
@@ -111,7 +133,10 @@ defmodule WallopCore.Entropy.DrandClient do
   def current_round(chain_hash) when is_binary(chain_hash) do
     url = "#{base_url()}/#{chain_hash}/public/latest"
 
-    case Req.get(url, req_options()) do
+    case get(url) do
+      {:ok, %Req.Response{private: %{body_too_large: true}}} ->
+        {:error, :invalid_response}
+
       {:ok, %Req.Response{status: 200, body: %{"round" => round}}} when is_integer(round) ->
         {:ok, round}
 
@@ -146,6 +171,24 @@ defmodule WallopCore.Entropy.DrandClient do
        }}
     else
       _ -> {:error, :invalid_response}
+    end
+  end
+
+  # The body is collected through the cap; Req then decodes JSON by content
+  # type as before. Compression stays off (Req's default), so a body sent
+  # compressed anyway is never inflated: Req leaves it encoded, which isn't
+  # a map, which is refused.
+  defp get(url) do
+    Req.get(url, Keyword.merge(req_options(), into: &collect_capped/2, compressed: false))
+  end
+
+  defp collect_capped({:data, data}, {req, resp}) do
+    body = resp.body
+
+    if byte_size(body) + byte_size(data) > @max_body_bytes do
+      {:halt, {req, %{Req.Response.put_private(resp, :body_too_large, true) | body: ""}}}
+    else
+      {:cont, {req, %{resp | body: body <> data}}}
     end
   end
 

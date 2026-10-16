@@ -51,7 +51,15 @@ defmodule WallopCore.Entropy.EntropyWorkerTest do
       assert completed.seed_json != nil
       assert completed.drand_randomness == @drand_randomness
       assert completed.drand_signature == @drand_signature
-      assert completed.drand_response != nil
+      # The relay's body as decoded and re-encoded, unchanged for forecast
+      # draws.
+      assert completed.drand_response ==
+               Jason.encode!(%{
+                 "randomness" => @drand_randomness,
+                 "signature" => @drand_signature,
+                 "round" => draw.drand_round
+               })
+
       assert completed.weather_value == "101340"
       assert completed.weather_raw != nil
       assert completed.weather_observation_time != nil
@@ -255,7 +263,7 @@ defmodule WallopCore.Entropy.EntropyWorkerTest do
     end
   end
 
-  describe "a drand body that isn't a JSON object" do
+  describe "a drand body that isn't a JSON object, or is over the cap" do
     # Handled like any other invalid drand response on the forecast path
     # (a permanent error that fails the draw), where it used to crash the
     # job. The default failover stops at the first relay's invalid answer.
@@ -267,6 +275,19 @@ defmodule WallopCore.Entropy.EntropyWorkerTest do
                &(&1
                  |> Plug.Conn.put_resp_content_type("text/html")
                  |> Plug.Conn.send_resp(200, "<html>captive portal</html>"))
+           )},
+          {"a body over 16 KiB",
+           quote(
+             do: fn conn ->
+               round = conn.path_info |> List.last() |> String.to_integer()
+
+               Req.Test.json(conn, %{
+                 "round" => round,
+                 "randomness" => "a" <> String.duplicate("0", 63),
+                 "signature" => "abcdef1234567890",
+                 "pad" => String.duplicate("0", 20_000)
+               })
+             end
            )}
         ] do
       test "#{label} is an invalid response, not a crash" do
