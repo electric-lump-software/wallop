@@ -404,6 +404,43 @@ defmodule WallopCore.Invariants.LockAndGuardTest do
     end
   end
 
+  # ── The guard triggers ────────────────────────────────────────────
+
+  # Every trigger on the tables the invariants rest on, as the database
+  # defines it, enabled. A dropped, disabled or changed trigger fails here.
+  @guard_triggers [
+    "O CREATE TRIGGER draws_no_truncate BEFORE TRUNCATE ON public.draws FOR EACH STATEMENT EXECUTE FUNCTION prevent_draws_truncate()",
+    "O CREATE CONSTRAINT TRIGGER draws_v6_failed_commit AFTER UPDATE ON public.draws DEFERRABLE INITIALLY DEFERRED FOR EACH ROW WHEN (((new.status = 'failed'::text) AND (old.status IS DISTINCT FROM 'failed'::text) AND ((new.lock_schema_version IS NOT NULL) OR (new.entropy_composition IS NOT NULL)))) EXECUTE FUNCTION check_v6_draw_failed_commit()",
+    "O CREATE TRIGGER draws_v6_guard BEFORE DELETE OR UPDATE ON public.draws FOR EACH ROW EXECUTE FUNCTION guard_v6_draw()",
+    "O CREATE TRIGGER draws_v6_insert_guard BEFORE INSERT ON public.draws FOR EACH ROW EXECUTE FUNCTION guard_v6_draw_insert()",
+    "O CREATE TRIGGER enforce_draw_immutability BEFORE DELETE OR UPDATE ON public.draws FOR EACH ROW EXECUTE FUNCTION prevent_draw_mutation()",
+    "O CREATE TRIGGER execution_receipt_immutability BEFORE DELETE OR UPDATE ON public.execution_receipts FOR EACH ROW EXECUTE FUNCTION prevent_execution_receipt_mutation()",
+    "O CREATE TRIGGER execution_receipts_no_truncate BEFORE TRUNCATE ON public.execution_receipts FOR EACH STATEMENT EXECUTE FUNCTION prevent_execution_receipts_truncate()",
+    "O CREATE TRIGGER execution_receipts_v6_guard BEFORE INSERT ON public.execution_receipts FOR EACH ROW EXECUTE FUNCTION guard_v6_execution_receipt()",
+    "O CREATE TRIGGER operator_receipts_immutable BEFORE DELETE OR UPDATE ON public.operator_receipts FOR EACH ROW EXECUTE FUNCTION prevent_receipt_mutation()",
+    "O CREATE TRIGGER operator_receipts_no_truncate BEFORE TRUNCATE ON public.operator_receipts FOR EACH STATEMENT EXECUTE FUNCTION prevent_operator_receipts_truncate()",
+    "O CREATE TRIGGER operator_receipts_v6_guard BEFORE INSERT ON public.operator_receipts FOR EACH ROW EXECUTE FUNCTION guard_v6_lock_receipt()",
+    "O CREATE CONSTRAINT TRIGGER weather_observations_commit_deadline AFTER INSERT ON public.weather_observations DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION check_weather_observation_commit()",
+    "O CREATE TRIGGER weather_observations_guard BEFORE INSERT ON public.weather_observations FOR EACH ROW EXECUTE FUNCTION guard_weather_observation_insert()",
+    "O CREATE TRIGGER weather_observations_immutable BEFORE DELETE OR UPDATE ON public.weather_observations FOR EACH ROW EXECUTE FUNCTION prevent_weather_observation_mutation()",
+    "O CREATE TRIGGER weather_observations_no_truncate BEFORE TRUNCATE ON public.weather_observations FOR EACH STATEMENT EXECUTE FUNCTION prevent_weather_observation_mutation()"
+  ]
+
+  describe "INV-1 the guard triggers are all in place" do
+    test "INV-1 (trigger set) draws, receipts and observations carry exactly these triggers, enabled" do
+      %{rows: rows} =
+        Repo.query!("""
+        SELECT tgenabled::text || ' ' || pg_get_triggerdef(oid) FROM pg_trigger
+        WHERE NOT tgisinternal
+          AND tgrelid::regclass::text IN
+            ('draws', 'operator_receipts', 'execution_receipts', 'weather_observations')
+        ORDER BY tgrelid::regclass::text, tgname
+        """)
+
+      assert List.flatten(rows) == @guard_triggers
+    end
+  end
+
   # ── INV-4 ─────────────────────────────────────────────────────────
 
   describe "INV-4 forecast/v5 draws are untouched by every v6 trigger" do
@@ -790,8 +827,9 @@ defmodule WallopCore.Invariants.LockAndGuardTest do
     Draw
     |> Ash.get!(draw.id, authorize?: false)
     |> Ash.Changeset.for_update(:execute_v6, %{
-      drand_randomness: String.duplicate("a", 64),
-      drand_signature: "sig",
+      drand_randomness: "140117383b03a0c0c7a899a32b8cbd2ffff9e2569504037c358ee8c7c2efe2fd",
+      drand_signature:
+        "b6541e41bb68ff318e8bd74b9f6e168ae6424476c432241420c38427df58c6ef33fe009ce202a7101120ab481702fddf",
       drand_response: "{}"
     })
     |> Ash.update(authorize?: false)

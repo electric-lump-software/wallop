@@ -269,8 +269,12 @@ defmodule WallopCore.InvariantCase do
       |> Enum.map(fn {id, p} -> %{"position" => p, "entry_id" => id} end)
 
     seed = :crypto.hash(:sha256, draw.id) |> Base.encode16(case: :lower)
-    randomness = String.duplicate("c4", 32)
+    # drand's randomness is sha256 of its signature.
     signature = String.duplicate("cd", 48)
+
+    randomness =
+      :crypto.hash(:sha256, Base.decode16!(signature, case: :lower))
+      |> Base.encode16(case: :lower)
 
     {obs_value, obs_time, reason, exec_station} =
       case kind do

@@ -103,49 +103,25 @@
     },
     {
       "code?": false,
-      "down": "DROP FUNCTION IF EXISTS guard_weather_observation_insert()",
+      "down": "DO $do$\nBEGIN\n  DROP TRIGGER IF EXISTS weather_observations_guard ON weather_observations;\n  DROP FUNCTION IF EXISTS guard_weather_observation_insert();\nEND\n$do$\n",
       "name": "guard_weather_observation_insert",
-      "up": "CREATE OR REPLACE FUNCTION guard_weather_observation_insert() RETURNS trigger AS $$\nDECLARE\n  now_utc timestamp := statement_timestamp() AT TIME ZONE 'UTC';\nBEGIN\n  PERFORM 1 FROM draws\n    WHERE weather_time = NEW.observation_time\n      AND lock_schema_version = '6'\n      AND entropy_composition = wallop_landobs_tag()\n      AND status IN ('awaiting_entropy', 'pending_entropy')\n    ORDER BY id\n    FOR SHARE;\n\n  IF NOT FOUND THEN\n    RAISE EXCEPTION 'no observation-weather draw is waiting for this hour';\n  END IF;\n  IF wallop_landobs_observation_allowed(NEW.station, NEW.observation_time, now_utc) IS NOT TRUE THEN\n    RAISE EXCEPTION '% observation outside its window', NEW.station;\n  END IF;\n\n  NEW.stored_at := now_utc;\n  RETURN NEW;\nEND;\n$$ LANGUAGE plpgsql\n"
+      "up": "DO $do$\nBEGIN\n  CREATE OR REPLACE FUNCTION guard_weather_observation_insert() RETURNS trigger AS $fn$\n  DECLARE\n    now_utc timestamp := statement_timestamp() AT TIME ZONE 'UTC';\n  BEGIN\n    PERFORM 1 FROM draws\n      WHERE weather_time = NEW.observation_time\n        AND lock_schema_version = '6'\n        AND entropy_composition = wallop_landobs_tag()\n        AND status IN ('awaiting_entropy', 'pending_entropy')\n      ORDER BY id\n      FOR SHARE;\n\n    IF NOT FOUND THEN\n      RAISE EXCEPTION 'no observation-weather draw is waiting for this hour';\n    END IF;\n    IF wallop_landobs_observation_allowed(NEW.station, NEW.observation_time, now_utc) IS NOT TRUE THEN\n      RAISE EXCEPTION '% observation outside its window', NEW.station;\n    END IF;\n\n    NEW.stored_at := now_utc;\n    RETURN NEW;\n  END;\n  $fn$ LANGUAGE plpgsql;\n  DROP TRIGGER IF EXISTS weather_observations_guard ON weather_observations;\n  CREATE TRIGGER weather_observations_guard BEFORE INSERT ON weather_observations\n    FOR EACH ROW EXECUTE FUNCTION guard_weather_observation_insert();\nEND\n$do$\n"
     },
     {
       "code?": false,
-      "down": "DROP TRIGGER IF EXISTS weather_observations_guard ON weather_observations",
-      "name": "weather_observations_guard",
-      "up": "CREATE TRIGGER weather_observations_guard BEFORE INSERT ON weather_observations\n  FOR EACH ROW EXECUTE FUNCTION guard_weather_observation_insert()\n"
-    },
-    {
-      "code?": false,
-      "down": "DROP FUNCTION IF EXISTS check_weather_observation_commit()",
+      "down": "DO $do$\nBEGIN\n  DROP TRIGGER IF EXISTS weather_observations_commit_deadline ON weather_observations;\n  DROP FUNCTION IF EXISTS check_weather_observation_commit();\nEND\n$do$\n",
       "name": "check_weather_observation_commit",
-      "up": "CREATE OR REPLACE FUNCTION check_weather_observation_commit() RETURNS trigger AS $$\nBEGIN\n  IF (clock_timestamp() AT TIME ZONE 'UTC' <= NEW.observation_time + wallop_landobs_fetch_window())\n     IS NOT TRUE THEN\n    RAISE EXCEPTION 'an observation must commit by its fetch deadline';\n  END IF;\n\n  RETURN NULL;\nEND;\n$$ LANGUAGE plpgsql\n"
+      "up": "DO $do$\nBEGIN\n  CREATE OR REPLACE FUNCTION check_weather_observation_commit() RETURNS trigger AS $fn$\n  BEGIN\n    IF (clock_timestamp() AT TIME ZONE 'UTC' <= NEW.observation_time + wallop_landobs_fetch_window())\n       IS NOT TRUE THEN\n      RAISE EXCEPTION 'an observation must commit by its fetch deadline';\n    END IF;\n\n    RETURN NULL;\n  END;\n  $fn$ LANGUAGE plpgsql;\n  DROP TRIGGER IF EXISTS weather_observations_commit_deadline ON weather_observations;\n  CREATE CONSTRAINT TRIGGER weather_observations_commit_deadline\n    AFTER INSERT ON weather_observations\n    DEFERRABLE INITIALLY DEFERRED\n    FOR EACH ROW EXECUTE FUNCTION check_weather_observation_commit();\nEND\n$do$\n"
     },
     {
       "code?": false,
-      "down": "DROP TRIGGER IF EXISTS weather_observations_commit_deadline ON weather_observations",
-      "name": "weather_observations_commit_deadline",
-      "up": "CREATE CONSTRAINT TRIGGER weather_observations_commit_deadline\n  AFTER INSERT ON weather_observations\n  DEFERRABLE INITIALLY DEFERRED\n  FOR EACH ROW EXECUTE FUNCTION check_weather_observation_commit()\n"
-    },
-    {
-      "code?": false,
-      "down": "DROP FUNCTION IF EXISTS prevent_weather_observation_mutation()",
+      "down": "DO $do$\nBEGIN\n  DROP TRIGGER IF EXISTS weather_observations_immutable ON weather_observations;\n  DROP TRIGGER IF EXISTS weather_observations_no_truncate ON weather_observations;\n  DROP FUNCTION IF EXISTS prevent_weather_observation_mutation();\nEND\n$do$\n",
       "name": "prevent_weather_observation_mutation",
-      "up": "CREATE OR REPLACE FUNCTION prevent_weather_observation_mutation() RETURNS trigger AS $$\nBEGIN\n  RAISE EXCEPTION 'weather observations are write-once';\nEND;\n$$ LANGUAGE plpgsql\n"
-    },
-    {
-      "code?": false,
-      "down": "DROP TRIGGER IF EXISTS weather_observations_immutable ON weather_observations",
-      "name": "weather_observations_immutable",
-      "up": "CREATE TRIGGER weather_observations_immutable BEFORE UPDATE OR DELETE ON weather_observations\n  FOR EACH ROW EXECUTE FUNCTION prevent_weather_observation_mutation()\n"
-    },
-    {
-      "code?": false,
-      "down": "DROP TRIGGER IF EXISTS weather_observations_no_truncate ON weather_observations",
-      "name": "weather_observations_no_truncate",
-      "up": "CREATE TRIGGER weather_observations_no_truncate BEFORE TRUNCATE ON weather_observations\n  EXECUTE FUNCTION prevent_weather_observation_mutation()\n"
+      "up": "DO $do$\nBEGIN\n  CREATE OR REPLACE FUNCTION prevent_weather_observation_mutation() RETURNS trigger AS $fn$\n  BEGIN\n    RAISE EXCEPTION 'weather observations are write-once';\n  END;\n  $fn$ LANGUAGE plpgsql;\n  DROP TRIGGER IF EXISTS weather_observations_immutable ON weather_observations;\n  CREATE TRIGGER weather_observations_immutable BEFORE UPDATE OR DELETE ON weather_observations\n    FOR EACH ROW EXECUTE FUNCTION prevent_weather_observation_mutation();\n  DROP TRIGGER IF EXISTS weather_observations_no_truncate ON weather_observations;\n  CREATE TRIGGER weather_observations_no_truncate BEFORE TRUNCATE ON weather_observations\n    EXECUTE FUNCTION prevent_weather_observation_mutation();\nEND\n$do$\n"
     }
   ],
   "has_create_action": true,
-  "hash": "AB08017D21556ED0E543A53B4941257F7A6C62D2E224FC1094B574975042BD8A",
+  "hash": "FCFB8D92CCDCE0841F435F9C290F676967E35452A9CFAD10DA490A8A33FA92E4",
   "identities": [
     {
       "all_tenants?": false,

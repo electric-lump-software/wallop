@@ -27,6 +27,15 @@ defmodule WallopCore.Weather.V6ExecutionGuardsTest do
 
   defp build(input), do: Protocol.build_v6_execution_payload(input)
 
+  # The signer's payload for `x`, with the drand pair put in by hand (the
+  # builder may refuse it), for checking the database alone.
+  defp raw_payload(x, randomness, signature) do
+    x.input
+    |> build()
+    |> Jason.decode!()
+    |> Map.merge(%{"drand_randomness" => randomness, "drand_signature" => signature})
+  end
+
   defp round_at(offset), do: Quicknet.round_at_or_after(DateTime.add(DateTime.utc_now(), offset))
 
   # A stored weather_time whose fetch deadline F was `ago` seconds ago.
@@ -80,6 +89,35 @@ defmodule WallopCore.Weather.V6ExecutionGuardsTest do
         x = completed_v6_receipt_input(kind, hours_ago: hours)
         assert insert_exec_receipt(build(x.input), x.cols) == nil, "#{kind}"
       end
+    end
+
+    test "an open draw that already has an execution receipt can't lock under v6" do
+      # The guard reads a forecast draw's pair without a lock, so a receipt
+      # could reach an open draw that a concurrent lock is making v6; the
+      # lock then refuses it.
+      {_op, key} = create_v6_operator()
+      s = in_time_schedule()
+      draw = open_draw_with_entries(key)
+      cols = %{forecast_cols(draw) | sequence: draw.operator_sequence}
+
+      Repo.query!(
+        """
+        INSERT INTO execution_receipts (id, draw_id, operator_id, sequence, lock_receipt_hash,
+          payload_jcs, signature, signing_key_id)
+        VALUES ($1, $2, $3, $4, 'x', $5, $6, 'k')
+        """,
+        [
+          dump(Ecto.UUID.generate()),
+          dump(draw.id),
+          dump(cols.operator_id),
+          cols.sequence,
+          ~s({"schema_version":"4"}),
+          :binary.copy(<<0>>, 64)
+        ]
+      )
+
+      assert raw_lock(draw, s.weather_time, s.round) ==
+               "a v6 draw can't lock with an execution receipt already stored"
     end
 
     test "needs the draw completed first" do
@@ -166,6 +204,84 @@ defmodule WallopCore.Weather.V6ExecutionGuardsTest do
 
       assert insert_exec_receipt(build(input), x.cols) ==
                "v6 execution receipt field weather_station does not match the stored observation"
+    end
+  end
+
+  describe "receipt key sets" do
+    test "the SQL key sets equal the tag's" do
+      for {fun, keys} <- [
+            {"wallop_landobs_lock_keys", LandObs.lock_keys()},
+            {"wallop_landobs_exec_keys", LandObs.exec_keys()}
+          ] do
+        assert %{rows: [[^keys]]} = Repo.query!("SELECT #{fun}()")
+      end
+    end
+
+    test "an execution receipt with a key added, missing or nested is refused" do
+      x = completed_v6_receipt_input(:observed)
+      payload = x.input |> build() |> Jason.decode!()
+      refused = "v6 execution receipt keys are not the tag's key set"
+
+      for {label, tampered} <- [
+            {"extra", Map.put(payload, "winner", "me")},
+            {"missing", Map.delete(payload, "wallop_core_version")},
+            {"nested", Map.put(payload, "extra", %{"seed" => payload["seed"]})}
+          ] do
+        assert insert_exec_receipt(Jason.encode!(tampered), x.cols) == refused, label
+      end
+    end
+
+    test "a lock receipt with a key added, missing or nested is refused" do
+      {_op, key} = create_v6_operator()
+      s = in_time_schedule()
+      d = open_draw_with_entries(key)
+      assert raw_lock(d, s.weather_time, s.round) == nil
+      {payload, cols} = valid_receipt(d, s)
+      assert insert_receipt(payload, cols) == nil
+      refused = "v6 lock receipt keys are not the tag's key set"
+
+      for {label, tampered} <- [
+            {"extra", Map.put(payload, "prize", "a goat")},
+            {"missing", Map.delete(payload, "wallop_core_version")},
+            {"nested", Map.put(payload, "extra", %{"sequence" => payload["sequence"]})}
+          ] do
+        assert insert_receipt(tampered, cols) == refused, label
+      end
+    end
+  end
+
+  describe "the drand binding" do
+    test "a real quicknet beacon's randomness is sha256 of its signature, in the guard's encoding" do
+      # quicknet round 33068212.
+      randomness = "140117383b03a0c0c7a899a32b8cbd2ffff9e2569504037c358ee8c7c2efe2fd"
+
+      signature =
+        "b6541e41bb68ff318e8bd74b9f6e168ae6424476c432241420c38427df58c6ef33fe009ce202a7101120ab481702fddf"
+
+      assert %{rows: [[^randomness]]} =
+               Repo.query!("SELECT encode(sha256(decode($1, 'hex')), 'hex')", [signature])
+    end
+
+    test "an execution receipt whose randomness isn't sha256 of its signature is refused" do
+      x = completed_v6_receipt_input(:fallback)
+
+      for {label, randomness, signature} <- [
+            {"another signature", x.input.drand_randomness, String.duplicate("ef", 48)},
+            {"not hex", x.input.drand_randomness, "sig"},
+            {"upper case", String.upcase(x.input.drand_randomness), x.input.drand_signature}
+          ] do
+        # The draw row carries the same pair, so only the binding can refuse.
+        with_triggers_off(fn ->
+          Repo.query!(
+            "UPDATE draws SET drand_randomness = $2, drand_signature = $3 WHERE id = $1",
+            [dump(x.draw.id), randomness, signature]
+          )
+        end)
+
+        assert insert_exec_receipt(Jason.encode!(raw_payload(x, randomness, signature)), x.cols) ==
+                 "v6 execution receipt drand_randomness is not sha256 of drand_signature",
+               label
+      end
     end
   end
 

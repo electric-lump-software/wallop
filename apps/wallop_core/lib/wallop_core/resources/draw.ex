@@ -271,6 +271,46 @@ defmodule WallopCore.Resources.Draw do
         down("DROP FUNCTION IF EXISTS wallop_receipt_integer(text, jsonb, text)")
       end
 
+      statement :wallop_landobs_lock_keys do
+        # Tags.LandObs.lock_keys/0: every key of the receipt under the Land Obs
+        # tag, sorted bytewise (COLLATE "C").
+        up("""
+        CREATE OR REPLACE FUNCTION wallop_landobs_lock_keys() RETURNS text[]
+        LANGUAGE sql IMMUTABLE AS $$
+          SELECT ARRAY[
+            'commitment_hash', 'drand_chain', 'drand_round', 'draw_id',
+            'entropy_composition', 'entry_hash', 'fair_pick_version', 'jcs_version',
+            'locked_at', 'operator_id', 'operator_slug', 'schema_version', 'sequence',
+            'signature_algorithm', 'signing_key_id', 'wallop_core_version',
+            'weather_station', 'weather_time', 'winner_count'
+          ]::text[]
+        $$
+        """)
+
+        down("DROP FUNCTION IF EXISTS wallop_landobs_lock_keys()")
+      end
+
+      statement :wallop_landobs_exec_keys do
+        # Tags.LandObs.exec_keys/0: every key of the receipt under the Land Obs
+        # tag, sorted bytewise (COLLATE "C").
+        up("""
+        CREATE OR REPLACE FUNCTION wallop_landobs_exec_keys() RETURNS text[]
+        LANGUAGE sql IMMUTABLE AS $$
+          SELECT ARRAY[
+            'drand_chain', 'drand_randomness', 'drand_round', 'drand_signature',
+            'drand_signature_algorithm', 'draw_id', 'entropy_composition', 'entry_hash',
+            'executed_at', 'fair_pick_version', 'jcs_version', 'lock_receipt_hash',
+            'merkle_algorithm', 'operator_id', 'operator_slug', 'results', 'schema_version',
+            'seed', 'sequence', 'signature_algorithm', 'signing_key_id',
+            'wallop_core_version', 'weather_fallback_reason', 'weather_observation_time',
+            'weather_station', 'weather_value'
+          ]::text[]
+        $$
+        """)
+
+        down("DROP FUNCTION IF EXISTS wallop_landobs_exec_keys()")
+      end
+
       statement :wallop_check_v6_lock_receipt do
         # Raises unless receipt r is the lock receipt of v6 draw d: every
         # signed field with a counterpart on the draw, the receipt row or the
@@ -289,6 +329,16 @@ defmodule WallopCore.Resources.Draw do
           IF p->>'schema_version' IS DISTINCT FROM d.lock_schema_version
              OR p->>'entropy_composition' IS DISTINCT FROM d.entropy_composition THEN
             RAISE EXCEPTION 'a v6 lock receipt must carry its draw''s schema and entropy_composition';
+          END IF;
+
+          -- Exactly the tag's keys, so no extra or look-alike field rides
+          -- along. A duplicate key is not seen here (jsonb keeps the last
+          -- value); the verifier refuses it.
+          IF d.entropy_composition IS NOT DISTINCT FROM wallop_landobs_tag()
+             AND (jsonb_typeof(p) IS DISTINCT FROM 'object'
+                  OR (SELECT array_agg(k ORDER BY k COLLATE "C") FROM jsonb_object_keys(p) k)
+                     IS DISTINCT FROM wallop_landobs_lock_keys()) THEN
+            RAISE EXCEPTION 'v6 lock receipt keys are not the tag''s key set';
           END IF;
 
           IF wallop_parse_rfc3339_usec(p->>'locked_at') IS DISTINCT FROM r.locked_at THEN
@@ -379,110 +429,190 @@ defmodule WallopCore.Resources.Draw do
         # completes. The draws row keeps the lock's weather_station (frozen);
         # the reading's station is fixed by the hour's single row, and the
         # execution receipt carries it.
+        #
+        # Once a v6 draw has left open it can't be deleted, and once the DB
+        # clock reaches pub(drand_round) it can't move to failed, from any
+        # status. Failing before pub(R) stays allowed: a visible abort
+        # before anything is knowable.
+        #
+        # Each guard here is one statement holding its function and its
+        # trigger(s), as a DO block (a statement is one command). `down`
+        # drops the trigger before the function, so changing a guard
+        # regenerates as drop-then-create without tripping on the trigger.
         up("""
-        CREATE OR REPLACE FUNCTION guard_v6_draw() RETURNS trigger AS $$
-        DECLARE
-          now_utc timestamp := statement_timestamp() AT TIME ZONE 'UTC';
-          obs RECORD;
-          r operator_receipts%ROWTYPE;
+        DO $do$
         BEGIN
-          -- Every comparison that could meet a NULL is written so that NULL
-          -- refuses (IS DISTINCT FROM, IS NOT TRUE), never passes.
-          IF OLD.status <> 'open'
-             AND (NEW.lock_schema_version IS DISTINCT FROM OLD.lock_schema_version
-                  OR NEW.entropy_composition IS DISTINCT FROM OLD.entropy_composition) THEN
-            RAISE EXCEPTION 'lock_schema_version and entropy_composition are frozen once a draw has left open';
-          END IF;
-
-          IF NEW.status = 'open'
-             AND (NEW.lock_schema_version IS NOT NULL OR NEW.entropy_composition IS NOT NULL) THEN
-            RAISE EXCEPTION 'lock_schema_version and entropy_composition are set only when a draw leaves open';
-          END IF;
-
-          IF NOT ((NEW.lock_schema_version IS NULL AND NEW.entropy_composition IS NULL)
-                  OR (NEW.lock_schema_version IS NOT DISTINCT FROM '6'
-                      AND NEW.entropy_composition IS NOT DISTINCT FROM wallop_landobs_tag())) THEN
-            RAISE EXCEPTION 'unknown lock_schema_version and entropy_composition pair: (%, %)',
-              NEW.lock_schema_version, NEW.entropy_composition;
-          END IF;
-
-          -- Whenever a v6 draw leaves open, by any path.
-          IF OLD.status = 'open' AND NEW.status <> 'open' AND NEW.lock_schema_version = '6' THEN
-            IF NEW.status <> 'awaiting_entropy' THEN
-              RAISE EXCEPTION 'a v6 draw leaves open only by locking';
+          CREATE OR REPLACE FUNCTION guard_v6_draw() RETURNS trigger AS $fn$
+          DECLARE
+            now_utc timestamp := statement_timestamp() AT TIME ZONE 'UTC';
+            obs RECORD;
+            r operator_receipts%ROWTYPE;
+          BEGIN
+            -- Every comparison that could meet a NULL is written so that NULL
+            -- refuses (IS DISTINCT FROM, IS NOT TRUE), never passes.
+            IF TG_OP = 'DELETE' THEN
+              IF OLD.status IS DISTINCT FROM 'open'
+                 AND (OLD.lock_schema_version IS NOT NULL OR OLD.entropy_composition IS NOT NULL) THEN
+                RAISE EXCEPTION 'a v6 draw can''t be deleted once it has left open';
+              END IF;
+              RETURN OLD;
             END IF;
 
-            IF NEW.entropy_composition = wallop_landobs_tag() THEN
-              IF NEW.drand_chain IS DISTINCT FROM wallop_quicknet_chain_hash() THEN
-                RAISE EXCEPTION 'v6 drand_chain must be the quicknet chain';
-              END IF;
-              IF NEW.drand_round IS NULL OR NEW.drand_round < 1
-                 OR NEW.weather_time IS DISTINCT FROM wallop_landobs_weather_time(NEW.drand_round) THEN
-                RAISE EXCEPTION 'v6 weather_time must follow from drand_round';
-              END IF;
-              IF NEW.weather_station IS DISTINCT FROM wallop_landobs_primary_station() THEN
-                RAISE EXCEPTION 'v6 lock weather_station must be %', wallop_landobs_primary_station();
-              END IF;
-              IF wallop_landobs_lock_allowed(now_utc, NEW.weather_time) IS NOT TRUE THEN
-                RAISE EXCEPTION 'v6 lock is too late for this draw time';
-              END IF;
-            ELSE
-              RAISE EXCEPTION 'no lock rules for entropy_composition %', NEW.entropy_composition;
+            IF OLD.status <> 'open'
+               AND (NEW.lock_schema_version IS DISTINCT FROM OLD.lock_schema_version
+                    OR NEW.entropy_composition IS DISTINCT FROM OLD.entropy_composition) THEN
+              RAISE EXCEPTION 'lock_schema_version and entropy_composition are frozen once a draw has left open';
             END IF;
 
-            -- A receipt inserted before this UPDATE gets the same checks it
-            -- would get if inserted after. If that receipt's transaction is
-            -- still open, its FOR SHARE lock on this row made this UPDATE wait
-            -- before the trigger ran; this function is VOLATILE, so the
-            -- SELECT below takes a fresh snapshot and sees it once committed.
-            SELECT * INTO r FROM operator_receipts WHERE draw_id = NEW.id;
-            IF FOUND THEN
-              PERFORM wallop_check_v6_lock_receipt(NEW, r);
-            END IF;
-          END IF;
-
-          IF OLD.lock_schema_version = '6' AND OLD.status <> 'completed' AND NEW.status = 'completed' THEN
-            IF (NEW.executed_at >= wallop_quicknet_pub_time(OLD.drand_round)) IS NOT TRUE THEN
-              RAISE EXCEPTION 'v6 draw cannot complete before its drand round publishes';
+            IF NEW.status = 'open'
+               AND (NEW.lock_schema_version IS NOT NULL OR NEW.entropy_composition IS NOT NULL) THEN
+              RAISE EXCEPTION 'lock_schema_version and entropy_composition are set only when a draw leaves open';
             END IF;
 
-            IF OLD.entropy_composition = wallop_landobs_tag() THEN
-              -- One row per observation hour: every draw of the hour
-              -- completes with it. VOLATILE, so this read takes a fresh
-              -- snapshot once a store holding this row's lock has ended.
-              SELECT station, value, observation_time INTO obs FROM weather_observations
-                WHERE observation_time = OLD.weather_time;
-              IF FOUND THEN
-                IF NEW.weather_value IS DISTINCT FROM obs.value
-                   OR NEW.weather_observation_time IS DISTINCT FROM obs.observation_time
-                   OR NEW.weather_fallback_reason IS NOT NULL THEN
-                  RAISE EXCEPTION 'v6 draw must complete with its stored observation';
+            IF NOT ((NEW.lock_schema_version IS NULL AND NEW.entropy_composition IS NULL)
+                    OR (NEW.lock_schema_version IS NOT DISTINCT FROM '6'
+                        AND NEW.entropy_composition IS NOT DISTINCT FROM wallop_landobs_tag())) THEN
+              RAISE EXCEPTION 'unknown lock_schema_version and entropy_composition pair: (%, %)',
+                NEW.lock_schema_version, NEW.entropy_composition;
+            END IF;
+
+            -- Whenever a v6 draw leaves open, by any path.
+            IF OLD.status = 'open' AND NEW.status <> 'open' AND NEW.lock_schema_version = '6' THEN
+              IF NEW.status <> 'awaiting_entropy' THEN
+                RAISE EXCEPTION 'a v6 draw leaves open only by locking';
+              END IF;
+
+              IF NEW.entropy_composition = wallop_landobs_tag() THEN
+                IF NEW.drand_chain IS DISTINCT FROM wallop_quicknet_chain_hash() THEN
+                  RAISE EXCEPTION 'v6 drand_chain must be the quicknet chain';
                 END IF;
-              ELSIF NEW.weather_value IS NOT NULL OR NEW.weather_observation_time IS NOT NULL
-                    OR NEW.weather_fallback_reason IS DISTINCT FROM wallop_landobs_fallback_reason()
-                    OR (now_utc > OLD.weather_time + wallop_landobs_fetch_window()) IS NOT TRUE THEN
-                RAISE EXCEPTION 'v6 draw may fall back only after the fetch deadline with nothing stored';
+                IF NEW.drand_round IS NULL OR NEW.drand_round < 1
+                   OR NEW.weather_time IS DISTINCT FROM wallop_landobs_weather_time(NEW.drand_round) THEN
+                  RAISE EXCEPTION 'v6 weather_time must follow from drand_round';
+                END IF;
+                IF NEW.weather_station IS DISTINCT FROM wallop_landobs_primary_station() THEN
+                  RAISE EXCEPTION 'v6 lock weather_station must be %', wallop_landobs_primary_station();
+                END IF;
+                IF wallop_landobs_lock_allowed(now_utc, NEW.weather_time) IS NOT TRUE THEN
+                  RAISE EXCEPTION 'v6 lock is too late for this draw time';
+                END IF;
+              ELSE
+                RAISE EXCEPTION 'no lock rules for entropy_composition %', NEW.entropy_composition;
               END IF;
-            ELSE
-              RAISE EXCEPTION 'no completion rules for entropy_composition %', OLD.entropy_composition;
-            END IF;
-          END IF;
 
-          RETURN NEW;
-        END;
-        $$ LANGUAGE plpgsql
+              -- A receipt inserted before this UPDATE gets the same checks it
+              -- would get if inserted after. If that receipt's transaction is
+              -- still open, its FOR SHARE lock on this row made this UPDATE wait
+              -- before the trigger ran; this function is VOLATILE, so the
+              -- SELECT below takes a fresh snapshot and sees it once committed.
+              SELECT * INTO r FROM operator_receipts WHERE draw_id = NEW.id;
+              IF FOUND THEN
+                PERFORM wallop_check_v6_lock_receipt(NEW, r);
+              END IF;
+
+              IF EXISTS (SELECT 1 FROM execution_receipts WHERE draw_id = NEW.id) THEN
+                RAISE EXCEPTION 'a v6 draw can''t lock with an execution receipt already stored';
+              END IF;
+            END IF;
+
+            -- From pub(R) on the outcome is knowable: failing the draw then would
+            -- be a selective abort. Checked here on the statement's clock and
+            -- again at commit (check_v6_draw_failed_commit).
+            IF (OLD.lock_schema_version IS NOT NULL OR OLD.entropy_composition IS NOT NULL)
+               AND NEW.status = 'failed' AND OLD.status IS DISTINCT FROM 'failed'
+               AND (now_utc < wallop_quicknet_pub_time(OLD.drand_round)) IS NOT TRUE THEN
+              RAISE EXCEPTION 'a v6 draw can''t fail once its drand round is published';
+            END IF;
+
+            IF OLD.lock_schema_version = '6' AND OLD.status <> 'completed' AND NEW.status = 'completed' THEN
+              IF (NEW.executed_at >= wallop_quicknet_pub_time(OLD.drand_round)) IS NOT TRUE THEN
+                RAISE EXCEPTION 'v6 draw cannot complete before its drand round publishes';
+              END IF;
+
+              IF OLD.entropy_composition = wallop_landobs_tag() THEN
+                -- One row per observation hour: every draw of the hour
+                -- completes with it. VOLATILE, so this read takes a fresh
+                -- snapshot once a store holding this row's lock has ended.
+                SELECT station, value, observation_time INTO obs FROM weather_observations
+                  WHERE observation_time = OLD.weather_time;
+                IF FOUND THEN
+                  IF NEW.weather_value IS DISTINCT FROM obs.value
+                     OR NEW.weather_observation_time IS DISTINCT FROM obs.observation_time
+                     OR NEW.weather_fallback_reason IS NOT NULL THEN
+                    RAISE EXCEPTION 'v6 draw must complete with its stored observation';
+                  END IF;
+                -- The fallback waits a minute past F, so a store that commits
+                -- at F is visible to every draw of the hour by then. Execution
+                -- is at or after pub(R) >= F + 60s anyway.
+                ELSIF NEW.weather_value IS NOT NULL OR NEW.weather_observation_time IS NOT NULL
+                      OR NEW.weather_fallback_reason IS DISTINCT FROM wallop_landobs_fallback_reason()
+                      OR (now_utc > OLD.weather_time + wallop_landobs_fetch_window() + interval '1 minute')
+                         IS NOT TRUE THEN
+                  RAISE EXCEPTION 'v6 draw may fall back only after the fetch deadline with nothing stored';
+                END IF;
+              ELSE
+                RAISE EXCEPTION 'no completion rules for entropy_composition %', OLD.entropy_composition;
+              END IF;
+            END IF;
+
+            RETURN NEW;
+          END;
+          $fn$ LANGUAGE plpgsql;
+          DROP TRIGGER IF EXISTS draws_v6_guard ON draws;
+          CREATE TRIGGER draws_v6_guard BEFORE UPDATE OR DELETE ON draws
+            FOR EACH ROW EXECUTE FUNCTION guard_v6_draw();
+        END
+        $do$
         """)
 
-        down("DROP FUNCTION IF EXISTS guard_v6_draw()")
+        down("""
+        DO $do$
+        BEGIN
+          DROP TRIGGER IF EXISTS draws_v6_guard ON draws;
+          DROP FUNCTION IF EXISTS guard_v6_draw();
+        END
+        $do$
+        """)
       end
 
-      statement :draws_v6_guard do
+      statement :check_v6_draw_failed_commit do
+        # The same rule as guard_v6_draw's, at COMMIT on the wall clock then
+        # (clock_timestamp()): a v6 draw moved to failed before pub(R) in a
+        # transaction held open past pub(R) is refused at commit, so nobody
+        # can see the round and then choose to keep the failure.
         up("""
-        CREATE TRIGGER draws_v6_guard BEFORE UPDATE ON draws
-          FOR EACH ROW EXECUTE FUNCTION guard_v6_draw()
+        DO $do$
+        BEGIN
+          CREATE OR REPLACE FUNCTION check_v6_draw_failed_commit() RETURNS trigger AS $fn$
+          BEGIN
+            IF (clock_timestamp() AT TIME ZONE 'UTC' < wallop_quicknet_pub_time(NEW.drand_round))
+               IS NOT TRUE THEN
+              RAISE EXCEPTION 'a v6 draw can''t fail once its drand round is published';
+            END IF;
+
+            RETURN NULL;
+          END;
+          $fn$ LANGUAGE plpgsql;
+          DROP TRIGGER IF EXISTS draws_v6_failed_commit ON draws;
+          CREATE CONSTRAINT TRIGGER draws_v6_failed_commit
+            AFTER UPDATE ON draws
+            DEFERRABLE INITIALLY DEFERRED
+            FOR EACH ROW
+            WHEN (NEW.status = 'failed' AND OLD.status IS DISTINCT FROM 'failed'
+                  AND (NEW.lock_schema_version IS NOT NULL OR NEW.entropy_composition IS NOT NULL))
+            EXECUTE FUNCTION check_v6_draw_failed_commit();
+        END
+        $do$
         """)
 
-        down("DROP TRIGGER IF EXISTS draws_v6_guard ON draws")
+        down("""
+        DO $do$
+        BEGIN
+          DROP TRIGGER IF EXISTS draws_v6_failed_commit ON draws;
+          DROP FUNCTION IF EXISTS check_v6_draw_failed_commit();
+        END
+        $do$
+        """)
       end
 
       statement :guard_v6_lock_receipt do
@@ -491,131 +621,75 @@ defmodule WallopCore.Resources.Draw do
         # receipt needs a v6 draw, and a v6 draw's receipt must pass
         # wallop_check_v6_lock_receipt.
         up("""
-        CREATE OR REPLACE FUNCTION guard_v6_lock_receipt() RETURNS trigger AS $$
-        DECLARE
-          d draws%ROWTYPE;
+        DO $do$
         BEGIN
-          -- FOR SHARE waits for an in-flight UPDATE of the draw (a lock) to
-          -- finish and then reads the committed row, so a receipt can't slip
-          -- in beside a concurrent lock. It also holds off a later lock
-          -- UPDATE until this transaction ends, so the draws guard then sees
-          -- this receipt.
-          SELECT * INTO d FROM draws WHERE id = NEW.draw_id FOR SHARE;
+          CREATE OR REPLACE FUNCTION guard_v6_lock_receipt() RETURNS trigger AS $fn$
+          DECLARE
+            d draws%ROWTYPE;
+          BEGIN
+            -- FOR SHARE waits for an in-flight UPDATE of the draw (a lock) to
+            -- finish and then reads the committed row, so a receipt can't slip
+            -- in beside a concurrent lock. It also holds off a later lock
+            -- UPDATE until this transaction ends, so the draws guard then sees
+            -- this receipt.
+            SELECT * INTO d FROM draws WHERE id = NEW.draw_id FOR SHARE;
 
-          IF d.lock_schema_version IS NULL AND d.entropy_composition IS NULL THEN
-            IF convert_from(NEW.payload_jcs, 'UTF8')::jsonb->>'schema_version' IS NOT DISTINCT FROM '6' THEN
-              RAISE EXCEPTION 'a schema 6 lock receipt needs a draw locked under schema 6';
+            IF d.lock_schema_version IS NULL AND d.entropy_composition IS NULL THEN
+              IF convert_from(NEW.payload_jcs, 'UTF8')::jsonb->>'schema_version' IS NOT DISTINCT FROM '6' THEN
+                RAISE EXCEPTION 'a schema 6 lock receipt needs a draw locked under schema 6';
+              END IF;
+              RETURN NEW;
             END IF;
+
+            PERFORM wallop_check_v6_lock_receipt(d, NEW);
             RETURN NEW;
-          END IF;
-
-          PERFORM wallop_check_v6_lock_receipt(d, NEW);
-          RETURN NEW;
-        END;
-        $$ LANGUAGE plpgsql
+          END;
+          $fn$ LANGUAGE plpgsql;
+          DROP TRIGGER IF EXISTS operator_receipts_v6_guard ON operator_receipts;
+          CREATE TRIGGER operator_receipts_v6_guard BEFORE INSERT ON operator_receipts
+            FOR EACH ROW EXECUTE FUNCTION guard_v6_lock_receipt();
+        END
+        $do$
         """)
 
-        down("DROP FUNCTION IF EXISTS guard_v6_lock_receipt()")
-      end
-
-      statement :operator_receipts_v6_guard do
-        up("""
-        CREATE TRIGGER operator_receipts_v6_guard BEFORE INSERT ON operator_receipts
-          FOR EACH ROW EXECUTE FUNCTION guard_v6_lock_receipt()
+        down("""
+        DO $do$
+        BEGIN
+          DROP TRIGGER IF EXISTS operator_receipts_v6_guard ON operator_receipts;
+          DROP FUNCTION IF EXISTS guard_v6_lock_receipt();
+        END
+        $do$
         """)
-
-        down("DROP TRIGGER IF EXISTS operator_receipts_v6_guard ON operator_receipts")
       end
 
       statement :guard_v6_draw_insert do
         # A draw is created open, so it never starts with a lock schema.
         up("""
-        CREATE OR REPLACE FUNCTION guard_v6_draw_insert() RETURNS trigger AS $$
+        DO $do$
         BEGIN
-          IF NEW.lock_schema_version IS NOT NULL OR NEW.entropy_composition IS NOT NULL THEN
-            RAISE EXCEPTION 'lock_schema_version and entropy_composition are set only when a draw leaves open';
-          END IF;
-          RETURN NEW;
-        END;
-        $$ LANGUAGE plpgsql
-        """)
-
-        down("DROP FUNCTION IF EXISTS guard_v6_draw_insert()")
-      end
-
-      statement :draws_v6_insert_guard do
-        up("""
-        CREATE TRIGGER draws_v6_insert_guard BEFORE INSERT ON draws
-          FOR EACH ROW EXECUTE FUNCTION guard_v6_draw_insert()
-        """)
-
-        down("DROP TRIGGER IF EXISTS draws_v6_insert_guard ON draws")
-      end
-
-      statement :guard_v6_draw_end do
-        # How a v6 draw may end, beside guard_v6_draw (its trigger runs first). A no-op for a draw
-        # whose (lock_schema_version, entropy_composition) is (NULL, NULL).
-        #
-        #   * Once it has left open it can't be deleted.
-        #   * Once the DB clock reaches pub(drand_round) it can't move to
-        #     failed, from any status: from then on the outcome is knowable,
-        #     so failing it would be a selective abort. Before pub(R),
-        #     failing is a visible abort and stays allowed.
-        #   * It falls back (nothing stored for its hour) only a minute past
-        #     the fetch deadline F, so a store that commits at F is visible
-        #     to every draw of the hour by then. guard_v6_draw keeps the
-        #     rest of the completion rules. Execution is at or after
-        #     pub(R) >= F + 60s anyway.
-        up("""
-        CREATE OR REPLACE FUNCTION guard_v6_draw_end() RETURNS trigger AS $$
-        DECLARE
-          now_utc timestamp := statement_timestamp() AT TIME ZONE 'UTC';
-        BEGIN
-          IF OLD.lock_schema_version IS NULL AND OLD.entropy_composition IS NULL THEN
-            IF TG_OP = 'DELETE' THEN
-              RETURN OLD;
+          CREATE OR REPLACE FUNCTION guard_v6_draw_insert() RETURNS trigger AS $fn$
+          BEGIN
+            IF NEW.lock_schema_version IS NOT NULL OR NEW.entropy_composition IS NOT NULL THEN
+              RAISE EXCEPTION 'lock_schema_version and entropy_composition are set only when a draw leaves open';
             END IF;
             RETURN NEW;
-          END IF;
-
-          IF TG_OP = 'DELETE' THEN
-            IF OLD.status IS DISTINCT FROM 'open' THEN
-              RAISE EXCEPTION 'a v6 draw can''t be deleted once it has left open';
-            END IF;
-            RETURN OLD;
-          END IF;
-
-          IF NEW.status = 'failed' AND OLD.status IS DISTINCT FROM 'failed'
-             AND (now_utc < wallop_quicknet_pub_time(OLD.drand_round)) IS NOT TRUE THEN
-            RAISE EXCEPTION 'a v6 draw can''t fail once its drand round is published';
-          END IF;
-
-          IF NEW.status = 'completed' AND OLD.status IS DISTINCT FROM 'completed'
-             AND OLD.entropy_composition IS NOT DISTINCT FROM wallop_landobs_tag()
-             AND NOT EXISTS (SELECT 1 FROM weather_observations
-                             WHERE observation_time = OLD.weather_time)
-             AND (now_utc > OLD.weather_time + wallop_landobs_fetch_window() + interval '1 minute')
-                 IS NOT TRUE THEN
-            RAISE EXCEPTION 'v6 draw may fall back only after the fetch deadline with nothing stored';
-          END IF;
-
-          RETURN NEW;
-        END;
-        $$ LANGUAGE plpgsql
+          END;
+          $fn$ LANGUAGE plpgsql;
+          DROP TRIGGER IF EXISTS draws_v6_insert_guard ON draws;
+          CREATE TRIGGER draws_v6_insert_guard BEFORE INSERT ON draws
+            FOR EACH ROW EXECUTE FUNCTION guard_v6_draw_insert();
+        END
+        $do$
         """)
 
-        down("DROP FUNCTION IF EXISTS guard_v6_draw_end()")
-      end
-
-      statement :draws_v6_guard_end do
-        # Triggers run in name order: after draws_v6_guard, whose messages
-        # come first, and before enforce_draw_immutability.
-        up("""
-        CREATE TRIGGER draws_v6_guard_end BEFORE UPDATE OR DELETE ON draws
-          FOR EACH ROW EXECUTE FUNCTION guard_v6_draw_end()
+        down("""
+        DO $do$
+        BEGIN
+          DROP TRIGGER IF EXISTS draws_v6_insert_guard ON draws;
+          DROP FUNCTION IF EXISTS guard_v6_draw_insert();
+        END
+        $do$
         """)
-
-        down("DROP TRIGGER IF EXISTS draws_v6_guard_end ON draws")
       end
 
       statement :guard_v6_execution_receipt do
@@ -627,172 +701,203 @@ defmodule WallopCore.Resources.Draw do
         # fallback rule). The seed and the winners are bound to the draw's
         # columns, never recomputed here.
         up("""
-        CREATE OR REPLACE FUNCTION guard_v6_execution_receipt() RETURNS trigger AS $$
-        DECLARE
-          now_utc timestamp := statement_timestamp() AT TIME ZONE 'UTC';
-          d draws%ROWTYPE;
-          l operator_receipts%ROWTYPE;
-          raw text;
-          p jsonb;
-          lp jsonb;
-          obs RECORD;
-          stored boolean;
-          field text;
-          bad text;
+        DO $do$
         BEGIN
-          -- FOR SHARE waits for an in-flight completion of the draw and then
-          -- reads the committed row. A completed draw can't change after.
-          SELECT * INTO d FROM draws WHERE id = NEW.draw_id FOR SHARE;
+          CREATE OR REPLACE FUNCTION guard_v6_execution_receipt() RETURNS trigger AS $fn$
+          DECLARE
+            now_utc timestamp := statement_timestamp() AT TIME ZONE 'UTC';
+            d draws%ROWTYPE;
+            pair_schema text;
+            pair_tag text;
+            l operator_receipts%ROWTYPE;
+            raw text;
+            p jsonb;
+            lp jsonb;
+            obs RECORD;
+            stored boolean;
+            field text;
+            bad text;
+          BEGIN
+            -- The pair first, without a lock: every forecast receipt returns
+            -- here at once. The pair can't change once a draw has left open,
+            -- and a v6 lock refuses a draw that already has an execution
+            -- receipt.
+            SELECT lock_schema_version, entropy_composition INTO pair_schema, pair_tag
+              FROM draws WHERE id = NEW.draw_id;
 
-          IF d.lock_schema_version IS NULL AND d.entropy_composition IS NULL THEN
-            BEGIN
-              p := convert_from(NEW.payload_jcs, 'UTF8')::jsonb;
-            EXCEPTION WHEN others THEN
+            IF pair_schema IS NULL AND pair_tag IS NULL THEN
+              BEGIN
+                p := convert_from(NEW.payload_jcs, 'UTF8')::jsonb;
+              EXCEPTION WHEN others THEN
+                RETURN NEW;
+              END;
+              IF jsonb_typeof(p) = 'object' AND p->>'schema_version' IS NOT DISTINCT FROM '5' THEN
+                RAISE EXCEPTION 'a schema 5 execution receipt needs a draw locked under schema 6';
+              END IF;
               RETURN NEW;
+            END IF;
+
+            -- FOR SHARE waits for an in-flight completion of the draw and then
+            -- reads the committed row. A completed draw can't change after.
+            SELECT * INTO d FROM draws WHERE id = NEW.draw_id FOR SHARE;
+
+            IF d.lock_schema_version IS DISTINCT FROM '6'
+               OR d.entropy_composition IS DISTINCT FROM wallop_landobs_tag() THEN
+              RAISE EXCEPTION 'no execution receipt rules for (%, %)',
+                d.lock_schema_version, d.entropy_composition;
+            END IF;
+
+            raw := convert_from(NEW.payload_jcs, 'UTF8');
+            p := raw::jsonb;
+
+            IF p->>'schema_version' IS DISTINCT FROM '5'
+               OR p->>'entropy_composition' IS DISTINCT FROM d.entropy_composition THEN
+              RAISE EXCEPTION 'a v6 execution receipt must be schema 5 and carry its draw''s entropy_composition';
+            END IF;
+
+            -- Exactly the tag's keys, so no extra or look-alike field rides
+            -- along. A duplicate key is not seen here (jsonb keeps the last
+            -- value); the verifier refuses it.
+            IF jsonb_typeof(p) IS DISTINCT FROM 'object'
+               OR (SELECT array_agg(k ORDER BY k COLLATE "C") FROM jsonb_object_keys(p) k)
+                  IS DISTINCT FROM wallop_landobs_exec_keys() THEN
+              RAISE EXCEPTION 'v6 execution receipt keys are not the tag''s key set';
+            END IF;
+
+            IF d.status IS DISTINCT FROM 'completed' THEN
+              RAISE EXCEPTION 'a v6 execution receipt needs its draw completed first';
+            END IF;
+
+            SELECT * INTO l FROM operator_receipts WHERE draw_id = d.id;
+            IF NOT FOUND THEN
+              RAISE EXCEPTION 'a v6 execution receipt needs its draw''s lock receipt';
+            END IF;
+            lp := convert_from(l.payload_jcs, 'UTF8')::jsonb;
+
+            bad := CASE
+              WHEN p->>'draw_id' IS DISTINCT FROM d.id::text OR NEW.draw_id IS DISTINCT FROM d.id
+                THEN 'draw_id'
+              WHEN p->>'operator_id' IS DISTINCT FROM d.operator_id::text
+                   OR NEW.operator_id IS DISTINCT FROM d.operator_id
+                THEN 'operator_id'
+              WHEN p->>'operator_slug' IS DISTINCT FROM (SELECT slug::text FROM operators WHERE id = d.operator_id)
+                   OR p->'operator_slug' IS DISTINCT FROM lp->'operator_slug'
+                THEN 'operator_slug'
+              WHEN p->'sequence' IS DISTINCT FROM to_jsonb(d.operator_sequence)
+                   OR NEW.sequence IS DISTINCT FROM d.operator_sequence
+                THEN 'sequence'
+              WHEN p->>'entry_hash' IS DISTINCT FROM d.entry_hash THEN 'entry_hash'
+              WHEN p->>'lock_receipt_hash' IS DISTINCT FROM encode(sha256(l.payload_jcs), 'hex')
+                   OR NEW.lock_receipt_hash IS DISTINCT FROM encode(sha256(l.payload_jcs), 'hex')
+                THEN 'lock_receipt_hash'
+              WHEN jsonb_typeof(p->'fair_pick_version') IS DISTINCT FROM 'string'
+                   OR p->'fair_pick_version' IS DISTINCT FROM lp->'fair_pick_version'
+                THEN 'fair_pick_version'
+              WHEN p->>'drand_chain' IS DISTINCT FROM d.drand_chain
+                   OR d.drand_chain IS DISTINCT FROM wallop_quicknet_chain_hash()
+                THEN 'drand_chain'
+              WHEN p->'drand_round' IS DISTINCT FROM to_jsonb(d.drand_round) THEN 'drand_round'
+              WHEN p->>'drand_randomness' IS DISTINCT FROM d.drand_randomness THEN 'drand_randomness'
+              WHEN p->>'drand_signature' IS DISTINCT FROM d.drand_signature THEN 'drand_signature'
+              WHEN p->>'seed' IS DISTINCT FROM d.seed THEN 'seed'
+              WHEN p->'results' IS DISTINCT FROM
+                   (SELECT jsonb_agg(x->'entry_id' ORDER BY (x->>'position')::bigint) FROM unnest(d.results) x)
+                THEN 'results'
+              WHEN wallop_parse_rfc3339_usec(p->>'executed_at') IS DISTINCT FROM d.executed_at
+                THEN 'executed_at'
+              WHEN p->>'signing_key_id' IS DISTINCT FROM NEW.signing_key_id THEN 'signing_key_id'
             END;
-            IF jsonb_typeof(p) = 'object' AND p->>'schema_version' IS NOT DISTINCT FROM '5' THEN
-              RAISE EXCEPTION 'a schema 5 execution receipt needs a draw locked under schema 6';
-            END IF;
-            RETURN NEW;
-          END IF;
-
-          IF d.lock_schema_version IS DISTINCT FROM '6'
-             OR d.entropy_composition IS DISTINCT FROM wallop_landobs_tag() THEN
-            RAISE EXCEPTION 'no execution receipt rules for (%, %)',
-              d.lock_schema_version, d.entropy_composition;
-          END IF;
-
-          raw := convert_from(NEW.payload_jcs, 'UTF8');
-          p := raw::jsonb;
-
-          IF p->>'schema_version' IS DISTINCT FROM '5'
-             OR p->>'entropy_composition' IS DISTINCT FROM d.entropy_composition THEN
-            RAISE EXCEPTION 'a v6 execution receipt must be schema 5 and carry its draw''s entropy_composition';
-          END IF;
-
-          IF d.status IS DISTINCT FROM 'completed' THEN
-            RAISE EXCEPTION 'a v6 execution receipt needs its draw completed first';
-          END IF;
-
-          SELECT * INTO l FROM operator_receipts WHERE draw_id = d.id;
-          IF NOT FOUND THEN
-            RAISE EXCEPTION 'a v6 execution receipt needs its draw''s lock receipt';
-          END IF;
-          lp := convert_from(l.payload_jcs, 'UTF8')::jsonb;
-
-          bad := CASE
-            WHEN p->>'draw_id' IS DISTINCT FROM d.id::text OR NEW.draw_id IS DISTINCT FROM d.id
-              THEN 'draw_id'
-            WHEN p->>'operator_id' IS DISTINCT FROM d.operator_id::text
-                 OR NEW.operator_id IS DISTINCT FROM d.operator_id
-              THEN 'operator_id'
-            WHEN p->>'operator_slug' IS DISTINCT FROM (SELECT slug::text FROM operators WHERE id = d.operator_id)
-                 OR p->'operator_slug' IS DISTINCT FROM lp->'operator_slug'
-              THEN 'operator_slug'
-            WHEN p->'sequence' IS DISTINCT FROM to_jsonb(d.operator_sequence)
-                 OR NEW.sequence IS DISTINCT FROM d.operator_sequence
-              THEN 'sequence'
-            WHEN p->>'entry_hash' IS DISTINCT FROM d.entry_hash THEN 'entry_hash'
-            WHEN p->>'lock_receipt_hash' IS DISTINCT FROM encode(sha256(l.payload_jcs), 'hex')
-                 OR NEW.lock_receipt_hash IS DISTINCT FROM encode(sha256(l.payload_jcs), 'hex')
-              THEN 'lock_receipt_hash'
-            WHEN jsonb_typeof(p->'fair_pick_version') IS DISTINCT FROM 'string'
-                 OR p->'fair_pick_version' IS DISTINCT FROM lp->'fair_pick_version'
-              THEN 'fair_pick_version'
-            WHEN p->>'drand_chain' IS DISTINCT FROM d.drand_chain
-                 OR d.drand_chain IS DISTINCT FROM wallop_quicknet_chain_hash()
-              THEN 'drand_chain'
-            WHEN p->'drand_round' IS DISTINCT FROM to_jsonb(d.drand_round) THEN 'drand_round'
-            WHEN p->>'drand_randomness' IS DISTINCT FROM d.drand_randomness THEN 'drand_randomness'
-            WHEN p->>'drand_signature' IS DISTINCT FROM d.drand_signature THEN 'drand_signature'
-            WHEN p->>'seed' IS DISTINCT FROM d.seed THEN 'seed'
-            WHEN p->'results' IS DISTINCT FROM
-                 (SELECT jsonb_agg(x->'entry_id' ORDER BY (x->>'position')::bigint) FROM unnest(d.results) x)
-              THEN 'results'
-            WHEN wallop_parse_rfc3339_usec(p->>'executed_at') IS DISTINCT FROM d.executed_at
-              THEN 'executed_at'
-            WHEN p->>'signing_key_id' IS DISTINCT FROM NEW.signing_key_id THEN 'signing_key_id'
-          END;
-          IF bad IS NOT NULL THEN
-            RAISE EXCEPTION 'v6 execution receipt field % does not match the draw', bad;
-          END IF;
-
-          -- jsonb compares 7.0 equal to 7: the verifier refuses anything but
-          -- a canonical integer.
-          FOREACH field IN ARRAY ARRAY['sequence', 'drand_round'] LOOP
-            IF wallop_receipt_integer(raw, p, field) IS NOT TRUE THEN
-              RAISE EXCEPTION 'v6 execution receipt field % must be a canonical positive integer', field;
-            END IF;
-          END LOOP;
-
-          -- The key must have been in the keyring at executed_at (the
-          -- verifier's rule) and eligible to sign by then (the signer's).
-          IF NOT EXISTS (SELECT 1 FROM infrastructure_signing_keys k
-                         WHERE k.key_id = NEW.signing_key_id
-                           AND k.inserted_at <= d.executed_at AND k.valid_from <= d.executed_at) THEN
-            RAISE EXCEPTION 'v6 execution receipt signing key was not valid at executed_at';
-          END IF;
-
-          IF d.entropy_composition IS NOT DISTINCT FROM wallop_landobs_tag() THEN
-            -- The hour's one stored reading, or else the fallback rule.
-            SELECT station, value, observation_time INTO obs FROM weather_observations
-              WHERE observation_time = d.weather_time;
-            stored := FOUND;
-            IF stored THEN
-              bad := CASE
-                WHEN p->>'weather_station' IS DISTINCT FROM obs.station THEN 'weather_station'
-                WHEN jsonb_typeof(p->'weather_value') IS DISTINCT FROM 'string'
-                     OR p->>'weather_value' IS DISTINCT FROM obs.value
-                  THEN 'weather_value'
-                WHEN wallop_parse_rfc3339_usec(p->>'weather_observation_time')
-                     IS DISTINCT FROM obs.observation_time
-                  THEN 'weather_observation_time'
-                WHEN p->'weather_fallback_reason' IS DISTINCT FROM 'null'::jsonb
-                  THEN 'weather_fallback_reason'
-              END;
-            ELSE
-              bad := CASE
-                WHEN p->>'weather_station' IS DISTINCT FROM wallop_landobs_primary_station()
-                  THEN 'weather_station'
-                WHEN p->'weather_value' IS DISTINCT FROM 'null'::jsonb THEN 'weather_value'
-                WHEN p->'weather_observation_time' IS DISTINCT FROM 'null'::jsonb
-                  THEN 'weather_observation_time'
-                WHEN jsonb_typeof(p->'weather_fallback_reason') IS DISTINCT FROM 'string'
-                     OR p->>'weather_fallback_reason' IS DISTINCT FROM wallop_landobs_fallback_reason()
-                  THEN 'weather_fallback_reason'
-              END;
-            END IF;
             IF bad IS NOT NULL THEN
-              RAISE EXCEPTION 'v6 execution receipt field % does not match the stored observation', bad;
+              RAISE EXCEPTION 'v6 execution receipt field % does not match the draw', bad;
             END IF;
 
-            -- Mirrors the completion guard: nothing stored, and a minute
-            -- past the fetch deadline.
-            IF NOT stored
-               AND (now_utc > d.weather_time + wallop_landobs_fetch_window() + interval '1 minute')
-                   IS NOT TRUE THEN
-              RAISE EXCEPTION 'a v6 execution receipt may fall back only after the fetch deadline with nothing stored';
+            -- drand's randomness is sha256 of its BLS signature (both hex,
+            -- lower case, as the receipt carries them).
+            IF (CASE WHEN p->>'drand_signature' ~ '^([0-9a-f][0-9a-f])+$'
+                     THEN encode(sha256(decode(p->>'drand_signature', 'hex')), 'hex') END)
+               IS DISTINCT FROM p->>'drand_randomness' THEN
+              RAISE EXCEPTION 'v6 execution receipt drand_randomness is not sha256 of drand_signature';
             END IF;
-          ELSE
-            RAISE EXCEPTION 'no execution receipt rules for (%, %)',
-              d.lock_schema_version, d.entropy_composition;
-          END IF;
 
-          RETURN NEW;
-        END;
-        $$ LANGUAGE plpgsql
+            -- jsonb compares 7.0 equal to 7: the verifier refuses anything but
+            -- a canonical integer.
+            FOREACH field IN ARRAY ARRAY['sequence', 'drand_round'] LOOP
+              IF wallop_receipt_integer(raw, p, field) IS NOT TRUE THEN
+                RAISE EXCEPTION 'v6 execution receipt field % must be a canonical positive integer', field;
+              END IF;
+            END LOOP;
+
+            -- The key must have been in the keyring at executed_at (the
+            -- verifier's rule) and eligible to sign by then (the signer's).
+            IF NOT EXISTS (SELECT 1 FROM infrastructure_signing_keys k
+                           WHERE k.key_id = NEW.signing_key_id
+                             AND k.inserted_at <= d.executed_at AND k.valid_from <= d.executed_at) THEN
+              RAISE EXCEPTION 'v6 execution receipt signing key was not valid at executed_at';
+            END IF;
+
+            IF d.entropy_composition IS NOT DISTINCT FROM wallop_landobs_tag() THEN
+              -- The hour's one stored reading, or else the fallback rule.
+              SELECT station, value, observation_time INTO obs FROM weather_observations
+                WHERE observation_time = d.weather_time;
+              stored := FOUND;
+              IF stored THEN
+                bad := CASE
+                  WHEN p->>'weather_station' IS DISTINCT FROM obs.station THEN 'weather_station'
+                  WHEN jsonb_typeof(p->'weather_value') IS DISTINCT FROM 'string'
+                       OR p->>'weather_value' IS DISTINCT FROM obs.value
+                    THEN 'weather_value'
+                  WHEN wallop_parse_rfc3339_usec(p->>'weather_observation_time')
+                       IS DISTINCT FROM obs.observation_time
+                    THEN 'weather_observation_time'
+                  WHEN p->'weather_fallback_reason' IS DISTINCT FROM 'null'::jsonb
+                    THEN 'weather_fallback_reason'
+                END;
+              ELSE
+                bad := CASE
+                  WHEN p->>'weather_station' IS DISTINCT FROM wallop_landobs_primary_station()
+                    THEN 'weather_station'
+                  WHEN p->'weather_value' IS DISTINCT FROM 'null'::jsonb THEN 'weather_value'
+                  WHEN p->'weather_observation_time' IS DISTINCT FROM 'null'::jsonb
+                    THEN 'weather_observation_time'
+                  WHEN jsonb_typeof(p->'weather_fallback_reason') IS DISTINCT FROM 'string'
+                       OR p->>'weather_fallback_reason' IS DISTINCT FROM wallop_landobs_fallback_reason()
+                    THEN 'weather_fallback_reason'
+                END;
+              END IF;
+              IF bad IS NOT NULL THEN
+                RAISE EXCEPTION 'v6 execution receipt field % does not match the stored observation', bad;
+              END IF;
+
+              -- Mirrors the completion guard: nothing stored, and a minute
+              -- past the fetch deadline.
+              IF NOT stored
+                 AND (now_utc > d.weather_time + wallop_landobs_fetch_window() + interval '1 minute')
+                     IS NOT TRUE THEN
+                RAISE EXCEPTION 'a v6 execution receipt may fall back only after the fetch deadline with nothing stored';
+              END IF;
+            ELSE
+              RAISE EXCEPTION 'no execution receipt rules for (%, %)',
+                d.lock_schema_version, d.entropy_composition;
+            END IF;
+
+            RETURN NEW;
+          END;
+          $fn$ LANGUAGE plpgsql;
+          DROP TRIGGER IF EXISTS execution_receipts_v6_guard ON execution_receipts;
+          CREATE TRIGGER execution_receipts_v6_guard BEFORE INSERT ON execution_receipts
+            FOR EACH ROW EXECUTE FUNCTION guard_v6_execution_receipt();
+        END
+        $do$
         """)
 
-        down("DROP FUNCTION IF EXISTS guard_v6_execution_receipt()")
-      end
-
-      statement :execution_receipts_v6_guard do
-        up("""
-        CREATE TRIGGER execution_receipts_v6_guard BEFORE INSERT ON execution_receipts
-          FOR EACH ROW EXECUTE FUNCTION guard_v6_execution_receipt()
+        down("""
+        DO $do$
+        BEGIN
+          DROP TRIGGER IF EXISTS execution_receipts_v6_guard ON execution_receipts;
+          DROP FUNCTION IF EXISTS guard_v6_execution_receipt();
+        END
+        $do$
         """)
-
-        down("DROP TRIGGER IF EXISTS execution_receipts_v6_guard ON execution_receipts")
       end
     end
   end

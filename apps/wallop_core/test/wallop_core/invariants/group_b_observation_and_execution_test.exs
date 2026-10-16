@@ -25,9 +25,12 @@ defmodule WallopCore.Invariants.ObservationAndExecutionTest do
   @w Schedule.fetch_window_seconds()
   @value "141;1025;85;2432"
   @randomness "140117383b03a0c0c7a899a32b8cbd2ffff9e2569504037c358ee8c7c2efe2fd"
+  @signature "b6541e41bb68ff318e8bd74b9f6e168ae6424476c432241420c38427df58c6ef33fe009ce202a7101120ab481702fddf"
   @drand_args %{
-    drand_randomness: String.duplicate("a", 64),
-    drand_signature: "sig",
+    # A real quicknet beacon: drand_randomness is sha256 of the signature.
+    drand_randomness: "140117383b03a0c0c7a899a32b8cbd2ffff9e2569504037c358ee8c7c2efe2fd",
+    drand_signature:
+      "b6541e41bb68ff318e8bd74b9f6e168ae6424476c432241420c38427df58c6ef33fe009ce202a7101120ab481702fddf",
     drand_response: "{}"
   }
 
@@ -354,11 +357,11 @@ defmodule WallopCore.Invariants.ObservationAndExecutionTest do
 
   # A v6 draw committed outside the sandbox, for its own fresh operator,
   # deleted at the end of the test.
-  defp unboxed_v6_draw(wt_offset) do
+  defp unboxed_v6_draw(wt_offset, pub_offset \\ 3600) do
     {operator, draw} =
       unboxed(fn ->
         {operator, key} = create_v6_operator()
-        {operator, v6_draw(wt_offset, 3600, key)}
+        {operator, v6_draw(wt_offset, pub_offset, key)}
       end)
 
     on_exit(fn -> unboxed(fn -> delete_operator!(operator.id) end) end)
@@ -383,6 +386,28 @@ defmodule WallopCore.Invariants.ObservationAndExecutionTest do
             """,
             [station, DateTime.to_naive(draw.weather_time), @value]
           )
+
+          before_commit.()
+        end)
+    end)
+
+    :committed
+  rescue
+    e in Postgrex.Error -> {:refused, e.postgres.message}
+  end
+
+  # Fails the draw in a real transaction, runs `before_commit` inside it,
+  # then commits. :committed, or {:refused, message}.
+  defp fail_and_commit(draw, before_commit) do
+    unboxed(fn ->
+      {:ok, _} =
+        Repo.transaction(fn ->
+          Repo.query!("SET LOCAL lock_timeout = '10s'")
+
+          Repo.query!("UPDATE draws SET status = 'failed', failed_at = $2 WHERE id = $1", [
+            dump(draw.id),
+            NaiveDateTime.utc_now()
+          ])
 
           before_commit.()
         end)
@@ -475,7 +500,7 @@ defmodule WallopCore.Invariants.ObservationAndExecutionTest do
         Req.Test.json(conn, %{
           "round" => round,
           "randomness" => @randomness,
-          "signature" => String.duplicate("ab", 48)
+          "signature" => @signature
         })
       end)
 
@@ -613,6 +638,33 @@ defmodule WallopCore.Invariants.ObservationAndExecutionTest do
                "UPDATE draws SET status = 'failed', failed_at = now() WHERE id = $1",
                [dump(forecast.id)]
              ) == nil
+    end
+
+    @tag :slow
+    test "INV-9 a fail made before pub(R) but committed after it is refused at commit" do
+      # The round publishes a few seconds ahead: the UPDATE runs before
+      # pub(R), passing the statement-time check; the commit waits until
+      # pub(R) has passed, and the deferred check refuses it.
+      draw = unboxed_v6_draw(-5 * 60, 4)
+      pub = Quicknet.pub_time(draw.drand_round)
+
+      outcome =
+        fail_and_commit(draw, fn ->
+          assert DateTime.compare(db_now(), pub) == :lt
+          wait_until_db_clock_after(pub)
+        end)
+
+      assert outcome == {:refused, @no_fail_after_pub}
+      assert unboxed(fn -> reload(draw).status end) == :awaiting_entropy
+    end
+
+    @tag :slow
+    test "INV-9 a fail committed before pub(R) is kept" do
+      # Positive control: same path, pub(R) an hour ahead, commit at once.
+      draw = unboxed_v6_draw(-5 * 60)
+
+      assert fail_and_commit(draw, fn -> :ok end) == :committed
+      assert unboxed(fn -> reload(draw).status end) == :failed
     end
 
     test "INV-9 before pub(R), failing a v6 draw is still allowed" do

@@ -96,41 +96,46 @@ defmodule WallopCore.Resources.WeatherObservation do
         # insert wait and then not count that draw. Two stores for the hour
         # don't block each other here; the unique index decides between them.
         up("""
-        CREATE OR REPLACE FUNCTION guard_weather_observation_insert() RETURNS trigger AS $$
-        DECLARE
-          now_utc timestamp := statement_timestamp() AT TIME ZONE 'UTC';
+        DO $do$
         BEGIN
-          PERFORM 1 FROM draws
-            WHERE weather_time = NEW.observation_time
-              AND lock_schema_version = '6'
-              AND entropy_composition = wallop_landobs_tag()
-              AND status IN ('awaiting_entropy', 'pending_entropy')
-            ORDER BY id
-            FOR SHARE;
+          CREATE OR REPLACE FUNCTION guard_weather_observation_insert() RETURNS trigger AS $fn$
+          DECLARE
+            now_utc timestamp := statement_timestamp() AT TIME ZONE 'UTC';
+          BEGIN
+            PERFORM 1 FROM draws
+              WHERE weather_time = NEW.observation_time
+                AND lock_schema_version = '6'
+                AND entropy_composition = wallop_landobs_tag()
+                AND status IN ('awaiting_entropy', 'pending_entropy')
+              ORDER BY id
+              FOR SHARE;
 
-          IF NOT FOUND THEN
-            RAISE EXCEPTION 'no observation-weather draw is waiting for this hour';
-          END IF;
-          IF wallop_landobs_observation_allowed(NEW.station, NEW.observation_time, now_utc) IS NOT TRUE THEN
-            RAISE EXCEPTION '% observation outside its window', NEW.station;
-          END IF;
+            IF NOT FOUND THEN
+              RAISE EXCEPTION 'no observation-weather draw is waiting for this hour';
+            END IF;
+            IF wallop_landobs_observation_allowed(NEW.station, NEW.observation_time, now_utc) IS NOT TRUE THEN
+              RAISE EXCEPTION '% observation outside its window', NEW.station;
+            END IF;
 
-          NEW.stored_at := now_utc;
-          RETURN NEW;
-        END;
-        $$ LANGUAGE plpgsql
+            NEW.stored_at := now_utc;
+            RETURN NEW;
+          END;
+          $fn$ LANGUAGE plpgsql;
+          DROP TRIGGER IF EXISTS weather_observations_guard ON weather_observations;
+          CREATE TRIGGER weather_observations_guard BEFORE INSERT ON weather_observations
+            FOR EACH ROW EXECUTE FUNCTION guard_weather_observation_insert();
+        END
+        $do$
         """)
 
-        down("DROP FUNCTION IF EXISTS guard_weather_observation_insert()")
-      end
-
-      statement :weather_observations_guard do
-        up("""
-        CREATE TRIGGER weather_observations_guard BEFORE INSERT ON weather_observations
-          FOR EACH ROW EXECUTE FUNCTION guard_weather_observation_insert()
+        down("""
+        DO $do$
+        BEGIN
+          DROP TRIGGER IF EXISTS weather_observations_guard ON weather_observations;
+          DROP FUNCTION IF EXISTS guard_weather_observation_insert();
+        END
+        $do$
         """)
-
-        down("DROP TRIGGER IF EXISTS weather_observations_guard ON weather_observations")
       end
 
       statement :check_weather_observation_commit do
@@ -138,62 +143,65 @@ defmodule WallopCore.Resources.WeatherObservation do
         # that moment, not the statement's start: a row whose transaction
         # reaches its commit after F is refused, and nothing is stored.
         up("""
-        CREATE OR REPLACE FUNCTION check_weather_observation_commit() RETURNS trigger AS $$
+        DO $do$
         BEGIN
-          IF (clock_timestamp() AT TIME ZONE 'UTC' <= NEW.observation_time + wallop_landobs_fetch_window())
-             IS NOT TRUE THEN
-            RAISE EXCEPTION 'an observation must commit by its fetch deadline';
-          END IF;
+          CREATE OR REPLACE FUNCTION check_weather_observation_commit() RETURNS trigger AS $fn$
+          BEGIN
+            IF (clock_timestamp() AT TIME ZONE 'UTC' <= NEW.observation_time + wallop_landobs_fetch_window())
+               IS NOT TRUE THEN
+              RAISE EXCEPTION 'an observation must commit by its fetch deadline';
+            END IF;
 
-          RETURN NULL;
-        END;
-        $$ LANGUAGE plpgsql
+            RETURN NULL;
+          END;
+          $fn$ LANGUAGE plpgsql;
+          DROP TRIGGER IF EXISTS weather_observations_commit_deadline ON weather_observations;
+          CREATE CONSTRAINT TRIGGER weather_observations_commit_deadline
+            AFTER INSERT ON weather_observations
+            DEFERRABLE INITIALLY DEFERRED
+            FOR EACH ROW EXECUTE FUNCTION check_weather_observation_commit();
+        END
+        $do$
         """)
 
-        down("DROP FUNCTION IF EXISTS check_weather_observation_commit()")
-      end
-
-      statement :weather_observations_commit_deadline do
-        up("""
-        CREATE CONSTRAINT TRIGGER weather_observations_commit_deadline
-          AFTER INSERT ON weather_observations
-          DEFERRABLE INITIALLY DEFERRED
-          FOR EACH ROW EXECUTE FUNCTION check_weather_observation_commit()
+        down("""
+        DO $do$
+        BEGIN
+          DROP TRIGGER IF EXISTS weather_observations_commit_deadline ON weather_observations;
+          DROP FUNCTION IF EXISTS check_weather_observation_commit();
+        END
+        $do$
         """)
-
-        down(
-          "DROP TRIGGER IF EXISTS weather_observations_commit_deadline ON weather_observations"
-        )
       end
 
       statement :prevent_weather_observation_mutation do
         up("""
-        CREATE OR REPLACE FUNCTION prevent_weather_observation_mutation() RETURNS trigger AS $$
+        DO $do$
         BEGIN
-          RAISE EXCEPTION 'weather observations are write-once';
-        END;
-        $$ LANGUAGE plpgsql
+          CREATE OR REPLACE FUNCTION prevent_weather_observation_mutation() RETURNS trigger AS $fn$
+          BEGIN
+            RAISE EXCEPTION 'weather observations are write-once';
+          END;
+          $fn$ LANGUAGE plpgsql;
+          DROP TRIGGER IF EXISTS weather_observations_immutable ON weather_observations;
+          CREATE TRIGGER weather_observations_immutable BEFORE UPDATE OR DELETE ON weather_observations
+            FOR EACH ROW EXECUTE FUNCTION prevent_weather_observation_mutation();
+          DROP TRIGGER IF EXISTS weather_observations_no_truncate ON weather_observations;
+          CREATE TRIGGER weather_observations_no_truncate BEFORE TRUNCATE ON weather_observations
+            EXECUTE FUNCTION prevent_weather_observation_mutation();
+        END
+        $do$
         """)
 
-        down("DROP FUNCTION IF EXISTS prevent_weather_observation_mutation()")
-      end
-
-      statement :weather_observations_immutable do
-        up("""
-        CREATE TRIGGER weather_observations_immutable BEFORE UPDATE OR DELETE ON weather_observations
-          FOR EACH ROW EXECUTE FUNCTION prevent_weather_observation_mutation()
+        down("""
+        DO $do$
+        BEGIN
+          DROP TRIGGER IF EXISTS weather_observations_immutable ON weather_observations;
+          DROP TRIGGER IF EXISTS weather_observations_no_truncate ON weather_observations;
+          DROP FUNCTION IF EXISTS prevent_weather_observation_mutation();
+        END
+        $do$
         """)
-
-        down("DROP TRIGGER IF EXISTS weather_observations_immutable ON weather_observations")
-      end
-
-      statement :weather_observations_no_truncate do
-        up("""
-        CREATE TRIGGER weather_observations_no_truncate BEFORE TRUNCATE ON weather_observations
-          EXECUTE FUNCTION prevent_weather_observation_mutation()
-        """)
-
-        down("DROP TRIGGER IF EXISTS weather_observations_no_truncate ON weather_observations")
       end
     end
   end
