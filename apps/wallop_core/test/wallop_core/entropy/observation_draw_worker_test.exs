@@ -5,7 +5,7 @@ defmodule WallopCore.Entropy.ObservationDrawWorkerTest do
   import WallopCore.TestHelpers
 
   alias WallopCore.Drand.Quicknet
-  alias WallopCore.Entropy.{DrandClient, EntropyWorker, ObservationDrawWorker}
+  alias WallopCore.Entropy.{DrandClient, EntropyWorker, ObservationDrawWorker, V6Execution}
   alias WallopCore.Protocol
   alias WallopCore.Resources.{Draw, ExecutionReceipt}
   alias WallopCore.Weather.{Observations, Schedule, Stations}
@@ -89,6 +89,37 @@ defmodule WallopCore.Entropy.ObservationDrawWorkerTest do
         WHERE draw_id = $1
         """,
         [Ecto.UUID.dump!(draw.id), version]
+      )
+    end)
+  end
+
+  defp break_entry_hash!(draw) do
+    with_triggers_off(fn ->
+      Repo.query!("UPDATE draws SET entry_hash = $2 WHERE id = $1", [
+        Ecto.UUID.dump!(draw.id),
+        String.duplicate("0", 64)
+      ])
+    end)
+  end
+
+  # The database refuses the completion with an existing constraint: an
+  # execution receipt already stored for the draw collides with the unique
+  # index on execution_receipts(draw_id) when execution inserts its own.
+  defp occupy_execution_receipt!(draw) do
+    with_triggers_off(fn ->
+      Repo.query!(
+        """
+        INSERT INTO execution_receipts (id, draw_id, operator_id, sequence, lock_receipt_hash,
+          payload_jcs, signature, signing_key_id)
+        VALUES ($1, $2, $3, $4, 'x', '{}', $5, 'k')
+        """,
+        [
+          Ecto.UUID.dump!(Ecto.UUID.generate()),
+          Ecto.UUID.dump!(draw.id),
+          Ecto.UUID.dump!(draw.operator_id),
+          draw.operator_sequence + 1_000_000,
+          :binary.copy(<<0>>, 64)
+        ]
       )
     end)
   end
@@ -247,30 +278,69 @@ defmodule WallopCore.Entropy.ObservationDrawWorkerTest do
   end
 
   describe "failures" do
-    test "drand unavailable on the last attempt fails the draw; earlier attempts retry" do
+    test "drand unavailable: earlier attempts retry, the last is a refusal, never a failed draw" do
+      ref = :telemetry_test.attach_event_handlers(self(), [[:wallop_core, :v6, :exec_refused]])
       {_op, draw} = v6_draw_after_deadline(60)
       Req.Test.stub(DrandClient, fn conn -> Plug.Conn.send_resp(conn, 503, "") end)
 
       assert {:error, _} = perform_job(ObservationDrawWorker, %{draw_id: draw.id}, attempt: 1)
       assert reload(draw).status == :pending_entropy
+      refute_received {[:wallop_core, :v6, :exec_refused], ^ref, _, _}
 
-      assert :ok = perform_job(ObservationDrawWorker, %{draw_id: draw.id}, attempt: 10)
-      failed = reload(draw)
-      assert failed.status == :failed
-      assert failed.drand_randomness == nil
+      assert {:cancel, reason} =
+               perform_job(ObservationDrawWorker, %{draw_id: draw.id}, attempt: 10)
+
+      assert reason =~ "drand unavailable after 10 attempts (all relays failed)"
+      left = reload(draw)
+      assert left.status == :pending_entropy
+      assert left.drand_randomness == nil
+      assert_receive {[:wallop_core, :v6, :exec_refused], ^ref, _, %{reason: msg}}
+      assert msg =~ "drand unavailable"
     end
 
-    test "a failure after drand is fetched never fails the draw, even on the last attempt" do
+    test "an unrecoverable drand error is a refusal on the first attempt, never a failed draw" do
+      ref = :telemetry_test.attach_event_handlers(self(), [[:wallop_core, :v6, :exec_refused]])
+      {_op, draw} = v6_draw_after_deadline(60)
+      Req.Test.stub(DrandClient, fn conn -> Plug.Conn.send_resp(conn, 403, "") end)
+
+      assert {:cancel, reason} =
+               perform_job(ObservationDrawWorker, %{draw_id: draw.id}, attempt: 1)
+
+      assert reason =~ "drand unrecoverable error"
+      assert reload(draw).status == :pending_entropy
+      assert_receive {[:wallop_core, :v6, :exec_refused], ^ref, _, %{reason: msg}}
+      assert msg =~ "drand"
+    end
+
+    test "an entry hash mismatch after the fetch is a refusal, never a retry or a failed draw" do
+      ref =
+        :telemetry_test.attach_event_handlers(self(), [
+          [:wallop_core, :v6, :exec_refused],
+          [:wallop_core, :v6, :execute_error]
+        ])
+
+      {_op, draw} = v6_draw_after_deadline(60)
+      break_entry_hash!(draw)
+
+      for attempt <- [1, 10] do
+        assert {:cancel, reason} =
+                 perform_job(ObservationDrawWorker, %{draw_id: draw.id}, attempt: attempt)
+
+        assert reason =~ "entry hash mismatch"
+        assert_received {:drand_fetched, _}
+        assert reload(draw).status == :pending_entropy
+
+        assert_receive {[:wallop_core, :v6, :exec_refused], ^ref, _, %{draw_id: id}}
+        assert id == draw.id
+      end
+
+      refute_received {[:wallop_core, :v6, :execute_error], ^ref, _, _}
+    end
+
+    test "a database refusal after the fetch retries, and never fails the draw" do
       ref = :telemetry_test.attach_event_handlers(self(), [[:wallop_core, :v6, :execute_error]])
       {_op, draw} = v6_draw_after_deadline(60)
-
-      # Make execute_v6 refuse (entry hash mismatch) after drand has been fetched.
-      with_triggers_off(fn ->
-        Repo.query!("UPDATE draws SET entry_hash = $2 WHERE id = $1", [
-          Ecto.UUID.dump!(draw.id),
-          String.duplicate("0", 64)
-        ])
-      end)
+      occupy_execution_receipt!(draw)
 
       for attempt <- [1, 10] do
         assert {:error, _} =
@@ -281,6 +351,84 @@ defmodule WallopCore.Entropy.ObservationDrawWorkerTest do
         assert_receive {[:wallop_core, :v6, :execute_error], ^ref, _, %{draw_id: id}}
         assert id == draw.id
       end
+    end
+
+    test "attempt 1 fetches drand and rolls back; a drand failure on the last attempt still doesn't fail the draw" do
+      ref =
+        :telemetry_test.attach_event_handlers(self(), [
+          [:wallop_core, :v6, :execute_error],
+          [:wallop_core, :v6, :exec_refused]
+        ])
+
+      {_op, draw} = v6_draw_after_deadline(60)
+
+      # Attempt 1: drand is fetched, then the database refuses the completion
+      # and everything rolls back. The outcome was knowable from here on.
+      occupy_execution_receipt!(draw)
+      assert {:error, _} = perform_job(ObservationDrawWorker, %{draw_id: draw.id}, attempt: 1)
+      assert_received {:drand_fetched, _}
+      assert_receive {[:wallop_core, :v6, :execute_error], ^ref, _, _}
+      assert reload(draw).drand_randomness == nil
+
+      # The last attempt: drand is now unavailable. Failing the draw here
+      # would be a selective abort; it is refused and left for the re-drive.
+      Req.Test.stub(DrandClient, fn conn -> Plug.Conn.send_resp(conn, 503, "") end)
+
+      assert {:cancel, reason} =
+               perform_job(ObservationDrawWorker, %{draw_id: draw.id}, attempt: 10)
+
+      assert reason =~ "drand unavailable"
+      assert reload(draw).status == :pending_entropy
+      assert_receive {[:wallop_core, :v6, :exec_refused], ^ref, _, %{draw_id: id}}
+      assert id == draw.id
+    end
+
+    test "a post-fetch not-yet snoozes on the app clock, writes nothing and reports nothing" do
+      ref =
+        :telemetry_test.attach_event_handlers(self(), [
+          [:wallop_core, :v6, :executed],
+          [:wallop_core, :v6, :execute_error],
+          [:wallop_core, :v6, :exec_refused]
+        ])
+
+      {_op, draw} = v6_draw_after_deadline(60)
+      later = round_at(600)
+
+      # Between the worker's own check and execute_v6, the stored round moves
+      # 10 minutes ahead: execute_v6 reads the draw again under its row lock
+      # and says "not yet", as it would for an app clock lagging the DB's.
+      Req.Test.stub(DrandClient, fn conn ->
+        round = conn.path_info |> List.last() |> String.to_integer()
+
+        with_triggers_off(fn ->
+          Repo.query!("UPDATE draws SET drand_round = $2 WHERE id = $1", [
+            Ecto.UUID.dump!(draw.id),
+            later
+          ])
+        end)
+
+        Req.Test.json(conn, %{
+          "round" => round,
+          "randomness" => @randomness,
+          "signature" => String.duplicate("ab", 48)
+        })
+      end)
+
+      assert {:snooze, secs} = perform_job(ObservationDrawWorker, %{draw_id: draw.id})
+      assert secs >= 595
+
+      left = reload(draw)
+      assert left.status == :pending_entropy
+      assert left.drand_randomness == nil
+      assert execution_receipt_count(draw) == 0
+      refute_received {_, ^ref, _, _}
+    end
+
+    test "the not-yet wait has a margin and a floor" do
+      now = DateTime.utc_now()
+      assert V6Execution.not_yet_wait(DateTime.add(now, 100), now) == 102
+      assert V6Execution.not_yet_wait(DateTime.add(now, 1), now) == 5
+      assert V6Execution.not_yet_wait(DateTime.add(now, -30), now) == 5
     end
 
     test "a receipt the builder refuses on stored state: exec_refused, job cancelled, draw untouched" do
@@ -342,6 +490,24 @@ defmodule WallopCore.Entropy.ObservationDrawWorkerTest do
       end
 
       refute_received {:drand_fetched, _}
+    end
+  end
+
+  describe "no path to a failed draw" do
+    # The v6 path must not be able to mark a draw failed: once the worker
+    # runs, drand's round has published and the outcome is knowable.
+    test "no v6 execution module calls mark_failed or fail_draw_with_reason" do
+      lib = Path.expand("../../../lib/wallop_core", __DIR__)
+
+      for file <- [
+            "entropy/v6_execution.ex",
+            "entropy/v6_rules.ex",
+            "entropy/observation_draw_worker.ex",
+            "resources/draw/changes/execute_v6.ex"
+          ] do
+        source = File.read!(Path.join(lib, file))
+        refute source =~ ~r/fail_draw_with_reason|:mark_failed|mark_failed\(/, file
+      end
     end
   end
 end

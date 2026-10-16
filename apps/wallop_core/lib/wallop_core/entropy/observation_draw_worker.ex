@@ -7,11 +7,12 @@ defmodule WallopCore.Entropy.ObservationDrawWorker do
   The job carries only the draw id. It never chooses a weather value: the
   execution reads the stored reading, or falls back by rule.
 
-  A draw is never marked failed once drand has been fetched. Two layers keep
-  that true, described in `WallopCore.Entropy.V6Execution`: this worker's
-  executor never calls `mark_failed` after the fetch (it retries, or cancels
-  and leaves the draw for the re-drive), and the draws guard refuses
-  `failed` once drand randomness is stored.
+  A draw is never marked failed once its drand round is published. Two
+  layers keep that true, described in `WallopCore.Entropy.V6Execution`: the
+  executor has no path to `mark_failed` (it retries, waits, or cancels and
+  leaves the draw for the re-drive), and the draws guard (not yet in place:
+  it comes with the execution receipt guard) will refuse `failed` once the
+  database clock is at or past pub(R).
 
   Unique on `draw_id` among live jobs only (Oban's `:incomplete` group:
   available, scheduled, executing, retryable, suspended), so a cancelled or

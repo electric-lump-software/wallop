@@ -128,12 +128,16 @@ defmodule WallopCore.Resources.Draw.Changes.SignAndStoreExecutionReceipt do
     end
   end
 
+  # The builder raises ArgumentError on stored state it won't sign. Any
+  # ArgumentError here becomes a refusal: that is safe because a refusal
+  # never fails a draw. It rolls the execution back, cancels the job and
+  # leaves the draw for the re-drive, with an alert.
   defp build_payload("6", draw, lock_receipt, input) do
     with {:ok, rules} <- v6_rules(draw),
-         {:ok, station} <- v6_station(rules, draw),
+         {:ok, tag_input} <- v6_receipt_input(rules, draw),
          :ok <- same_fair_pick_version(lock_receipt, input.fair_pick_version) do
       input
-      |> Map.merge(%{weather_station: station, entropy_composition: draw.entropy_composition})
+      |> Map.merge(tag_input)
       |> Protocol.build_v6_execution_payload()
       |> then(&{:ok, &1})
     end
@@ -146,19 +150,19 @@ defmodule WallopCore.Resources.Draw.Changes.SignAndStoreExecutionReceipt do
     do: {:ok, Protocol.build_execution_receipt_payload(input)}
 
   defp v6_rules(draw) do
-    {:ok, V6Rules.rules!(draw)}
-  rescue
-    e in ArgumentError -> refused(Exception.message(e))
+    case V6Rules.rules(draw) do
+      {:ok, rules} ->
+        {:ok, rules}
+
+      :error ->
+        refused(V6Rules.unknown_pair_message(draw.lock_schema_version, draw.entropy_composition))
+    end
   end
 
-  # The station whose reading the draw used, read again under the same
-  # transaction; a fallback used none, so it names the rules' first station.
-  defp v6_station(rules, %{weather_value: nil}), do: {:ok, V6Rules.fallback_station(rules)}
-
-  defp v6_station(rules, draw) do
-    case V6Rules.reading(rules, draw) do
-      %{station: station, value: value} when value == draw.weather_value -> {:ok, station}
-      _ -> refused("the draw's weather_value is not the stored reading for its hour")
+  defp v6_receipt_input(rules, draw) do
+    case V6Rules.receipt_input(rules, draw) do
+      {:ok, tag_input} -> {:ok, tag_input}
+      {:error, message} -> refused(message)
     end
   end
 
