@@ -81,16 +81,31 @@ defmodule WallopCore.ProtocolFreqTest do
     assert payload["weather_time"] == nil
   end
 
+  # Each refusal is pinned to its exact message, so no case passes for the
+  # wrong reason.
+  defp assert_refused(build, input, message) do
+    error = assert_raise ArgumentError, fn -> build.(input) end
+    assert error.message == message, inspect(input)
+  end
+
   test "lock v6 refuses weather fields, an underived freq_start and a late locked_at" do
-    for bad <- [
-          %{@lock | weather_station: "wmo-03749"},
-          %{@lock | weather_time: ~U[2026-10-14 19:00:00.000000Z]},
-          %{@lock | freq_start: ~U[2026-10-14 19:53:45.000000Z]},
-          %{@lock | freq_start: nil},
-          Map.delete(@lock, :freq_start),
-          %{@lock | locked_at: ~U[2026-10-14 19:53:00.000001Z]}
+    for {bad, message} <- [
+          {%{@lock | weather_station: "wmo-03749"},
+           "lock v6 under #{@freq} carries no weather_station"},
+          {%{@lock | weather_time: ~U[2026-10-14 19:00:00.000000Z]},
+           "lock v6 under #{@freq} carries no weather_time"},
+          {%{@lock | freq_start: ~U[2026-10-14 19:53:45.000000Z]},
+           "lock v6 freq_start is not the window start for drand round 33068212"},
+          {%{@lock | freq_start: ~U[2026-10-14 19:54:15.000000Z]},
+           "lock v6 freq_start is not the window start for drand round 33068212"},
+          {%{@lock | freq_start: nil}, "lock v6 freq_start must be a DateTime"},
+          {%{@lock | freq_start: "2026-10-14T19:54:00.000000Z"},
+           "lock v6 freq_start must be a DateTime"},
+          {Map.delete(@lock, :freq_start), "lock v6 input must carry :freq_start"},
+          {%{@lock | locked_at: ~U[2026-10-14 19:53:00.000001Z]},
+           "lock v6 locked_at is later than freq_start minus 60 seconds"}
         ] do
-      assert_raise ArgumentError, fn -> Protocol.build_v6_lock_payload(bad) end
+      assert_refused(&Protocol.build_v6_lock_payload/1, bad, message)
     end
 
     assert Protocol.build_v6_lock_payload(%{@lock | locked_at: ~U[2026-10-14 19:53:00.000000Z]})
@@ -115,23 +130,77 @@ defmodule WallopCore.ProtocolFreqTest do
     assert fallback["freq_fallback_reason"] == "no_frequency_by_deadline"
   end
 
+  @either "exec v5 must carry a freq_value with a null freq_fallback_reason, or a null " <>
+            "freq_value with reason \"no_frequency_by_deadline\""
+  @grammar "exec v5 freq_value does not match the grid-frequency grammar"
+
   test "exec v5 refuses weather fields, the weather reason, partial fallbacks, bad values and early execution" do
-    for bad <- [
-          %{@exec | weather_station: "wmo-03749"},
-          %{@exec | weather_value: "141;1025;85;2432"},
-          %{@fallback | freq_fallback_reason: "no_observation_by_deadline"},
-          %{
-            @fallback
-            | weather_fallback_reason: "no_frequency_by_deadline",
-              freq_fallback_reason: nil
-          },
-          %{@exec | freq_fallback_reason: "no_frequency_by_deadline"},
-          %{@exec | freq_value: nil},
-          %{@exec | freq_value: "50000;50000;50000;50000;50000;50000;50012;50013"},
-          %{@exec | freq_value: "53000;50012;49983;49980;49953;49912;49883;49887"},
-          %{@exec | executed_at: ~U[2026-10-14 19:59:59.999999Z]}
+    for {bad, message} <- [
+          {%{@exec | weather_station: "wmo-03749"},
+           "exec v5 under #{@freq} carries no weather_station"},
+          {%{@exec | weather_value: "141;1025;85;2432"},
+           "exec v5 under #{@freq} carries no weather_value"},
+          {%{@exec | weather_observation_time: ~U[2026-10-14 19:00:00.000000Z]},
+           "exec v5 under #{@freq} carries no weather_observation_time"},
+          {%{@fallback | freq_fallback_reason: "no_observation_by_deadline"}, @either},
+          {%{
+             @fallback
+             | weather_fallback_reason: "no_frequency_by_deadline",
+               freq_fallback_reason: nil
+           }, "exec v5 under #{@freq} carries no weather_fallback_reason"},
+          {%{@exec | freq_fallback_reason: "no_frequency_by_deadline"}, @either},
+          {%{@exec | freq_value: nil}, @either},
+          {%{@exec | freq_value: 50_018}, @either},
+          {%{@exec | freq_value: "50000;50000;50000;50000;50000;50000;50012;50013"}, @grammar},
+          {%{@exec | freq_value: "53000;50012;49983;49980;49953;49912;49883;49887"}, @grammar},
+          {%{@exec | freq_value: "50018;50012;49983;49980;49953;49912;49883"}, @grammar},
+          {%{@exec | executed_at: ~U[2026-10-14 19:59:59.999999Z]},
+           "exec v5 executed_at is before drand round 33068212 was published"}
         ] do
-      assert_raise ArgumentError, fn -> Protocol.build_v6_execution_payload(bad) end
+      assert_refused(&Protocol.build_v6_execution_payload/1, bad, message)
+    end
+  end
+
+  test "exec v5 under the frequency tag needs both frequency keys present; nil only as the rules allow" do
+    for input <- [@exec, @fallback], key <- [:freq_value, :freq_fallback_reason] do
+      assert_refused(
+        &Protocol.build_v6_execution_payload/1,
+        Map.delete(input, key),
+        "exec v5 input must carry #{inspect(key)}"
+      )
+    end
+
+    # Explicit nils, where the rules allow them, still build.
+    assert Protocol.build_v6_execution_payload(@exec) =~ ~s("freq_fallback_reason":null)
+    assert Protocol.build_v6_execution_payload(@fallback) =~ ~s("freq_value":null)
+  end
+
+  test "freq_start goes through the canonical-timestamp check without changing a byte" do
+    # A freq_start of any precision signs the one canonical form.
+    for t <- [
+          ~U[2026-10-14 19:54:00Z],
+          ~U[2026-10-14 19:54:00.000Z],
+          ~U[2026-10-14 19:54:00.000000Z]
+        ] do
+      assert Protocol.build_v6_lock_payload(%{@lock | freq_start: t}) ==
+               Protocol.build_v6_lock_payload(@lock)
+    end
+
+    assert Protocol.build_v6_lock_payload(@lock) =~ ~s("freq_start":"2026-10-14T19:54:00.000000Z")
+
+    # The same instant outside UTC is refused, never signed in another form.
+    non_utc = %{
+      @lock.freq_start
+      | time_zone: "Europe/London",
+        zone_abbr: "BST",
+        utc_offset: 3600,
+        hour: 20
+    }
+
+    assert DateTime.compare(non_utc, @lock.freq_start) == :eq
+
+    assert_raise ArgumentError, fn ->
+      Protocol.build_v6_lock_payload(%{@lock | freq_start: non_utc})
     end
   end
 

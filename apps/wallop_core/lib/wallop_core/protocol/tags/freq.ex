@@ -78,8 +78,8 @@ defmodule WallopCore.Protocol.Tags.Freq do
   @spec exec_fields(map()) :: map()
   def exec_fields(input),
     do: %{
-      "freq_value" => Map.get(input, :freq_value),
-      "freq_fallback_reason" => Map.get(input, :freq_fallback_reason)
+      "freq_value" => Map.fetch!(input, :freq_value),
+      "freq_fallback_reason" => Map.fetch!(input, :freq_fallback_reason)
     }
 
   @doc "Raises `ArgumentError` unless the lock input follows the tag's rules."
@@ -89,14 +89,15 @@ defmodule WallopCore.Protocol.Tags.Freq do
         %{weather_station: station, weather_time: wt, drand_round: round, locked_at: locked_at} =
           input
       ) do
+    require_keys!(input, "lock v6", [:freq_start])
     require!(is_nil(station), "lock v6 under #{@tag} carries no weather_station")
     require!(is_nil(wt), "lock v6 under #{@tag} carries no weather_time")
     require!(valid_round?(round), "lock v6 drand_round must be a positive integer")
-    freq_start = Map.get(input, :freq_start)
+    freq_start = Map.fetch!(input, :freq_start)
+    require!(match?(%DateTime{}, freq_start), "lock v6 freq_start must be a DateTime")
 
     require!(
-      match?(%DateTime{}, freq_start) and
-        DateTime.compare(freq_start, Schedule.freq_start_for_round(round)) == :eq,
+      DateTime.compare(freq_start, Schedule.freq_start_for_round(round)) == :eq,
       "lock v6 freq_start is not the window start for drand round #{round}"
     )
 
@@ -110,12 +111,15 @@ defmodule WallopCore.Protocol.Tags.Freq do
   @impl true
   @spec validate_exec!(map()) :: :ok
   def validate_exec!(%{drand_round: round, executed_at: executed_at} = input) do
+    # Present on every input, like the base keys; nil only where the rules allow it.
+    require_keys!(input, "exec v5", [:freq_value, :freq_fallback_reason])
+
     Enum.each(@exec_weather_keys, fn key ->
       require!(is_nil(Map.get(input, key)), "exec v5 under #{@tag} carries no #{key}")
     end)
 
     require!(valid_round?(round), "exec v5 drand_round must be a positive integer")
-    validate_freq!(Map.get(input, :freq_value), Map.get(input, :freq_fallback_reason))
+    validate_freq!(Map.fetch!(input, :freq_value), Map.fetch!(input, :freq_fallback_reason))
 
     require!(
       match?(%DateTime{}, executed_at) and
@@ -140,6 +144,12 @@ defmodule WallopCore.Protocol.Tags.Freq do
   end
 
   defp valid_round?(round), do: is_integer(round) and round >= 1
+
+  defp require_keys!(input, receipt, keys) do
+    Enum.each(keys, fn key ->
+      require!(Map.has_key?(input, key), "#{receipt} input must carry #{inspect(key)}")
+    end)
+  end
 
   defp require!(true, _message), do: :ok
   defp require!(false, message), do: raise(ArgumentError, message)
