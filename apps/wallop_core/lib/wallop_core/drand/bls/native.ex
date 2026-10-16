@@ -13,6 +13,14 @@ defmodule WallopCore.Drand.Bls.Native do
   # resolves the crate path against the app directory; so does this.
   @crate_dir "native/drand_bls"
 
+  if is_nil(System.find_executable("cargo")) do
+    raise CompileError,
+      description:
+        "wallop_core needs a Rust toolchain (1.91 or later; #{@crate_dir}/rust-toolchain.toml " <>
+          "pins the version used) to build its drand BLS NIF, and `cargo` is not on the PATH. " <>
+          "Install one with rustup (https://rustup.rs) and compile again."
+  end
+
   case System.cmd("cargo", ~w(metadata --locked --format-version=1),
          cd: @crate_dir,
          stderr_to_stdout: true
