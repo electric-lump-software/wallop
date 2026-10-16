@@ -7,7 +7,7 @@ defmodule WallopCore.Entropy.StuckDrawRedriverTest do
   import WallopCore.TestHelpers
 
   alias WallopCore.Drand.Quicknet
-  alias WallopCore.Entropy.{EntropyWorker, ObservationDrawWorker, StuckDrawRedriver}
+  alias WallopCore.Entropy.{DrandClient, EntropyWorker, ObservationDrawWorker, StuckDrawRedriver}
   alias WallopCore.Entropy.{FrequencyWindowWorker, WeatherObservationWorker}
   alias WallopCore.Frequency.Schedule, as: FreqSchedule
   alias WallopCore.Resources.Draw
@@ -381,6 +381,124 @@ defmodule WallopCore.Entropy.StuckDrawRedriverTest do
       draw = stuck_v6(-20 * 60)
       assert :ok = perform_job(StuckDrawRedriver, %{})
       assert_enqueued(worker: ObservationDrawWorker, args: %{draw_id: draw.id})
+    end
+  end
+
+  describe "grid-frequency draws" do
+    @freq_value "50012;50018;50012;49983;49980;49953;49912;49883"
+    # A real quicknet beacon: the randomness is sha256 of the signature.
+    @randomness "140117383b03a0c0c7a899a32b8cbd2ffff9e2569504037c358ee8c7c2efe2fd"
+    @signature "b6541e41bb68ff318e8bd74b9f6e168ae6424476c432241420c38427df58c6ef33fe009ce202a7101120ab481702fddf"
+
+    setup do
+      ensure_infrastructure_key()
+
+      Application.put_env(:wallop_core, DrandClient,
+        req_options: [plug: {Req.Test, DrandClient}, retry: false]
+      )
+
+      Req.Test.stub(DrandClient, fn conn ->
+        round = conn.path_info |> List.last() |> String.to_integer()
+
+        Req.Test.json(conn, %{
+          "round" => round,
+          "randomness" => @randomness,
+          "signature" => @signature
+        })
+      end)
+
+      on_exit(fn -> Application.delete_env(:wallop_core, DrandClient) end)
+    end
+
+    defp freq_draw(pub_offset, t \\ nil) do
+      {_op, key} = create_freq_operator()
+      round = round_at(pub_offset)
+
+      draw =
+        put_freq_awaiting!(
+          open_draw_with_entries(key),
+          t || FreqSchedule.freq_start_for_round(round),
+          round
+        )
+
+      delete_jobs_for!(draw.id)
+      draw
+    end
+
+    test "a frequency draw past pub(R) + 15 min with no live job gets its execution job back" do
+      ref = :telemetry_test.attach_event_handlers(self(), [@event])
+      draw = freq_draw(-20 * 60)
+      id = draw.id
+
+      assert id in StuckDrawRedriver.redrive()
+      assert jobs_for(ObservationDrawWorker, id) == ["available"]
+      assert jobs_for(EntropyWorker, id) == []
+
+      assert_received {@event, ^ref, %{count: 1},
+                       %{kind: :execution, protocol: :frequency, draw_id: ^id}}
+
+      # Idempotent: the new job is live.
+      refute id in StuckDrawRedriver.redrive()
+      assert jobs_for(ObservationDrawWorker, id) == ["available"]
+    end
+
+    test "not yet past pub(R) + 15 min: left alone" do
+      draw = freq_draw(-10 * 60)
+      refute draw.id in StuckDrawRedriver.redrive()
+      assert jobs_for(ObservationDrawWorker, draw.id) == []
+    end
+
+    test "a live job in any live state means the frequency draw is left alone" do
+      for state <- @live_states do
+        draw = freq_draw(-20 * 60)
+        put_job!(ObservationDrawWorker, draw.id, state)
+        refute draw.id in StuckDrawRedriver.redrive(), state
+      end
+    end
+
+    test "a cancelled ObservationDrawWorker job parks a frequency draw: a refusal stays put" do
+      draw = freq_draw(-20 * 60)
+      put_job!(ObservationDrawWorker, draw.id, "cancelled")
+
+      refute draw.id in StuckDrawRedriver.redrive()
+      assert jobs_for(ObservationDrawWorker, draw.id) == ["cancelled"]
+    end
+
+    test "a lost window job is not re-inserted, even while T's window is open: the draw falls back by rule" do
+      ref = :telemetry_test.attach_event_handlers(self(), [@event])
+      t = aligned_freq_start(-(FreqSchedule.span_seconds() + 60))
+      freq_draw(3600, t)
+
+      StuckDrawRedriver.redrive()
+
+      refute_enqueued(
+        worker: FrequencyWindowWorker,
+        args: %{freq_start: FrequencyWindowWorker.start_arg(t)}
+      )
+
+      refute_received {@event, ^ref, _, %{kind: :fetch, weather_time: nil}}
+    end
+
+    test "a re-driven frequency job re-reads the stored window: re-drive makes no choice" do
+      draw = freq_draw(-20 * 60)
+      put_frequency_window!(draw.freq_start, @freq_value)
+
+      assert draw.id in StuckDrawRedriver.redrive()
+
+      before =
+        Repo.query!("SELECT status, freq_value, seed FROM draws WHERE id = $1", [
+          Ecto.UUID.dump!(draw.id)
+        ])
+
+      # The re-drive itself wrote nothing to the draw.
+      assert before.rows == [["awaiting_entropy", nil, nil]]
+
+      # The job it put back runs by the same rules: the stored window.
+      assert :ok = perform_job(ObservationDrawWorker, %{draw_id: draw.id})
+      done = Ash.get!(Draw, draw.id, authorize?: false)
+
+      assert {done.status, done.freq_value, done.freq_fallback_reason} ==
+               {:completed, @freq_value, nil}
     end
   end
 end

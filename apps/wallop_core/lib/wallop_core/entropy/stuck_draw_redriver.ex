@@ -10,11 +10,12 @@ defmodule WallopCore.Entropy.StuckDrawRedriver do
   (available, scheduled, executing, retryable or suspended) exists for it
   under either execution worker. It was due at:
 
-    * an observation-weather draw: its drand round's publication time,
-      from `WallopCore.Entropy.V6Rules.drand_pub_time/2`;
+    * a lock schema 6 draw (observation weather or grid frequency): its
+      drand round's publication time, from
+      `WallopCore.Entropy.V6Rules.drand_pub_time/2`;
     * a forecast draw: its `weather_time`.
 
-  A stuck observation-weather draw gets `ObservationDrawWorker` back. A
+  A stuck schema 6 draw, of either tag, gets `ObservationDrawWorker` back. A
   draw whose `ObservationDrawWorker` job was cancelled is skipped: a
   cancelled job is how the executor refuses a draw, and the cancelled row
   is the record of that refusal. Any cancelled `ObservationDrawWorker` row
@@ -31,12 +32,18 @@ defmodule WallopCore.Entropy.StuckDrawRedriver do
 
   ## Fetch jobs
 
-  For each hour with pending Land Observations draws and no stored
-  reading, while the database clock is before the hour's fetch deadline
+  For each Land Observations hour with pending draws and no stored reading,
+  while the database clock is before the hour's fetch deadline F
   (`WallopCore.Entropy.V6Rules.fetch_deadline/2`), the hour's fetch job is
   inserted again. It is unique among live jobs, so an hour whose job is
-  still alive is untouched. A grid-frequency window job is never re-driven:
-  a window that was not stored by F falls back by rule.
+  still alive is untouched.
+
+  Grid-frequency windows are not re-driven. A window is open for at most
+  W_freq (240 s), shorter than the ten-minute cron, so a re-drive would
+  rarely land inside it. A lost window job instead leaves T's draws to fall
+  back by rule (`no_frequency_by_deadline`, decided by the database from
+  stored state): nothing is chosen and no draw fails. The wallop-app
+  monitor alerts on every fallback, so a lost job is seen.
 
   ## What it never does
 
@@ -48,7 +55,8 @@ defmodule WallopCore.Entropy.StuckDrawRedriver do
 
   Each insert emits `[:wallop_core, :redrive, :reinserted]` with
   `%{count: 1}` and metadata `%{kind: :execution | :fetch, protocol:
-  :observation | :forecast}`, plus `draw_id` or `weather_time`, and logs a
+  :observation | :frequency | :forecast}`, plus `draw_id` or
+  `weather_time`, and logs a
   warning. A draw re-driven again and again is a fault worth an alert.
   """
   use Oban.Worker, queue: :default, max_attempts: 3
@@ -196,7 +204,7 @@ defmodule WallopCore.Entropy.StuckDrawRedriver do
   defp due_time(draw) do
     case V6Rules.rules(draw) do
       {:ok, rules} ->
-        {:ok, :observation, V6Rules.drand_pub_time(rules, draw)}
+        {:ok, protocol(rules), V6Rules.drand_pub_time(rules, draw)}
 
       :error ->
         # Refused at insert by the draws guard, so it can't exist; if one
@@ -218,7 +226,11 @@ defmodule WallopCore.Entropy.StuckDrawRedriver do
   # among live jobs, so a race with another inserter is a conflict, not a
   # second job. EntropyWorker's own uniqueness also counts completed jobs,
   # so the re-drive narrows it to live ones, as ObservationDrawWorker has.
-  defp insert_execution(:observation, id),
+  # The telemetry label of a schema 6 draw's rules.
+  defp protocol(:landobs), do: :observation
+  defp protocol(:freq), do: :frequency
+
+  defp insert_execution(protocol, id) when protocol in [:observation, :frequency],
     do: Oban.insert(ObservationDrawWorker.new(%{draw_id: id}))
 
   defp insert_execution(:forecast, id),
