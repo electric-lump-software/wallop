@@ -123,6 +123,11 @@ defmodule WallopCore.Entropy.DrandClient do
     end
   end
 
+  # Anything but a JSON object (an array, a string, null, a non-JSON page)
+  # is invalid, never a crash.
+  defp parse_and_validate(body, _chain_hash, _expected_round) when not is_map(body),
+    do: {:error, :invalid_response}
+
   defp parse_and_validate(body, _chain_hash, expected_round) do
     with {:ok, randomness} <- Map.fetch(body, "randomness"),
          {:ok, signature} <- Map.fetch(body, "signature"),

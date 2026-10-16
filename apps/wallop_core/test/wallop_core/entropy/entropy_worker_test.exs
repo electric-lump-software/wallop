@@ -255,6 +255,35 @@ defmodule WallopCore.Entropy.EntropyWorkerTest do
     end
   end
 
+  describe "a drand body that isn't a JSON object" do
+    # Handled like any other invalid drand response on the forecast path
+    # (a permanent error that fails the draw), where it used to crash the
+    # job. The default failover stops at the first relay's invalid answer.
+    for {label, respond} <- [
+          {"a JSON array", quote(do: &Req.Test.json(&1, []))},
+          {"an HTML page",
+           quote(
+             do:
+               &(&1
+                 |> Plug.Conn.put_resp_content_type("text/html")
+                 |> Plug.Conn.send_resp(200, "<html>captive portal</html>"))
+           )}
+        ] do
+      test "#{label} is an invalid response, not a crash" do
+        Req.Test.stub(DrandClient, unquote(respond))
+
+        api_key = create_api_key()
+        draw = create_draw(api_key, %{entropy: true})
+
+        assert :ok = EntropyWorker.perform(fake_job(draw))
+
+        failed = reload_draw(draw, api_key)
+        assert failed.status == :failed
+        assert failed.failure_reason =~ "drand"
+      end
+    end
+  end
+
   describe "max attempts exhausted" do
     test "the public failure reason is fixed text; the detail is only logged" do
       stub_drand_error(:not_found)
