@@ -677,7 +677,7 @@ defmodule WallopCore.Resources.Draw do
 
     update :execute_with_entropy do
       require_atomic?(false)
-      filter(expr(status == :pending_entropy))
+      filter(expr(status == :pending_entropy and is_nil(lock_schema_version)))
 
       argument(:drand_randomness, :string, allow_nil?: false)
       argument(:drand_signature, :string, allow_nil?: false)
@@ -698,7 +698,7 @@ defmodule WallopCore.Resources.Draw do
 
     update :execute_drand_only do
       require_atomic?(false)
-      filter(expr(status == :pending_entropy))
+      filter(expr(status == :pending_entropy and is_nil(lock_schema_version)))
 
       argument(:drand_randomness, :string, allow_nil?: false)
       argument(:drand_signature, :string, allow_nil?: false)
@@ -712,6 +712,28 @@ defmodule WallopCore.Resources.Draw do
       change({WallopCore.Resources.Draw.Changes.ExecuteDrandOnly, []})
       change({WallopCore.Resources.Draw.Changes.RecordStageTimestamp, key: "executed_at"})
       change({WallopCore.Resources.Draw.Changes.SignAndStoreExecutionReceipt, []})
+      change({WallopCore.Resources.Draw.Changes.EnqueueWebhook, []})
+      change({WallopCore.Resources.Draw.Changes.BroadcastUpdate, []})
+    end
+
+    # Observation-weather draws. Reads the stored reading itself, under the
+    # draw's row lock; the caller supplies only the drand beacon. With
+    # nothing stored by the fetch deadline the draw is drand-only, by rule.
+    update :execute_v6 do
+      require_atomic?(false)
+      filter(expr(status == :pending_entropy and lock_schema_version == "6"))
+
+      argument(:drand_randomness, :string, allow_nil?: false)
+      argument(:drand_signature, :string, allow_nil?: false)
+      argument(:drand_response, :string, allow_nil?: false)
+
+      validate match(:drand_randomness, ~r/^[0-9a-f]{64}$/) do
+        message("must be a 64-character lowercase hex string")
+      end
+
+      change({WallopCore.Resources.Draw.Changes.ExecuteV6, []})
+      change({WallopCore.Resources.Draw.Changes.RecordStageTimestamp, key: "executed_at"})
+      change({WallopCore.Resources.Draw.Changes.SignAndStoreExecutionReceipt, version: "6"})
       change({WallopCore.Resources.Draw.Changes.EnqueueWebhook, []})
       change({WallopCore.Resources.Draw.Changes.BroadcastUpdate, []})
     end
@@ -779,8 +801,8 @@ defmodule WallopCore.Resources.Draw do
       authorize_if(expr(api_key_id == ^actor(:id)))
     end
 
-    # Internal-only actions: called by EntropyWorker / ExpiryWorker with
-    # authorize?: false. Forbidden for all authorized callers to prevent
+    # Internal-only actions: called by EntropyWorker / ObservationDrawWorker /
+    # ExpiryWorker with authorize?: false. Forbidden for all authorized callers to prevent
     # external actors from racing the workers (or, in :expire's case, from
     # burning operator sequence slots maliciously).
     policy action([
@@ -788,6 +810,7 @@ defmodule WallopCore.Resources.Draw do
              :transition_to_pending,
              :execute_with_entropy,
              :execute_drand_only,
+             :execute_v6,
              :mark_failed
            ]) do
       forbid_if(always())

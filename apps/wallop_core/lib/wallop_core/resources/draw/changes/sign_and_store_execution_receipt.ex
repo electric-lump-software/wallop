@@ -18,9 +18,19 @@ defmodule WallopCore.Resources.Draw.Changes.SignAndStoreExecutionReceipt do
   If anything fails — infra key resolution, decryption, signing, insert
   — the draw completion rolls back. The draw stays in its pre-completion
   state and the entropy worker retries.
+
+  With `version: "6"` (observation-weather draws) it signs an execution
+  receipt schema 5 under the draw's stored entropy tag, naming the station
+  whose reading was used (the first station on a fallback). It refuses to
+  sign, with `WallopCore.Errors.V6ExecRefused`, when the builder rejects the
+  stored values, when the draw's reading no longer matches the stored one,
+  or when this build's `fair_pick_version` differs from the lock receipt's.
+  Without the option it builds the schema 4 receipt exactly as before.
   """
   use Ash.Resource.Change
 
+  alias WallopCore.Entropy.V6Rules
+  alias WallopCore.Errors.V6ExecRefused
   alias WallopCore.Log
   alias WallopCore.Protocol
   alias WallopCore.Resources.{ExecutionReceipt, InfrastructureSigningKey, OperatorReceipt}
@@ -30,16 +40,18 @@ defmodule WallopCore.Resources.Draw.Changes.SignAndStoreExecutionReceipt do
   require Logger
 
   @impl true
-  def change(changeset, _opts, _context) do
+  def change(changeset, opts, _context) do
+    version = opts[:version]
+
     Ash.Changeset.after_action(changeset, fn _changeset, draw ->
       case draw.operator_id do
         nil -> {:error, "draw has no operator — cannot sign execution receipt"}
-        _operator_id -> sign_and_store(draw)
+        _operator_id -> sign_and_store(draw, version)
       end
     end)
   end
 
-  defp sign_and_store(draw) do
+  defp sign_and_store(draw, version) do
     with {:ok, lock_receipt} <- load_lock_receipt(draw.id),
          {:ok, infra_key} <- load_current_infra_key(),
          {:ok, private_key} <- decrypt_private_key(infra_key.private_key),
@@ -50,33 +62,31 @@ defmodule WallopCore.Resources.Draw.Changes.SignAndStoreExecutionReceipt do
              infra_key.key_id
            ),
          {:ok, operator_slug} <- load_operator_slug(draw.operator_id),
-         {:ok, canonical_results} <- validate_results(draw.results) do
-      lock_receipt_hash = hash_lock_receipt(lock_receipt.payload_jcs)
-
-      payload =
-        Protocol.build_execution_receipt_payload(%{
-          draw_id: draw.id,
-          operator_id: draw.operator_id,
-          operator_slug: operator_slug,
-          sequence: draw.operator_sequence,
-          lock_receipt_hash: lock_receipt_hash,
-          entry_hash: draw.entry_hash,
-          drand_chain: draw.drand_chain,
-          drand_round: draw.drand_round,
-          drand_randomness: draw.drand_randomness,
-          drand_signature: draw.drand_signature,
-          weather_station: draw.weather_station,
-          weather_observation_time: draw.weather_observation_time,
-          weather_value: draw.weather_value,
-          weather_fallback_reason: draw.weather_fallback_reason,
-          wallop_core_version: app_version!(:wallop_core),
-          fair_pick_version: app_version!(:fair_pick),
-          seed: draw.seed,
-          results: canonical_results,
-          executed_at: draw.executed_at,
-          signing_key_id: infra_key.key_id
-        })
-
+         {:ok, canonical_results} <- validate_results(draw.results),
+         lock_receipt_hash = hash_lock_receipt(lock_receipt.payload_jcs),
+         {:ok, payload} <-
+           build_payload(version, draw, lock_receipt, %{
+             draw_id: draw.id,
+             operator_id: draw.operator_id,
+             operator_slug: operator_slug,
+             sequence: draw.operator_sequence,
+             lock_receipt_hash: lock_receipt_hash,
+             entry_hash: draw.entry_hash,
+             drand_chain: draw.drand_chain,
+             drand_round: draw.drand_round,
+             drand_randomness: draw.drand_randomness,
+             drand_signature: draw.drand_signature,
+             weather_station: draw.weather_station,
+             weather_observation_time: draw.weather_observation_time,
+             weather_value: draw.weather_value,
+             weather_fallback_reason: draw.weather_fallback_reason,
+             wallop_core_version: app_version!(:wallop_core),
+             fair_pick_version: app_version!(:fair_pick),
+             seed: draw.seed,
+             results: canonical_results,
+             executed_at: draw.executed_at,
+             signing_key_id: infra_key.key_id
+           }) do
       signature = Protocol.sign_receipt(payload, private_key)
 
       case insert_execution_receipt(draw, lock_receipt_hash, payload, signature, infra_key.key_id) do
@@ -117,6 +127,57 @@ defmodule WallopCore.Resources.Draw.Changes.SignAndStoreExecutionReceipt do
         {:error, reason}
     end
   end
+
+  defp build_payload("6", draw, lock_receipt, input) do
+    with {:ok, rules} <- v6_rules(draw),
+         {:ok, station} <- v6_station(rules, draw),
+         :ok <- same_fair_pick_version(lock_receipt, input.fair_pick_version) do
+      input
+      |> Map.merge(%{weather_station: station, entropy_composition: draw.entropy_composition})
+      |> Protocol.build_v6_execution_payload()
+      |> then(&{:ok, &1})
+    end
+  rescue
+    e in ArgumentError ->
+      refused("the execution receipt builder refused: #{Exception.message(e)}")
+  end
+
+  defp build_payload(_version, _draw, _lock_receipt, input),
+    do: {:ok, Protocol.build_execution_receipt_payload(input)}
+
+  defp v6_rules(draw) do
+    {:ok, V6Rules.rules!(draw)}
+  rescue
+    e in ArgumentError -> refused(Exception.message(e))
+  end
+
+  # The station whose reading the draw used, read again under the same
+  # transaction; a fallback used none, so it names the rules' first station.
+  defp v6_station(rules, %{weather_value: nil}), do: {:ok, V6Rules.fallback_station(rules)}
+
+  defp v6_station(rules, draw) do
+    case V6Rules.reading(rules, draw) do
+      %{station: station, value: value} when value == draw.weather_value -> {:ok, station}
+      _ -> refused("the draw's weather_value is not the stored reading for its hour")
+    end
+  end
+
+  # Producer side of the verifier's rule: lock and execution receipts carry
+  # the same fair_pick_version.
+  defp same_fair_pick_version(lock_receipt, version) do
+    case Jason.decode(lock_receipt.payload_jcs) do
+      {:ok, %{"fair_pick_version" => ^version}} ->
+        :ok
+
+      {:ok, %{"fair_pick_version" => locked}} ->
+        refused("fair_pick_version #{version} differs from the lock receipt's #{inspect(locked)}")
+
+      _ ->
+        refused("the lock receipt has no readable fair_pick_version")
+    end
+  end
+
+  defp refused(message), do: {:error, V6ExecRefused.exception(message: message)}
 
   defp load_lock_receipt(draw_id) do
     OperatorReceipt

@@ -702,7 +702,6 @@ defmodule WallopCore.Invariants.LockAndGuardTest do
                "no lock receipt rules for entropy_composition #{other}"
     end
 
-    @tag :pending_task_10
     test "INV-5 (execution) a stored unknown pair is never executed", %{key: key} do
       ensure_infrastructure_key()
 

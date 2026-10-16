@@ -279,6 +279,33 @@ defmodule WallopCore.TestHelpers do
     Ash.get!(Draw, draw.id, authorize?: false, load: [:expected_result_at])
   end
 
+  @doc """
+  Places a stored reading for an observation hour with every trigger off.
+  Test-only: the real store refuses any write outside the station's window
+  on the database clock, so a test that needs a reading for an hour whose
+  window has closed (to execute against it) places it here. The table's
+  CHECK constraints still apply.
+  """
+  def put_observation!(station, %DateTime{} = observation_time, value, raw \\ "[]") do
+    with_triggers_off(fn ->
+      Repo.query!(
+        """
+        INSERT INTO weather_observations (id, station, observation_time, value, raw, stored_at)
+        VALUES ($1, $2, $3, $4, $5, $3)
+        """,
+        [
+          Ecto.UUID.dump!(Ecto.UUID.generate()),
+          station,
+          DateTime.to_naive(observation_time),
+          value,
+          raw
+        ]
+      )
+    end)
+
+    :ok
+  end
+
   defp with_triggers_off(fun) do
     Repo.query!("SET session_replication_role = replica")
 

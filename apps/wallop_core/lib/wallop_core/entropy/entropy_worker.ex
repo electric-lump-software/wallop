@@ -22,7 +22,7 @@ defmodule WallopCore.Entropy.EntropyWorker do
   require Logger
   require OpenTelemetry.Tracer, as: Tracer
 
-  alias WallopCore.Entropy.{DrandClient, WeatherClient}
+  alias WallopCore.Entropy.{DrandClient, V6Execution, WeatherClient}
   alias WallopCore.Log
 
   # After this many attempts, fall back to drand-only if weather is unavailable
@@ -65,6 +65,12 @@ defmodule WallopCore.Entropy.EntropyWorker do
   defp process_draw(%{status: status}, _attempt, _max_attempts)
        when status in [:completed, :failed],
        do: :ok
+
+  # Observation-weather draws run under their own rules, whichever worker
+  # picks them up. Dispatch is on the draw's stored lock schema version,
+  # never on the operator's current flag; forecast draws (nil) never match.
+  defp process_draw(%{lock_schema_version: "6"} = draw, attempt, max_attempts),
+    do: V6Execution.run(draw, attempt, max_attempts)
 
   defp process_draw(draw, attempt, max_attempts) do
     attempt_execution(draw, attempt, max_attempts)
@@ -375,7 +381,10 @@ defmodule WallopCore.Entropy.EntropyWorker do
   defp error_class(_), do: "error"
 
   # `reason` is stored and public. `detail` is logged and set on the span only.
-  defp fail_draw_with_reason(draw, reason, detail \\ nil) do
+  # Shared with V6Execution, so a failed draw notifies the same way on both
+  # protocols.
+  @doc false
+  def fail_draw_with_reason(draw, reason, detail \\ nil) do
     if detail != nil do
       Tracer.set_attributes(%{"error" => true, "error.type" => error_class(detail)})
 
