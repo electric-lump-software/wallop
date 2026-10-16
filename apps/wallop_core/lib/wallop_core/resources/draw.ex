@@ -151,6 +151,36 @@ defmodule WallopCore.Resources.Draw do
         down("DROP FUNCTION IF EXISTS wallop_landobs_stations()")
       end
 
+      statement :wallop_landobs_backup_station do
+        up("""
+        CREATE OR REPLACE FUNCTION wallop_landobs_backup_station() RETURNS text
+        LANGUAGE sql IMMUTABLE AS $$ SELECT text 'wmo-03462' $$
+        """)
+
+        down("DROP FUNCTION IF EXISTS wallop_landobs_backup_station()")
+      end
+
+      statement :wallop_landobs_valid_value do
+        # WallopCore.Weather.LandObsGrammar.valid_value?/1: the grammar and the
+        # bounds frozen by the tag. The CASE keeps the casts from running on
+        # text the pattern rejected.
+        up("""
+        CREATE OR REPLACE FUNCTION wallop_landobs_valid_value(value text) RETURNS boolean
+        LANGUAGE sql IMMUTABLE STRICT AS $$
+          SELECT CASE
+            WHEN value ~ '^(0|-?[1-9][0-9]{0,2});(0|[1-9][0-9]{0,3});(0|[1-9][0-9]{0,2});(0|[1-9][0-9]{0,4})$'
+            THEN split_part(value, ';', 1)::int BETWEEN -900 AND 600
+             AND split_part(value, ';', 2)::int BETWEEN 850 AND 1100
+             AND split_part(value, ';', 3)::int BETWEEN 0 AND 100
+             AND split_part(value, ';', 4)::int BETWEEN 0 AND 10000
+            ELSE false
+          END
+        $$
+        """)
+
+        down("DROP FUNCTION IF EXISTS wallop_landobs_valid_value(text)")
+      end
+
       statement :wallop_landobs_fallback_reason do
         up("""
         CREATE OR REPLACE FUNCTION wallop_landobs_fallback_reason() RETURNS text

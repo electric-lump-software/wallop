@@ -15,7 +15,6 @@ defmodule WallopCore.Invariants.ObservationAndExecutionTest do
   # Planned modules, not yet in lib. Remove each from this list once it exists.
   @compile {:no_warn_undefined,
             [
-              WallopCore.Weather.Observations,
               WallopCore.Entropy.ObservationDrawWorker,
               WallopCore.Entropy.StuckDrawRedriver
             ]}
@@ -105,19 +104,16 @@ defmodule WallopCore.Invariants.ObservationAndExecutionTest do
   # ── INV-7 ─────────────────────────────────────────────────────────
 
   describe "INV-7 one value per (station, hour), write-once" do
-    @tag :pending_task_6
     test "INV-7 a second draw of the hour can't store a different value (primary)" do
       # Five minutes after weather_time: always in the primary window.
       assert_one_value_per_hour(three_draws_sharing_wt(-5 * 60), Stations.primary().id)
     end
 
-    @tag :pending_task_6
     test "INV-7 a second draw of the hour can't store a different value (backup)" do
       # Five minutes before F: always in the backup window.
       assert_one_value_per_hour(three_draws_sharing_wt(-(@w - 5 * 60)), Stations.backup().id)
     end
 
-    @tag :pending_task_6
     test "INV-7 a draw stores one observation, from one station" do
       draw = v6_draw(-5 * 60, 3600)
 
@@ -129,7 +125,6 @@ defmodule WallopCore.Invariants.ObservationAndExecutionTest do
       end
     end
 
-    @tag :pending_task_6
     test "INV-7 a stored observation can't be updated, deleted or truncated" do
       draw = v6_draw(-5 * 60, 3600)
       {:ok, _} = Observations.store(draw.id, Stations.primary().id, reading(draw))
@@ -141,6 +136,11 @@ defmodule WallopCore.Invariants.ObservationAndExecutionTest do
         assert try_sql(sql, [dump(draw.id)]) == "weather observations are write-once", sql
       end
 
+      # The sandbox never commits, so the row's deferred commit-time check is
+      # still queued, and PostgreSQL refuses TRUNCATE for that before any
+      # trigger runs. Run the queued check now (it passes: before F) so the
+      # TRUNCATE meets the write-once trigger, as it would after a commit.
+      Repo.query!("SET CONSTRAINTS weather_observations_commit_deadline IMMEDIATE")
       assert try_sql("TRUNCATE weather_observations", []) == "weather observations are write-once"
     end
   end
@@ -160,7 +160,6 @@ defmodule WallopCore.Invariants.ObservationAndExecutionTest do
       end
     end
 
-    @tag :pending_task_6
     test "INV-8 with an observation stored, only that observation completes the draw" do
       draw = v6_draw(-(@w - 5 * 60), -10)
       {:ok, obs} = Observations.store(draw.id, Stations.backup().id, reading(draw))
@@ -182,7 +181,6 @@ defmodule WallopCore.Invariants.ObservationAndExecutionTest do
              ]) == nil
     end
 
-    @tag :pending_task_6
     test "INV-8 with nothing stored, only the rule's fallback completes, and only after F" do
       message = "v6 draw may fall back only after the fetch deadline with nothing stored"
       fallback = "weather_fallback_reason = $3"
@@ -257,7 +255,6 @@ defmodule WallopCore.Invariants.ObservationAndExecutionTest do
     # outside it (Sandbox.unboxed_run/2, as V6LockReceiptRaceTest does), on
     # real connections that really commit, and delete what they created.
     # Every time comparison uses the database clock.
-    @tag :pending_task_6
     @tag :slow
     test "INV-8b an insert made before F but committed after F is refused at commit" do
       # F is a few seconds ahead: the store's statement runs inside the
@@ -275,7 +272,6 @@ defmodule WallopCore.Invariants.ObservationAndExecutionTest do
       assert stored_rows(draw) == 0
     end
 
-    @tag :pending_task_6
     @tag :slow
     test "INV-8b an insert committed before F is stored, once" do
       # Positive control: same path, F 35 minutes ahead, commit at once.

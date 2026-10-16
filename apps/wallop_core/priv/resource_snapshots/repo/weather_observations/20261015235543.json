@@ -1,0 +1,204 @@
+{
+  "attributes": [
+    {
+      "allow_nil?": false,
+      "default": "fragment(\"gen_random_uuid()\")",
+      "generated?": false,
+      "precision": null,
+      "primary_key?": true,
+      "references": null,
+      "scale": null,
+      "size": null,
+      "source": "id",
+      "type": "uuid"
+    },
+    {
+      "allow_nil?": false,
+      "default": "nil",
+      "generated?": false,
+      "precision": null,
+      "primary_key?": false,
+      "references": {
+        "deferrable": false,
+        "destination_attribute": "id",
+        "destination_attribute_default": null,
+        "destination_attribute_generated": null,
+        "index?": false,
+        "match_type": null,
+        "match_with": null,
+        "multitenancy": {
+          "attribute": null,
+          "global": null,
+          "strategy": null
+        },
+        "name": "weather_observations_draw_id_fkey",
+        "on_delete": "nothing",
+        "on_update": null,
+        "primary_key?": true,
+        "schema": "public",
+        "table": "draws"
+      },
+      "scale": null,
+      "size": null,
+      "source": "draw_id",
+      "type": "uuid"
+    },
+    {
+      "allow_nil?": false,
+      "default": "nil",
+      "generated?": false,
+      "precision": null,
+      "primary_key?": false,
+      "references": null,
+      "scale": null,
+      "size": null,
+      "source": "station",
+      "type": "text"
+    },
+    {
+      "allow_nil?": false,
+      "default": "nil",
+      "generated?": false,
+      "precision": null,
+      "primary_key?": false,
+      "references": null,
+      "scale": null,
+      "size": null,
+      "source": "observation_time",
+      "type": "utc_datetime_usec"
+    },
+    {
+      "allow_nil?": false,
+      "default": "nil",
+      "generated?": false,
+      "precision": null,
+      "primary_key?": false,
+      "references": null,
+      "scale": null,
+      "size": null,
+      "source": "value",
+      "type": "text"
+    },
+    {
+      "allow_nil?": false,
+      "default": "nil",
+      "generated?": false,
+      "precision": null,
+      "primary_key?": false,
+      "references": null,
+      "scale": null,
+      "size": null,
+      "source": "raw",
+      "type": "text"
+    },
+    {
+      "allow_nil?": true,
+      "default": "nil",
+      "generated?": false,
+      "precision": null,
+      "primary_key?": false,
+      "references": null,
+      "scale": null,
+      "size": null,
+      "source": "stored_at",
+      "type": "utc_datetime_usec"
+    }
+  ],
+  "base_filter": null,
+  "check_constraints": [
+    {
+      "attribute": [
+        "value"
+      ],
+      "base_filter": null,
+      "check": "wallop_landobs_valid_value(value) IS TRUE",
+      "name": "weather_observations_value_grammar"
+    },
+    {
+      "attribute": [
+        "station"
+      ],
+      "base_filter": null,
+      "check": "station = ANY (wallop_landobs_stations())",
+      "name": "weather_observations_station"
+    }
+  ],
+  "create_table_options": null,
+  "custom_indexes": [],
+  "custom_statements": [
+    {
+      "code?": false,
+      "down": "DROP FUNCTION IF EXISTS wallop_landobs_observation_allowed(text, timestamp, timestamp)",
+      "name": "wallop_landobs_observation_allowed",
+      "up": "CREATE OR REPLACE FUNCTION wallop_landobs_observation_allowed(\n  station text, weather_time timestamp, now_utc timestamp)\nRETURNS boolean\nLANGUAGE sql IMMUTABLE STRICT AS $$\n  SELECT CASE\n    WHEN station = wallop_landobs_primary_station() THEN\n      now_utc >= weather_time\n      AND now_utc <= weather_time + wallop_landobs_fetch_window() - interval '10 minutes'\n    WHEN station = wallop_landobs_backup_station() THEN\n      now_utc > weather_time + wallop_landobs_fetch_window() - interval '10 minutes'\n      AND now_utc <= weather_time + wallop_landobs_fetch_window()\n    ELSE false\n  END\n$$\n"
+    },
+    {
+      "code?": false,
+      "down": "DROP FUNCTION IF EXISTS guard_weather_observation_insert()",
+      "name": "guard_weather_observation_insert",
+      "up": "CREATE OR REPLACE FUNCTION guard_weather_observation_insert() RETURNS trigger AS $$\nDECLARE\n  now_utc timestamp := statement_timestamp() AT TIME ZONE 'UTC';\n  d RECORD;\nBEGIN\n  SELECT status, weather_time, lock_schema_version, entropy_composition INTO d\n    FROM draws WHERE id = NEW.draw_id FOR UPDATE;\n\n  IF NOT FOUND OR d.lock_schema_version IS DISTINCT FROM '6' THEN\n    RAISE EXCEPTION 'weather observations are stored only for v6 draws';\n  END IF;\n  IF d.entropy_composition IS DISTINCT FROM wallop_landobs_tag() THEN\n    RAISE EXCEPTION 'no observation rules for entropy_composition %', d.entropy_composition;\n  END IF;\n  IF d.status IS DISTINCT FROM 'awaiting_entropy' AND d.status IS DISTINCT FROM 'pending_entropy' THEN\n    RAISE EXCEPTION 'draw is not waiting for entropy';\n  END IF;\n  IF NEW.observation_time IS DISTINCT FROM d.weather_time THEN\n    RAISE EXCEPTION 'observation_time must equal the draw''s weather_time';\n  END IF;\n\n  PERFORM pg_advisory_xact_lock(hashtextextended(\n    'weather_observations|' || NEW.station || '|'\n      || to_char(NEW.observation_time, 'YYYY-MM-DD\"T\"HH24:MI:SS.US'), 0));\n\n  IF EXISTS (SELECT 1 FROM weather_observations WHERE draw_id = NEW.draw_id) THEN\n    RAISE EXCEPTION 'an observation is already stored for this draw';\n  END IF;\n  IF EXISTS (SELECT 1 FROM weather_observations\n             WHERE station = NEW.station AND observation_time = NEW.observation_time\n               AND value IS DISTINCT FROM NEW.value) THEN\n    RAISE EXCEPTION 'a different value is already stored for this station and hour';\n  END IF;\n  IF wallop_landobs_observation_allowed(NEW.station, d.weather_time, now_utc) IS NOT TRUE THEN\n    RAISE EXCEPTION '% observation outside its window', NEW.station;\n  END IF;\n\n  NEW.stored_at := now_utc;\n  RETURN NEW;\nEND;\n$$ LANGUAGE plpgsql\n"
+    },
+    {
+      "code?": false,
+      "down": "DROP TRIGGER IF EXISTS weather_observations_guard ON weather_observations",
+      "name": "weather_observations_guard",
+      "up": "CREATE TRIGGER weather_observations_guard BEFORE INSERT ON weather_observations\n  FOR EACH ROW EXECUTE FUNCTION guard_weather_observation_insert()\n"
+    },
+    {
+      "code?": false,
+      "down": "DROP FUNCTION IF EXISTS check_weather_observation_commit()",
+      "name": "check_weather_observation_commit",
+      "up": "CREATE OR REPLACE FUNCTION check_weather_observation_commit() RETURNS trigger AS $$\nDECLARE\n  d RECORD;\nBEGIN\n  SELECT weather_time, entropy_composition INTO d FROM draws WHERE id = NEW.draw_id;\n\n  IF d.entropy_composition IS NOT DISTINCT FROM wallop_landobs_tag() THEN\n    IF (clock_timestamp() AT TIME ZONE 'UTC' <= d.weather_time + wallop_landobs_fetch_window())\n       IS NOT TRUE THEN\n      RAISE EXCEPTION 'an observation must commit by its fetch deadline';\n    END IF;\n  ELSE\n    RAISE EXCEPTION 'no observation rules for entropy_composition %', d.entropy_composition;\n  END IF;\n\n  RETURN NULL;\nEND;\n$$ LANGUAGE plpgsql\n"
+    },
+    {
+      "code?": false,
+      "down": "DROP TRIGGER IF EXISTS weather_observations_commit_deadline ON weather_observations",
+      "name": "weather_observations_commit_deadline",
+      "up": "CREATE CONSTRAINT TRIGGER weather_observations_commit_deadline\n  AFTER INSERT ON weather_observations\n  DEFERRABLE INITIALLY DEFERRED\n  FOR EACH ROW EXECUTE FUNCTION check_weather_observation_commit()\n"
+    },
+    {
+      "code?": false,
+      "down": "DROP FUNCTION IF EXISTS prevent_weather_observation_mutation()",
+      "name": "prevent_weather_observation_mutation",
+      "up": "CREATE OR REPLACE FUNCTION prevent_weather_observation_mutation() RETURNS trigger AS $$\nBEGIN\n  RAISE EXCEPTION 'weather observations are write-once';\nEND;\n$$ LANGUAGE plpgsql\n"
+    },
+    {
+      "code?": false,
+      "down": "DROP TRIGGER IF EXISTS weather_observations_immutable ON weather_observations",
+      "name": "weather_observations_immutable",
+      "up": "CREATE TRIGGER weather_observations_immutable BEFORE UPDATE OR DELETE ON weather_observations\n  FOR EACH ROW EXECUTE FUNCTION prevent_weather_observation_mutation()\n"
+    },
+    {
+      "code?": false,
+      "down": "DROP TRIGGER IF EXISTS weather_observations_no_truncate ON weather_observations",
+      "name": "weather_observations_no_truncate",
+      "up": "CREATE TRIGGER weather_observations_no_truncate BEFORE TRUNCATE ON weather_observations\n  EXECUTE FUNCTION prevent_weather_observation_mutation()\n"
+    }
+  ],
+  "has_create_action": true,
+  "hash": "02DB1AA5078DDEB70E82420799E8DE93488A51E20C493D6D41EAAE1DD9352ADF",
+  "identities": [
+    {
+      "all_tenants?": false,
+      "base_filter": null,
+      "index_name": "weather_observations_one_per_draw_index",
+      "keys": [
+        {
+          "type": "atom",
+          "value": "draw_id"
+        }
+      ],
+      "name": "one_per_draw",
+      "nils_distinct?": true,
+      "where": null
+    }
+  ],
+  "multitenancy": {
+    "attribute": null,
+    "global": null,
+    "strategy": null
+  },
+  "repo": "Elixir.WallopCore.Repo",
+  "schema": null,
+  "table": "weather_observations"
+}

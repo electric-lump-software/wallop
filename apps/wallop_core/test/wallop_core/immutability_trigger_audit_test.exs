@@ -52,6 +52,12 @@ defmodule WallopCore.ImmutabilityTriggerAuditTest do
     test "execution_receipts cannot be TRUNCATEd" do
       assert_truncate_blocked("execution_receipts")
     end
+
+    test "weather_observations cannot be TRUNCATEd" do
+      assert_raise Postgrex.Error, ~r/weather observations are write-once/, fn ->
+        WallopCore.Repo.query!("TRUNCATE weather_observations")
+      end
+    end
   end
 
   # ── Draws: terminal state protection ───────────────────────────────

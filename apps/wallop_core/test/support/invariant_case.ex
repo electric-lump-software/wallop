@@ -19,7 +19,6 @@ defmodule WallopCore.InvariantCase do
   # its tag from the tests it delivers; once no test uses a tag, it may be
   # removed here too.
   @pending_tags [
-    :pending_task_6,
     :pending_task_10,
     :pending_task_11,
     :pending_task_13,

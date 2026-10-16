@@ -17,6 +17,9 @@ config :bcrypt_elixir, log_rounds: 1
 
 config :wallop_core, Oban, testing: :manual
 
+# The invariant suite checks the test database's max_prepared_transactions itself.
+config :wallop_core, :prepared_transactions_check, false
+
 config :wallop_core, WallopCore.Vault,
   ciphers: [
     default:
