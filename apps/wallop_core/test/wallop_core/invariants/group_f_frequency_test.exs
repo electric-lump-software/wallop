@@ -26,7 +26,7 @@ defmodule WallopCore.Invariants.FrequencyTest do
     draw
   end
 
-  defp complete(draw, executed_at, set_sql, params \\ []),
+  defp complete(draw, executed_at, set_sql, params),
     do:
       try_sql(
         "UPDATE draws SET status = 'completed', executed_at = $2, #{set_sql} WHERE id = $1",

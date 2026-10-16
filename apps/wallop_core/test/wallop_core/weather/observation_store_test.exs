@@ -200,7 +200,7 @@ defmodule WallopCore.Weather.ObservationStoreTest do
       assert forecast.weather_time == v6.weather_time
       assert Observations.for_draw(forecast) == nil
       assert Observations.for_draw(forecast.id) == nil
-      refute forecast.id in Observations.pending_v6_draw_ids(v6.weather_time)
+      refute forecast.id in Observations.pending_draw_ids(v6.weather_time)
     end
   end
 
@@ -279,7 +279,7 @@ defmodule WallopCore.Weather.ObservationStoreTest do
       assert abs(DateTime.diff(Observations.db_now(), DateTime.utc_now(), :second)) < 5
     end
 
-    test "pending_v6_draw_ids/1 lists the hour's waiting v6 draws until the hour has its reading" do
+    test "pending_draw_ids/1 lists the hour's waiting v6 draws until the hour has its reading" do
       {_op, key} = create_v6_operator()
       wt = wt_at(-5 * 60)
       r = round()
@@ -290,12 +290,12 @@ defmodule WallopCore.Weather.ObservationStoreTest do
         Ecto.UUID.dump!(b.id)
       ])
 
-      ids = Observations.pending_v6_draw_ids(wt)
+      ids = Observations.pending_draw_ids(wt)
       assert Enum.sort(ids) == Enum.sort([a.id, b.id])
       refute other_hour.id in ids
 
       {:ok, _} = store(@primary, a)
-      assert Observations.pending_v6_draw_ids(wt) == []
+      assert Observations.pending_draw_ids(wt) == []
     end
   end
 end

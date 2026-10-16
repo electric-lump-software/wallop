@@ -57,6 +57,7 @@ defmodule WallopCore.Entropy.WeatherObservationWorker do
 
   require Logger
 
+  alias WallopCore.DbClock
   alias WallopCore.Entropy.LandObsClient
   alias WallopCore.Weather.{Observations, Schedule, Stations}
 
@@ -153,7 +154,7 @@ defmodule WallopCore.Entropy.WeatherObservationWorker do
   def perform(%Oban.Job{}), do: {:cancel, :invalid_weather_time}
 
   defp run(wt) do
-    now = Observations.db_now()
+    now = DbClock.now()
 
     cond do
       station_for(now, wt) == :closed ->
@@ -162,7 +163,7 @@ defmodule WallopCore.Entropy.WeatherObservationWorker do
       DateTime.compare(now, first_poll_at(wt)) == :lt ->
         {:snooze, seconds_until(first_poll_at(wt), now)}
 
-      Observations.pending_v6_draw_ids(wt) == [] ->
+      Observations.pending_draw_ids(wt) == [] ->
         :ok
 
       true ->
@@ -181,7 +182,7 @@ defmodule WallopCore.Entropy.WeatherObservationWorker do
 
     # The clock is read after fetching, so the decision is as close to the
     # store as it can be. The trigger checks it again on its own clock.
-    now = Observations.db_now()
+    now = DbClock.now()
 
     case station_for(now, wt) do
       {:ok, station} ->
@@ -189,7 +190,7 @@ defmodule WallopCore.Entropy.WeatherObservationWorker do
           store(wt, station, reading)
         end
 
-        if Observations.pending_v6_draw_ids(wt) == [],
+        if Observations.pending_draw_ids(wt) == [],
           do: :ok,
           else: {:snooze, next_poll_in(now, wt)}
 
@@ -318,7 +319,7 @@ defmodule WallopCore.Entropy.WeatherObservationWorker do
   end
 
   defp db_clock do
-    {:ok, Observations.db_now()}
+    {:ok, DbClock.now()}
   rescue
     _ -> :error
   catch

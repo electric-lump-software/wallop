@@ -91,7 +91,7 @@ defmodule WallopCore.Entropy.WeatherObservationWorkerTest do
         assert %{station: @primary, value: "141;1025;85;2432"} = Observations.for_draw(d.id)
       end
 
-      assert Observations.pending_v6_draw_ids(wt) == []
+      assert Observations.pending_draw_ids(wt) == []
 
       for station <- [@primary, @backup] do
         assert_receive {@poll, ^ref, %{count: 1},

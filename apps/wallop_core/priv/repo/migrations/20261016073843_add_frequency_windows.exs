@@ -290,6 +290,9 @@ defmodule WallopCore.Repo.Migrations.AddFrequencyWindows do
         ELSIF d.entropy_composition IS NOT DISTINCT FROM wallop_freq_tag() THEN
           keys := wallop_freq_exec_keys();
         ELSE
+          -- Belt and braces: unreachable today, since the draws guard
+          -- lets a schema 6 draw carry only these two tags. Kept so a
+          -- tag added there without rules here is refused, not passed.
           RAISE EXCEPTION 'no execution receipt rules for (%, %)',
             d.lock_schema_version, d.entropy_composition;
         END IF;

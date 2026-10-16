@@ -27,11 +27,11 @@ defmodule WallopCore.Resources.Draw.Changes.ExecuteV6 do
   """
   use Ash.Resource.Change
 
+  alias WallopCore.DbClock
   alias WallopCore.Entropy.V6Rules
   alias WallopCore.Errors.{V6ExecRefused, V6NotYet}
   alias WallopCore.Repo
   alias WallopCore.Resources.Draw
-  alias WallopCore.Weather.Observations
 
   @impl true
   def change(changeset, _opts, _context), do: Ash.Changeset.before_action(changeset, &run/1)
@@ -54,7 +54,7 @@ defmodule WallopCore.Resources.Draw.Changes.ExecuteV6 do
   defp check(changeset, rules, draw) do
     entries = WallopCore.Entries.load_for_draw(draw.id)
     {hash, _canonical} = WallopCore.Protocol.entry_hash({draw.id, entries})
-    now = Observations.db_now()
+    now = DbClock.now()
     deadline = V6Rules.fetch_deadline(rules, draw)
     pub = V6Rules.drand_pub_time(rules, draw)
     executed_at = DateTime.utc_now()

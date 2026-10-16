@@ -64,6 +64,7 @@ defmodule WallopCore.Entropy.V6Execution do
   """
   require Logger
 
+  alias WallopCore.DbClock
   alias WallopCore.Drand.Quicknet
   alias WallopCore.Entropy.{DrandClient, EntropyWorker, V6Rules}
 
@@ -95,7 +96,7 @@ defmodule WallopCore.Entropy.V6Execution do
   end
 
   defp run(rules, draw, attempt, max_attempts) do
-    now = Observations.db_now()
+    now = DbClock.now()
     deadline = V6Rules.fetch_deadline(rules, draw)
     pub = V6Rules.drand_pub_time(rules, draw)
 
@@ -156,7 +157,7 @@ defmodule WallopCore.Entropy.V6Execution do
 
     with {:ok, {:ok, latest}} when is_integer(latest) and latest >= 1 <-
            Task.yield(task, @skew_check_timeout_ms) || Task.shutdown(task, :brutal_kill) do
-      skew_ms = DateTime.diff(Observations.db_now(), Quicknet.pub_time(latest), :millisecond)
+      skew_ms = DateTime.diff(DbClock.now(), Quicknet.pub_time(latest), :millisecond)
 
       if abs(skew_ms) > @skew_alarm_ms do
         Logger.warning(
