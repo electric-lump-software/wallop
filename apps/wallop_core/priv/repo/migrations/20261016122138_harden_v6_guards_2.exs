@@ -269,12 +269,19 @@ defmodule WallopCore.Repo.Migrations.HardenV6Guards2 do
         field text;
         bad text;
       BEGIN
-        -- The pair first, without a lock: every forecast receipt returns
-        -- here at once. The pair can't change once a draw has left open,
-        -- and a v6 lock refuses a draw that already has an execution
-        -- receipt.
-        SELECT lock_schema_version, entropy_composition INTO pair_schema, pair_tag
-          FROM draws WHERE id = NEW.draw_id;
+        -- The draw row FOR SHARE, on every path, the forecast one
+        -- included. It waits for an in-flight UPDATE of the draw (a lock
+        -- or a completion) and then reads the committed row, and it holds
+        -- off a later lock until this transaction ends, so the lock's
+        -- check for a stored execution receipt sees this one. Under
+        -- REPEATABLE READ, a draw changed since the snapshot (a lock
+        -- committed after it) makes this a serialization failure, never
+        -- a stale NULL pair. A forecast completion inserts its receipt in
+        -- the transaction that already holds the row's lock, so this
+        -- takes nothing new there.
+        SELECT * INTO d FROM draws WHERE id = NEW.draw_id FOR SHARE;
+        pair_schema := d.lock_schema_version;
+        pair_tag := d.entropy_composition;
 
         IF pair_schema IS NULL AND pair_tag IS NULL THEN
           BEGIN
@@ -295,9 +302,7 @@ defmodule WallopCore.Repo.Migrations.HardenV6Guards2 do
           RAISE EXCEPTION 'a v6 write must run under READ COMMITTED isolation';
         END IF;
 
-        -- FOR SHARE waits for an in-flight completion of the draw and then
-        -- reads the committed row. A completed draw can't change after.
-        SELECT * INTO d FROM draws WHERE id = NEW.draw_id FOR SHARE;
+        -- d was read FOR SHARE above. A completed draw can't change after.
 
         -- The tag's rules, or a refusal: nothing falls through to
         -- another tag.
