@@ -719,6 +719,14 @@ defmodule WallopCore.Resources.Draw do
               RETURN NEW;
             END IF;
 
+            -- Every read of stored state below (the window or observation a
+            -- completion must use, the lock receipt) must see what has
+            -- committed, not a snapshot taken earlier in a REPEATABLE READ
+            -- or SERIALIZABLE transaction. Forecast draws returned above.
+            IF current_setting('transaction_isolation') IS DISTINCT FROM 'read committed' THEN
+              RAISE EXCEPTION 'a v6 write must run under READ COMMITTED isolation';
+            END IF;
+
             IF OLD.status <> 'open'
                AND (NEW.lock_schema_version IS DISTINCT FROM OLD.lock_schema_version
                     OR NEW.entropy_composition IS DISTINCT FROM OLD.entropy_composition) THEN
@@ -1153,6 +1161,13 @@ defmodule WallopCore.Resources.Draw do
                 RAISE EXCEPTION 'a schema 5 execution receipt needs a draw locked under schema 6';
               END IF;
               RETURN NEW;
+            END IF;
+
+            -- The stored window or observation (or its absence) is read
+            -- below: under REPEATABLE READ or SERIALIZABLE that read could
+            -- see a snapshot from before the store committed.
+            IF current_setting('transaction_isolation') IS DISTINCT FROM 'read committed' THEN
+              RAISE EXCEPTION 'a v6 write must run under READ COMMITTED isolation';
             END IF;
 
             -- FOR SHARE waits for an in-flight completion of the draw and then
