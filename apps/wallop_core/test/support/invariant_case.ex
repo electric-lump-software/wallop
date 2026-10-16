@@ -9,8 +9,9 @@ defmodule WallopCore.InvariantCase do
   """
 
   alias WallopCore.Drand.Quicknet
+  alias WallopCore.Frequency.Schedule, as: FreqSchedule
   alias WallopCore.Protocol
-  alias WallopCore.Protocol.Tags.LandObs
+  alias WallopCore.Protocol.Tags.{Freq, LandObs}
   alias WallopCore.Repo
   alias WallopCore.Resources.{Operator, OperatorSigningKey}
   alias WallopCore.Weather.{Schedule, Stations}
@@ -29,7 +30,6 @@ defmodule WallopCore.InvariantCase do
   # removed here too.
   @pending_tags [
     :pending_task_13,
-    :pending_task_F5,
     :pending_task_F6,
     :pending_task_F9
   ]
@@ -193,6 +193,146 @@ defmodule WallopCore.InvariantCase do
     }
 
     {payload, cols}
+  end
+
+  @doc "A grid-frequency schedule whose latest lock time is still ahead."
+  def in_time_freq_schedule do
+    {:ok, s} = FreqSchedule.schedule(FreqSchedule.default_draw_at(DateTime.utc_now()))
+    s
+  end
+
+  @freq_lock_sql """
+  UPDATE draws SET status = $2, lock_schema_version = $3, entropy_composition = $4,
+    drand_chain = $5, drand_round = $6, freq_start = $7, weather_station = $8, weather_time = $9,
+    entry_hash = $10, entry_canonical = $11
+  WHERE id = $1
+  """
+
+  @doc """
+  The grid-frequency lock as a raw UPDATE, kept when the database accepts
+  it. Returns nil when accepted, or the refusal's message. The UPDATE runs
+  in `Repo.transaction/1`, a savepoint inside an outer transaction, so the
+  outer transaction's commit is what a deferred trigger sees.
+  """
+  def raw_freq_lock(draw, s, overrides \\ []) do
+    o =
+      Keyword.merge(
+        [
+          status: "awaiting_entropy",
+          schema: "6",
+          tag: Freq.tag(),
+          chain: Quicknet.chain_hash(),
+          round: s.round,
+          freq_start: s.freq_start,
+          station: nil,
+          weather_time: nil
+        ],
+        overrides
+      )
+
+    {hash, canonical} = entry_hash(draw)
+
+    params = [
+      dump(draw.id),
+      o[:status],
+      o[:schema],
+      o[:tag],
+      o[:chain],
+      o[:round],
+      o[:freq_start] && DateTime.to_naive(o[:freq_start]),
+      o[:station],
+      o[:weather_time] && DateTime.to_naive(o[:weather_time]),
+      hash,
+      canonical
+    ]
+
+    Repo.transaction(fn -> Repo.query!(@freq_lock_sql, params) end)
+    nil
+  rescue
+    e in Postgrex.Error -> e.postgres.message
+  end
+
+  @doc """
+  A grid-frequency lock v6 payload (decoded) and receipt columns that pass
+  every guard for `draw` once it is locked under `s`, built by the real
+  builder and signed at `locked_at` (now by default) with the operator's
+  current key.
+  """
+  def valid_freq_receipt(draw, s, locked_at \\ DateTime.utc_now()) do
+    require Ash.Query
+
+    operator = Ash.get!(Operator, draw.operator_id, authorize?: false)
+    operator_id = operator.id
+
+    key =
+      OperatorSigningKey
+      |> Ash.Query.filter(operator_id == ^operator_id)
+      |> Ash.Query.sort(valid_from: :desc)
+      |> Ash.Query.limit(1)
+      |> Ash.read_one!(authorize?: false)
+
+    {hash, _} = entry_hash(draw)
+
+    payload =
+      %{
+        entropy_composition: Freq.tag(),
+        operator_id: operator.id,
+        operator_slug: to_string(operator.slug),
+        sequence: draw.operator_sequence,
+        draw_id: draw.id,
+        commitment_hash: hash,
+        entry_hash: hash,
+        locked_at: locked_at,
+        signing_key_id: key.key_id,
+        winner_count: draw.winner_count,
+        drand_chain: Quicknet.chain_hash(),
+        drand_round: s.round,
+        weather_station: nil,
+        weather_time: nil,
+        freq_start: s.freq_start,
+        wallop_core_version: "0.0.0",
+        fair_pick_version: to_string(Application.spec(:fair_pick, :vsn))
+      }
+      |> Protocol.build_v6_lock_payload()
+      |> Jason.decode!()
+
+    cols = %{
+      operator_id: operator.id,
+      sequence: draw.operator_sequence,
+      commitment_hash: hash,
+      entry_hash: hash,
+      locked_at: locked_at,
+      signing_key_id: key.key_id,
+      draw_id: draw.id
+    }
+
+    {payload, cols}
+  end
+
+  @doc """
+  Inserts a lock receipt row as given and keeps it. A test turns triggers
+  off around it to place a receipt before the lock, as if it had slipped in.
+  """
+  def keep_receipt!(payload, cols) do
+    Repo.query!(
+      """
+      INSERT INTO operator_receipts (id, operator_id, draw_id, sequence, commitment_hash,
+        entry_hash, locked_at, signing_key_id, payload_jcs, signature, inserted_at)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $7)
+      """,
+      [
+        dump(Ecto.UUID.generate()),
+        dump(cols.operator_id),
+        dump(cols.draw_id),
+        cols.sequence,
+        cols.commitment_hash,
+        cols.entry_hash,
+        DateTime.to_naive(cols.locked_at),
+        cols.signing_key_id,
+        Jason.encode!(payload),
+        :binary.copy(<<0>>, 64)
+      ]
+    )
   end
 
   @doc """

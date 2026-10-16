@@ -52,9 +52,10 @@ defmodule WallopWeb.ApiSpec do
     |> type_v6_datetimes()
   end
 
-  # AshJsonApi leaves microsecond UTC datetimes untyped. Type the
-  # observation-weather fields: the lock's `draw_at` argument and the draw's
-  # `expected_result_at`. Other datetime fields are left as they are.
+  # AshJsonApi leaves microsecond UTC datetimes untyped. Type the v6
+  # fields: the lock's `draw_at` argument and the draw's
+  # `expected_result_at` and grid-frequency `freq_start`. Other datetime
+  # fields are left as they are.
   defp type_v6_datetimes(spec) do
     attributes = [Access.key(:properties), Access.key(:attributes), Access.key(:properties)]
 
@@ -67,6 +68,11 @@ defmodule WallopWeb.ApiSpec do
     |> update_in(
       [Access.key(:components), Access.key(:schemas), Access.key("draw")] ++
         attributes ++ [Access.key("expected_result_at")],
+      &nullable_datetime/1
+    )
+    |> update_in(
+      [Access.key(:components), Access.key(:schemas), Access.key("draw")] ++
+        attributes ++ [Access.key("freq_start")],
       &nullable_datetime/1
     )
     |> update_in(lock_attributes ++ [Access.key("draw_at")], &nullable_datetime/1)
