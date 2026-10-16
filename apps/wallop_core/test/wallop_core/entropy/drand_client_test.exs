@@ -1,5 +1,5 @@
 defmodule WallopCore.Entropy.DrandClientTest do
-  use ExUnit.Case, async: true
+  use ExUnit.Case, async: false
 
   alias WallopCore.Entropy.DrandClient
 

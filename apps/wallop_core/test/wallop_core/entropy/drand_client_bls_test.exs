@@ -4,7 +4,7 @@ defmodule WallopCore.Entropy.DrandClientBlsTest do
   that relay's `{:error, :invalid_response}`, logged with the relay and the
   kind of failure, never the bytes.
   """
-  use ExUnit.Case, async: true
+  use ExUnit.Case, async: false
 
   import ExUnit.CaptureLog
 
