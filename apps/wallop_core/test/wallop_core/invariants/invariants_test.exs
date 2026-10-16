@@ -16,6 +16,8 @@ defmodule WallopCore.Invariants.SuiteTest do
       mutated one step at a time and in pairs, is refused by the builder,
       the database or (through `spec/vectors/proof-bundle-v6-tamper.json`)
       the verifier (INV-2), and raw SQL attack sequences in every order.
+      `tamper_freq_test.exs` does the same for the grid-frequency tag, with
+      `spec/vectors/proof-bundle-v6-tamper-freq.json`.
     * Group F, `group_f_frequency_test.exs`: the grid-frequency tag (INV-F1
       to INV-F7), with ids `INV-F<n>` and pending tags `pending_task_F<n>`.
 
