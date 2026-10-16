@@ -1,6 +1,13 @@
 defmodule WallopCore.Frequency.FreqGrammarTest do
   use ExUnit.Case, async: true
+  use ExUnitProperties
+
   alias WallopCore.Frequency.FreqGrammar, as: G
+  alias WallopCore.Frequency.Schedule
+
+  @vectors_path Path.expand("../../../../../spec/vectors/freq-window-v1.json", __DIR__)
+  @external_resource @vectors_path
+  @vectors @vectors_path |> File.read!() |> Jason.decode!()
 
   @t ~U[2026-10-14 19:54:15.000000Z]
   # The real Elexon readings for 2026-10-14 19:54:15..19:56:00 UTC.
@@ -27,6 +34,16 @@ defmodule WallopCore.Frequency.FreqGrammarTest do
   defp rows(json) do
     {:ok, %{"data" => rows}} = G.decode(json)
     rows
+  end
+
+  # The shortest JSON number text for a reading in mHz: 49980 is "49.98".
+  defp minimal_text(mhz) do
+    int = Integer.to_string(div(mhz, 1000))
+
+    case rem(mhz, 1000) do
+      0 -> int
+      frac -> int <> "." <> String.trim_trailing(String.pad_leading("#{frac}", 3, "0"), "0")
+    end
   end
 
   defp window(readings, extra \\ []), do: G.window_from_rows(rows(body(readings, extra)), @t)
@@ -123,6 +140,105 @@ defmodule WallopCore.Frequency.FreqGrammarTest do
 
     assert window(indexed(List.replace_at(@real, 2, "53.1"))) ==
              {:error, {:out_of_bounds, "2026-10-14T19:54:45Z"}}
+  end
+
+  describe "the row rule" do
+    test "a matching row with no frequency invalidates the window" do
+      no_freq = ~s({"dataset":"FREQ","measurementTime":"2026-10-14T19:54:45Z"})
+      readings = indexed(@real) |> List.delete_at(2)
+
+      assert window(readings, [no_freq]) == {:error, {:invalid, "2026-10-14T19:54:45Z"}}
+    end
+
+    test "a matching row with no frequency alongside a good row is a duplicate" do
+      no_freq = ~s({"dataset":"FREQ","measurementTime":"2026-10-14T19:54:45Z"})
+
+      assert window(indexed(@real), [no_freq]) ==
+               {:error, {:duplicate, "2026-10-14T19:54:45Z"}}
+    end
+
+    test "rows that are 42 or null are ignored" do
+      assert window(indexed(@real), ["42", "null"]) == {:ok, @real_value}
+      assert G.window_from_rows([42, nil | rows(body(indexed(@real)))], @t) == {:ok, @real_value}
+    end
+
+    test "a timestamp with fractional seconds matches nothing" do
+      readings = indexed(@real) |> List.delete_at(3)
+      frac = ~s({"dataset":"FREQ","measurementTime":"2026-10-14T19:55:00.000Z","frequency":49.98})
+
+      assert window(readings, [frac]) == {:error, {:missing, "2026-10-14T19:55:00Z"}}
+    end
+  end
+
+  describe "spec/vectors/freq-window-v1.json" do
+    test "every case gives its value, or is invalid for its reason" do
+      {:ok, t, 0} = DateTime.from_iso8601(@vectors["freq_start"])
+      t = %{t | microsecond: {0, 6}}
+      assert length(@vectors["cases"]) >= 20
+
+      for c <- @vectors["cases"] do
+        {:ok, %{"data" => rows}} = G.decode(c["body"])
+        got = G.window_from_rows(rows, t)
+
+        case c do
+          %{"value" => v} ->
+            assert got == {:ok, v}, c["name"]
+            assert G.valid_value?(v), c["name"]
+
+          %{"invalid" => %{"reason" => "stuck"}} ->
+            assert got == {:error, :stuck}, c["name"]
+
+          %{"invalid" => %{"reason" => reason, "at" => at}} ->
+            assert got == {:error, {String.to_existing_atom(reason), at}}, c["name"]
+        end
+      end
+    end
+  end
+
+  describe "properties" do
+    property "the minimal JSON number text of any value in bounds reads back exactly" do
+      check all(mhz <- integer(G.bounds())) do
+        text = minimal_text(mhz)
+        assert {:ok, {:number, ^text}} = G.decode(text)
+        assert G.reading_mhz({:number, text}) == {:ok, mhz}
+      end
+    end
+
+    property "whenever window_from_rows gives a value, valid_value? holds" do
+      reading =
+        frequency([
+          {20, map(integer(46_900..53_100), &{:text, minimal_text(&1)})},
+          {4, constant(:repeat)},
+          {1, constant(:missing)},
+          {1, constant(:duplicate)},
+          {1, constant(:no_frequency)},
+          {1, member_of([{:text, "0"}, {:text, "4.9987e1"}, {:text, "49.9871"}])}
+        ])
+
+      check all(spec <- list_of(reading, length: Schedule.readings())) do
+        {rows, _} =
+          spec
+          |> Enum.zip(Schedule.reading_times(@t))
+          |> Enum.flat_map_reduce("50.000", fn {kind, at}, prev ->
+            stamp = stamp(at)
+
+            case kind do
+              {:text, text} -> {[row(at, text)], text}
+              :repeat -> {[row(at, prev)], prev}
+              :missing -> {[], prev}
+              :duplicate -> {[row(at, prev), row(at, prev)], prev}
+              :no_frequency -> {[~s({"measurementTime":"#{stamp}"})], prev}
+            end
+          end)
+
+        {:ok, %{"data" => decoded}} = G.decode(~s({"data":[#{Enum.join(rows, ",")}]}))
+
+        case G.window_from_rows(decoded, @t) do
+          {:ok, v} -> assert G.valid_value?(v)
+          {:error, _} -> :ok
+        end
+      end
+    end
   end
 
   test "a stuck run of 6 identical readings invalidates the window; 5 does not" do
