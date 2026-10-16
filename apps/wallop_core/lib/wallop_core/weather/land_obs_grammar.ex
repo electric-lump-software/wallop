@@ -57,11 +57,16 @@ defmodule WallopCore.Weather.LandObsGrammar do
   Decodes JSON, keeping every number as `{:number, text}`, its exact JSON
   text. Strings, booleans, null, arrays and objects decode as usual.
 
+  An object with the same key twice, at any depth, is refused with
+  `{:error, :duplicate_key}`; keys are compared after unescaping, so
+  `"a"` and `"\\u0061"` are the same key. Readers that keep the first or the
+  last value would otherwise get different values from the same bytes.
+
   The grid-frequency tag (`WallopCore.Frequency.FreqGrammar.decode/1`)
   shares this decoder. Both tags freeze its behaviour, so changing what it
   accepts or how it reads a number means bumping both tags.
   """
-  @spec decode(binary()) :: {:ok, term()} | {:error, :too_deep | term()}
+  @spec decode(binary()) :: {:ok, term()} | {:error, :too_deep | :duplicate_key | term()}
   def decode(body) when is_binary(body) do
     # Decimals, so that a valid number too large for a float (in a field
     # nobody reads) does not reject the whole body.
@@ -71,6 +76,8 @@ defmodule WallopCore.Weather.LandObsGrammar do
       {term, []} = @token |> Regex.scan(body) |> List.flatten() |> parse_value()
       {:ok, term}
     end
+  catch
+    :duplicate_key -> {:error, :duplicate_key}
   end
 
   @doc """
@@ -193,8 +200,10 @@ defmodule WallopCore.Weather.LandObsGrammar do
   defp parse_object(["," | rest], acc), do: parse_object(rest, acc)
 
   defp parse_object([key, ":" | rest], acc) do
+    key = Jason.decode!(key)
+    if Map.has_key?(acc, key), do: throw(:duplicate_key)
     {value, rest} = parse_value(rest)
-    parse_object(rest, Map.put(acc, Jason.decode!(key), value))
+    parse_object(rest, Map.put(acc, key, value))
   end
 
   defp parse_array(["]" | rest], acc), do: {Enum.reverse(acc), rest}

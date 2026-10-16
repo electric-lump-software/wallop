@@ -241,7 +241,7 @@ defmodule WallopCore.Weather.LandObsGrammarTest do
     assert {:error, _} = G.decode(~s({"temperature": 1.}))
   end
 
-  test "decode keeps structure, escapes, whitespace and the last duplicate key" do
+  test "decode keeps structure, escapes and whitespace" do
     body =
       ~s(\n [ {"a" : -0.0 , "b\\"c": "x,\\u00e9]:", "d": [1, {"e": null}, true, false]},\t{} ] )
 
@@ -255,8 +255,23 @@ defmodule WallopCore.Weather.LandObsGrammarTest do
               %{}
             ]} = G.decode(body)
 
-    assert {:ok, %{"t" => {:number, "2"}}} = G.decode(~s({"t": 1, "t": 2}))
     assert {:ok, {:number, "5"}} = G.decode("5")
+  end
+
+  test "a key twice in one object, at any depth, is refused" do
+    for body <- [
+          ~s({"t": 1, "t": 2}),
+          ~s({"t": 1, "t": 1}),
+          ~s([{"a": 1}, {"t": {"x": 1, "x": null}}]),
+          ~s({"data": [], "data": [{"t": 1}]}),
+          # Compared after unescaping: \u0074 is "t".
+          ~s({"t": 1, "\\u0074": 2})
+        ],
+        do: assert(G.decode(body) == {:error, :duplicate_key}, body)
+
+    # The same key in sibling objects, or as a string value, is fine.
+    assert {:ok, [%{"t" => _}, %{"t" => _}]} = G.decode(~s([{"t": 1}, {"t": 2}]))
+    assert {:ok, %{"t" => "t", "u" => %{"t" => _}}} = G.decode(~s({"t": "t", "u": {"t": 1}}))
   end
 
   test "valid_value?/1 is the published grammar with the bounds" do

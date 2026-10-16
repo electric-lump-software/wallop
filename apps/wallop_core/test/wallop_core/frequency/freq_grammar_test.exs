@@ -177,8 +177,11 @@ defmodule WallopCore.Frequency.FreqGrammarTest do
       assert length(@vectors["cases"]) >= 20
 
       for c <- @vectors["cases"] do
-        {:ok, %{"data" => rows}} = G.decode(c["body"])
-        got = G.window_from_rows(rows, t)
+        got =
+          case G.decode(c["body"]) do
+            {:ok, %{"data" => rows}} -> G.window_from_rows(rows, t)
+            {:error, :duplicate_key} = refused -> refused
+          end
 
         case c do
           %{"value" => v} ->
@@ -187,6 +190,9 @@ defmodule WallopCore.Frequency.FreqGrammarTest do
 
           %{"invalid" => %{"reason" => "stuck"}} ->
             assert got == {:error, :stuck}, c["name"]
+
+          %{"invalid" => %{"reason" => "duplicate_key"}} ->
+            assert got == {:error, :duplicate_key}, c["name"]
 
           %{"invalid" => %{"reason" => reason, "at" => at}} ->
             assert got == {:error, {String.to_existing_atom(reason), at}}, c["name"]
