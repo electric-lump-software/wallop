@@ -113,6 +113,78 @@ defmodule WallopCore.Entropy.EntropyWorkerTest do
     end
   end
 
+  describe "no BLS check on the forecast path" do
+    # Forecast draws keep their behaviour this release: their drand beacon
+    # is not BLS-checked. Traced, not inferred: no function of the check,
+    # its NIF or the test wrapper is called while a forecast draw executes,
+    # here with a signature that would never verify.
+    @bls_modules [WallopCore.Drand.Bls, WallopCore.Drand.Bls.Native, WallopCore.Test.DrandBls]
+
+    setup do
+      # A module must be loaded for its pattern to take; each must match.
+      for m <- @bls_modules do
+        Code.ensure_loaded!(m)
+        assert :erlang.trace_pattern({m, :_, :_}, true, [:global]) > 0
+      end
+
+      # A process can't be its own call tracer: a forwarder relays the
+      # trace messages to the test.
+      test_pid = self()
+      tracer = spawn_link(fn -> forward_traces(test_pid) end)
+      :erlang.trace(self(), true, [:call, :set_on_spawn, {:tracer, tracer}])
+
+      on_exit(fn ->
+        for m <- @bls_modules, do: :erlang.trace_pattern({m, :_, :_}, false, [:global])
+      end)
+    end
+
+    test "a forecast draw completes without any BLS call" do
+      api_key = create_api_key()
+      draw = create_draw(api_key, %{entropy: true})
+
+      assert :ok = EntropyWorker.perform(fake_job(draw))
+      :erlang.trace(self(), false, [:call, :set_on_spawn])
+
+      completed = reload_draw(draw, api_key)
+      assert completed.status == :completed
+      assert completed.drand_signature == @drand_signature
+      # Trace messages are sent asynchronously: give them time to arrive.
+      Process.sleep(50)
+      # Only the BLS modules are traced, so any call message is a BLS call.
+      refute_received {:traced, _}
+    end
+
+    test "the trace does see a BLS call when one is made (control)" do
+      Req.Test.stub(DrandClient, fn conn ->
+        Req.Test.json(conn, %{
+          "round" => 1000,
+          "randomness" => @drand_randomness,
+          "signature" => String.duplicate("ab", 48)
+        })
+      end)
+
+      ExUnit.CaptureLog.capture_log(fn ->
+        assert {:error, :invalid_response} =
+                 DrandClient.fetch_with_failover(DrandClient.quicknet_chain_hash(), 1000,
+                   verify_bls: true
+                 )
+      end)
+
+      :erlang.trace(self(), false, [:call, :set_on_spawn])
+
+      assert_receive {:traced,
+                      {:trace, _, :call, {WallopCore.Test.DrandBls, :verify_quicknet, _}}}
+    end
+  end
+
+  defp forward_traces(test_pid) do
+    receive do
+      msg -> send(test_pid, {:traced, msg})
+    end
+
+    forward_traces(test_pid)
+  end
+
   describe "transient errors (phase 1)" do
     test "returns error when drand unavailable (triggers Oban retry)" do
       stub_drand_error(:not_found)

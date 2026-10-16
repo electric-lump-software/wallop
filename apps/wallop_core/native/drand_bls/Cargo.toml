@@ -1,0 +1,22 @@
+[package]
+name = "drand_bls"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "drand quicknet BLS signature check for wallop_core (a Rustler NIF)"
+
+[lib]
+name = "drand_bls"
+path = "src/lib.rs"
+crate-type = ["cdylib"]
+
+[dependencies]
+# Pinned exactly: the same version the wallop_rs verifier uses, so the
+# producer and the verifier accept and refuse the same signatures.
+drand-verify = "=0.6.2"
+rustler = "=0.38.0"
+
+[profile.release]
+# Unwinding (the default, stated so it isn't changed): verify_g1 catches a
+# panic and answers false, which needs panics to unwind, not abort the VM.
+panic = "unwind"

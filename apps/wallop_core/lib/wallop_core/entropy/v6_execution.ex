@@ -22,7 +22,8 @@ defmodule WallopCore.Entropy.V6Execution do
        * success;
        * a retry (`{:error, _}`) for a transient drand failure (one relay's
          invalid response, malformed body, 404, 401 or 403 moves on to the
-         next relay, as does a relay that misses its 10 s deadline; every
+         next relay, as does a relay that misses its 10 s deadline or
+         sends a beacon whose BLS signature doesn't verify; every
          relay failing, and the fetch raising or exiting, are transient)
          or a failed
          execution, which rolls back as one unit; when the job runs out of
@@ -127,8 +128,13 @@ defmodule WallopCore.Entropy.V6Execution do
   end
 
   # A fetch that raises or exits is a transient drand failure like any other.
+  # The beacon's BLS signature is checked against quicknet's key: a relay
+  # that forges a round is just a relay with an invalid response.
   defp fetch_drand(draw) do
-    DrandClient.fetch_with_failover(draw.drand_chain, draw.drand_round, on_invalid: :next)
+    DrandClient.fetch_with_failover(draw.drand_chain, draw.drand_round,
+      on_invalid: :next,
+      verify_bls: true
+    )
   rescue
     e -> {:error, {:raised, e.__struct__}}
   catch

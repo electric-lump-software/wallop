@@ -2,6 +2,7 @@ defmodule WallopCore.Entropy.ObservationDrawWorkerTest do
   use WallopCore.DataCase, async: false
   use Oban.Testing, repo: WallopCore.Repo
 
+  import ExUnit.CaptureLog
   import WallopCore.TestHelpers
 
   alias WallopCore.Drand.Quicknet
@@ -590,6 +591,124 @@ defmodule WallopCore.Entropy.ObservationDrawWorkerTest do
       end
 
       refute_received {:drand_fetched, _}
+    end
+  end
+
+  describe "the BLS check" do
+    # Quicknet round 33107467 (published 2026-10-16), from
+    # test/fixtures/drand/quicknet_rounds.json: a real round, so this runs
+    # the real check, with no stand-in signature.
+    @real_round 33_107_467
+    @real_sig "82108c75dfe9e153102818e8758dc4e0dda646e6022be94adfba9cacb6993b4066f2060807394815701f2e8066b1408a"
+    @real_randomness "83acaac1207be3889a6467aa2682dc50685f922d0d705e66e78ea35c806d9b1f"
+
+    # The signature with its last bit flipped, and randomness to match it,
+    # so only the signature check can refuse it.
+    defp forged(sig) do
+      <<pre::binary-size(47), last>> = Base.decode16!(sig, case: :lower)
+      bytes = <<pre::binary, Bitwise.bxor(last, 1)>>
+
+      {Base.encode16(bytes, case: :lower),
+       :crypto.hash(:sha256, bytes) |> Base.encode16(case: :lower)}
+    end
+
+    defp v6_draw_on_real_round do
+      {_op, key} = create_v6_operator()
+      wt = Schedule.weather_time_for_round(@real_round)
+      draw = put_v6_awaiting!(open_draw_with_entries(key), wt, @real_round)
+      put_observation!(Stations.primary().id, wt, @value)
+      draw
+    end
+
+    test "relay 1 forged, relay 2 real: the draw completes on the real beacon" do
+      draw = v6_draw_on_real_round()
+      {forged_sig, forged_randomness} = forged(@real_sig)
+      calls = :counters.new(1, [:atomics])
+
+      Req.Test.stub(DrandClient, fn conn ->
+        case List.last(conn.path_info) do
+          "latest" ->
+            Plug.Conn.send_resp(conn, 404, "")
+
+          _round ->
+            :counters.add(calls, 1, 1)
+
+            {sig, randomness} =
+              if :counters.get(calls, 1) == 1,
+                do: {forged_sig, forged_randomness},
+                else: {@real_sig, @real_randomness}
+
+            Req.Test.json(conn, %{
+              "round" => @real_round,
+              "randomness" => randomness,
+              "signature" => sig
+            })
+        end
+      end)
+
+      log =
+        capture_log(fn ->
+          assert :ok = perform_job(ObservationDrawWorker, %{draw_id: draw.id}, attempt: 1)
+        end)
+
+      assert :counters.get(calls, 1) == 2
+      assert log =~ "failed the BLS check: bad_signature"
+      refute log =~ forged_sig
+
+      done = reload(draw)
+      assert done.status == :completed
+      assert done.drand_signature == @real_sig
+      assert done.drand_randomness == @real_randomness
+      assert exec_payload(draw)["drand_signature"] == @real_sig
+    end
+
+    test "every relay forged: a transient failure; the draw is never failed, and completes once drand is honest" do
+      ref =
+        :telemetry_test.attach_event_handlers(self(), [
+          [:wallop_core, :v6, :exec_refused],
+          [:wallop_core, :v6, :drand_exhausted]
+        ])
+
+      draw = v6_draw_on_real_round()
+      {forged_sig, forged_randomness} = forged(@real_sig)
+
+      Req.Test.stub(DrandClient, fn conn ->
+        Req.Test.json(conn, %{
+          "round" => @real_round,
+          "randomness" => forged_randomness,
+          "signature" => forged_sig
+        })
+      end)
+
+      capture_log(fn ->
+        assert {:error, _} = perform_job(ObservationDrawWorker, %{draw_id: draw.id}, attempt: 1)
+        assert reload(draw).status == :pending_entropy
+
+        assert {:error, reason} =
+                 perform_job(ObservationDrawWorker, %{draw_id: draw.id}, attempt: 10)
+
+        assert reason =~ "drand unavailable after 10 attempts (all relays failed)"
+      end)
+
+      left = reload(draw)
+      assert left.status == :pending_entropy
+      assert left.drand_signature == nil
+      assert_receive {[:wallop_core, :v6, :drand_exhausted], ^ref, _, _}
+      refute_received {[:wallop_core, :v6, :exec_refused], ^ref, _, _}
+
+      Req.Test.stub(DrandClient, fn conn ->
+        if List.last(conn.path_info) == "latest",
+          do: Plug.Conn.send_resp(conn, 404, ""),
+          else:
+            Req.Test.json(conn, %{
+              "round" => @real_round,
+              "randomness" => @real_randomness,
+              "signature" => @real_sig
+            })
+      end)
+
+      assert :ok = perform_job(ObservationDrawWorker, %{draw_id: draw.id}, attempt: 1)
+      assert reload(draw).drand_signature == @real_sig
     end
   end
 

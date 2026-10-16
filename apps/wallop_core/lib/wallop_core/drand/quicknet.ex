@@ -13,9 +13,24 @@ defmodule WallopCore.Drand.Quicknet do
   @period 3
   @max_round_delta 201_600
 
+  # Quicknet's group public key: a 96-byte compressed G2 point (scheme
+  # bls-unchained-g1-rfc9380). From the chain info at
+  # https://api.drand.sh/52db9ba70e0cc0f6eaf7803dd07447a1f5477735fd3f661792ba94600c84e971/info
+  # (`public_key`); the wallop_rs verifier pins the same value.
+  @public_key Base.decode16!(
+                "83cf0f2896adee7eb8b5f01fcad3912212c437e0073e911fb90022d3e760183c" <>
+                  "8c4b450b6a0a6c3ac6a5776a2d1064510d1fec758c921cc22b0e17e63aaf4bcb" <>
+                  "5ed66304de9cf809bd274ca73bab4af5a6e9c76a4bc09e76eae8991ef5ece45a",
+                case: :lower
+              )
+
   @doc "The quicknet chain hash, as signed into receipts' `drand_chain`."
   @spec chain_hash() :: String.t()
   def chain_hash, do: @chain_hash
+
+  @doc "Quicknet's public key: 96 bytes, a compressed G2 point."
+  @spec public_key() :: <<_::768>>
+  def public_key, do: @public_key
 
   @doc "Unix time (seconds) of round 1."
   @spec genesis() :: pos_integer()

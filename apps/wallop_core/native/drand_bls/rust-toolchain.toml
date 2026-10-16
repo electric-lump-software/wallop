@@ -1,0 +1,5 @@
+# The Rust toolchain that builds this NIF, pinned so local, CI and release
+# builds use the same compiler. Keep in step with the Dockerfile and CI.
+[toolchain]
+channel = "1.94.1"
+profile = "minimal"

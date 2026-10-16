@@ -21,6 +21,10 @@ config :wallop_core, Oban, testing: :manual
 config :wallop_core, WallopCore.Entropy.WeatherObservationWorker,
   land_obs_client: WallopCore.Test.WindowedLandObsClient
 
+# Tests serve one real drand signature for rounds near "now"; see
+# WallopCore.Test.DrandBls. Every other signature is checked for real.
+config :wallop_core, WallopCore.Entropy.DrandClient, bls: WallopCore.Test.DrandBls
+
 # The invariant suite checks the test database's max_prepared_transactions itself.
 config :wallop_core, :prepared_transactions_check, false
 
