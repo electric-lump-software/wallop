@@ -443,20 +443,16 @@ defmodule WallopCore.TamperProfiles.Freq do
        "a weather hour", ~w(bundle_shape)},
       {"freq_lock_entropy_composition_landobs", :observed, :lock, "entropy_composition",
        LandObs.tag(), "the Land Obs tag (a Land Obs lock with a frequency exec)",
-       ~w(bundle_shape lock_signature receipt_field_consistency seed_recomputation
-          weather_observation_window)},
+       ~w(bundle_shape lock_signature receipt_field_consistency weather_observation_window)},
       {"freq_lock_entropy_composition_forecast", :observed, :lock, "entropy_composition",
        TamperVectors.forecast_tag(), "the forecast tag",
-       ~w(bundle_shape lock_signature receipt_field_consistency seed_recomputation
-          weather_observation_window)},
+       ~w(bundle_shape lock_signature receipt_field_consistency weather_observation_window)},
       {"freq_lock_entropy_composition_unknown", :observed, :lock, "entropy_composition", unknown,
        "an unknown tag",
-       ~w(bundle_shape lock_signature receipt_field_consistency seed_recomputation
-          weather_observation_window)},
+       ~w(bundle_shape lock_signature receipt_field_consistency weather_observation_window)},
       {"freq_lock_schema_version_5", :observed, :lock, "schema_version", "5",
        "a different schema",
-       ~w(bundle_shape lock_signature receipt_field_consistency seed_recomputation
-          weather_observation_window)},
+       ~w(bundle_shape lock_signature receipt_field_consistency weather_observation_window)},
 
       # ── Execution receipt ─────────────────────────────────────────
       {"freq_exec_freq_value_plus_one", :observed, :exec, "freq_value", bumped,
@@ -502,7 +498,9 @@ defmodule WallopCore.TamperProfiles.Freq do
        "a value beside the reason",
        ~w(drand_bls_signature seed_recomputation weather_observation_window)},
       {"freq_fallback_weather_reason_set", :fallback, :exec, "weather_fallback_reason", weather,
-       "the weather reason in the weather field", ~w(bundle_shape)}
+       "the weather reason in the weather field", ~w(bundle_shape)},
+      {"freq_fallback_weather_value_set", :fallback, :exec, "weather_value", "141;1025;85;2432",
+       "a weather value on a fallback", ~w(bundle_shape drand_bls_signature seed_recomputation)}
     ]
   end
 
