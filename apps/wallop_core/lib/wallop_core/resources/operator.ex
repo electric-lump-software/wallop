@@ -52,7 +52,7 @@ defmodule WallopCore.Resources.Operator do
 
   # Weather protocols an operator's new locks can use. Adding one is a
   # one-line change here.
-  @draw_protocols [:forecast, :observation]
+  @draw_protocols [:forecast, :observation, :frequency]
 
   postgres do
     table("operators")
@@ -150,7 +150,8 @@ defmodule WallopCore.Resources.Operator do
 
     attribute :draw_protocol, :atom do
       description(
-        "Weather protocol for new locks: forecast (lock schema 5) or observation (lock schema 6). Admin-only."
+        "Entropy protocol for new locks: forecast (lock schema 5), observation (lock schema 6, " <>
+          "Met Office Land Observations) or frequency (lock schema 6, GB grid frequency). Admin-only."
       )
 
       constraints(one_of: @draw_protocols)

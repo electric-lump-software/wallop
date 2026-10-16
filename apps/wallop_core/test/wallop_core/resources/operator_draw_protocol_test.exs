@@ -46,13 +46,42 @@ defmodule WallopCore.Resources.OperatorDrawProtocolTest do
              |> Ash.update()
   end
 
-  test "only forecast and observation are accepted" do
-    for bad <- [:v6, :v5, :other] do
+  test "forecast, observation and frequency are accepted; nothing else" do
+    for ok <- [:forecast, :observation, :frequency] do
+      assert {:ok, %{draw_protocol: ^ok}} =
+               create_operator()
+               |> Ash.Changeset.for_update(:set_draw_protocol, %{draw_protocol: ok})
+               |> Ash.update(authorize?: false)
+    end
+
+    for bad <- [:v6, :v5, :freq, :drand, :other] do
       assert {:error, %Ash.Error.Invalid{}} =
                create_operator()
                |> Ash.Changeset.for_update(:set_draw_protocol, %{draw_protocol: bad})
                |> Ash.update(authorize?: false)
     end
+  end
+
+  test "no actor can switch an operator to frequency, including its own key" do
+    op = create_operator()
+    key = create_api_key_for_operator(op)
+
+    for actor <- [key, nil] do
+      assert {:error, %Ash.Error.Forbidden{}} =
+               op
+               |> Ash.Changeset.for_update(:set_draw_protocol, %{draw_protocol: :frequency},
+                 actor: actor
+               )
+               |> Ash.update()
+    end
+
+    assert Ash.get!(Operator, op.id, authorize?: false).draw_protocol == :forecast
+  end
+
+  test "create_freq_operator/0 gives a frequency operator and its key" do
+    {op, key} = create_freq_operator()
+    assert op.draw_protocol == :frequency
+    assert key.operator_id == op.id
   end
 
   test "the flag is not exposed through public attributes" do

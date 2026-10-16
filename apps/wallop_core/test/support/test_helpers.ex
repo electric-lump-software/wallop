@@ -204,6 +204,16 @@ defmodule WallopCore.TestHelpers do
     {operator, create_api_key_for_operator(operator)}
   end
 
+  @doc "An operator on the grid-frequency protocol, and an API key for it."
+  def create_freq_operator do
+    {:ok, operator} =
+      create_operator()
+      |> Ash.Changeset.for_update(:set_draw_protocol, %{draw_protocol: :frequency})
+      |> Ash.update(authorize?: false)
+
+    {operator, create_api_key_for_operator(operator)}
+  end
+
   @doc "An open draw with `n` weight-1 entries."
   def open_draw_with_entries(api_key, n \\ 3) do
     Draw
