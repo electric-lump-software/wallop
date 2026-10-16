@@ -2,6 +2,7 @@
   "description": "Grid-frequency window rule for the drand-quicknet+elexon-freq-v1 tag: raw Elexon FREQ bodies and the freq_value of the window starting at freq_start, or why the window is invalid. The rows are body.data, decoded keeping each JSON number's exact text (never through a float).",
   "rules": [
     "A row that is not a JSON object is ignored.",
+    "An object with a repeated key keeps the last value for that key (a repeated frequency or measurementTime is read from its last occurrence); the earlier values are ignored.",
     "An object row belongs to a reading time when its measurementTime is exactly YYYY-MM-DDTHH:MM:SSZ for that time; other object rows are ignored.",
     "Every matching object row counts: one gives the reading (a missing, null, quoted or malformed frequency invalidates the window); two or more are a duplicate.",
     "A reading is the JSON number text as whole mHz: digits, at most 3 decimal places padded with zeros, no exponent, sign or leading zero; 0 is a zero reading; it must be in [47000, 52999].",
@@ -191,6 +192,19 @@
       "name": "an alternating window is not stuck",
       "body": "{\"data\":[{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:56:00Z\",\"frequency\":50.001},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:55:45Z\",\"frequency\":50},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:55:30Z\",\"frequency\":50.001},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:55:15Z\",\"frequency\":50},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:55:00Z\",\"frequency\":50.001},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:54:45Z\",\"frequency\":50},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:54:30Z\",\"frequency\":50.001},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:54:15Z\",\"frequency\":50}]}",
       "value": "50000;50001;50000;50001;50000;50001;50000;50001"
+    },
+    {
+      "name": "a repeated frequency key: the last value wins",
+      "body": "{\"data\":[{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:56:00Z\",\"frequency\":49.887},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:55:45Z\",\"frequency\":49.883},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:55:30Z\",\"frequency\":49.912},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:55:15Z\",\"frequency\":49.953},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:55:00Z\",\"frequency\":49.98},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:54:45Z\",\"frequency\":0,\"frequency\":49.983},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:54:30Z\",\"frequency\":50.012},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:54:15Z\",\"frequency\":50.018}]}",
+      "value": "50018;50012;49983;49980;49953;49912;49883;49887"
+    },
+    {
+      "name": "a repeated measurementTime key: the last value wins, so the row matches nothing",
+      "body": "{\"data\":[{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:56:00Z\",\"frequency\":49.887},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:55:45Z\",\"frequency\":49.883},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:55:30Z\",\"frequency\":49.912},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:55:15Z\",\"frequency\":49.953},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:55:00Z\",\"frequency\":49.98},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:54:45Z\",\"frequency\":49.983,\"measurementTime\":\"2026-10-14T19:59:00Z\"},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:54:30Z\",\"frequency\":50.012},{\"dataset\":\"FREQ\",\"measurementTime\":\"2026-10-14T19:54:15Z\",\"frequency\":50.018}]}",
+      "invalid": {
+        "reason": "missing",
+        "at": "2026-10-14T19:54:45Z"
+      }
     }
   ]
 }

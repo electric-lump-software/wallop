@@ -21,6 +21,9 @@ defmodule WallopCore.Entropy.ElexonFreqClient do
 
   @base_url "https://data.elexon.co.uk/bmrs/api/v1/datasets/FREQ"
   @connect_timeout 5_000
+  # The receive timeout applies to each chunk, not the whole response, so a
+  # slow trickle can outlast it. It is not the fetch deadline: the window
+  # worker's 8 s Task.yield, then brutal_kill, bounds each fetch.
   @receive_timeout 10_000
   # A window is 8 rows, well under 1 KiB; the cap leaves room for Elexon
   # adding fields without letting a hostile response grow without bound.
