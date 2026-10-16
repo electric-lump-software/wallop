@@ -9,9 +9,10 @@ defmodule WallopCore.Resources.Draw.Changes.SignAndStoreReceipt do
   and no sequence is burned.
 
   With `version: "6"` it signs lock schema 6 (`Protocol.build_v6_lock_payload/1`)
-  for an observation-weather draw. `locked_at` is taken once, after the
-  draw row is locked, and that one value is checked against the draw's
-  latest lock time, signed, stored in the receipt's `locked_at` column and
+  under the draw's recorded tag (Land Observations or grid frequency).
+  `locked_at` is taken once, after the draw row is locked, and that one
+  value is checked against the draw's latest lock time by the tag's late
+  check (`v6_lock_time_error/3` or `freq_lock_time_error/3`), signed, stored in the receipt's `locked_at` column and
   recorded as the draw's `locked_at` stage timestamp. A late value is
   refused here (on `draw_at` when it was sent, with `latest_lock_at`), so the builder never
   sees one; if the builder raises anyway, the lock transaction rolls back.
@@ -23,6 +24,7 @@ defmodule WallopCore.Resources.Draw.Changes.SignAndStoreReceipt do
   use Ash.Resource.Change
 
   alias Ash.Error.Changes.InvalidArgument
+  alias WallopCore.Frequency.Schedule, as: FreqSchedule
   alias WallopCore.Protocol
   alias WallopCore.Resources.{OperatorReceipt, OperatorSigningKey}
   alias WallopCore.Vault
@@ -109,12 +111,30 @@ defmodule WallopCore.Resources.Draw.Changes.SignAndStoreReceipt do
   # on the default draw time is refused at the action level.
   defp lock_time_error("6", locked_at, changeset) do
     field = if Ash.Changeset.get_argument(changeset, :draw_at), do: :draw_at
+    tag = Ash.Changeset.get_attribute(changeset, :entropy_composition)
 
-    v6_lock_time_error(
-      locked_at,
-      Ash.Changeset.get_attribute(changeset, :weather_time),
-      field
-    )
+    cond do
+      tag == Protocol.landobs_entropy_composition() ->
+        v6_lock_time_error(
+          locked_at,
+          Ash.Changeset.get_attribute(changeset, :weather_time),
+          field
+        )
+
+      tag == Protocol.freq_entropy_composition() ->
+        freq_lock_time_error(
+          locked_at,
+          Ash.Changeset.get_attribute(changeset, :freq_start),
+          field
+        )
+
+      # ResolveLockSchema records only known tags; never sign under another.
+      true ->
+        InvalidArgument.exception(
+          field: nil,
+          message: "no lock rules for this entropy_composition"
+        )
+    end
   end
 
   defp lock_time_error(nil, _locked_at, _changeset), do: nil
@@ -139,7 +159,27 @@ defmodule WallopCore.Resources.Draw.Changes.SignAndStoreReceipt do
     end
   end
 
-  # weather_time is a whole hour, so latest_lock_at is a whole second.
+  @doc false
+  # Lock schema 6 under the grid-frequency tag: a lock at `locked_at` must
+  # be no later than freq_start - 60 s. nil when it is in time, else the
+  # refusal, shaped exactly like v6_lock_time_error/3's. T - 60 s is always
+  # a whole second.
+  @spec freq_lock_time_error(DateTime.t(), DateTime.t(), :draw_at | nil) ::
+          Exception.t() | nil
+  def freq_lock_time_error(locked_at, freq_start, field \\ :draw_at) do
+    if FreqSchedule.lock_allowed?(locked_at, freq_start) do
+      nil
+    else
+      InvalidArgument.exception(
+        field: field,
+        message: "is too late: this draw must be locked by %{latest_lock_at}",
+        vars: [latest_lock_at: whole_second(FreqSchedule.latest_lock_at(freq_start))]
+      )
+    end
+  end
+
+  # weather_time is a whole hour and freq_start a whole multiple of 15 s,
+  # so latest_lock_at is a whole second.
   defp whole_second(dt), do: dt |> DateTime.truncate(:second) |> DateTime.to_iso8601()
 
   defp build_payload("6", input, changeset) do
@@ -148,6 +188,8 @@ defmodule WallopCore.Resources.Draw.Changes.SignAndStoreReceipt do
       :entropy_composition,
       Ash.Changeset.get_attribute(changeset, :entropy_composition)
     )
+    # The grid-frequency tag signs it; the Land Obs tag ignores it (nil).
+    |> Map.put(:freq_start, Ash.Changeset.get_attribute(changeset, :freq_start))
     |> Protocol.build_v6_lock_payload()
   end
 

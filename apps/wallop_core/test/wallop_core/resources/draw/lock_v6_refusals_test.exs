@@ -111,7 +111,10 @@ defmodule WallopCore.Resources.Draw.LockV6RefusalsTest do
              lock(draw, key, %{draw_at: next_hour_draw_at(3)})
 
     assert error.field == :draw_at
-    assert error.message == "is only available to operators on the observation-weather protocol"
+
+    assert error.message ==
+             "is only available to operators on the observation-weather or grid-frequency protocol"
+
     assert_untouched(draw)
   end
 
