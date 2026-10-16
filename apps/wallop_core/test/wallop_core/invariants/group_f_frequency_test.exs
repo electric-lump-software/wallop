@@ -7,16 +7,23 @@ defmodule WallopCore.Invariants.FrequencyTest do
   suite's rules.
   """
   use WallopCore.InvariantCase, async: false
+  use Oban.Testing, repo: WallopCore.Repo
 
   @moduletag :invariant
 
   alias WallopCore.Drand.Quicknet
+  alias WallopCore.Entropy.{DrandClient, ObservationDrawWorker, V6Rules}
   alias WallopCore.Frequency.Schedule, as: FreqSchedule
   alias WallopCore.Frequency.Windows
+  alias WallopCore.Protocol
+  alias WallopCore.Protocol.Tags.{Freq, LandObs}
+  alias WallopCore.Resources.Draw
 
   import WallopCore.UnboxedHelpers
 
   @value "50012;50018;50012;49983;49980;49953;49912;49883"
+  # The draws guard's refusal, and its commit-time twin's, from F on.
+  @no_fail_after_f "a v6 draw can't fail once its fetch deadline has passed"
   @other "50012;50018;50012;49983;49980;49953;49912;49884"
 
   defp freq_pending(key, t, pub_offset) do
@@ -227,13 +234,191 @@ defmodule WallopCore.Invariants.FrequencyTest do
     end
   end
 
-  @tag :pending_task_F9
   test "INV-F6 an unknown (schema, tag) pair is refused everywhere; frequency never falls through to Land Obs" do
-    flunk("switched on by Task F9")
+    unknown = "drand-quicknet+elexon-freq-v2"
+
+    # Builders.
+    lock = %{
+      entropy_composition: unknown,
+      operator_id: Ecto.UUID.generate(),
+      operator_slug: "acme-prizes",
+      sequence: 1,
+      draw_id: Ecto.UUID.generate(),
+      commitment_hash: String.duplicate("ab", 32),
+      entry_hash: String.duplicate("ab", 32),
+      locked_at: ~U[2026-10-14 19:50:00.000000Z],
+      signing_key_id: "k",
+      winner_count: 1,
+      drand_chain: Quicknet.chain_hash(),
+      drand_round: 33_068_212,
+      weather_station: nil,
+      weather_time: nil,
+      freq_start: ~U[2026-10-14 19:54:00.000000Z],
+      wallop_core_version: "0.0.0",
+      fair_pick_version: "0.2.0"
+    }
+
+    assert_raise ArgumentError, fn -> Protocol.build_v6_lock_payload(lock) end
+
+    # Execution rules: nothing falls through.
+    for {schema, tag} = pair <- [{"6", unknown}, {"5", Freq.tag()}, {nil, Freq.tag()}] do
+      assert V6Rules.rules(%{lock_schema_version: schema, entropy_composition: tag}) == :error,
+             inspect(pair)
+    end
+
+    assert V6Rules.rules(%{lock_schema_version: "6", entropy_composition: Freq.tag()}) ==
+             {:ok, :freq}
+
+    assert V6Rules.rules(%{lock_schema_version: "6", entropy_composition: LandObs.tag()}) ==
+             {:ok, :landobs}
+
+    # Triggers: the draws guard refuses the pair at lock.
+    {_op, key} = create_freq_operator()
+
+    assert raw_freq_lock(open_draw_with_entries(key), in_time_freq_schedule(), tag: unknown) ==
+             "unknown lock_schema_version and entropy_composition pair: (6, #{unknown})"
+
+    # Execution: a draw stored under the pair (triggers off) is refused and
+    # cancelled, never run.
+    ensure_infrastructure_key()
+    draw = open_draw_with_entries(key)
+    round = Quicknet.round_at_or_after(DateTime.add(DateTime.utc_now(), -60))
+
+    with_triggers_off(fn ->
+      Repo.query!(
+        """
+        UPDATE draws SET status = 'pending_entropy', lock_schema_version = '6',
+          entropy_composition = $2, drand_chain = $3, drand_round = $4, freq_start = $5
+        WHERE id = $1
+        """,
+        [
+          dump(draw.id),
+          unknown,
+          Quicknet.chain_hash(),
+          round,
+          DateTime.to_naive(FreqSchedule.freq_start_for_round(round))
+        ]
+      )
+    end)
+
+    assert {:cancel, message} = perform_job(ObservationDrawWorker, %{draw_id: draw.id})
+    assert message =~ "unknown lock_schema_version and entropy_composition pair"
+    assert Ash.get!(Draw, draw.id, authorize?: false).status == :pending_entropy
   end
 
-  @tag :pending_task_F9
   test "INV-F7 a grid-frequency draw is never marked failed once its F has passed" do
-    flunk("switched on by Task F9")
+    ensure_infrastructure_key()
+
+    Application.put_env(:wallop_core, DrandClient,
+      req_options: [plug: {Req.Test, DrandClient}, retry: false]
+    )
+
+    on_exit(fn -> Application.delete_env(:wallop_core, DrandClient) end)
+    Req.Test.stub(DrandClient, fn conn -> Plug.Conn.send_resp(conn, 503, "") end)
+
+    {_op, key} = create_freq_operator()
+    round = Quicknet.round_at_or_after(DateTime.add(DateTime.utc_now(), -10))
+
+    draw =
+      put_freq_awaiting!(
+        open_draw_with_entries(key),
+        FreqSchedule.freq_start_for_round(round),
+        round
+      )
+
+    # The worker: drand down on the last attempt is an error for the
+    # re-drive, never a failure.
+    assert {:error, _} = perform_job(ObservationDrawWorker, %{draw_id: draw.id}, attempt: 10)
+    status = Ash.get!(Draw, draw.id, authorize?: false).status
+    assert status in [:awaiting_entropy, :pending_entropy]
+
+    # The database: failing it now is refused, by any path.
+    assert try_sql("UPDATE draws SET status = 'failed', failed_at = $2 WHERE id = $1", [
+             dump(draw.id),
+             NaiveDateTime.utc_now()
+           ]) ==
+             @no_fail_after_f
+
+    assert {:error, error} =
+             draw
+             |> Ash.Changeset.for_update(:mark_failed, %{failure_reason: "test"})
+             |> Ash.update(authorize?: false)
+
+    assert error_text(error) =~ @no_fail_after_f
+  end
+
+  # The commit-time half: a fail whose statement runs before F passes the
+  # statement check; its commit waits until F has passed and the deferred
+  # check (which reads F by tag) refuses it. Real commits, outside the
+  # sandbox, on fixtures this test deletes.
+  @tag :slow
+  test "INV-F7 a grid-frequency fail made before F but committed after it is refused at commit" do
+    draw = unboxed_freq_draw(4)
+    f = FreqSchedule.fetch_deadline(draw.freq_start)
+
+    outcome =
+      fail_and_commit(draw, fn ->
+        assert DateTime.compare(db_clock(), f) == :lt
+        wait_until_db_clock_after(f)
+      end)
+
+    assert outcome == {:refused, @no_fail_after_f}
+
+    assert unboxed(fn -> Ash.get!(Draw, draw.id, authorize?: false).status end) ==
+             :awaiting_entropy
+  end
+
+  @tag :slow
+  test "INV-F7 a grid-frequency fail committed before F is kept" do
+    # Positive control: same path, F five minutes ahead, commit at once.
+    draw = unboxed_freq_draw(300)
+
+    assert fail_and_commit(draw, fn -> :ok end) == :committed
+    assert unboxed(fn -> Ash.get!(Draw, draw.id, authorize?: false).status end) == :failed
+  end
+
+  # A grid-frequency draw committed outside the sandbox, whose stored F is
+  # `f_in` seconds from now, for its own operator, deleted on exit.
+  defp unboxed_freq_draw(f_in) do
+    {operator, key} = unboxed(fn -> create_freq_operator() end)
+    on_exit(fn -> unboxed(fn -> delete_operator!(operator.id) end) end)
+
+    t =
+      DateTime.utc_now()
+      |> DateTime.add(f_in - FreqSchedule.span_seconds() - FreqSchedule.fetch_window_seconds())
+      |> DateTime.truncate(:second)
+
+    round = Quicknet.round_at_or_after(DateTime.add(DateTime.utc_now(), 3600))
+    unboxed(fn -> put_freq_awaiting!(open_draw_with_entries(key), t, round) end)
+  end
+
+  # Fails the draw in a real transaction, runs `before_commit` inside it,
+  # then commits. :committed, or {:refused, message}.
+  defp fail_and_commit(draw, before_commit) do
+    unboxed(fn ->
+      {:ok, _} =
+        Repo.transaction(
+          fn ->
+            Repo.query!("SET LOCAL lock_timeout = '10s'")
+
+            Repo.query!("UPDATE draws SET status = 'failed', failed_at = $2 WHERE id = $1", [
+              dump(draw.id),
+              NaiveDateTime.utc_now()
+            ])
+
+            before_commit.()
+          end,
+          timeout: 60_000
+        )
+    end)
+
+    :committed
+  rescue
+    e in Postgrex.Error -> {:refused, e.postgres.message}
+  end
+
+  defp db_clock do
+    %{rows: [[now]]} = Repo.query!("SELECT clock_timestamp() AT TIME ZONE 'UTC'")
+    DateTime.from_naive!(now, "Etc/UTC")
   end
 end

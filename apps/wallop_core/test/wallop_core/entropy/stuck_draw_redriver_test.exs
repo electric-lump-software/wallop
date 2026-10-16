@@ -8,7 +8,8 @@ defmodule WallopCore.Entropy.StuckDrawRedriverTest do
 
   alias WallopCore.Drand.Quicknet
   alias WallopCore.Entropy.{EntropyWorker, ObservationDrawWorker, StuckDrawRedriver}
-  alias WallopCore.Entropy.WeatherObservationWorker
+  alias WallopCore.Entropy.{FrequencyWindowWorker, WeatherObservationWorker}
+  alias WallopCore.Frequency.Schedule, as: FreqSchedule
   alias WallopCore.Resources.Draw
   alias WallopCore.Weather.{Schedule, Stations}
 
@@ -275,6 +276,23 @@ defmodule WallopCore.Entropy.StuckDrawRedriverTest do
       for hour <- [WeatherObservationWorker.hour_arg(wt), stale_hour] do
         refute_enqueued(worker: WeatherObservationWorker, args: %{weather_time: hour})
       end
+    end
+
+    test "a frequency draw in its window doesn't crash the re-drive and gets no fetch job" do
+      ref = :telemetry_test.attach_event_handlers(self(), [@event])
+      {_op, key} = create_freq_operator()
+      t = aligned_freq_start(-(FreqSchedule.span_seconds() + 60))
+      draw = put_freq_awaiting!(open_draw_with_entries(key), t, round_at(3600))
+
+      assert is_list(StuckDrawRedriver.redrive())
+
+      refute_enqueued(
+        worker: FrequencyWindowWorker,
+        args: %{freq_start: FrequencyWindowWorker.start_arg(t)}
+      )
+
+      refute_enqueued(worker: ObservationDrawWorker, args: %{draw_id: draw.id})
+      refute_received {@event, ^ref, _, %{kind: :fetch, weather_time: nil}}
     end
   end
 

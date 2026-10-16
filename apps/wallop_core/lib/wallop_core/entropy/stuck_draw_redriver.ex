@@ -31,11 +31,12 @@ defmodule WallopCore.Entropy.StuckDrawRedriver do
 
   ## Fetch jobs
 
-  For each hour with pending observation-weather draws and no stored
+  For each hour with pending Land Observations draws and no stored
   reading, while the database clock is before the hour's fetch deadline
   (`WallopCore.Entropy.V6Rules.fetch_deadline/2`), the hour's fetch job is
   inserted again. It is unique among live jobs, so an hour whose job is
-  still alive is untouched.
+  still alive is untouched. A grid-frequency window job is never re-driven:
+  a window that was not stored by F falls back by rule.
 
   ## What it never does
 
@@ -78,7 +79,8 @@ defmodule WallopCore.Entropy.StuckDrawRedriver do
   # (either half of the pair set) is left out once its ObservationDrawWorker
   # job has been cancelled. Forecast draws (pair NULL) are read only when $1.
   @stuck_sql """
-  SELECT d.id::text, d.lock_schema_version, d.entropy_composition, d.drand_round, d.weather_time
+  SELECT d.id::text, d.lock_schema_version, d.entropy_composition, d.drand_round, d.weather_time,
+    d.freq_start
   FROM draws d
   WHERE d.status IN ('awaiting_entropy', 'pending_entropy')
     AND ((d.lock_schema_version IS NOT NULL OR d.entropy_composition IS NOT NULL) OR $1)
@@ -100,7 +102,8 @@ defmodule WallopCore.Entropy.StuckDrawRedriver do
   """
 
   @pending_v6_sql """
-  SELECT d.id::text, d.lock_schema_version, d.entropy_composition, d.drand_round, d.weather_time
+  SELECT d.id::text, d.lock_schema_version, d.entropy_composition, d.drand_round, d.weather_time,
+    d.freq_start
   FROM draws d
   WHERE d.status IN ('awaiting_entropy', 'pending_entropy')
     AND (d.lock_schema_version IS NOT NULL OR d.entropy_composition IS NOT NULL)
@@ -152,13 +155,15 @@ defmodule WallopCore.Entropy.StuckDrawRedriver do
   defp redrive_fetches(now) do
     %{rows: rows} = Repo.query!(@pending_v6_sql, [])
 
+    # Land Obs draws only: a grid-frequency window job is never re-driven.
+    # A lost one falls back by rule.
     hours =
       for row <- rows,
           draw <- [to_draw(row)],
-          {:ok, rules} <- [V6Rules.rules(draw)],
-          before?(now, V6Rules.fetch_deadline(rules, draw)),
+          {:ok, :landobs} <- [V6Rules.rules(draw)],
+          before?(now, V6Rules.fetch_deadline(:landobs, draw)),
           uniq: true,
-          do: {rules, draw.weather_time}
+          do: {:landobs, draw.weather_time}
 
     Enum.each(hours, fn {rules, wt} ->
       if Observations.pending_draw_ids(wt) != [] and inserted?(insert_fetch(rules, wt)) do
@@ -172,13 +177,14 @@ defmodule WallopCore.Entropy.StuckDrawRedriver do
     end)
   end
 
-  defp to_draw([id, schema, tag, round, wt]) do
+  defp to_draw([id, schema, tag, round, wt, t]) do
     %{
       id: id,
       lock_schema_version: schema,
       entropy_composition: tag,
       drand_round: round,
-      weather_time: wt && DateTime.from_naive!(wt, "Etc/UTC")
+      weather_time: wt && DateTime.from_naive!(wt, "Etc/UTC"),
+      freq_start: t && DateTime.from_naive!(t, "Etc/UTC")
     }
   end
 

@@ -1,7 +1,8 @@
 defmodule WallopCore.Entropy.V6Execution do
   @moduledoc """
-  Runs an observation-weather draw once its fetch window has closed and its
-  drand round has published. Shared by `ObservationDrawWorker` and
+  Runs a lock schema 6 draw (Met Office Land Observations or GB grid
+  frequency) once its fetch window has closed and its drand round has
+  published. Shared by `ObservationDrawWorker` and
   `EntropyWorker`, so a draw is executed under the rules of the
   (lock_schema_version, entropy_composition) pair it was locked with
   (`WallopCore.Entropy.V6Rules`), whatever the operator's flag says now.
@@ -9,7 +10,8 @@ defmodule WallopCore.Entropy.V6Execution do
   The executor has no discretion. It passes only the drand beacon to
   `:execute_v6`, which reads the stored reading itself under the draw's row
   lock and falls back to drand alone only when nothing is stored and the
-  database clock is past the fetch deadline.
+  database clock is past the fetch deadline (for grid frequency, past
+  F + M).
 
   ## A draw is never marked failed once its drand round is published
 
@@ -41,10 +43,11 @@ defmodule WallopCore.Entropy.V6Execution do
          a manual re-insert;
        * a wait (`WallopCore.Errors.V6NotYet`, for example the app clock
          behind the database's), which snoozes with nothing written.
-    2. **The database.** The draws guard refuses moving an
-       observation-weather draw to `failed` once the database clock is at or
-       past its fetch deadline F, a minute or more before pub(R), from any
-       status and whatever path tries it. Failing before F stays allowed:
+    2. **The database.** The draws guard refuses moving a lock schema 6
+       draw to `failed` once the database clock is at or past its fetch
+       deadline F (chosen by tag; a minute or more before pub(R) for Land
+       Obs, M or more for grid frequency), from any status and whatever
+       path tries it, on the statement clock and again at commit. Failing before F stays allowed:
        that is a visible abort before anything is knowable.
 
   The stored `drand_response` is the beacon re-encoded as
@@ -55,7 +58,9 @@ defmodule WallopCore.Entropy.V6Execution do
   publication time of drand's latest round. The guards above trust that
   clock, so a skew over 5 s is reported.
 
-  Telemetry: `[:wallop_core, :v6, :executed]` (`%{station, fallback?}`),
+  Telemetry: `[:wallop_core, :v6, :executed]`
+  (`%{entropy_composition, station, fallback?}`, from
+  `WallopCore.Entropy.V6Rules.report_meta/2`),
   `[:wallop_core, :v6, :execute_error]` (`%{draw_id}`),
   `[:wallop_core, :v6, :exec_refused]` (`%{draw_id, reason}`),
   `[:wallop_core, :v6, :drand_exhausted]` (`%{draw_id, reason}`) and
@@ -78,7 +83,6 @@ defmodule WallopCore.Entropy.V6Execution do
   @skew_check_timeout_ms 3_000
   alias WallopCore.Errors.{V6ExecRefused, V6NotYet}
   alias WallopCore.Log
-  alias WallopCore.Weather.Observations
 
   @spec run(map(), pos_integer(), pos_integer()) ::
           :ok | {:snooze, pos_integer()} | {:cancel, String.t()} | {:error, term()}
@@ -254,12 +258,11 @@ defmodule WallopCore.Entropy.V6Execution do
   end
 
   defp report(draw) do
-    station = with %{station: s} <- Observations.for_draw(draw), do: s
-
-    :telemetry.execute([:wallop_core, :v6, :executed], %{count: 1}, %{
-      station: station,
-      fallback?: is_nil(station)
-    })
+    :telemetry.execute(
+      [:wallop_core, :v6, :executed],
+      %{count: 1},
+      V6Rules.report_meta(V6Rules.rules!(draw), draw)
+    )
   end
 
   # Only after pub(R): never fails the draw, and never cancels the job. A

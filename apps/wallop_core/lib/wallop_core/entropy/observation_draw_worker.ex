@@ -1,11 +1,12 @@
 defmodule WallopCore.Entropy.ObservationDrawWorker do
   @moduledoc """
-  Executes an observation-weather draw at its result time. Dispatches on the
-  draw's stored lock schema version: a draw locked under schema 6 is run by
+  Executes a lock schema 6 draw (Met Office Land Observations or GB grid
+  frequency) at its result time. Dispatches on the draw's stored lock
+  schema version: a draw locked under schema 6 is run by
   `WallopCore.Entropy.V6Execution`; any other draw is cancelled, untouched.
 
-  The job carries only the draw id. It never chooses a weather value: the
-  execution reads the stored reading, or falls back by rule.
+  The job carries only the draw id. It never chooses a value: the
+  execution reads the stored reading or window, or falls back by rule.
 
   A draw is never marked failed once its drand round is published. Two
   layers keep that true, described in `WallopCore.Entropy.V6Execution`: the
@@ -13,8 +14,8 @@ defmodule WallopCore.Entropy.ObservationDrawWorker do
   leaves a discarded job for the re-drive; it waits; or, for stored state
   no retry can change, it cancels, and the cancelled job keeps the re-drive
   away), and the draws guard refuses `failed`
-  once the database clock is at or past the fetch deadline F, a minute or
-  more before pub(R).
+  once the database clock is at or past the fetch deadline F (by tag),
+  before pub(R).
 
   Unique on `draw_id` among live jobs only (Oban's `:incomplete` group:
   available, scheduled, executing, retryable, suspended), so a cancelled or
