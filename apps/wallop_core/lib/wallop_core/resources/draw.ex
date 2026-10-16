@@ -743,6 +743,14 @@ defmodule WallopCore.Resources.Draw do
                     OR NEW.freq_fallback_reason IS NOT NULL) THEN
               RAISE EXCEPTION 'frequency fields are set only on grid-frequency draws';
             END IF;
+            -- A grid-frequency draw never carries a weather column, at any
+            -- status: its seed has no weather input.
+            IF NEW.entropy_composition IS NOT DISTINCT FROM wallop_freq_tag()
+               AND (NEW.weather_station IS NOT NULL OR NEW.weather_time IS NOT NULL
+                    OR NEW.weather_value IS NOT NULL OR NEW.weather_observation_time IS NOT NULL
+                    OR NEW.weather_fallback_reason IS NOT NULL) THEN
+              RAISE EXCEPTION 'a grid-frequency draw carries no weather fields';
+            END IF;
             IF OLD.status <> 'open' AND NEW.freq_start IS DISTINCT FROM OLD.freq_start THEN
               RAISE EXCEPTION 'freq_start is frozen once a draw has left open';
             END IF;
@@ -779,9 +787,7 @@ defmodule WallopCore.Resources.Draw do
                    OR NEW.freq_start IS DISTINCT FROM wallop_freq_start(NEW.drand_round) THEN
                   RAISE EXCEPTION 'freq_start must follow from drand_round';
                 END IF;
-                IF NEW.weather_station IS NOT NULL OR NEW.weather_time IS NOT NULL THEN
-                  RAISE EXCEPTION 'a grid-frequency draw carries no weather fields';
-                END IF;
+                -- Its weather columns are refused above, at every status.
                 IF wallop_freq_lock_allowed(clock_timestamp() AT TIME ZONE 'UTC', NEW.freq_start)
                    IS NOT TRUE THEN
                   RAISE EXCEPTION 'v6 lock is too late for this draw time';

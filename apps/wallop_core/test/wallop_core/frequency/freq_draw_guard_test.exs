@@ -142,6 +142,65 @@ defmodule WallopCore.Frequency.FreqDrawGuardTest do
     end
   end
 
+  describe "the weather columns on a frequency draw" do
+    @weather_columns [
+      {"weather_station", "wmo-03749", "text"},
+      {"weather_time", ~N[2026-10-14 19:00:00], "timestamp"},
+      {"weather_value", "12;1013;80;25000", "text"},
+      {"weather_observation_time", ~N[2026-10-14 19:00:00], "timestamp"},
+      {"weather_fallback_reason", "no_observation_by_deadline", "text"}
+    ]
+
+    @no_weather "a grid-frequency draw carries no weather fields"
+
+    test "each is refused at lock", %{draw: d, s: s} do
+      {hash, canonical} = entry_hash(d)
+
+      for {col, value, cast} <- @weather_columns do
+        assert try_sql(
+                 """
+                 UPDATE draws SET status = 'awaiting_entropy', lock_schema_version = '6',
+                   entropy_composition = $2, drand_chain = $3, drand_round = $4, freq_start = $5,
+                   entry_hash = $6, entry_canonical = $7, #{col} = $8::#{cast}
+                 WHERE id = $1
+                 """,
+                 [
+                   dump(d.id),
+                   Freq.tag(),
+                   Quicknet.chain_hash(),
+                   s.round,
+                   DateTime.to_naive(s.freq_start),
+                   hash,
+                   canonical,
+                   value
+                 ]
+               ) == @no_weather,
+               col
+      end
+
+      # Control: the same lock without a weather column is kept.
+      assert raw_freq_lock(d, s) == nil
+    end
+
+    test "each is refused after lock, at every later status", %{draw: d, s: s} do
+      assert raw_freq_lock(d, s) == nil
+
+      for status <- ~w(awaiting_entropy pending_entropy) do
+        assert try_sql("UPDATE draws SET status = $2 WHERE id = $1", [dump(d.id), status]) == nil
+        Repo.query!("UPDATE draws SET status = $2 WHERE id = $1", [dump(d.id), status])
+
+        for {col, value, cast} <- @weather_columns do
+          assert try_sql("UPDATE draws SET #{col} = $2::#{cast} WHERE id = $1", [
+                   dump(d.id),
+                   value
+                 ]) ==
+                   @no_weather,
+                 "#{col} at #{status}"
+        end
+      end
+    end
+  end
+
   describe "failing a frequency draw (the failed rule by tag)" do
     test "is refused once its F has passed, and allowed before F" do
       {_op, key} = create_freq_operator()

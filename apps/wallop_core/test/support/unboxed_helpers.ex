@@ -92,8 +92,10 @@ defmodule WallopCore.UnboxedHelpers do
 
       for sql <- [
             "DELETE FROM oban_jobs WHERE args->>'draw_id' IN (SELECT id::text FROM draws WHERE operator_id = $1)",
-            "DELETE FROM oban_jobs WHERE args->>'freq_start' IN " <>
-              "(SELECT to_char(freq_start, 'YYYY-MM-DD\"T\"HH24:MI:SS\"Z\"') FROM draws WHERE operator_id = $1)",
+            # By instant, not by one text form of it.
+            "DELETE FROM oban_jobs j WHERE j.args ? 'freq_start' AND EXISTS " <>
+              "(SELECT 1 FROM draws d WHERE d.operator_id = $1 " <>
+              "AND (j.args->>'freq_start')::timestamptz = d.freq_start AT TIME ZONE 'UTC')",
             "DELETE FROM execution_receipts WHERE operator_id = $1",
             "DELETE FROM operator_receipts WHERE operator_id = $1",
             "DELETE FROM add_entries_idempotency WHERE draw_id IN (#{draws})",
