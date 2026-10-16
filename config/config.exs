@@ -18,7 +18,14 @@ config :wallop_core,
 # Consuming apps MUST override this with a different prefix — see README.
 config :wallop_core, Oban,
   repo: WallopCore.Repo,
-  queues: [entropy: 10, webhooks: 5, default: 5, weather: 5],
+  # Each entropy source has its own queue, so one source being slow (a
+  # trickled Elexon response, a hostile drand relay) never holds another's
+  # slots. :entropy is the forecast EntropyWorker; :weather the Land Obs
+  # fetch; :frequency the grid-frequency window polls (up to about 14
+  # windows live at once, each poll up to its 15 s job timeout every 20 s,
+  # so 15 covers them all); :v6_execution the schema 6 executions
+  # (ObservationDrawWorker, both tags), sized like :entropy.
+  queues: [entropy: 10, webhooks: 5, default: 5, weather: 5, frequency: 15, v6_execution: 10],
   plugins: [
     {Oban.Plugins.Cron,
      crontab: [

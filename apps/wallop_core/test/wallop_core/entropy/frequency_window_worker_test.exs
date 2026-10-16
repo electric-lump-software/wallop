@@ -53,7 +53,7 @@ defmodule WallopCore.Entropy.FrequencyWindowWorkerTest do
       job = FrequencyWindowWorker.new_for_start(t)
       assert job.changes.args == %{freq_start: "2026-10-14T19:54:15Z"}
       assert job.changes.scheduled_at == ~U[2026-10-14 19:56:30.000000Z]
-      assert job.changes.queue == "weather"
+      assert job.changes.queue == "frequency"
       assert FrequencyWindowWorker.start_arg(~U[2026-10-14 19:54:15Z]) == "2026-10-14T19:54:15Z"
     end
 
@@ -356,9 +356,9 @@ defmodule WallopCore.Entropy.FrequencyWindowWorkerTest do
       assert timeout < Schedule.poll_interval_seconds() * 1_000
     end
 
-    test "the weather queue runs on the wallop service" do
+    test "the frequency queue runs on the wallop service" do
       queues = Application.fetch_env!(:wallop_core, Oban) |> Keyword.fetch!(:queues)
-      assert queues[:weather] >= 2
+      assert queues[:frequency] >= 2
     end
 
     test "the next poll is at least 2 s before F, and polling stops when it can't be" do

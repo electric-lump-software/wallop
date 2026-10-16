@@ -22,7 +22,9 @@ defmodule WallopCore.Entropy.ObservationDrawWorker do
   discarded job can be inserted again by the re-drive.
   """
   use Oban.Worker,
-    queue: :entropy,
+    # Its own queue, apart from the forecast EntropyWorker's :entropy, so a
+    # burst of v6 executions never delays a forecast draw.
+    queue: :v6_execution,
     max_attempts: 10,
     unique: [period: :infinity, keys: [:draw_id], states: :incomplete]
 
