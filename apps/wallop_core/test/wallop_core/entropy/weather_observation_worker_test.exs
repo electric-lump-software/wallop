@@ -94,7 +94,8 @@ defmodule WallopCore.Entropy.WeatherObservationWorkerTest do
       assert Observations.pending_v6_draw_ids(wt) == []
 
       for station <- [@primary, @backup] do
-        assert_receive {@poll, ^ref, %{count: 1}, %{station: ^station, ok?: true, error: nil}}
+        assert_receive {@poll, ^ref, %{count: 1},
+                        %{station: ^station, weather_time: ^wt, ok?: true, error: nil}}
       end
 
       assert_receive {@stored, ^ref, %{count: 1}, %{station: @primary, weather_time: ^wt}}
@@ -262,17 +263,57 @@ defmodule WallopCore.Entropy.WeatherObservationWorkerTest do
 
     test "an exception during a poll snoozes until F instead of failing the job" do
       {wt, [d]} = v6_draws(-6 * 60, 1)
-      ref = attach([@poll_error])
+      ref = attach([@poll_error, @poll])
       # A non-string base URL makes the client raise inside the poll.
       Application.put_env(:wallop_core, LandObsClient, base_url: 123)
 
       log = capture_log(fn -> assert {:snooze, _} = run(wt) end)
       assert Observations.for_draw(d.id) == nil
-      assert_receive {@poll_error, ^ref, %{count: 1}, %{weather_time: ^wt, kind: :error}}
+
+      # Counted per station, in both events.
+      for station <- [@primary, @backup] do
+        assert_receive {@poll_error, ^ref, %{count: 1},
+                        %{weather_time: ^wt, station: ^station, kind: :error}}
+
+        assert_receive {@poll, ^ref, %{count: 1},
+                        %{
+                          station: ^station,
+                          weather_time: ^wt,
+                          ok?: false,
+                          error: {:raised, :error}
+                        }}
+      end
+
       assert log =~ "ArgumentError"
 
       {late_wt, _} = v6_draws(-(@w + 60), 1)
       assert :ok = run(late_wt)
+    end
+
+    test "when the database clock can't be read it snoozes, even well past F on the BEAM clock" do
+      # F passed long ago: stopping on the BEAM clock would return :ok here.
+      {wt, _} = v6_draws(-(@w + 3600), 1)
+      ref = attach([@poll_error])
+
+      # Every query in an aborted transaction fails, so the run's first
+      # database-clock read raises and so does the read after the failure.
+      log =
+        capture_log(fn ->
+          result =
+            Repo.transaction(fn ->
+              {:error, _} = Repo.query("SELECT 1/0")
+              Repo.rollback(run(wt))
+            end)
+
+          send(self(), {:result, result})
+        end)
+
+      assert_received {:result, {:error, {:snooze, s}}}
+      assert s == Schedule.poll_interval_seconds()
+      assert log =~ "Postgrex.Error"
+
+      assert_receive {@poll_error, ^ref, %{count: 1},
+                      %{weather_time: ^wt, station: nil, kind: :error}}
     end
 
     test "logs and telemetry carry no body and no key" do
@@ -334,6 +375,19 @@ defmodule WallopCore.Entropy.WeatherObservationWorkerTest do
 
       {:ok, other} = Oban.insert(WeatherObservationWorker.new_for_hour(~U[2026-10-14 20:00:00Z]))
       refute other.conflict?
+    end
+
+    test "new_for_hour takes whole UTC hours only" do
+      for bad <- [
+            ~U[2026-10-14 19:00:01Z],
+            ~U[2026-10-14 19:30:00Z],
+            ~U[2026-10-14 19:00:00.000001Z],
+            %{~U[2026-10-14 19:00:00Z] | time_zone: "Europe/London"}
+          ] do
+        assert_raise ArgumentError, ~r/whole UTC hour/, fn ->
+          WeatherObservationWorker.new_for_hour(bad)
+        end
+      end
     end
 
     test "the job timeout is at most 30 s and fits inside the poll interval" do

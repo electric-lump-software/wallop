@@ -99,7 +99,7 @@ defmodule WallopCore.Application do
           config :wallop_core, Oban,
             repo: WallopCore.Repo,
             prefix: "oban_app",
-            queues: [entropy: 10, webhooks: 5, default: 5],
+            queues: [entropy: 10, webhooks: 5, default: 5, weather: 5],
             plugins: []
       """)
     end
