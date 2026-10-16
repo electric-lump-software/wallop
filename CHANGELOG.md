@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### drand signatures are checked on observation-weather draws; building wallop_core needs Rust
+
+**CHANGED.** For observation-weather draws, core now checks each drand beacon's BLS signature against quicknet's public key before using it. It also checks that the chain is quicknet, that the round is the one asked for, and that the randomness is sha256 of the signature. A relay that serves a forged or malformed beacon is treated like any other bad relay: the next relay is asked. If every relay fails, it is a transient failure that retries, and the draw is never marked failed. Forecast draws are unchanged in this release.
+
+**BUILD.** The check is a Rust NIF (`apps/wallop_core/native/drand_bls`) that wraps the `drand-verify` crate. It is built from source when wallop_core compiles, so:
+
+- **Building wallop_core needs a Rust toolchain, 1.91 or later.** 1.94.1 is pinned in the crate's `rust-toolchain.toml`, in the Dockerfile and in CI. Without `cargo` on the `PATH`, compilation stops and says so.
+- **cargo needs network access** the first time it builds, to fetch crates. The crates come only from the committed `Cargo.lock`; if the lock is out of date, compilation stops.
+- **The app refuses to boot without a working NIF.** At start-up it checks that a known quicknet round verifies and that a forged one doesn't. A node that can't check signatures doesn't run draws.
+- An unused `drand_verify.so` also ships in `priv/native`, next to `drand_bls.so`. The `drand-verify` crate builds a library of its own, and Rustler copies every library it builds. It is never loaded.
+
+**Operator note.** No migration, no protocol change and no change to signed bytes. If you build your own image, add a Rust toolchain to the build stage; the runtime image needs nothing new.
+
 ### The monthly quota is gone
 
 **BREAKING.** The monthly draw quota is removed:

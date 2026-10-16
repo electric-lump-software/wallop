@@ -48,6 +48,14 @@ RUN mix deps.compile
 COPY apps/wallop_web/assets/package.json apps/wallop_web/assets/package-lock.json apps/wallop_web/assets/
 RUN cd apps/wallop_web/assets && npm ci
 
+# Fetch the drand BLS NIF's crates in their own layer, from the committed
+# lock file, so a code change doesn't download them again.
+COPY apps/wallop_core/native/drand_bls/Cargo.toml \
+     apps/wallop_core/native/drand_bls/Cargo.lock \
+     apps/wallop_core/native/drand_bls/rust-toolchain.toml \
+     apps/wallop_core/native/drand_bls/
+RUN cd apps/wallop_core/native/drand_bls && cargo fetch --locked
+
 # Copy config and app code
 COPY config config
 COPY apps apps
