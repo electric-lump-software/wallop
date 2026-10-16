@@ -1052,6 +1052,7 @@ defmodule WallopCore.Resources.Draw do
       # nothing for forecast). Every change below follows the recorded value.
       change({WallopCore.Resources.Draw.Changes.ResolveLockSchema, []})
       validate({WallopCore.Resources.Draw.Validations.WeatherTime, []})
+      validate({WallopCore.Resources.Draw.Validations.DrawAt, []})
 
       change({WallopCore.Resources.Draw.Changes.LockDraw, []})
 

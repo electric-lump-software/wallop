@@ -49,7 +49,36 @@ defmodule WallopWeb.ApiSpec do
     )
     |> Map.put(:security, [%{"bearerAuth" => []}])
     |> tidy_list_draws()
+    |> type_v6_datetimes()
   end
+
+  # AshJsonApi leaves microsecond UTC datetimes untyped. Type the
+  # observation-weather fields: the lock's `draw_at` argument and the draw's
+  # `expected_result_at`. Other datetime fields are left as they are.
+  defp type_v6_datetimes(spec) do
+    attributes = [Access.key(:properties), Access.key(:attributes), Access.key(:properties)]
+
+    lock_attributes =
+      [Access.key(:paths), Access.key("/draws/{id}/lock"), Access.key(:patch)] ++
+        [Access.key(:requestBody), Access.key(:content), Access.key("application/vnd.api+json")] ++
+        [Access.key(:schema), Access.key(:properties), Access.key(:data)] ++ attributes
+
+    spec
+    |> update_in(
+      [Access.key(:components), Access.key(:schemas), Access.key("draw")] ++
+        attributes ++ [Access.key("expected_result_at")],
+      &nullable_datetime/1
+    )
+    |> update_in(lock_attributes ++ [Access.key("draw_at")], &nullable_datetime/1)
+  end
+
+  defp nullable_datetime(%{"description" => description}),
+    do: %OpenApiSpex.Schema{
+      type: :string,
+      format: :"date-time",
+      nullable: true,
+      description: description
+    }
 
   # AshJsonApi describes keyset paging generically (limit/offset wording,
   # before/count, no max) and its 200 schema forbids `links`. GET /draws is
