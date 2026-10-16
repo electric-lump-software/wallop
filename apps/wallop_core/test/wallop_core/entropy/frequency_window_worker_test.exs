@@ -108,7 +108,8 @@ defmodule WallopCore.Entropy.FrequencyWindowWorkerTest do
       elexon(t, "50012;50018;00000;49983;49980;49953;49912;49883")
 
       assert {:snooze, secs} = run(t)
-      assert secs in 1..Schedule.poll_interval_seconds()
+      # F is minutes away, so the next poll is a full interval on.
+      assert secs == Schedule.poll_interval_seconds()
       assert Windows.for_start(t) == nil
       assert status(d) == :awaiting_entropy
       stamp = Calendar.strftime(DateTime.add(t, 30), "%Y-%m-%dT%H:%M:%SZ")
@@ -358,6 +359,21 @@ defmodule WallopCore.Entropy.FrequencyWindowWorkerTest do
     test "the weather queue runs on the wallop service" do
       queues = Application.fetch_env!(:wallop_core, Oban) |> Keyword.fetch!(:queues)
       assert queues[:weather] >= 2
+    end
+
+    test "the next poll is at least 2 s before F, and polling stops when it can't be" do
+      t = ~U[2026-10-14 19:54:00.000000Z]
+      f = Schedule.fetch_deadline(t)
+      at = fn ms -> DateTime.add(f, -ms, :millisecond) end
+
+      assert FrequencyWindowWorker.next_poll(at.(60_000), t) ==
+               {:snooze, Schedule.poll_interval_seconds()}
+
+      assert FrequencyWindowWorker.next_poll(at.(10_000), t) == {:snooze, 8}
+      assert FrequencyWindowWorker.next_poll(at.(3_000), t) == {:snooze, 1}
+      assert FrequencyWindowWorker.next_poll(at.(2_999), t) == :ok
+      assert FrequencyWindowWorker.next_poll(at.(500), t) == :ok
+      assert FrequencyWindowWorker.next_poll(at.(-1_000), t) == :ok
     end
 
     test "window_state/2 mirrors wallop_freq_store_allowed exactly" do

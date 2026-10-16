@@ -145,13 +145,34 @@ defmodule WallopCore.Entropy.WeatherObservationWorker do
 
   @impl Oban.Worker
   def perform(%Oban.Job{args: %{"weather_time" => iso}}) when is_binary(iso) do
-    case DateTime.from_iso8601(iso) do
-      {:ok, weather_time, 0} -> run(weather_time)
-      _ -> {:cancel, :invalid_weather_time}
+    case runnable_hour(iso, @client) do
+      {:ok, weather_time} -> run(weather_time)
+      :error -> {:cancel, :invalid_weather_time}
     end
   end
 
   def perform(%Oban.Job{}), do: {:cancel, :invalid_weather_time}
+
+  @doc false
+  # The hour a job argument names, if the job may run: only the canonical
+  # form (`hour_arg/1`), so every job for an hour has the same argument and
+  # uniqueness can't be sidestepped by another spelling, and only a whole
+  # hour. The whole-hour rule is the real client's: the test client
+  # (allowed only in the test environment) fetches the hour at or before
+  # any time, which is how tests place "now" in a fetch window.
+  @spec runnable_hour(String.t(), module()) :: {:ok, DateTime.t()} | :error
+  def runnable_hour(iso, client) when is_binary(iso) do
+    with {:ok, wt, 0} <- DateTime.from_iso8601(iso),
+         true <- iso == hour_arg(wt),
+         true <- client != LandObsClient or whole_hour?(wt) do
+      {:ok, wt}
+    else
+      _ -> :error
+    end
+  end
+
+  defp whole_hour?(%DateTime{minute: 0, second: 0, microsecond: {0, _}}), do: true
+  defp whole_hour?(_), do: false
 
   defp run(wt) do
     now = DbClock.now()
@@ -192,7 +213,7 @@ defmodule WallopCore.Entropy.WeatherObservationWorker do
 
         if Observations.pending_draw_ids(wt) == [],
           do: :ok,
-          else: {:snooze, next_poll_in(now, wt)}
+          else: next_poll(now, wt)
 
       :closed ->
         :ok
@@ -328,9 +349,13 @@ defmodule WallopCore.Entropy.WeatherObservationWorker do
 
   defp first_poll_at(wt), do: DateTime.add(wt, Schedule.first_poll_after_weather_time_seconds())
 
-  defp next_poll_in(now, wt) do
+  @doc false
+  # The next poll, at least @deadline_margin_seconds before F; when there is
+  # no whole second left for that, polling stops.
+  @spec next_poll(DateTime.t(), DateTime.t()) :: {:snooze, pos_integer()} | :ok
+  def next_poll(now, wt) do
     left = DateTime.diff(Schedule.fetch_deadline(wt), now) - @deadline_margin_seconds
-    max(min(Schedule.poll_interval_seconds(), left), 1)
+    if left >= 1, do: {:snooze, min(Schedule.poll_interval_seconds(), left)}, else: :ok
   end
 
   defp seconds_until(t, now), do: max(DateTime.diff(t, now), 1)

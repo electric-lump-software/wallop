@@ -346,6 +346,62 @@ defmodule WallopCore.Entropy.WeatherObservationWorkerTest do
       assert {:cancel, :invalid_weather_time} =
                perform_job(WeatherObservationWorker, %{weather_time: "2026-10-14T19:00:00+01:00"})
     end
+
+    test "only the canonical argument runs" do
+      for arg <- [
+            "2026-10-14T19:00:00.000Z",
+            "2026-10-14T19:00:00+00:00",
+            "2026-10-14T19:00:00.5Z"
+          ] do
+        assert {:cancel, :invalid_weather_time} =
+                 perform_job(WeatherObservationWorker, %{weather_time: arg}),
+               arg
+      end
+
+      # The canonical form runs: an hour long past F stops without fetching.
+      stub_stations(%{"gcnfur" => "[]", "gcrem9" => "[]"})
+
+      assert :ok =
+               perform_job(WeatherObservationWorker, %{weather_time: "2026-10-14T19:00:00Z"})
+
+      refute_received {:fetched, _}
+    end
+
+    test "with the real client, only a whole hour runs" do
+      assert {:ok, ~U[2026-10-14 19:00:00Z]} =
+               WeatherObservationWorker.runnable_hour("2026-10-14T19:00:00Z", LandObsClient)
+
+      for arg <- ["2026-10-14T19:00:01Z", "2026-10-14T19:30:00Z", "2026-10-14T19:00:00.000Z"] do
+        assert WeatherObservationWorker.runnable_hour(arg, LandObsClient) == :error, arg
+      end
+
+      # The test client places "now" in a window with hours that aren't whole.
+      assert {:ok, _} =
+               WeatherObservationWorker.runnable_hour(
+                 "2026-10-14T19:00:01Z",
+                 WindowedLandObsClient
+               )
+
+      assert WeatherObservationWorker.runnable_hour(
+               "2026-10-14T19:00:01.000Z",
+               WindowedLandObsClient
+             ) ==
+               :error
+    end
+
+    test "the next poll is at least 5 s before F, and polling stops when it can't be" do
+      wt = ~U[2026-10-14 19:00:00Z]
+      f = Schedule.fetch_deadline(wt)
+      at = fn ms -> DateTime.add(f, -ms, :millisecond) end
+
+      assert WeatherObservationWorker.next_poll(at.(120_000), wt) ==
+               {:snooze, Schedule.poll_interval_seconds()}
+
+      assert WeatherObservationWorker.next_poll(at.(6_000), wt) == {:snooze, 1}
+      assert WeatherObservationWorker.next_poll(at.(5_999), wt) == :ok
+      assert WeatherObservationWorker.next_poll(at.(1_000), wt) == :ok
+      assert WeatherObservationWorker.next_poll(at.(-1_000), wt) == :ok
+    end
   end
 
   describe "the job" do
