@@ -3,7 +3,7 @@ defmodule WallopCore.ProtocolV6Test do
   alias WallopCore.Drand.Quicknet
   alias WallopCore.Entropy.DrandClient
   alias WallopCore.Protocol
-  alias WallopCore.Protocol.Tags.LandObs
+  alias WallopCore.Protocol.Tags.{Freq, LandObs}
 
   @landobs "drand-quicknet+metoffice-landobs-v1"
 
@@ -67,7 +67,29 @@ defmodule WallopCore.ProtocolV6Test do
   # One entry per accepted entropy tag: {tag module, lock input, exec input}.
   # A second tag adds an entry here, and every field-set test below runs for
   # it against that tag's own expected key lists.
-  @accepted_tags [{LandObs, @lock, @exec}]
+  # The same round under the grid-frequency tag: its window starts at
+  # 19:54:00Z and the latest lock is 19:53:00Z.
+  @freq_lock %{
+    @lock
+    | entropy_composition: "drand-quicknet+elexon-freq-v1",
+      weather_station: nil,
+      weather_time: nil
+  }
+  @freq_lock Map.put(@freq_lock, :freq_start, ~U[2026-10-14 19:54:00.000000Z])
+
+  @freq_exec %{
+    @exec
+    | entropy_composition: "drand-quicknet+elexon-freq-v1",
+      weather_station: nil,
+      weather_observation_time: nil,
+      weather_value: nil
+  }
+  @freq_exec Map.merge(@freq_exec, %{
+               freq_value: "50018;50012;49983;49980;49953;49912;49883;49887",
+               freq_fallback_reason: nil
+             })
+
+  @accepted_tags [{LandObs, @lock, @exec}, {Freq, @freq_lock, @freq_exec}]
 
   test "the accepted tags are exactly the listed tag modules" do
     assert Protocol.v6_entropy_compositions() ==
@@ -139,7 +161,13 @@ defmodule WallopCore.ProtocolV6Test do
     end
 
     test "any other tag is refused" do
-      for tag <- [@landobs, "drand-quicknet+metoffice-landobs-v2", "", nil] do
+      for tag <- [
+            @landobs,
+            "drand-quicknet+elexon-freq-v1",
+            "drand-quicknet+metoffice-landobs-v2",
+            "",
+            nil
+          ] do
         assert_raise ArgumentError, ~r/entropy_composition/, fn ->
           Protocol.build_receipt_payload(Map.put(v5_input(@lock), :entropy_composition, tag))
         end

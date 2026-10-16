@@ -7,7 +7,7 @@ defmodule WallopCore.Protocol do
   """
 
   alias WallopCore.Drand.Quicknet
-  alias WallopCore.Protocol.Tags.LandObs
+  alias WallopCore.Protocol.Tags.{Freq, LandObs}
 
   @doc """
   Compute the entry hash for a draw.
@@ -136,6 +136,25 @@ defmodule WallopCore.Protocol do
     seed_bytes = :crypto.hash(:sha256, jcs_string)
 
     {seed_bytes, jcs_string}
+  end
+
+  @doc """
+  The seed for a grid-frequency draw: SHA-256 over
+  JCS{drand_randomness, entry_hash, freq_value}. The `freq_value` key keeps
+  it apart from the weather seed and the drand-only seed, even for the same
+  string. A grid-frequency fallback uses the drand-only seed,
+  `compute_seed/2`.
+  """
+  @spec compute_freq_seed(String.t(), String.t(), String.t()) :: {<<_::256>>, String.t()}
+  def compute_freq_seed(entry_hash, drand_randomness, freq_value) do
+    jcs_string =
+      Jcs.encode(%{
+        "drand_randomness" => drand_randomness,
+        "entry_hash" => entry_hash,
+        "freq_value" => freq_value
+      })
+
+    {:crypto.hash(:sha256, jcs_string), jcs_string}
   end
 
   @receipt_schema_version "5"
@@ -399,7 +418,7 @@ defmodule WallopCore.Protocol do
 
   @v6_lock_schema_version "6"
   @v6_execution_schema_version "5"
-  @v6_tag_modules [LandObs]
+  @v6_tag_modules [LandObs, Freq]
 
   # Inputs every lock v6 / execution v5 receipt needs, whatever the tag.
   # The weather inputs must be present but may be nil here: each tag
@@ -453,6 +472,14 @@ defmodule WallopCore.Protocol do
   @spec landobs_fallback_reason() :: String.t()
   def landobs_fallback_reason, do: LandObs.fallback_reason()
 
+  @doc "The GB grid frequency entropy tag, for lock v6 / execution v5."
+  @spec freq_entropy_composition() :: String.t()
+  def freq_entropy_composition, do: Freq.tag()
+
+  @doc "The only `freq_fallback_reason` allowed under the grid-frequency tag."
+  @spec freq_fallback_reason() :: String.t()
+  def freq_fallback_reason, do: Freq.fallback_reason()
+
   @doc "The entropy tags accepted by lock v6 / execution v5."
   @spec v6_entropy_compositions() :: [String.t()]
   def v6_entropy_compositions, do: Enum.map(@v6_tag_modules, & &1.tag())
@@ -463,7 +490,8 @@ defmodule WallopCore.Protocol do
   Takes the same keys as `build_receipt_payload/1`, plus
   `entropy_composition`, which picks the tag's rules and is signed
   verbatim. A tag not in `v6_entropy_compositions/0`, or none, raises
-  `ArgumentError`. See the tag modules (`WallopCore.Protocol.Tags.LandObs`)
+  `ArgumentError`. See the tag modules (`WallopCore.Protocol.Tags.LandObs`,
+  `WallopCore.Protocol.Tags.Freq`)
   for each tag's rules.
   """
   @spec build_v6_lock_payload(map()) :: binary()
