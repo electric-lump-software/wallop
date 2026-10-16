@@ -7,6 +7,13 @@ if config_env() in [:dev, :test] do
     config :wallop_core, :met_office_api_key, met_key
   end
 
+  # Optional: only observation-weather draws use it. When it's missing, those
+  # draws fall back by rule (visible in the receipt); forecast draws are
+  # unaffected.
+  if obs_key = env["MET_OFFICE_OBS_API_KEY"] do
+    config :wallop_core, :met_office_obs_api_key, obs_key
+  end
+
   if config_env() == :dev do
     vault_key =
       env["VAULT_KEY"] ||
@@ -78,6 +85,13 @@ if config_env() == :prod do
       raise "MET_OFFICE_API_KEY environment variable is not set"
 
   config :wallop_core, :met_office_api_key, met_office_api_key
+
+  # Optional: only observation-weather draws use it. When it's missing, those
+  # draws fall back by rule (visible in the receipt); forecast draws are
+  # unaffected.
+  if obs_key = System.get_env("MET_OFFICE_OBS_API_KEY") do
+    config :wallop_core, :met_office_obs_api_key, obs_key
+  end
 
   if redis_url = System.get_env("REDIS_URL") do
     config :wallop_core, :redis_url, redis_url
