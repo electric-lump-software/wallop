@@ -36,6 +36,7 @@ defmodule WallopCore.Entropy.ElexonFreqClient do
           | :body_too_large
           | :invalid_json
           | :too_deep
+          | :duplicate_key
           | :invalid_response
           | {:unexpected_status, integer()}
           | {:transport, atom()}
@@ -73,6 +74,7 @@ defmodule WallopCore.Entropy.ElexonFreqClient do
       {:ok, %{"data" => rows}} when is_list(rows) -> {:ok, rows}
       {:ok, _} -> {:error, :invalid_response}
       {:error, :too_deep} -> {:error, :too_deep}
+      {:error, :duplicate_key} -> {:error, :duplicate_key}
       {:error, _} -> {:error, :invalid_json}
     end
   end

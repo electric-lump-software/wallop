@@ -66,6 +66,9 @@ defmodule WallopCore.Entropy.ElexonFreqClientTest do
           %{"invalid" => %{"reason" => "stuck"}} ->
             {:error, :stuck}
 
+          %{"invalid" => %{"reason" => "duplicate_key"}} ->
+            {:error, :duplicate_key}
+
           %{"invalid" => %{"reason" => reason, "at" => at}} ->
             {:error, {String.to_existing_atom(reason), at}}
         end

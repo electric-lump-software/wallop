@@ -34,6 +34,7 @@ defmodule WallopCore.Entropy.LandObsClient do
           | :body_too_large
           | :invalid_json
           | :too_deep
+          | :duplicate_key
           | :invalid_response
           | :missing_hour
           | :duplicate_hour
@@ -78,6 +79,7 @@ defmodule WallopCore.Entropy.LandObsClient do
       {:ok, rows} when is_list(rows) -> {:ok, rows}
       {:ok, _} -> {:error, :invalid_response}
       {:error, :too_deep} -> {:error, :too_deep}
+      {:error, :duplicate_key} -> {:error, :duplicate_key}
       {:error, _} -> {:error, :invalid_json}
     end
   end
