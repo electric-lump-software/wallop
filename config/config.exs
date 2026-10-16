@@ -18,7 +18,7 @@ config :wallop_core,
 # Consuming apps MUST override this with a different prefix — see README.
 config :wallop_core, Oban,
   repo: WallopCore.Repo,
-  queues: [entropy: 10, webhooks: 5, default: 5],
+  queues: [entropy: 10, webhooks: 5, default: 5, weather: 5],
   plugins: [
     {Oban.Plugins.Cron,
      crontab: [

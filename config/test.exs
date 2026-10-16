@@ -17,6 +17,10 @@ config :bcrypt_elixir, log_rounds: 1
 
 config :wallop_core, Oban, testing: :manual
 
+# The DB clock can't be set from a test; see WallopCore.Test.WindowedLandObsClient.
+config :wallop_core, WallopCore.Entropy.WeatherObservationWorker,
+  land_obs_client: WallopCore.Test.WindowedLandObsClient
+
 # The invariant suite checks the test database's max_prepared_transactions itself.
 config :wallop_core, :prepared_transactions_check, false
 
