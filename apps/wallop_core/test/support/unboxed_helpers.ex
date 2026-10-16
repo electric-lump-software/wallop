@@ -26,19 +26,24 @@ defmodule WallopCore.UnboxedHelpers do
 
       result =
         try do
+          # A caller may hold the transaction open until a deadline up to
+          # about 20 s away, past the default 15 s transaction timeout.
           unboxed(fn ->
-            Repo.transaction(fn ->
-              Repo.query!("SET LOCAL lock_timeout = '10s'")
-              statement.()
-              send(parent, {:done_statement, me})
+            Repo.transaction(
+              fn ->
+                Repo.query!("SET LOCAL lock_timeout = '10s'")
+                statement.()
+                send(parent, {:done_statement, me})
 
-              receive do
-                :commit -> :ok
-                :rollback -> Repo.rollback(:rolled_back)
-              after
-                10_000 -> Repo.rollback(:no_commit)
-              end
-            end)
+                receive do
+                  :commit -> :ok
+                  :rollback -> Repo.rollback(:rolled_back)
+                after
+                  30_000 -> Repo.rollback(:no_commit)
+                end
+              end,
+              timeout: 60_000
+            )
           end)
         rescue
           e in Postgrex.Error -> {:refused, e.postgres.message}

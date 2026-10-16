@@ -18,9 +18,12 @@ defmodule WallopCore.InvariantCase do
 
   import WallopCore.TestHelpers,
     only: [
+      create_freq_operator: 0,
       create_v6_operator: 0,
       ensure_infrastructure_key: 0,
       open_draw_with_entries: 1,
+      put_freq_awaiting!: 3,
+      put_frequency_window!: 2,
       put_observation!: 3,
       put_v6_awaiting!: 3
     ]
@@ -30,7 +33,6 @@ defmodule WallopCore.InvariantCase do
   # removed here too.
   @pending_tags [
     :pending_task_13,
-    :pending_task_F6,
     :pending_task_F9
   ]
 
@@ -363,6 +365,134 @@ defmodule WallopCore.InvariantCase do
         :binary.copy(<<0>>, 64)
       ]
     )
+  end
+
+  @doc """
+  A grid-frequency draw completed the way execution leaves it, ready for
+  its execution receipt. Its round published about ten seconds ago (plus
+  `opts[:minutes_ago]`), so F + M has passed. `kind` is `:observed` (T's
+  window, `opts[:value]`, is stored) or `:fallback`. `opts[:freq_start]`
+  stores another T (the receipt still signs the round's own), and
+  `opts[:triggers_off]` completes with every trigger off, for placing a
+  state the draws guard would refuse.
+
+  Returns `%{draw, input, cols, round, freq_start}` like
+  `completed_v6_receipt_input/2`.
+  """
+  def completed_freq_receipt_input(kind, opts \\ []) when kind in [:observed, :fallback] do
+    require Ash.Query
+
+    value = Keyword.get(opts, :value, "50012;50018;50012;49983;49980;49953;49912;49883")
+    api_key = Keyword.get_lazy(opts, :api_key, fn -> elem(create_freq_operator(), 1) end)
+    ensure_infrastructure_key()
+
+    round =
+      Quicknet.round_at_or_after(
+        DateTime.add(DateTime.utc_now(), -10 - Keyword.get(opts, :minutes_ago, 0) * 60)
+      )
+
+    t = Keyword.get(opts, :freq_start, FreqSchedule.freq_start_for_round(round))
+    draw = put_freq_awaiting!(open_draw_with_entries(api_key), t, round)
+    if kind == :observed, do: put_frequency_window!(t, value)
+    complete = if opts[:triggers_off], do: &with_triggers_off/1, else: & &1.()
+
+    executed_at = DateTime.utc_now()
+    ids = draw.id |> WallopCore.Entries.load_for_draw() |> Enum.map(& &1.uuid)
+    winners = Enum.take(Enum.reverse(ids), 2)
+
+    results =
+      winners
+      |> Enum.with_index(1)
+      |> Enum.map(fn {id, p} -> %{"position" => p, "entry_id" => id} end)
+
+    seed = :crypto.hash(:sha256, draw.id) |> Base.encode16(case: :lower)
+    signature = String.duplicate("cd", 48)
+
+    randomness =
+      :crypto.hash(:sha256, Base.decode16!(signature, case: :lower))
+      |> Base.encode16(case: :lower)
+
+    {freq_value, reason} =
+      case kind do
+        :observed -> {value, nil}
+        :fallback -> {nil, Freq.fallback_reason()}
+      end
+
+    Repo.query!("UPDATE draws SET status = 'pending_entropy' WHERE id = $1", [dump(draw.id)])
+
+    complete.(fn ->
+      Repo.query!(
+        """
+        UPDATE draws SET status = 'completed', executed_at = $2, seed = $3, seed_source = 'entropy',
+          results = $4, drand_randomness = $5, drand_signature = $6, freq_value = $7,
+          freq_fallback_reason = $8
+        WHERE id = $1
+        """,
+        [
+          dump(draw.id),
+          DateTime.to_naive(executed_at),
+          seed,
+          results,
+          randomness,
+          signature,
+          freq_value,
+          reason
+        ]
+      )
+    end)
+
+    draw_id = draw.id
+
+    lock =
+      WallopCore.Resources.OperatorReceipt
+      |> Ash.Query.filter(draw_id == ^draw_id)
+      |> Ash.read_one!(authorize?: false)
+
+    lock_payload = Jason.decode!(lock.payload_jcs)
+    lock_hash = :crypto.hash(:sha256, lock.payload_jcs) |> Base.encode16(case: :lower)
+
+    infra =
+      WallopCore.Resources.InfrastructureSigningKey
+      |> Ash.Query.filter(valid_from <= ^executed_at)
+      |> Ash.Query.sort(valid_from: :desc)
+      |> Ash.Query.limit(1)
+      |> Ash.read_one!(authorize?: false)
+
+    input = %{
+      entropy_composition: draw.entropy_composition,
+      draw_id: draw.id,
+      operator_id: draw.operator_id,
+      operator_slug: lock_payload["operator_slug"],
+      sequence: draw.operator_sequence,
+      lock_receipt_hash: lock_hash,
+      entry_hash: draw.entry_hash,
+      drand_chain: draw.drand_chain,
+      drand_round: round,
+      drand_randomness: randomness,
+      drand_signature: signature,
+      weather_station: nil,
+      weather_observation_time: nil,
+      weather_value: nil,
+      weather_fallback_reason: nil,
+      freq_value: freq_value,
+      freq_fallback_reason: reason,
+      wallop_core_version: to_string(Application.spec(:wallop_core, :vsn)),
+      fair_pick_version: lock_payload["fair_pick_version"],
+      seed: seed,
+      results: winners,
+      executed_at: executed_at,
+      signing_key_id: infra.key_id
+    }
+
+    cols = %{
+      draw_id: draw.id,
+      operator_id: draw.operator_id,
+      sequence: draw.operator_sequence,
+      lock_receipt_hash: lock_hash,
+      signing_key_id: infra.key_id
+    }
+
+    %{draw: draw, input: input, cols: cols, round: round, freq_start: t}
   end
 
   @doc """

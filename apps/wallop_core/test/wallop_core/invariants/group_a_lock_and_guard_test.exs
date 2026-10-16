@@ -421,6 +421,10 @@ defmodule WallopCore.Invariants.LockAndGuardTest do
     "O CREATE TRIGGER execution_receipt_immutability BEFORE DELETE OR UPDATE ON public.execution_receipts FOR EACH ROW EXECUTE FUNCTION prevent_execution_receipt_mutation()",
     "O CREATE TRIGGER execution_receipts_no_truncate BEFORE TRUNCATE ON public.execution_receipts FOR EACH STATEMENT EXECUTE FUNCTION prevent_execution_receipts_truncate()",
     "O CREATE TRIGGER execution_receipts_v6_guard BEFORE INSERT ON public.execution_receipts FOR EACH ROW EXECUTE FUNCTION guard_v6_execution_receipt()",
+    "O CREATE CONSTRAINT TRIGGER frequency_windows_commit_deadline AFTER INSERT ON public.frequency_windows DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION check_frequency_window_commit()",
+    "O CREATE TRIGGER frequency_windows_guard BEFORE INSERT ON public.frequency_windows FOR EACH ROW EXECUTE FUNCTION guard_frequency_window_insert()",
+    "O CREATE TRIGGER frequency_windows_immutable BEFORE DELETE OR UPDATE ON public.frequency_windows FOR EACH ROW EXECUTE FUNCTION prevent_frequency_window_mutation()",
+    "O CREATE TRIGGER frequency_windows_no_truncate BEFORE TRUNCATE ON public.frequency_windows FOR EACH STATEMENT EXECUTE FUNCTION prevent_frequency_window_mutation()",
     "O CREATE TRIGGER operator_receipts_immutable BEFORE DELETE OR UPDATE ON public.operator_receipts FOR EACH ROW EXECUTE FUNCTION prevent_receipt_mutation()",
     "O CREATE TRIGGER operator_receipts_no_truncate BEFORE TRUNCATE ON public.operator_receipts FOR EACH STATEMENT EXECUTE FUNCTION prevent_operator_receipts_truncate()",
     "O CREATE TRIGGER operator_receipts_v6_guard BEFORE INSERT ON public.operator_receipts FOR EACH ROW EXECUTE FUNCTION guard_v6_lock_receipt()",
@@ -431,13 +435,14 @@ defmodule WallopCore.Invariants.LockAndGuardTest do
   ]
 
   describe "INV-1 the guard triggers are all in place" do
-    test "INV-1 (trigger set) draws, receipts and observations carry exactly these triggers, enabled" do
+    test "INV-1 (trigger set) draws, receipts, observations and frequency windows carry exactly these triggers, enabled" do
       %{rows: rows} =
         Repo.query!("""
         SELECT tgenabled::text || ' ' || pg_get_triggerdef(oid) FROM pg_trigger
         WHERE NOT tgisinternal
           AND tgrelid::regclass::text IN
-            ('draws', 'operator_receipts', 'execution_receipts', 'weather_observations')
+            ('draws', 'operator_receipts', 'execution_receipts', 'weather_observations',
+             'frequency_windows')
         ORDER BY tgrelid::regclass::text, tgname
         """)
 

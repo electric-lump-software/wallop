@@ -58,6 +58,12 @@ defmodule WallopCore.ImmutabilityTriggerAuditTest do
         WallopCore.Repo.query!("TRUNCATE weather_observations")
       end
     end
+
+    test "frequency_windows cannot be TRUNCATEd" do
+      assert_raise Postgrex.Error, ~r/frequency windows are write-once/, fn ->
+        WallopCore.Repo.query!("TRUNCATE frequency_windows")
+      end
+    end
   end
 
   # ── Draws: terminal state protection ───────────────────────────────
