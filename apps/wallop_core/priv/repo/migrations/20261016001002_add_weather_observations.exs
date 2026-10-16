@@ -10,17 +10,6 @@ defmodule WallopCore.Repo.Migrations.AddWeatherObservations do
   def up do
     create table(:weather_observations, primary_key: false) do
       add(:id, :uuid, null: false, default: fragment("gen_random_uuid()"), primary_key: true)
-
-      add(
-        :draw_id,
-        references(:draws,
-          column: :id,
-          name: "weather_observations_draw_id_fkey",
-          type: :uuid,
-          prefix: "public",
-          on_delete: :nothing
-        ), null: false)
-
       add(:station, :text, null: false)
       add(:observation_time, :utc_datetime_usec, null: false)
       add(:value, :text, null: false)
@@ -29,8 +18,8 @@ defmodule WallopCore.Repo.Migrations.AddWeatherObservations do
     end
 
     create(
-      unique_index(:weather_observations, [:draw_id],
-        name: "weather_observations_one_per_draw_index"
+      unique_index(:weather_observations, [:observation_time],
+        name: "weather_observations_one_per_hour_index"
       )
     )
 
@@ -90,37 +79,19 @@ defmodule WallopCore.Repo.Migrations.AddWeatherObservations do
     CREATE OR REPLACE FUNCTION guard_weather_observation_insert() RETURNS trigger AS $$
     DECLARE
       now_utc timestamp := statement_timestamp() AT TIME ZONE 'UTC';
-      d RECORD;
     BEGIN
-      SELECT status, weather_time, lock_schema_version, entropy_composition INTO d
-        FROM draws WHERE id = NEW.draw_id FOR UPDATE;
+      PERFORM 1 FROM draws
+        WHERE weather_time = NEW.observation_time
+          AND lock_schema_version = '6'
+          AND entropy_composition = wallop_landobs_tag()
+          AND status IN ('awaiting_entropy', 'pending_entropy')
+        ORDER BY id
+        FOR SHARE;
 
-      IF NOT FOUND OR d.lock_schema_version IS DISTINCT FROM '6' THEN
-        RAISE EXCEPTION 'weather observations are stored only for v6 draws';
+      IF NOT FOUND THEN
+        RAISE EXCEPTION 'no observation-weather draw is waiting for this hour';
       END IF;
-      IF d.entropy_composition IS DISTINCT FROM wallop_landobs_tag() THEN
-        RAISE EXCEPTION 'no observation rules for entropy_composition %', d.entropy_composition;
-      END IF;
-      IF d.status IS DISTINCT FROM 'awaiting_entropy' AND d.status IS DISTINCT FROM 'pending_entropy' THEN
-        RAISE EXCEPTION 'draw is not waiting for entropy';
-      END IF;
-      IF NEW.observation_time IS DISTINCT FROM d.weather_time THEN
-        RAISE EXCEPTION 'observation_time must equal the draw''s weather_time';
-      END IF;
-
-      PERFORM pg_advisory_xact_lock(hashtextextended(
-        'weather_observations|' || NEW.station || '|'
-          || to_char(NEW.observation_time, 'YYYY-MM-DD"T"HH24:MI:SS.US'), 0));
-
-      IF EXISTS (SELECT 1 FROM weather_observations WHERE draw_id = NEW.draw_id) THEN
-        RAISE EXCEPTION 'an observation is already stored for this draw';
-      END IF;
-      IF EXISTS (SELECT 1 FROM weather_observations
-                 WHERE station = NEW.station AND observation_time = NEW.observation_time
-                   AND value IS DISTINCT FROM NEW.value) THEN
-        RAISE EXCEPTION 'a different value is already stored for this station and hour';
-      END IF;
-      IF wallop_landobs_observation_allowed(NEW.station, d.weather_time, now_utc) IS NOT TRUE THEN
+      IF wallop_landobs_observation_allowed(NEW.station, NEW.observation_time, now_utc) IS NOT TRUE THEN
         RAISE EXCEPTION '% observation outside its window', NEW.station;
       END IF;
 
@@ -137,18 +108,10 @@ defmodule WallopCore.Repo.Migrations.AddWeatherObservations do
 
     execute("""
     CREATE OR REPLACE FUNCTION check_weather_observation_commit() RETURNS trigger AS $$
-    DECLARE
-      d RECORD;
     BEGIN
-      SELECT weather_time, entropy_composition INTO d FROM draws WHERE id = NEW.draw_id;
-
-      IF d.entropy_composition IS NOT DISTINCT FROM wallop_landobs_tag() THEN
-        IF (clock_timestamp() AT TIME ZONE 'UTC' <= d.weather_time + wallop_landobs_fetch_window())
-           IS NOT TRUE THEN
-          RAISE EXCEPTION 'an observation must commit by its fetch deadline';
-        END IF;
-      ELSE
-        RAISE EXCEPTION 'no observation rules for entropy_composition %', d.entropy_composition;
+      IF (clock_timestamp() AT TIME ZONE 'UTC' <= NEW.observation_time + wallop_landobs_fetch_window())
+         IS NOT TRUE THEN
+        RAISE EXCEPTION 'an observation must commit by its fetch deadline';
       END IF;
 
       RETURN NULL;
@@ -228,12 +191,10 @@ defmodule WallopCore.Repo.Migrations.AddWeatherObservations do
     """)
 
     drop_if_exists(
-      unique_index(:weather_observations, [:draw_id],
-        name: "weather_observations_one_per_draw_index"
+      unique_index(:weather_observations, [:observation_time],
+        name: "weather_observations_one_per_hour_index"
       )
     )
-
-    drop(constraint(:weather_observations, "weather_observations_draw_id_fkey"))
 
     drop(table(:weather_observations))
   end

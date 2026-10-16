@@ -20,10 +20,12 @@ defmodule WallopCore.Weather.V6CompletionGuardTest do
   # A v6 draw in pending_entropy whose stored weather_time is `wt_offset`
   # seconds from now and whose round publishes `pub_offset` seconds from now.
   defp pending(wt_offset, pub_offset, key \\ nil) do
-    key = key || elem(create_v6_operator(), 1)
-    now = DateTime.utc_now()
-    wt = now |> DateTime.add(wt_offset) |> DateTime.truncate(:second)
-    round = Quicknet.round_at_or_after(DateTime.add(now, pub_offset))
+    wt = DateTime.utc_now() |> DateTime.add(wt_offset) |> DateTime.truncate(:second)
+    pending_at(wt, pub_offset, key || elem(create_v6_operator(), 1))
+  end
+
+  defp pending_at(wt, pub_offset, key) do
+    round = Quicknet.round_at_or_after(DateTime.add(DateTime.utc_now(), pub_offset))
     draw = put_v6_awaiting!(open_draw_with_entries(key), wt, round)
     Repo.query!("UPDATE draws SET status = 'pending_entropy' WHERE id = $1", [dump(draw.id)])
     draw
@@ -50,26 +52,30 @@ defmodule WallopCore.Weather.V6CompletionGuardTest do
 
   @fallback "weather_fallback_reason = $3"
 
-  defp reading(draw, value \\ "90;1025;85;2432"),
+  defp reading(draw, value),
     do: %{value: value, raw: "[]", observation_time: draw.weather_time}
 
-  # Moves the draw's window, and its stored row, an hour back with every
-  # trigger off, so "after F" holds while the stored row stays.
+  # Moves the draw's hour, its stored row and every draw of that hour an
+  # hour back with every trigger off, so "after F" holds while the row stays.
   defp shift_window_back!(draw) do
+    wt = DateTime.to_naive(draw.weather_time)
     Repo.query!("SET session_replication_role = replica")
 
     Repo.query!(
-      "UPDATE draws SET weather_time = weather_time - interval '1 hour' WHERE id = $1",
-      [dump(draw.id)]
+      "UPDATE draws SET weather_time = weather_time - interval '1 hour' WHERE weather_time = $1",
+      [wt]
     )
 
     Repo.query!(
-      "UPDATE weather_observations SET observation_time = observation_time - interval '1 hour' WHERE draw_id = $1",
-      [dump(draw.id)]
+      "UPDATE weather_observations SET observation_time = observation_time - interval '1 hour' WHERE observation_time = $1",
+      [wt]
     )
 
     Repo.query!("RESET session_replication_role")
   end
+
+  defp store(station, draw, value \\ "90;1025;85;2432"),
+    do: Observations.store(station, reading(draw, value))
 
   test "a v6 draw can't complete with a value that isn't stored, or fall back before F" do
     draw = pending(-5 * 60, -10)
@@ -82,7 +88,7 @@ defmodule WallopCore.Weather.V6CompletionGuardTest do
 
   test "an observation is stored, after F, and the draw is completed as a fallback: refused" do
     draw = pending(-(@w - 5 * 60), -10)
-    {:ok, obs} = Observations.store(draw.id, @backup, reading(draw))
+    {:ok, obs} = store(@backup, draw)
     shift_window_back!(draw)
 
     assert complete(draw, @fallback, [LandObs.fallback_reason()]) == @stored_only
@@ -110,14 +116,34 @@ defmodule WallopCore.Weather.V6CompletionGuardTest do
              "v6 draw cannot complete before its drand round publishes"
   end
 
+  test "every draw of the hour completes with the hour's reading" do
+    {_op, key} = create_v6_operator()
+    wt = DateTime.utc_now() |> DateTime.add(-(@w - 5 * 60)) |> DateTime.truncate(:second)
+    [a, b] = for _ <- 1..2, do: pending_at(wt, -10, key)
+    {:ok, obs} = store(@backup, a)
+    shift_window_back!(a)
+
+    for draw <- [a, b] do
+      assert complete(draw, @fallback, [LandObs.fallback_reason()]) == @stored_only
+
+      assert complete(draw, "weather_value = $3, weather_observation_time = weather_time", [
+               "91;1025;85;2432"
+             ]) == @stored_only
+
+      assert complete(draw, "weather_value = $3, weather_observation_time = weather_time", [
+               obs.value
+             ]) == nil
+    end
+  end
+
   describe "the backup is used only when nothing was stored for the primary in its window" do
     test "a draw with a primary reading can't take the backup's, by store or by completion" do
       draw = pending(-5 * 60, -10)
-      {:ok, primary} = Observations.store(draw.id, @primary, reading(draw, "141;1025;85;2432"))
+      {:ok, primary} = store(@primary, draw, "141;1025;85;2432")
 
       # The backup's window is closed now, and a reading is already stored:
       # both refuse it.
-      assert {:error, _} = Observations.store(draw.id, @backup, reading(draw))
+      assert {:error, _} = store(@backup, draw)
 
       shift_window_back!(draw)
 
@@ -132,10 +158,10 @@ defmodule WallopCore.Weather.V6CompletionGuardTest do
 
     test "in the backup window a draw with nothing stored takes the backup, never the primary" do
       draw = pending(-(@w - 5 * 60), -10)
-      assert {:error, _} = Observations.store(draw.id, @primary, reading(draw))
-      assert {:ok, backup} = Observations.store(draw.id, @backup, reading(draw))
-      assert {:error, _} = Observations.store(draw.id, @backup, reading(draw))
-      assert Observations.for_draw(draw.id).station == @backup
+      assert {:error, _} = store(@primary, draw)
+      assert {:ok, backup} = store(@backup, draw)
+      assert {:error, _} = store(@backup, draw)
+      assert Observations.for_draw(draw).station == @backup
 
       shift_window_back!(draw)
 

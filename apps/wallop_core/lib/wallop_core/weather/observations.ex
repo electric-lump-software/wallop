@@ -1,8 +1,9 @@
 defmodule WallopCore.Weather.Observations do
   @moduledoc """
   Storage and lookups for observation-weather readings
-  (`WallopCore.Resources.WeatherObservation`). What may be stored, and when,
-  is decided by the database on its own clock; this module only asks.
+  (`WallopCore.Resources.WeatherObservation`): one reading per observation
+  hour, shared by every draw of that hour. What may be stored, and when, is
+  decided by the database on its own clock; this module only asks.
   """
 
   require Ash.Query
@@ -11,6 +12,8 @@ defmodule WallopCore.Weather.Observations do
   alias WallopCore.Repo
   alias WallopCore.Resources.{Draw, WeatherObservation}
 
+  @type reading :: %{value: String.t(), raw: String.t(), observation_time: DateTime.t()}
+
   @doc "The database clock, in UTC: the clock the store's window is checked on."
   @spec db_now() :: DateTime.t()
   def db_now do
@@ -18,36 +21,54 @@ defmodule WallopCore.Weather.Observations do
     DateTime.from_naive!(naive, "Etc/UTC")
   end
 
-  @doc "The observation stored for a draw, or nil."
-  @spec for_draw(String.t()) :: WeatherObservation.t() | nil
-  def for_draw(draw_id) do
+  @doc "The reading stored for an observation hour, or nil."
+  @spec for_hour(DateTime.t()) :: WeatherObservation.t() | nil
+  def for_hour(%DateTime{} = weather_time) do
     WeatherObservation
-    |> Ash.Query.filter(draw_id == ^draw_id)
+    |> Ash.Query.filter(observation_time == ^weather_time)
     |> Ash.read_one!(authorize?: false)
   end
 
   @doc """
-  Stores a reading for a draw from a station. The database refuses it unless
-  the draw is a waiting observation-weather draw, the station is in its window
-  on the database clock, nothing is stored for the draw yet, the value is the
-  same as any stored for the station and hour, and the transaction commits by
-  the fetch deadline.
+  The reading a draw uses: the one stored for its `weather_time`. nil for a
+  draw that isn't an observation-weather draw, or whose hour has none.
+  Takes the draw or its id.
   """
-  @spec store(String.t(), String.t(), %{
-          value: String.t(),
-          raw: String.t(),
-          observation_time: DateTime.t()
-        }) :: {:ok, WeatherObservation.t()} | {:error, term()}
-  def store(draw_id, station_id, %{value: value, raw: raw, observation_time: observation_time}) do
-    WeatherObservation
-    |> Ash.Changeset.for_create(:store, %{
-      draw_id: draw_id,
-      station: station_id,
-      observation_time: observation_time,
-      value: value,
-      raw: raw
-    })
-    |> Ash.create(authorize?: false)
+  @spec for_draw(Draw.t() | String.t()) :: WeatherObservation.t() | nil
+  def for_draw(%Draw{lock_schema_version: "6", weather_time: %DateTime{} = wt} = draw) do
+    if draw.entropy_composition == LandObs.tag(), do: for_hour(wt)
+  end
+
+  def for_draw(%Draw{}), do: nil
+
+  def for_draw(draw_id) when is_binary(draw_id),
+    do: for_draw(Ash.get!(Draw, draw_id, authorize?: false))
+
+  @doc """
+  Stores the reading for its hour (`reading.observation_time`) from a station.
+  The database refuses it unless an observation-weather draw of the hour is
+  waiting, the station is in its window on the database clock, nothing is
+  stored for the hour yet, and the transaction commits by the fetch deadline.
+
+  Runs in its own transaction and refuses to run inside a caller's, with
+  `{:error, :nested_transaction}`: a store must commit (or fail) on its own,
+  at once, and a refusal must not roll back someone else's work.
+  """
+  @spec store(String.t(), reading()) ::
+          {:ok, WeatherObservation.t()} | {:error, :nested_transaction | term()}
+  def store(station_id, %{value: value, raw: raw, observation_time: observation_time}) do
+    if Repo.in_transaction?() do
+      {:error, :nested_transaction}
+    else
+      WeatherObservation
+      |> Ash.Changeset.for_create(:store, %{
+        station: station_id,
+        observation_time: observation_time,
+        value: value,
+        raw: raw
+      })
+      |> Ash.create(authorize?: false)
+    end
   rescue
     # A refusal at COMMIT (the fetch-deadline check) surfaces here.
     e in Postgrex.Error -> {:error, e}
@@ -55,13 +76,15 @@ defmodule WallopCore.Weather.Observations do
 
   @doc """
   The ids of observation-weather draws for `weather_time` that are waiting for
-  entropy and have nothing stored yet.
+  entropy, while nothing is stored for the hour; [] once it is.
   """
   @spec pending_v6_draw_ids(DateTime.t()) :: [String.t()]
   def pending_v6_draw_ids(%DateTime{} = weather_time) do
-    tag = LandObs.tag()
+    if for_hour(weather_time) do
+      []
+    else
+      tag = LandObs.tag()
 
-    ids =
       Draw
       |> Ash.Query.filter(
         lock_schema_version == "6" and entropy_composition == ^tag and
@@ -70,14 +93,6 @@ defmodule WallopCore.Weather.Observations do
       |> Ash.Query.select([:id])
       |> Ash.read!(authorize?: false)
       |> Enum.map(& &1.id)
-
-    stored =
-      WeatherObservation
-      |> Ash.Query.filter(draw_id in ^ids)
-      |> Ash.Query.select([:draw_id])
-      |> Ash.read!(authorize?: false)
-      |> MapSet.new(& &1.draw_id)
-
-    Enum.reject(ids, &MapSet.member?(stored, &1))
+    end
   end
 end

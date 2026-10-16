@@ -1,22 +1,27 @@
 defmodule WallopCore.Resources.WeatherObservation do
   @moduledoc """
-  The weather reading fixed for an observation-weather draw before its drand
-  round publishes. Write-once. Database triggers decide what may be stored,
-  with F = weather_time + W:
+  The weather reading for an observation hour, fixed before the drand rounds
+  of that hour's draws publish. One row per hour (`observation_time` is
+  unique), shared by every observation-weather draw whose `weather_time` is
+  that hour. Write-once. With F = observation_time + W, the database decides
+  what may be stored:
 
-    * the primary station only within [weather_time, F - 10 min];
-    * the backup station only within (F - 10 min, F];
-    * nothing once a reading is stored for the draw, and nothing after F;
-    * one value per (station, hour): every draw of the hour gets the same one;
-    * the row must commit by F on the database clock (a deferred check at
-      commit), so no insert can be held open until drand publishes and then
-      kept or dropped.
+    * the hour needs at least one observation-weather draw waiting for
+      entropy;
+    * the primary station only within [observation_time, F - 10 min], the
+      backup only within (F - 10 min, F]. These windows are checked on the
+      database clock at statement time (statement_timestamp());
+    * one row per hour, so a backup can't be stored once the primary is, and
+      a second insert for the hour, even a concurrent one, is refused;
+    * the transaction must commit by F: a deferred check at COMMIT, on the
+      wall clock then (clock_timestamp()), bounds the commit by F, so no
+      insert can be held open until drand publishes and then kept or dropped.
 
-  The statement-time window uses statement_timestamp(); the commit-time check
-  uses clock_timestamp(). Both are read in UTC; no timestamptz anywhere.
+  Both clocks are read in UTC; no timestamptz anywhere. A draw completes with
+  its hour's row or, with no row by F, the fallback rule (the draws guard).
 
-  Execution reads whatever is stored. Internal only: every action is
-  forbidden to actors. Store through `WallopCore.Weather.Observations.store/3`.
+  Internal only: every action is forbidden to actors. Store through
+  `WallopCore.Weather.Observations.store/2`.
   """
   use Ash.Resource,
     otp_app: :wallop_core,
@@ -28,17 +33,13 @@ defmodule WallopCore.Resources.WeatherObservation do
 
   # Limits on the store transaction, so it can't be left open. The commit-time
   # check is what enforces F; these keep a stalled writer from holding the
-  # draw's row lock (and the hour's lock) for long.
+  # hour's draw rows and its index entry for long.
   @statement_timeout "5s"
   @idle_in_transaction_timeout "10s"
 
   postgres do
     table("weather_observations")
     repo(WallopCore.Repo)
-
-    references do
-      reference(:draw, on_delete: :nothing)
-    end
 
     check_constraints do
       check_constraint(:value, "weather_observations_value_grammar",
@@ -83,46 +84,34 @@ defmodule WallopCore.Resources.WeatherObservation do
       end
 
       statement :guard_weather_observation_insert do
-        # The draw's row is locked FOR UPDATE, so a store and the draw's
-        # completion run one after the other: the completion guard, waiting on
-        # this lock, then reads the store with a fresh snapshot. The advisory
-        # lock on (station, hour) does the same for two draws of one hour, so
-        # the one-value check always sees the other's committed row.
+        # One row per observation hour; the unique index on observation_time
+        # makes it the only row, so every draw of the hour gets the same
+        # station and value. A backup row can't follow a primary one, and a
+        # concurrent insert for the hour waits on the index, then fails.
+        #
+        # The waiting draws of the hour are locked FOR SHARE, which is enough:
+        # it conflicts with the row lock a completion UPDATE takes, so a
+        # completion waits for this store to end and its guard then reads
+        # the store afresh, and a completion already under way makes this
+        # insert wait and then not count that draw. Two stores for the hour
+        # don't block each other here; the unique index decides between them.
         up("""
         CREATE OR REPLACE FUNCTION guard_weather_observation_insert() RETURNS trigger AS $$
         DECLARE
           now_utc timestamp := statement_timestamp() AT TIME ZONE 'UTC';
-          d RECORD;
         BEGIN
-          SELECT status, weather_time, lock_schema_version, entropy_composition INTO d
-            FROM draws WHERE id = NEW.draw_id FOR UPDATE;
+          PERFORM 1 FROM draws
+            WHERE weather_time = NEW.observation_time
+              AND lock_schema_version = '6'
+              AND entropy_composition = wallop_landobs_tag()
+              AND status IN ('awaiting_entropy', 'pending_entropy')
+            ORDER BY id
+            FOR SHARE;
 
-          IF NOT FOUND OR d.lock_schema_version IS DISTINCT FROM '6' THEN
-            RAISE EXCEPTION 'weather observations are stored only for v6 draws';
+          IF NOT FOUND THEN
+            RAISE EXCEPTION 'no observation-weather draw is waiting for this hour';
           END IF;
-          IF d.entropy_composition IS DISTINCT FROM wallop_landobs_tag() THEN
-            RAISE EXCEPTION 'no observation rules for entropy_composition %', d.entropy_composition;
-          END IF;
-          IF d.status IS DISTINCT FROM 'awaiting_entropy' AND d.status IS DISTINCT FROM 'pending_entropy' THEN
-            RAISE EXCEPTION 'draw is not waiting for entropy';
-          END IF;
-          IF NEW.observation_time IS DISTINCT FROM d.weather_time THEN
-            RAISE EXCEPTION 'observation_time must equal the draw''s weather_time';
-          END IF;
-
-          PERFORM pg_advisory_xact_lock(hashtextextended(
-            'weather_observations|' || NEW.station || '|'
-              || to_char(NEW.observation_time, 'YYYY-MM-DD"T"HH24:MI:SS.US'), 0));
-
-          IF EXISTS (SELECT 1 FROM weather_observations WHERE draw_id = NEW.draw_id) THEN
-            RAISE EXCEPTION 'an observation is already stored for this draw';
-          END IF;
-          IF EXISTS (SELECT 1 FROM weather_observations
-                     WHERE station = NEW.station AND observation_time = NEW.observation_time
-                       AND value IS DISTINCT FROM NEW.value) THEN
-            RAISE EXCEPTION 'a different value is already stored for this station and hour';
-          END IF;
-          IF wallop_landobs_observation_allowed(NEW.station, d.weather_time, now_utc) IS NOT TRUE THEN
+          IF wallop_landobs_observation_allowed(NEW.station, NEW.observation_time, now_utc) IS NOT TRUE THEN
             RAISE EXCEPTION '% observation outside its window', NEW.station;
           END IF;
 
@@ -150,18 +139,10 @@ defmodule WallopCore.Resources.WeatherObservation do
         # reaches its commit after F is refused, and nothing is stored.
         up("""
         CREATE OR REPLACE FUNCTION check_weather_observation_commit() RETURNS trigger AS $$
-        DECLARE
-          d RECORD;
         BEGIN
-          SELECT weather_time, entropy_composition INTO d FROM draws WHERE id = NEW.draw_id;
-
-          IF d.entropy_composition IS NOT DISTINCT FROM wallop_landobs_tag() THEN
-            IF (clock_timestamp() AT TIME ZONE 'UTC' <= d.weather_time + wallop_landobs_fetch_window())
-               IS NOT TRUE THEN
-              RAISE EXCEPTION 'an observation must commit by its fetch deadline';
-            END IF;
-          ELSE
-            RAISE EXCEPTION 'no observation rules for entropy_composition %', d.entropy_composition;
+          IF (clock_timestamp() AT TIME ZONE 'UTC' <= NEW.observation_time + wallop_landobs_fetch_window())
+             IS NOT TRUE THEN
+            RAISE EXCEPTION 'an observation must commit by its fetch deadline';
           END IF;
 
           RETURN NULL;
@@ -221,7 +202,7 @@ defmodule WallopCore.Resources.WeatherObservation do
     defaults([:read])
 
     create :store do
-      accept([:draw_id, :station, :observation_time, :value, :raw])
+      accept([:station, :observation_time, :value, :raw])
 
       change(
         before_action(fn changeset, _context ->
@@ -245,7 +226,6 @@ defmodule WallopCore.Resources.WeatherObservation do
 
   attributes do
     uuid_primary_key(:id)
-    attribute(:draw_id, :uuid, allow_nil?: false)
     attribute(:station, :string, allow_nil?: false)
     attribute(:observation_time, :utc_datetime_usec, allow_nil?: false)
     attribute(:value, :string, allow_nil?: false)
@@ -254,15 +234,11 @@ defmodule WallopCore.Resources.WeatherObservation do
     attribute(:stored_at, :utc_datetime_usec, allow_nil?: true)
   end
 
-  relationships do
-    belongs_to :draw, WallopCore.Resources.Draw do
-      attribute_writable?(true)
-      define_attribute?(false)
-      source_attribute(:draw_id)
-    end
-  end
-
   identities do
-    identity(:one_per_draw, [:draw_id])
+    # The hour's single reading. Its unique index is what makes every draw
+    # of the hour use the same station and value.
+    identity(:one_per_hour, [:observation_time],
+      message: "an observation is already stored for this hour"
+    )
   end
 end

@@ -56,7 +56,7 @@ defmodule WallopCore.Invariants.ObservationAndExecutionTest do
     reload(draw)
   end
 
-  defp reading(draw, value \\ @value),
+  defp reading(draw, value),
     do: %{value: value, raw: "[]", observation_time: draw.weather_time}
 
   defp complete(draw, set_sql, params \\ []) do
@@ -66,74 +66,112 @@ defmodule WallopCore.Invariants.ObservationAndExecutionTest do
     )
   end
 
-  # Moves a draw's stored window, and its observation, an hour into the past
-  # with every trigger off, so "after F" holds while the stored row stays.
+  # Moves a draw's hour, its observation and every draw of that hour an hour
+  # into the past with every trigger off, so "after F" holds while the
+  # stored row stays.
   defp shift_window_back!(draw) do
+    wt = DateTime.to_naive(draw.weather_time)
+
     with_triggers_off(fn ->
       Repo.query!(
-        "UPDATE draws SET weather_time = weather_time - interval '1 hour' WHERE id = $1",
-        [dump(draw.id)]
+        "UPDATE draws SET weather_time = weather_time - interval '1 hour' WHERE weather_time = $1",
+        [wt]
       )
 
       Repo.query!(
-        "UPDATE weather_observations SET observation_time = observation_time - interval '1 hour' WHERE draw_id = $1",
-        [dump(draw.id)]
+        "UPDATE weather_observations SET observation_time = observation_time - interval '1 hour' WHERE observation_time = $1",
+        [wt]
       )
     end)
   end
 
+  defp store(station, draw, value \\ @value),
+    do: Observations.store(station, reading(draw, value))
+
   # Three v6 draws of one operator sharing one stored weather_time,
-  # `wt_offset` seconds from now, as v6_draw/3 places it. The store's
-  # one-value rule keys on (station, observation_time), so the draws must
-  # share it exactly.
-  defp three_draws_sharing_wt(wt_offset) do
+  # `wt_offset` seconds from now, as v6_draw/3 places it: one observation
+  # hour, so one reading for all three.
+  defp three_draws_sharing_wt(wt_offset, pub_offset \\ 3600) do
     {_op, key} = create_v6_operator()
     wt = DateTime.utc_now() |> DateTime.add(wt_offset) |> DateTime.truncate(:second)
-    for _ <- 1..3, do: put_v6_awaiting!(open_draw_with_entries(key), wt, round_at(3600))
+    for _ <- 1..3, do: put_v6_awaiting!(open_draw_with_entries(key), wt, round_at(pub_offset))
   end
 
-  # The first stores, a different value is refused, the same value is
-  # accepted (positive control).
-  defp assert_one_value_per_hour([a, b, c], station) do
-    assert {:ok, _} = Observations.store(a.id, station, reading(a))
-    assert {:error, error} = Observations.store(b.id, station, reading(b, "142;1025;85;2432"))
-    assert error_text(error) =~ "a different value is already stored for this station and hour"
-    assert {:ok, _} = Observations.store(c.id, station, reading(c))
+  # The first store for the hour wins; any second one, a different value or
+  # the same, is refused; every draw of the hour reads the one row.
+  defp assert_one_reading_per_hour([a, b, c] = draws, station) do
+    assert {:ok, obs} = store(station, a)
+
+    for {draw, value} <- [{b, "142;1025;85;2432"}, {c, @value}] do
+      assert {:error, error} = store(station, draw, value)
+      assert error_text(error) =~ "an observation is already stored for this hour"
+    end
+
+    for draw <- draws do
+      assert %{id: id, station: ^station, value: @value} = Observations.for_draw(draw)
+      assert id == obs.id
+    end
   end
 
   # ── INV-7 ─────────────────────────────────────────────────────────
 
-  describe "INV-7 one value per (station, hour), write-once" do
-    test "INV-7 a second draw of the hour can't store a different value (primary)" do
+  describe "INV-7 one (station, value) per hour; every draw of the hour completes with it or the fallback" do
+    test "INV-7 one reading per hour, shared by every draw of the hour (primary)" do
       # Five minutes after weather_time: always in the primary window.
-      assert_one_value_per_hour(three_draws_sharing_wt(-5 * 60), Stations.primary().id)
+      assert_one_reading_per_hour(three_draws_sharing_wt(-5 * 60), Stations.primary().id)
     end
 
-    test "INV-7 a second draw of the hour can't store a different value (backup)" do
+    test "INV-7 one reading per hour, shared by every draw of the hour (backup)" do
       # Five minutes before F: always in the backup window.
-      assert_one_value_per_hour(three_draws_sharing_wt(-(@w - 5 * 60)), Stations.backup().id)
+      assert_one_reading_per_hour(three_draws_sharing_wt(-(@w - 5 * 60)), Stations.backup().id)
     end
 
-    test "INV-7 a draw stores one observation, from one station" do
+    test "INV-7 the hour stores one observation, from one station" do
       draw = v6_draw(-5 * 60, 3600)
 
-      assert {:ok, _} = Observations.store(draw.id, Stations.primary().id, reading(draw))
+      assert {:ok, _} = store(Stations.primary().id, draw)
 
-      for station <- [Stations.primary().id, Stations.backup().id] do
-        assert {:error, error} = Observations.store(draw.id, station, reading(draw))
-        assert error_text(error) =~ "an observation is already stored for this draw", station
+      assert error_text(elem(store(Stations.primary().id, draw), 1)) =~
+               "an observation is already stored for this hour"
+
+      # The backup is refused too (its window is closed now, and the hour
+      # has its row).
+      assert {:error, _} = store(Stations.backup().id, draw)
+      assert Observations.for_draw(draw).station == Stations.primary().id
+    end
+
+    test "INV-7 every draw of the hour completes with the hour's reading, never another or the fallback" do
+      draws = three_draws_sharing_wt(-(@w - 5 * 60), -10)
+      {:ok, obs} = store(Stations.backup().id, hd(draws))
+      shift_window_back!(hd(draws))
+      message = "v6 draw must complete with its stored observation"
+
+      for draw <- draws do
+        draw = to_pending!(draw)
+
+        assert complete(draw, "weather_fallback_reason = $3", [LandObs.fallback_reason()]) ==
+                 message
+
+        assert complete(draw, "weather_value = $3, weather_observation_time = weather_time", [
+                 "1;1000;1;1"
+               ]) == message
+
+        assert complete(draw, "weather_value = $3, weather_observation_time = weather_time", [
+                 obs.value
+               ]) == nil
       end
     end
 
     test "INV-7 a stored observation can't be updated, deleted or truncated" do
       draw = v6_draw(-5 * 60, 3600)
-      {:ok, _} = Observations.store(draw.id, Stations.primary().id, reading(draw))
+      {:ok, _} = store(Stations.primary().id, draw)
+      wt = DateTime.to_naive(draw.weather_time)
 
       for sql <- [
-            "UPDATE weather_observations SET value = '1;1000;1;1' WHERE draw_id = $1",
-            "DELETE FROM weather_observations WHERE draw_id = $1"
+            "UPDATE weather_observations SET value = '1;1000;1;1' WHERE observation_time = $1",
+            "DELETE FROM weather_observations WHERE observation_time = $1"
           ] do
-        assert try_sql(sql, [dump(draw.id)]) == "weather observations are write-once", sql
+        assert try_sql(sql, [wt]) == "weather observations are write-once", sql
       end
 
       # The sandbox never commits, so the row's deferred commit-time check is
@@ -142,6 +180,26 @@ defmodule WallopCore.Invariants.ObservationAndExecutionTest do
       # TRUNCATE meets the write-once trigger, as it would after a commit.
       Repo.query!("SET CONSTRAINTS weather_observations_commit_deadline IMMEDIATE")
       assert try_sql("TRUNCATE weather_observations", []) == "weather observations are write-once"
+    end
+
+    # Outside the sandbox: a committed row, then UPDATE, DELETE and TRUNCATE
+    # in real transactions, with no queued trigger events.
+    test "INV-7 a committed observation can't be updated, deleted or truncated" do
+      draw = unboxed_v6_draw(-5 * 60)
+      assert {:ok, _} = unboxed(fn -> store(Stations.primary().id, draw) end)
+      wt = DateTime.to_naive(draw.weather_time)
+
+      for {sql, params} <- [
+            {"UPDATE weather_observations SET value = '1;1000;1;1' WHERE observation_time = $1",
+             [wt]},
+            {"DELETE FROM weather_observations WHERE observation_time = $1", [wt]},
+            {"TRUNCATE weather_observations", []}
+          ] do
+        assert unboxed(fn -> try_sql(sql, params) end) == "weather observations are write-once",
+               sql
+      end
+
+      assert stored_rows(draw) == 1
     end
   end
 
@@ -162,7 +220,7 @@ defmodule WallopCore.Invariants.ObservationAndExecutionTest do
 
     test "INV-8 with an observation stored, only that observation completes the draw" do
       draw = v6_draw(-(@w - 5 * 60), -10)
-      {:ok, obs} = Observations.store(draw.id, Stations.backup().id, reading(draw))
+      {:ok, obs} = store(Stations.backup().id, draw)
       shift_window_back!(draw)
       draw = to_pending!(draw)
       message = "v6 draw must complete with its stored observation"
@@ -202,7 +260,7 @@ defmodule WallopCore.Invariants.ObservationAndExecutionTest do
     test "INV-8 execute_v6 records the stored observation, at or after pub(R)" do
       ensure_infrastructure_key()
       draw = v6_draw(-(@w - 5 * 60), -10)
-      {:ok, obs} = Observations.store(draw.id, Stations.backup().id, reading(draw))
+      {:ok, obs} = store(Stations.backup().id, draw)
       shift_window_back!(draw)
 
       done = execute_v6!(draw)
@@ -301,14 +359,25 @@ defmodule WallopCore.Invariants.ObservationAndExecutionTest do
     draw
   end
 
-  # Stores the draw's reading in a real transaction, runs `before_commit`
-  # inside it, then commits. :committed, or {:refused, message}.
+  # Inserts the hour's reading in a real transaction, runs `before_commit`
+  # inside it, then commits. :committed, or {:refused, message}. A raw INSERT:
+  # Observations.store/2 refuses to run inside a caller's transaction, so the
+  # only way to hold a store open is to bypass it, which is what the
+  # database's commit-time check is for.
   defp store_and_commit(draw, station, before_commit) do
     unboxed(fn ->
       {:ok, _} =
         Repo.transaction(fn ->
           Repo.query!("SET LOCAL lock_timeout = '10s'")
-          {:ok, _} = Observations.store(draw.id, station, reading(draw))
+
+          Repo.query!(
+            """
+            INSERT INTO weather_observations (id, station, observation_time, value, raw)
+            VALUES (gen_random_uuid(), $1, $2, $3, '[]')
+            """,
+            [station, DateTime.to_naive(draw.weather_time), @value]
+          )
+
           before_commit.()
         end)
     end)
@@ -335,8 +404,8 @@ defmodule WallopCore.Invariants.ObservationAndExecutionTest do
   defp stored_rows(draw) do
     unboxed(fn ->
       %{rows: [[n]]} =
-        Repo.query!("SELECT count(*) FROM weather_observations WHERE draw_id = $1", [
-          dump(draw.id)
+        Repo.query!("SELECT count(*) FROM weather_observations WHERE observation_time = $1", [
+          DateTime.to_naive(draw.weather_time)
         ])
 
       n
@@ -356,7 +425,11 @@ defmodule WallopCore.Invariants.ObservationAndExecutionTest do
       %{rows: [[store]]} = Repo.query!("SELECT to_regclass('weather_observations')::text")
 
       if store,
-        do: Repo.query!("DELETE FROM weather_observations WHERE draw_id IN (#{draws})", [id])
+        do:
+          Repo.query!(
+            "DELETE FROM weather_observations WHERE observation_time IN (SELECT weather_time FROM draws WHERE operator_id = $1)",
+            [id]
+          )
 
       for sql <- [
             "DELETE FROM operator_receipts WHERE operator_id = $1",
