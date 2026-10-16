@@ -820,7 +820,8 @@ defmodule WallopCore.Entropy.ObservationDrawWorkerTest do
       ref =
         :telemetry_test.attach_event_handlers(self(), [
           [:wallop_core, :v6, :drand_exhausted],
-          [:wallop_core, :v6, :exec_refused]
+          [:wallop_core, :v6, :exec_refused],
+          [:wallop_core, :v6, :overdue]
         ])
 
       # Both rounds published 20 minutes ago. `refused` has stored state no
@@ -861,6 +862,14 @@ defmodule WallopCore.Entropy.ObservationDrawWorkerTest do
       redriven = StuckDrawRedriver.redrive()
       assert outage.id in redriven
       assert refused.id in redriven
+
+      # Both are overdue: neither is completed, and a discarded job is no
+      # refusal.
+      for draw <- [outage, refused] do
+        id = draw.id
+        assert_received {[:wallop_core, :v6, :overdue], ^ref, %{count: 1}, %{draw_id: ^id}}
+      end
+
       Oban.drain_queue(queue: :v6_execution)
 
       # The outage draw completes; the refused one is refused on stored
@@ -873,10 +882,17 @@ defmodule WallopCore.Entropy.ObservationDrawWorkerTest do
       assert id == refused.id
 
       # The cancelled job marks the refusal: no re-drive while it remains.
+      # The refusal was reported (exec_refused), so the draw is not
+      # reported as overdue either; the completed one never is.
       redriven = StuckDrawRedriver.redrive()
       refute outage.id in redriven
       refute refused.id in redriven
       assert job_states(refused) == ["discarded", "cancelled"]
+
+      for draw <- [outage, refused] do
+        id = draw.id
+        refute_received {[:wallop_core, :v6, :overdue], ^ref, _, %{draw_id: ^id}}
+      end
     end
   end
 

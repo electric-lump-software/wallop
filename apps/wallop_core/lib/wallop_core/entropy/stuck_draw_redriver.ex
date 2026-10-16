@@ -6,23 +6,65 @@ defmodule WallopCore.Entropy.StuckDrawRedriver do
   ## Execution jobs
 
   A draw is stuck when it is still `awaiting_entropy` or `pending_entropy`
-  15 minutes after it was due, on the database clock, and no live job
-  (available, scheduled, executing, retryable or suspended) exists for it
-  under either execution worker. It was due at:
+  15 minutes after it was due, on the database clock, and no job that can
+  still run it exists under either execution worker. It was due at:
 
     * a lock schema 6 draw (observation weather or grid frequency): its
       drand round's publication time, from
       `WallopCore.Entropy.V6Rules.drand_pub_time/2`;
     * a forecast draw: its `weather_time`.
 
-  A stuck schema 6 draw, of either tag, gets `ObservationDrawWorker` back. A
-  draw whose `ObservationDrawWorker` job was cancelled is skipped: a
+  For a forecast draw any live job (available, scheduled, executing,
+  retryable or suspended) counts, exactly as before. For a schema 6 draw a
+  live job counts only when it can still run the draw soon, so that a job
+  moved out of reach by one row write (scheduled for 2099, say) can't stop
+  a draw silently after its outcome is knowable. It counts when it is on
+  its worker's own queue and either executing (Lifeline rescues a stale
+  one) or available, scheduled or retryable with attempts left and
+  `scheduled_at` at most D after now, on the database clock. D is
+  `ObservationDrawWorker`'s longest delay, its 120 s backoff cap
+  (`ObservationDrawWorker.max_delay_seconds/0`). A suspended job never
+  counts: nothing in wallop resumes one.
+
+  Why that bound: every job the worker schedules itself is inside it. Its
+  first run is pub(R) + 5 s, its snoozes end by pub(R) + 1 s or a few
+  seconds after F or pub(R), and each retry is at most D after the failed
+  attempt, so a waiting job is never due more than D from now. The
+  re-drive acts only on draws past pub(R) + 15 minutes, so the bound is
+  never tighter than pub(R) + 15 minutes + D; it is measured from now
+  rather than from pub(R) so that a job inserted late (by the re-drive
+  itself, or by hand) or still retrying through a long drand outage is
+  never mistaken for a parked one.
+
+  A stuck schema 6 draw, of either tag, gets `ObservationDrawWorker` back.
+  Its live jobs that can't run it (parked) are cancelled first, in the same
+  transaction, with the reason recorded in the job's `errors` and
+  `meta.redrive_replaced` set; otherwise the new job would conflict with
+  them on uniqueness. Cancelling, not deleting, keeps the parked row as
+  evidence.
+
+  A draw whose `ObservationDrawWorker` job was cancelled is skipped: a
   cancelled job is how the executor refuses a draw, and the cancelled row
   is the record of that refusal. Any cancelled `ObservationDrawWorker` row
   for the draw parks it, whatever cancelled it, including one cancelled by
-  hand with `Oban.cancel_job/1`. Once the row is pruned, the draw is
+  hand with `Oban.cancel_job/1`, except the rows this module cancelled
+  itself (`meta.redrive_replaced`). Once the row is pruned, the draw is
   re-driven once more. Re-running a refused draw after a fix is a manual
   re-insert.
+
+  ## Overdue draws
+
+  Every run also emits `[:wallop_core, :v6, :overdue]`, `%{count: 1}`,
+  `%{draw_id, protocol, since}` (`since` is pub(R) + 15 minutes), for each
+  schema 6 draw past pub(R) + 15 minutes that is still `awaiting_entropy`
+  or `pending_entropy` and was not refused by the executor, whatever its
+  jobs say, every run until it completes. A refusal counts only when a
+  cancelled `ObservationDrawWorker` row carries the executor's own
+  refusal (`{:cancel, "execution refused: ..."}`, which Oban records in the
+  row's `errors`; the executor also emitted `exec_refused` then). A row
+  cancelled by hand, inserted already cancelled or cancelled by this module
+  carries none, so its draw is still reported. Re-driven draws are reported
+  too: a re-drive is not a result.
 
   Forecast draws are re-driven (with `EntropyWorker`) only when
   `config :wallop_core, :redrive_forecast_draws, true`. It is off by
@@ -56,8 +98,9 @@ defmodule WallopCore.Entropy.StuckDrawRedriver do
   Each insert emits `[:wallop_core, :redrive, :reinserted]` with
   `%{count: 1}` and metadata `%{kind: :execution | :fetch, protocol:
   :observation | :frequency | :forecast}`, plus `draw_id` or
-  `weather_time`, and logs a warning. A draw re-driven again and again is
-  a fault worth an alert.
+  `weather_time` (and `replaced`, the number of parked jobs cancelled, for
+  a schema 6 execution), and logs a warning. A draw re-driven again and
+  again is a fault worth an alert.
   """
   use Oban.Worker, queue: :default, max_attempts: 3
 
@@ -82,10 +125,34 @@ defmodule WallopCore.Entropy.StuckDrawRedriver do
   @live_states ~w(available scheduled executing retryable suspended)
   @workers [inspect(ObservationDrawWorker), inspect(EntropyWorker)]
 
-  # Locked draws without a live execution job. The `args @>` containment
-  # predicates use Oban's GIN index on args. An observation-weather draw
-  # (either half of the pair set) is left out once its ObservationDrawWorker
-  # job has been cancelled. Forecast draws (pair NULL) are read only when $1.
+  # A live job of a schema 6 draw that can still run it soon (see the
+  # moduledoc). $4/$5 and $6/$7 are each worker and its queue; $8 is D in
+  # seconds. Oban's scheduled_at is UTC without a zone.
+  @runnable_v6_job """
+  j.queue = CASE j.worker WHEN $4 THEN $5 WHEN $6 THEN $7 END
+  AND (j.state::text = 'executing'
+       OR (j.state::text IN ('available', 'scheduled', 'retryable')
+           AND j.attempt < j.max_attempts
+           AND j.scheduled_at <= timezone('UTC', now()) + make_interval(secs => $8)))
+  """
+
+  # The cancelled ObservationDrawWorker rows that park a schema 6 draw:
+  # every one but those this module cancelled itself.
+  @parked_by_cancel """
+  EXISTS (
+    SELECT 1 FROM oban_jobs c
+    WHERE c.state::text = 'cancelled'
+      AND c.worker = $4
+      AND c.args @> jsonb_build_object('draw_id', d.id::text)
+      AND NOT (c.meta @> '{"redrive_replaced": true}'::jsonb)
+  )
+  """
+
+  # Locked draws without a job that can run them. The `args @>` containment
+  # predicates use Oban's GIN index on args. Forecast draws (pair NULL) are
+  # read only when $1, and for them any live job counts, as before. A
+  # schema 6 draw (either half of the pair set) needs a runnable job, and is
+  # left out once an ObservationDrawWorker job has been cancelled.
   @stuck_sql """
   SELECT d.id::text, d.lock_schema_version, d.entropy_composition, d.drand_round, d.weather_time,
     d.freq_start
@@ -97,16 +164,35 @@ defmodule WallopCore.Entropy.StuckDrawRedriver do
       WHERE j.state::text = ANY($2)
         AND j.worker = ANY($3)
         AND j.args @> jsonb_build_object('draw_id', d.id::text)
+        AND ((d.lock_schema_version IS NULL AND d.entropy_composition IS NULL)
+             OR (#{@runnable_v6_job}))
     )
     AND NOT (
       (d.lock_schema_version IS NOT NULL OR d.entropy_composition IS NOT NULL)
-      AND EXISTS (
-        SELECT 1 FROM oban_jobs j
-        WHERE j.state::text = 'cancelled'
-          AND j.worker = $4
-          AND j.args @> jsonb_build_object('draw_id', d.id::text)
-      )
+      AND #{@parked_by_cancel}
     )
+  """
+
+  # The parked live jobs of one schema 6 draw ($1), cancelled so the new job
+  # doesn't conflict with them. An executing job is never touched, nor is
+  # one that became runnable meanwhile.
+  @cancel_parked_sql """
+  UPDATE oban_jobs j
+  SET state = 'cancelled',
+      cancelled_at = timezone('UTC', now()),
+      meta = j.meta || '{"redrive_replaced": true}'::jsonb,
+      errors = array_append(j.errors, jsonb_build_object(
+        'attempt', j.attempt,
+        'at', timezone('UTC', now()),
+        'error', 'replaced by the re-drive: this job could not run its draw in time'))
+  FROM draws d
+  WHERE d.id = $1::uuid
+    AND j.worker = ANY($3)
+    AND j.state::text = ANY($2)
+    AND j.state::text <> 'executing'
+    AND j.args @> jsonb_build_object('draw_id', d.id::text)
+    AND NOT (#{@runnable_v6_job})
+  RETURNING j.id
   """
 
   @pending_v6_sql """
@@ -116,6 +202,28 @@ defmodule WallopCore.Entropy.StuckDrawRedriver do
   WHERE d.status IN ('awaiting_entropy', 'pending_entropy')
     AND (d.lock_schema_version IS NOT NULL OR d.entropy_composition IS NOT NULL)
   """
+
+  # Pending schema 6 draws not refused by the executor: no cancelled
+  # ObservationDrawWorker row ($1) carries its refusal ($2, a LIKE pattern).
+  @unrefused_v6_sql """
+  SELECT d.id::text, d.lock_schema_version, d.entropy_composition, d.drand_round, d.weather_time,
+    d.freq_start
+  FROM draws d
+  WHERE d.status IN ('awaiting_entropy', 'pending_entropy')
+    AND (d.lock_schema_version IS NOT NULL OR d.entropy_composition IS NOT NULL)
+    AND NOT EXISTS (
+      SELECT 1 FROM oban_jobs c, unnest(c.errors) e
+      WHERE c.state::text = 'cancelled'
+        AND c.worker = $1
+        AND c.args @> jsonb_build_object('draw_id', d.id::text)
+        AND e->>'error' LIKE $2
+    )
+  """
+
+  # How Oban records the executor's refusal, `{:cancel, "execution
+  # refused: ..."}`, in the cancelled row's errors (Oban.PerformError).
+  @refusal_pattern "%#{inspect(ObservationDrawWorker)} failed with " <>
+                     ~s({:cancel, "execution refused: %)
 
   @impl Oban.Worker
   def perform(_job) do
@@ -133,6 +241,7 @@ defmodule WallopCore.Entropy.StuckDrawRedriver do
     now = DbClock.now()
     redriven = redrive_executions(now)
     redrive_fetches(now)
+    report_overdue(now)
     redriven
   end
 
@@ -142,22 +251,84 @@ defmodule WallopCore.Entropy.StuckDrawRedriver do
     do: Application.get_env(:wallop_core, :redrive_forecast_draws, false) == true
 
   defp redrive_executions(now) do
-    %{rows: rows} =
-      Repo.query!(@stuck_sql, [
-        forecast_enabled?(),
-        @live_states,
-        @workers,
-        inspect(ObservationDrawWorker)
-      ])
+    %{rows: rows} = Repo.query!(@stuck_sql, [forecast_enabled?() | job_params()])
 
     for row <- rows,
         draw <- [to_draw(row)],
         {:ok, protocol, due} <- [due_time(draw)],
         due_passed?(due, now),
-        inserted?(insert_execution(protocol, draw.id)) do
-      reinserted(:execution, protocol, %{draw_id: draw.id}, "draw #{Log.redact_id(draw.id)}")
+        {:ok, meta} <- [redrive_execution(protocol, draw.id)] do
+      reinserted(:execution, protocol, meta, "draw #{Log.redact_id(draw.id)}")
       draw.id
     end
+  end
+
+  # $2..$8 of the queries above.
+  defp job_params do
+    [
+      @live_states,
+      @workers,
+      inspect(ObservationDrawWorker),
+      queue_of(ObservationDrawWorker),
+      inspect(EntropyWorker),
+      queue_of(EntropyWorker),
+      ObservationDrawWorker.max_delay_seconds()
+    ]
+  end
+
+  defp queue_of(worker), do: worker.__opts__() |> Keyword.fetch!(:queue) |> to_string()
+
+  defp redrive_execution(:forecast, id) do
+    if inserted?(insert_execution(:forecast, id)), do: {:ok, %{draw_id: id}}, else: :error
+  end
+
+  # Cancels the draw's parked jobs and inserts the new one in one
+  # transaction: if the insert doesn't happen, nothing is cancelled.
+  defp redrive_execution(protocol, id) do
+    Repo.transaction(fn ->
+      %{rows: cancelled} = Repo.query!(@cancel_parked_sql, [Ecto.UUID.dump!(id) | job_params()])
+
+      if inserted?(insert_execution(protocol, id)),
+        do: replaced(id, length(cancelled)),
+        else: Repo.rollback(:not_inserted)
+    end)
+  end
+
+  defp replaced(id, 0), do: %{draw_id: id, replaced: 0}
+
+  defp replaced(id, n) do
+    Logger.warning(
+      "StuckDrawRedriver: cancelled #{n} parked job(s) for draw #{Log.redact_id(id)}"
+    )
+
+    %{draw_id: id, replaced: n}
+  end
+
+  # Every pending schema 6 draw past pub(R) + 15 minutes, not refused by
+  # the executor, whatever its jobs say.
+  defp report_overdue(now) do
+    %{rows: rows} =
+      Repo.query!(@unrefused_v6_sql, [inspect(ObservationDrawWorker), @refusal_pattern])
+
+    for row <- rows,
+        draw <- [to_draw(row)],
+        {:ok, protocol, due} <- [due_time(draw)],
+        due_passed?(due, now) do
+      since = DateTime.add(due, @threshold_seconds)
+
+      Logger.warning(
+        "StuckDrawRedriver: draw #{Log.redact_id(draw.id)} is overdue since " <>
+          DateTime.to_iso8601(since)
+      )
+
+      :telemetry.execute([:wallop_core, :v6, :overdue], %{count: 1}, %{
+        draw_id: draw.id,
+        protocol: protocol,
+        since: since
+      })
+    end
+
+    :ok
   end
 
   defp redrive_fetches(now) do

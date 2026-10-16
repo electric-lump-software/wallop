@@ -34,8 +34,19 @@ defmodule WallopCore.Entropy.ObservationDrawWorker do
   @impl Oban.Worker
   def timeout(_job), do: :timer.seconds(90)
 
+  # The longest this worker ever puts a live job off once its draw is due
+  # (pub(R)): its retry backoff cap. Its snoozes are shorter: before F or
+  # pub(R) it snoozes to pub(R) + 1 s at most, and a "not yet" from the
+  # database waits for F or pub(R) plus 2 s (at least 5 s). The re-drive
+  # relies on this bound (`StuckDrawRedriver`).
+  @max_backoff_seconds 120
+
   @impl Oban.Worker
-  def backoff(%Oban.Job{attempt: attempt}), do: min(15 * attempt, 120)
+  def backoff(%Oban.Job{attempt: attempt}), do: min(15 * attempt, @max_backoff_seconds)
+
+  @doc "The longest delay this worker puts on a live job of a draw that is due."
+  @spec max_delay_seconds() :: pos_integer()
+  def max_delay_seconds, do: @max_backoff_seconds
 
   @impl Oban.Worker
   def perform(%Oban.Job{args: %{"draw_id" => id}, attempt: attempt, max_attempts: max}) do

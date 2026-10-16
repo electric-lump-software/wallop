@@ -704,15 +704,19 @@ defmodule WallopCore.Invariants.ObservationAndExecutionTest do
       assert reload(draw).status == :pending_entropy
     end
 
-    # Re-drive inserts a job and nothing else. The tests below run the
-    # re-driven job itself, so the rules it runs under are the real ones.
+    # Re-drive inserts a job (cancelling, first, any job that can't run the
+    # draw) and nothing else. The tests below run the re-driven job itself,
+    # so the rules it runs under are the real ones.
     defp redriven_job!(draw) do
       assert draw.id in StuckDrawRedriver.redrive()
       assert [job] = all_enqueued(worker: ObservationDrawWorker, args: %{draw_id: draw.id})
       job
     end
 
-    defp redrive_live_states, do: ~w(available scheduled executing retryable suspended)
+    # The live states in which a job on its own queue, with attempts left
+    # and due soon, counts as running a v6 draw. A suspended one doesn't
+    # (nothing resumes it): attacks/parked_job_test.exs.
+    defp redrive_live_states, do: ~w(available scheduled executing retryable)
 
     test "INV-9 a re-driven job re-reads the stored reading: re-drive makes no choice" do
       # As a real lock leaves it: weather_time is the round's own hour, the
@@ -752,7 +756,7 @@ defmodule WallopCore.Invariants.ObservationAndExecutionTest do
       refute draw.id in StuckDrawRedriver.redrive()
     end
 
-    test "INV-9 re-drive never touches a draw with a live job" do
+    test "INV-9 re-drive never touches a draw with a job that can run it" do
       for worker <- [ObservationDrawWorker, EntropyWorker], state <- redrive_live_states() do
         draw = v6_draw(-(@w + 3600), -20 * 60)
         delete_jobs_for!(draw)
@@ -769,7 +773,7 @@ defmodule WallopCore.Invariants.ObservationAndExecutionTest do
       end
     end
 
-    test "INV-9 re-drive writes no draw: it only inserts jobs" do
+    test "INV-9 re-drive writes no draw: it only inserts jobs and cancels parked ones" do
       source =
         File.read!(
           Path.expand("../../../lib/wallop_core/entropy/stuck_draw_redriver.ex", __DIR__)
