@@ -56,6 +56,10 @@ defmodule WallopCore.Weather.LandObsGrammar do
   @doc """
   Decodes JSON, keeping every number as `{:number, text}`, its exact JSON
   text. Strings, booleans, null, arrays and objects decode as usual.
+
+  The grid-frequency tag (`WallopCore.Frequency.FreqGrammar.decode/1`)
+  shares this decoder. Both tags freeze its behaviour, so changing what it
+  accepts or how it reads a number means bumping both tags.
   """
   @spec decode(binary()) :: {:ok, term()} | {:error, :too_deep | term()}
   def decode(body) when is_binary(body) do
