@@ -5,7 +5,15 @@ defmodule WallopCore.Entropy.ObservationDrawWorkerTest do
   import WallopCore.TestHelpers
 
   alias WallopCore.Drand.Quicknet
-  alias WallopCore.Entropy.{DrandClient, EntropyWorker, ObservationDrawWorker, V6Execution}
+
+  alias WallopCore.Entropy.{
+    DrandClient,
+    EntropyWorker,
+    ObservationDrawWorker,
+    StuckDrawRedriver,
+    V6Execution
+  }
+
   alias WallopCore.Protocol
   alias WallopCore.Resources.{Draw, ExecutionReceipt}
   alias WallopCore.Weather.{Observations, Schedule, Stations}
@@ -561,6 +569,76 @@ defmodule WallopCore.Entropy.ObservationDrawWorkerTest do
       end
 
       refute_received {:drand_fetched, _}
+    end
+  end
+
+  describe "re-drive, end to end" do
+    defp job_row!(draw, state) do
+      {:ok, job} = Oban.insert(ObservationDrawWorker.new(%{draw_id: draw.id}))
+      Repo.query!("UPDATE oban_jobs SET state = $2 WHERE id = $1", [job.id, state])
+      job
+    end
+
+    defp redriven_job!(draw) do
+      assert draw.id in StuckDrawRedriver.redrive()
+
+      assert [job] =
+               all_enqueued(worker: ObservationDrawWorker, args: %{draw_id: draw.id})
+
+      job
+    end
+
+    @tag :capture_log
+    test "a job discarded after drand is re-driven, and the new job completes the draw" do
+      # Its round published 20 minutes ago. Attempt 10 fetches drand, the
+      # database refuses the completion, everything rolls back, and the job
+      # is out of attempts: discarded.
+      {_op, draw} = v6_draw_after_deadline(30 * 60, -20 * 60)
+      Repo.query!("DELETE FROM oban_jobs WHERE args->>'draw_id' = $1", [draw.id])
+      occupy_execution_receipt!(draw)
+      assert {:error, _} = perform_job(ObservationDrawWorker, %{draw_id: draw.id}, attempt: 10)
+      assert_received {:drand_fetched, _}
+      assert reload(draw).status == :pending_entropy
+      job_row!(draw, "discarded")
+
+      # The fault is fixed.
+      with_triggers_off(fn ->
+        Repo.query!("DELETE FROM execution_receipts WHERE draw_id = $1", [
+          Ecto.UUID.dump!(draw.id)
+        ])
+      end)
+
+      job = redriven_job!(draw)
+      assert :ok = perform_job(ObservationDrawWorker, job.args)
+
+      done = reload(draw)
+      assert done.status == :completed
+      assert done.weather_fallback_reason == "no_observation_by_deadline"
+      assert execution_receipt_count(draw) == 1
+
+      # Nothing is left to re-drive.
+      refute draw.id in StuckDrawRedriver.redrive()
+    end
+
+    @tag :capture_log
+    test "a refused draw is not re-driven while its cancelled job remains; once pruned, once more" do
+      {_op, draw} = v6_draw_after_deadline(30 * 60, -20 * 60)
+      Repo.query!("DELETE FROM oban_jobs WHERE args->>'draw_id' = $1", [draw.id])
+      break_entry_hash!(draw)
+
+      assert {:cancel, _} = perform_job(ObservationDrawWorker, %{draw_id: draw.id}, attempt: 1)
+      cancelled = job_row!(draw, "cancelled")
+
+      refute draw.id in StuckDrawRedriver.redrive()
+      refute draw.id in StuckDrawRedriver.redrive()
+
+      Repo.query!("DELETE FROM oban_jobs WHERE id = $1", [cancelled.id])
+      job = redriven_job!(draw)
+
+      # The stored state is still wrong, so the re-driven job is refused too.
+      assert {:cancel, reason} = perform_job(ObservationDrawWorker, job.args, attempt: 1)
+      assert reason =~ "entry hash mismatch"
+      assert reload(draw).status == :pending_entropy
     end
   end
 

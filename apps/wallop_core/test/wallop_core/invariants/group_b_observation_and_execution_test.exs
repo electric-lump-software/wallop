@@ -12,9 +12,6 @@ defmodule WallopCore.Invariants.ObservationAndExecutionTest do
 
   @moduletag :invariant
 
-  # Planned modules, not yet in lib. Remove each from this list once it exists.
-  @compile {:no_warn_undefined, [WallopCore.Entropy.StuckDrawRedriver]}
-
   alias Ecto.Adapters.SQL.Sandbox
   alias WallopCore.Drand.Quicknet
   alias WallopCore.Entropy.{DrandClient, EntropyWorker, ObservationDrawWorker, StuckDrawRedriver}
@@ -687,7 +684,6 @@ defmodule WallopCore.Invariants.ObservationAndExecutionTest do
       end
     end
 
-    @tag :pending_task_18
     test "INV-9 a discarded job is re-driven, and the draw is still not failed" do
       # Stuck: pub(R) more than 15 minutes ago, and no live job.
       draw = v6_draw(-(@w + 3600), -20 * 60)
@@ -701,6 +697,119 @@ defmodule WallopCore.Invariants.ObservationAndExecutionTest do
       assert draw.id in StuckDrawRedriver.redrive()
       assert_enqueued(worker: ObservationDrawWorker, args: %{draw_id: draw.id})
       assert reload(draw).status == :pending_entropy
+    end
+
+    # Re-drive inserts a job and nothing else. The tests below run the
+    # re-driven job itself, so the rules it runs under are the real ones.
+    defp redriven_job!(draw) do
+      assert draw.id in StuckDrawRedriver.redrive()
+      assert [job] = all_enqueued(worker: ObservationDrawWorker, args: %{draw_id: draw.id})
+      job
+    end
+
+    defp redrive_live_states, do: ~w(available scheduled executing retryable suspended)
+
+    test "INV-9 a re-driven job re-reads the stored reading: re-drive makes no choice" do
+      # As a real lock leaves it: weather_time is the round's own hour, the
+      # round published 20 minutes ago, and a reading is stored for the hour.
+      {_op, key} = create_v6_operator()
+      round = round_at(-20 * 60)
+      wt = Schedule.weather_time_for_round(round)
+      draw = put_v6_awaiting!(open_draw_with_entries(key), wt, round)
+      put_observation!(Stations.primary().id, wt, @value)
+      delete_jobs_for!(draw)
+
+      job = redriven_job!(draw)
+      assert :ok = perform_job(ObservationDrawWorker, job.args)
+      assert_fetched(draw)
+
+      done = reload(draw)
+      assert done.status == :completed
+      assert done.weather_value == @value
+      assert done.weather_fallback_reason == nil
+      {seed, _} = WallopCore.Protocol.compute_seed(done.entry_hash, @randomness, @value)
+      assert done.seed == Base.encode16(seed, case: :lower)
+    end
+
+    test "INV-9 a re-driven job is still refused by the guards, and the draw is still not failed" do
+      draw = v6_draw(-(@w + 3600), -20 * 60)
+      break_entry_hash!(draw)
+      delete_jobs_for!(draw)
+
+      job = redriven_job!(draw)
+      assert {:cancel, _} = perform_job(ObservationDrawWorker, job.args, attempt: 10)
+      assert_fetched(draw)
+      assert reload(draw).status == :pending_entropy
+      assert reload(draw).drand_randomness == nil
+
+      # The refusal's cancelled row is the marker: not re-driven again.
+      Repo.query!("UPDATE oban_jobs SET state = 'cancelled' WHERE id = $1", [job.id])
+      refute draw.id in StuckDrawRedriver.redrive()
+    end
+
+    test "INV-9 re-drive never touches a draw with a live job" do
+      for worker <- [ObservationDrawWorker, EntropyWorker], state <- redrive_live_states() do
+        draw = v6_draw(-(@w + 3600), -20 * 60)
+        delete_jobs_for!(draw)
+        {:ok, job} = Oban.insert(worker.new(%{draw_id: draw.id}))
+        Repo.query!("UPDATE oban_jobs SET state = $2 WHERE id = $1", [job.id, state])
+
+        refute draw.id in StuckDrawRedriver.redrive(), "#{inspect(worker)} #{state}"
+
+        %{rows: rows} =
+          Repo.query!("SELECT id, state FROM oban_jobs WHERE args->>'draw_id' = $1", [draw.id])
+
+        assert rows == [[job.id, state]]
+        assert reload(draw).status == :awaiting_entropy
+      end
+    end
+
+    test "INV-9 re-drive writes no draw: it only inserts jobs" do
+      source =
+        File.read!(
+          Path.expand("../../../lib/wallop_core/entropy/stuck_draw_redriver.ex", __DIR__)
+        )
+
+      for forbidden <- [
+            ~r/UPDATE\s+draws/i,
+            ~r/INSERT\s+INTO\s+draws/i,
+            ~r/DELETE\s+FROM/i,
+            "Ash.update",
+            "Ash.Changeset",
+            "mark_failed",
+            "fail_draw_with_reason",
+            "execute_v6",
+            "transition_to_pending"
+          ] do
+        refute source =~ forbidden, inspect(forbidden)
+      end
+    end
+
+    test "INV-4 re-drive never acts on a forecast draw while the forecast flag is off" do
+      assert Application.fetch_env!(:wallop_core, :redrive_forecast_draws) == false
+      refute StuckDrawRedriver.forecast_enabled?()
+
+      # Stuck by the forecast rule: weather_time 20 minutes ago, no job.
+      draw = create_draw(create_api_key())
+
+      with_triggers_off(fn ->
+        Repo.query!(
+          "UPDATE draws SET weather_time = now() - interval '20 minutes' WHERE id = $1",
+          [
+            dump(draw.id)
+          ]
+        )
+      end)
+
+      delete_jobs_for!(draw)
+      before = Repo.query!("SELECT * FROM draws WHERE id = $1", [dump(draw.id)])
+
+      refute draw.id in StuckDrawRedriver.redrive()
+
+      assert Repo.query!("SELECT count(*) FROM oban_jobs WHERE args->>'draw_id' = $1", [draw.id]).rows ==
+               [[0]]
+
+      assert Repo.query!("SELECT * FROM draws WHERE id = $1", [dump(draw.id)]) == before
     end
   end
 

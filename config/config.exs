@@ -23,10 +23,16 @@ config :wallop_core, Oban,
     {Oban.Plugins.Cron,
      crontab: [
        {"0 * * * *", WallopCore.Entropy.ExpiryWorker},
-       {"30 3 * * *", WallopCore.Transparency.AnchorWorker}
+       {"30 3 * * *", WallopCore.Transparency.AnchorWorker},
+       {"*/10 * * * *", WallopCore.Entropy.StuckDrawRedriver}
      ]},
     {Oban.Plugins.Lifeline, rescue_after: :timer.minutes(2)}
   ]
+
+# Forecast draws whose execution job is gone are re-driven only when this is
+# true. Off by default: turn it on only after checking for stuck forecast
+# draws, which would otherwise run on the next deploy, late.
+config :wallop_core, :redrive_forecast_draws, false
 
 config :wallop_web, WallopWeb.Endpoint,
   url: [host: "localhost"],

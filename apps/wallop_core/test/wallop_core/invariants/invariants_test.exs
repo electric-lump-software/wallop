@@ -47,7 +47,6 @@ defmodule WallopCore.Invariants.SuiteTest do
   @moduletag :invariant
 
   alias Ash.Resource.Info
-  alias WallopCore.Entropy.StuckDrawRedriver
   alias WallopCore.InvariantCase
   alias WallopCore.ProofBundle
   alias WallopCore.Resources.Draw
@@ -143,8 +142,6 @@ defmodule WallopCore.Invariants.SuiteTest do
 
   defp landed?(:pending_task_13),
     do: Code.ensure_loaded?(ProofBundle) and function_exported?(ProofBundle, :assemble, 1)
-
-  defp landed?(:pending_task_18), do: Code.ensure_loaded?(StuckDrawRedriver)
 
   test "INV-* a landed task has removed its pending tags" do
     used = used_pending_tags()
