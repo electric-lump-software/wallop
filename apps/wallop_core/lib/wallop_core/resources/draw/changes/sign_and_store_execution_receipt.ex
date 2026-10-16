@@ -19,12 +19,17 @@ defmodule WallopCore.Resources.Draw.Changes.SignAndStoreExecutionReceipt do
   — the draw completion rolls back. The draw stays in its pre-completion
   state and the entropy worker retries.
 
-  With `version: "6"` (observation-weather draws) it signs an execution
-  receipt schema 5 under the draw's stored entropy tag, naming the station
-  whose reading was used (the first station on a fallback). It refuses to
-  sign, with `WallopCore.Errors.V6ExecRefused`, when the builder rejects the
-  stored values, when the draw's reading no longer matches the stored one,
-  or when this build's `fair_pick_version` differs from the lock receipt's.
+  With `version: "6"` (lock schema 6 draws: Met Office Land Observations or
+  GB grid frequency) it signs an execution receipt schema 5 under the
+  draw's stored entropy tag, with that tag's fields from
+  `WallopCore.Entropy.V6Rules.receipt_input/2`: under Land Obs, the station
+  whose reading was used (the first station on a fallback); under grid
+  frequency, `freq_value` and `freq_fallback_reason`, with every weather
+  field null. It refuses to sign, with `WallopCore.Errors.V6ExecRefused`,
+  when the builder rejects the stored values, when the draw's reading or
+  window no longer matches the stored one, when (grid frequency) the
+  draw's seed isn't the seed of its inputs, or when this build's
+  `fair_pick_version` differs from the lock receipt's.
   Without the option it builds the schema 4 receipt exactly as before.
   """
   use Ash.Resource.Change

@@ -1,7 +1,8 @@
 defmodule WallopCore.Resources.Draw.Changes.ExecuteV6 do
   @moduledoc """
-  Executes an observation-weather draw. The caller supplies only the drand
-  beacon; everything else comes from stored state.
+  Executes a lock schema 6 draw (Met Office Land Observations or GB grid
+  frequency). The caller supplies only the drand beacon; everything else
+  comes from stored state.
 
   Inside the update's transaction it takes the draw's row lock and reads the
   draw again under it, then checks, in order:
@@ -13,7 +14,8 @@ defmodule WallopCore.Resources.Draw.Changes.ExecuteV6 do
     * the fetch deadline F has passed on the database clock, and the drand
       round has published; otherwise `V6NotYet`, with nothing written.
 
-  Then it reads the stored reading for the draw's hour, under the row lock.
+  Then it reads the stored reading for the draw's hour (Land Obs) or the
+  stored window for its start T (grid frequency), under the row lock.
   If there is one, the seed uses it. If there is none, the draw is
   drand-only with the rules' fallback reason: by rule, because the store
   can no longer change after F. There is no other choice to make. The
@@ -21,9 +23,10 @@ defmodule WallopCore.Resources.Draw.Changes.ExecuteV6 do
 
   The draws guard refuses any completion that differs from the stored
   reading or the fallback rule, and refuses the fallback until a minute past
-  F. The execution receipt guard binds the signed receipt to the completed
-  draw, its lock receipt and the hour's stored reading (or the fallback
-  rule), so a receipt that disagrees with any of them is refused too.
+  F (Land Obs) or M past F (grid frequency). The execution receipt guard
+  binds the signed receipt to the completed draw, its lock receipt and the
+  stored reading or window (or the fallback rule), so a receipt that
+  disagrees with any of them is refused too.
   """
   use Ash.Resource.Change
 

@@ -14,6 +14,7 @@ defmodule WallopCore.ProofBundle do
   """
 
   alias WallopCore.OperatorInfo
+  alias WallopCore.Protocol
 
   @bundle_version 1
 
@@ -141,10 +142,14 @@ defmodule WallopCore.ProofBundle do
       "drand_chain_hash" => draw.drand_chain
     }
 
-    if draw.weather_value do
-      Map.put(base, "weather_value", draw.weather_value)
-    else
-      base
+    # The unsigned copy of the second source's value, chosen by tag: the
+    # verifier binds it to the signed execution receipt.
+    freq? = draw.entropy_composition == Protocol.freq_entropy_composition()
+
+    cond do
+      freq? and draw.freq_value -> Map.put(base, "freq_value", draw.freq_value)
+      not freq? and draw.weather_value -> Map.put(base, "weather_value", draw.weather_value)
+      true -> base
     end
   end
 end
