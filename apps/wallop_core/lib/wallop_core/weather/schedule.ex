@@ -19,10 +19,11 @@ defmodule WallopCore.Weather.Schedule do
 
   alias WallopCore.Drand.Quicknet
 
-  # W, the observation fetch window. Provisional: set to the measured p99
-  # Land Observations publication latency + 10 minutes (capped at 90) before
-  # release. Mirrored by the SQL function wallop_landobs_fetch_window().
-  @fetch_window_seconds 40 * 60
+  # W, the observation fetch window. Measured p99 Land Observations
+  # publication latency (15 minutes) + 10 minutes, rounded up to 30 so the
+  # primary source keeps 5 minutes of headroom before the backup cutover.
+  # Mirrored by the SQL function wallop_landobs_fetch_window().
+  @fetch_window_seconds 30 * 60
   @backup_cutover_before_deadline_seconds 10 * 60
   @lock_offset_seconds 46 * 60
   @observation_slack_seconds 60

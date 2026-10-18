@@ -9,14 +9,14 @@ defmodule WallopCore.Weather.ScheduleTest do
   defp grid_point(unix),
     do: DateTime.from_unix!((unix - Integer.mod(unix - @genesis, 3)) * 1_000_000, :microsecond)
 
-  describe "schedule/1, worked example (W = 40 min)" do
-    test "a 20:00 draw observes 19:00, closes the fetch at 19:40 and locks by 18:14" do
+  describe "schedule/1, worked example (W = 30 min)" do
+    test "a 20:00 draw observes 19:00, closes the fetch at 19:30 and locks by 18:14" do
       assert {:ok, s} = Schedule.schedule(~U[2026-10-14 20:00:00.000000Z])
       assert s.round == 33_068_212
       assert s.expected_result_at == ~U[2026-10-14 20:00:00.000000Z]
       assert s.weather_time == ~U[2026-10-14 19:00:00.000000Z]
-      assert s.backup_cutover == ~U[2026-10-14 19:30:00.000000Z]
-      assert s.fetch_deadline == ~U[2026-10-14 19:40:00.000000Z]
+      assert s.backup_cutover == ~U[2026-10-14 19:20:00.000000Z]
+      assert s.fetch_deadline == ~U[2026-10-14 19:30:00.000000Z]
       assert s.latest_lock_at == ~U[2026-10-14 18:14:00.000000Z]
     end
 
@@ -86,9 +86,9 @@ defmodule WallopCore.Weather.ScheduleTest do
     assert_raise FunctionClauseError, fn -> Schedule.weather_time_for_round(0) end
   end
 
-  test "worked default: at 18:00 the default is 19:41 (observing 19:00)" do
+  test "worked default: at 18:00 the default is 19:31 (observing 19:00)" do
     assert Schedule.default_draw_at(~U[2026-10-14 18:00:00.000000Z]) ==
-             ~U[2026-10-14 19:41:00.000000Z]
+             ~U[2026-10-14 19:31:00.000000Z]
   end
 
   test "lock_allowed? is inclusive at latest_lock_at" do

@@ -22,9 +22,10 @@ defmodule WallopCore.Frequency.Schedule do
 
   alias WallopCore.Drand.Quicknet
 
-  # W_freq, the frequency fetch window. Provisional: before vectors freeze
-  # it is set to max(observed batch publication latency, measured from
-  # T + 105 s) + 40 s (two poll intervals), capped at 240 s. Mirrored by the
+  # W_freq, the frequency fetch window. Final. The rule (max observed batch
+  # publication latency, measured from T + 105 s, + 40 s, at most 240 s) is
+  # capped: the cap binds. Samples arriving later fall back to drand only
+  # (no_frequency_by_deadline). Mirrored by the
   # SQL function wallop_freq_fetch_window() and the verifier's W_FREQ_SECS.
   @fetch_window_seconds 240
   # M, the margin between the fetch deadline F and pub(R): F <= pub(R) - M.
