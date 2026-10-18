@@ -121,7 +121,7 @@ defmodule WallopCore.Resources.Draw do
       statement :wallop_landobs_fetch_window do
         up("""
         CREATE OR REPLACE FUNCTION wallop_landobs_fetch_window() RETURNS interval
-        LANGUAGE sql IMMUTABLE AS $$ SELECT interval '40 minutes' $$
+        LANGUAGE sql IMMUTABLE AS $$ SELECT interval '30 minutes' $$
         """)
 
         down("DROP FUNCTION IF EXISTS wallop_landobs_fetch_window()")
@@ -330,7 +330,7 @@ defmodule WallopCore.Resources.Draw do
 
       statement :wallop_freq_fetch_window do
         # W_freq = WallopCore.Frequency.Schedule.fetch_window_seconds/0.
-        # Provisional until the 48 h Elexon poll is in; no CHECK calls it.
+        # Final; no CHECK calls it.
         up("""
         CREATE OR REPLACE FUNCTION wallop_freq_fetch_window() RETURNS interval
         LANGUAGE sql IMMUTABLE AS $$ SELECT interval '240 seconds' $$
