@@ -140,6 +140,13 @@ defmodule WallopCore.InvariantCase do
 
   def rfc(dt), do: WallopCore.Time.to_rfc3339_usec(dt)
 
+  @doc "The instant `dt` written with a `+0h:00` offset instead of `Z`, `h` in 0..9."
+  def offset_rfc(dt, h) when h in 0..9,
+    do: dt |> DateTime.add(h * 3600) |> rfc() |> String.replace_suffix("Z", "+0#{h}:00")
+
+  @doc "The trigger's refusal of a signed time that isn't canonical UTC."
+  def not_canonical(text), do: "not a canonical UTC timestamp: " <> text
+
   @doc """
   A lock v6 payload (decoded) and receipt columns that pass every guard for
   `draw` once it is locked under schedule `s`, built by the real builder.
