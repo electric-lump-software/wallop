@@ -137,6 +137,13 @@ defmodule WallopCore.TamperProfiles.LandObs do
       {"lock_locked_at_not_canonical", :observed, :lock, "locked_at",
        "2026-10-14T18:00:00.123456+00:00", "a +00:00 offset",
        ~w(bundle_shape drand_bls_signature temporal_binding weather_observation_window)},
+      {"lock_locked_at_offset_bst", :observed, :lock, "locked_at",
+       "2026-10-14T19:00:00.123456+01:00", "the same instant at +01:00",
+       ~w(bundle_shape drand_bls_signature temporal_binding weather_observation_window)},
+      {"lock_weather_time_offset_utc", :observed, :lock, "weather_time", offset(wt, 0),
+       "a +00:00 offset", ~w(bundle_shape weather_observation_window)},
+      {"lock_weather_time_offset_bst", :observed, :lock, "weather_time", offset(wt, 1),
+       "the same instant at +01:00", ~w(bundle_shape weather_observation_window)},
       {"lock_weather_station_backup", :observed, :lock, "weather_station", Stations.backup().id,
        "the other station", ~w(bundle_shape receipt_field_consistency)},
       {"lock_weather_station_null", :observed, :lock, "weather_station", nil, "nil",
@@ -215,6 +222,10 @@ defmodule WallopCore.TamperProfiles.LandObs do
        "pub(R) - 1 µs", ~w(drand_bls_signature)},
       {"exec_executed_at_not_canonical", :observed, :exec, "executed_at", "2026-10-14T20:00:06Z",
        "no fraction", ~w(bundle_shape drand_bls_signature temporal_binding)},
+      {"exec_executed_at_offset_utc", :observed, :exec, "executed_at", offset(V.executed_at(), 0),
+       "a +00:00 offset", ~w(bundle_shape drand_bls_signature temporal_binding)},
+      {"exec_executed_at_offset_bst", :observed, :exec, "executed_at", offset(V.executed_at(), 1),
+       "the same instant at +01:00", ~w(bundle_shape drand_bls_signature temporal_binding)},
       {"exec_lock_receipt_hash_other", :observed, :exec, "lock_receipt_hash", V.other_hash(),
        "another hash", ~w(receipt_linkage)},
       {"exec_merkle_algorithm_other", :observed, :exec, "merkle_algorithm", "sha256-pairwise-v2",
@@ -237,6 +248,10 @@ defmodule WallopCore.TamperProfiles.LandObs do
        rfc(add_h(wt, 1)), "+1 hour", ~w(weather_observation_window)},
       {"exec_weather_observation_time_null", :observed, :exec, "weather_observation_time", nil,
        "nil with a value", ~w(weather_observation_window)},
+      {"exec_weather_observation_time_offset_utc", :observed, :exec, "weather_observation_time",
+       offset(wt, 0), "a +00:00 offset", ~w(bundle_shape weather_observation_window)},
+      {"exec_weather_observation_time_offset_bst", :observed, :exec, "weather_observation_time",
+       offset(wt, 1), "the same instant at +01:00", ~w(bundle_shape weather_observation_window)},
       {"exec_weather_fallback_reason_on_observed", :observed, :exec, "weather_fallback_reason",
        Protocol.landobs_fallback_reason(), "a reason with a value",
        ~w(weather_observation_window)},
@@ -270,6 +285,11 @@ defmodule WallopCore.TamperProfiles.LandObs do
   end
 
   defp rfc(dt), do: WallopCore.Time.to_rfc3339_usec(dt)
+
+  # The same instant written with a +0h:00 offset instead of Z.
+  defp offset(dt, h),
+    do: dt |> DateTime.add(h * 3600) |> rfc() |> String.replace_suffix("Z", "+0#{h}:00")
+
   defp add_h(dt, n), do: DateTime.add(dt, n * 3600)
   defp add_us(dt, n), do: DateTime.add(dt, n, :microsecond)
 end
@@ -312,6 +332,7 @@ defmodule WallopCore.TamperProfiles.Freq do
               exec_drand_signature_algorithm_other exec_draw_id_other exec_operator_id_other
               exec_sequence_plus_one exec_sequence_float exec_entry_hash_other
               exec_executed_at_before_round exec_executed_at_not_canonical
+              exec_executed_at_offset_utc exec_executed_at_offset_bst
               exec_lock_receipt_hash_other exec_merkle_algorithm_other exec_seed_other
               exec_results_reversed exec_signing_key_id_other exec_jcs_version_other
               exec_signature_algorithm_other exec_fair_pick_version_other exec_operator_slug_other
@@ -418,12 +439,18 @@ defmodule WallopCore.TamperProfiles.Freq do
       {"freq_lock_freq_start_not_canonical", :observed, :lock, "freq_start",
        "2026-10-14T19:54:00.000000+00:00", "a +00:00 offset",
        ~w(bundle_shape weather_observation_window)},
+      {"freq_lock_freq_start_offset_bst", :observed, :lock, "freq_start",
+       "2026-10-14T20:54:00.000000+01:00", "the same instant at +01:00",
+       ~w(bundle_shape weather_observation_window)},
       {"freq_lock_locked_at_after_limit", :observed, :lock, "locked_at", rfc(add_us(latest, 1)),
        "T - 60 s + 1 µs", ~w(weather_observation_window)},
       {"freq_lock_locked_at_after_round", :observed, :lock, "locked_at", rfc(add_us(pub, 1)),
        "pub(R) + 1 µs", ~w(weather_observation_window drand_bls_signature)},
       {"freq_lock_locked_at_not_canonical", :observed, :lock, "locked_at",
        "2026-10-14T19:50:00.123456+00:00", "a +00:00 offset",
+       ~w(bundle_shape drand_bls_signature temporal_binding weather_observation_window)},
+      {"freq_lock_locked_at_offset_bst", :observed, :lock, "locked_at",
+       "2026-10-14T20:50:00.123456+01:00", "the same instant at +01:00",
        ~w(bundle_shape drand_bls_signature temporal_binding weather_observation_window)},
       {"freq_lock_drand_round_plus_one", :observed, :lock, "drand_round", round + 1,
        "+1 round (the same window)", ~w(receipt_field_consistency)},

@@ -402,6 +402,18 @@ defmodule WallopCore.Invariants.TamperTest do
     ]
   end
 
+  # The same instant as the UTC `dt`, as a Europe/London DateTime with a
+  # `h`-hour offset (0 in winter, 1 in summer).
+  defp london(%DateTime{time_zone: "Etc/UTC"} = dt, h) do
+    %{
+      DateTime.add(dt, h * 3600)
+      | time_zone: "Europe/London",
+        zone_abbr: if(h == 1, do: "BST", else: "GMT"),
+        utc_offset: 0,
+        std_offset: h * 3600
+    }
+  end
+
   defp build_lock(input), do: Protocol.build_v6_lock_payload(input)
   defp build_exec(input), do: Protocol.build_v6_execution_payload(input)
 
@@ -467,6 +479,31 @@ defmodule WallopCore.Invariants.TamperTest do
             no_layer: @no_layer_refuses.exec
           })
         end
+      end
+    end
+
+    test "INV-2 (tamper) the builders refuse a signed time in UK time, in winter (+00:00) and summer (+01:00)" do
+      freq_lock = TamperVectors.lock_input(TamperProfiles.Freq)
+      {freq_lock_jcs, _} = TamperVectors.base(TamperProfiles.Freq, :observed)
+      lock = TamperVectors.lock_input()
+      exec = TamperVectors.exec_input(:observed, build_lock(lock))
+      freq_exec = TamperVectors.exec_input(TamperProfiles.Freq, :observed, freq_lock_jcs)
+
+      for {builder, input, fields} <- [
+            {&build_lock/1, lock, [:locked_at, :weather_time]},
+            {&build_lock/1, freq_lock, [:locked_at, :freq_start]},
+            {&build_exec/1, exec, [:executed_at, :weather_observation_time]},
+            {&build_exec/1, freq_exec, [:executed_at]}
+          ],
+          field <- fields,
+          h <- [0, 1] do
+        uk = london(Map.fetch!(input, field), h)
+        assert DateTime.compare(uk, Map.fetch!(input, field)) == :eq
+
+        # Refused either by the schedule arithmetic (core runs with the
+        # UTC-only time zone database) or, failing that, by the canonical
+        # serialiser's non-UTC check. Never signed.
+        assert_raise ArgumentError, fn -> builder.(Map.put(input, field, uk)) end
       end
     end
 
@@ -607,6 +644,14 @@ defmodule WallopCore.Invariants.TamperTest do
              cols,
              "not a canonical UTC timestamp: " <>
                String.replace(rfc(s.weather_time), "Z", "+00:00")},
+            {"weather_time at +01:00",
+             %{payload | "weather_time" => offset_rfc(s.weather_time, 1)}, cols,
+             not_canonical(offset_rfc(s.weather_time, 1))},
+            {"locked_at with an offset",
+             %{payload | "locked_at" => offset_rfc(cols.locked_at, 0)}, cols,
+             not_canonical(offset_rfc(cols.locked_at, 0))},
+            {"locked_at at +01:00", %{payload | "locked_at" => offset_rfc(cols.locked_at, 1)},
+             cols, not_canonical(offset_rfc(cols.locked_at, 1))},
             {"tag v2", %{payload | "entropy_composition" => @v2_tag}, cols, pair},
             {"schema 5", %{payload | "schema_version" => "5"}, cols, pair},
             {"round and weather_time +1h together",
@@ -760,6 +805,22 @@ defmodule WallopCore.Invariants.TamperTest do
             {"v2 tag", %{payload | "entropy_composition" => @v2_tag}, cols, pair},
             {"executed_at before pub(R)", %{payload | "executed_at" => before}, cols,
              exec_db_message("executed_at")},
+            {"executed_at with an offset",
+             %{payload | "executed_at" => offset_rfc(x.input.executed_at, 0)}, cols,
+             not_canonical(offset_rfc(x.input.executed_at, 0))},
+            {"executed_at at +01:00",
+             %{payload | "executed_at" => offset_rfc(x.input.executed_at, 1)}, cols,
+             not_canonical(offset_rfc(x.input.executed_at, 1))},
+            {"weather_observation_time with an offset",
+             %{
+               payload
+               | "weather_observation_time" => offset_rfc(x.input.weather_observation_time, 0)
+             }, cols, not_canonical(offset_rfc(x.input.weather_observation_time, 0))},
+            {"weather_observation_time at +01:00",
+             %{
+               payload
+               | "weather_observation_time" => offset_rfc(x.input.weather_observation_time, 1)
+             }, cols, not_canonical(offset_rfc(x.input.weather_observation_time, 1))},
             {"station unlisted", %{payload | "weather_station" => "wmo-03772"}, cols,
              exec_db_message("weather_station")},
             {"reading with a fallback reason",

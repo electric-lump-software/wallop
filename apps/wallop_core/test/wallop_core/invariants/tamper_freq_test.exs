@@ -173,6 +173,16 @@ defmodule WallopCore.Invariants.TamperFreqTest do
              cols, "v6 lock receipt field freq_start does not match the draw"},
             {"freq_start null", %{payload | "freq_start" => nil}, cols,
              "v6 lock receipt field freq_start does not match the draw"},
+            {"freq_start with an offset",
+             %{payload | "freq_start" => offset_rfc(s.freq_start, 0)}, cols,
+             not_canonical(offset_rfc(s.freq_start, 0))},
+            {"freq_start at +01:00", %{payload | "freq_start" => offset_rfc(s.freq_start, 1)},
+             cols, not_canonical(offset_rfc(s.freq_start, 1))},
+            {"locked_at with an offset",
+             %{payload | "locked_at" => offset_rfc(cols.locked_at, 0)}, cols,
+             not_canonical(offset_rfc(cols.locked_at, 0))},
+            {"locked_at at +01:00", %{payload | "locked_at" => offset_rfc(cols.locked_at, 1)},
+             cols, not_canonical(offset_rfc(cols.locked_at, 1))},
             {"freq_start missing", Map.delete(payload, "freq_start"), cols, keys},
             {"round +1 (the same window)", %{payload | "drand_round" => s.round + 1}, cols,
              "v6 lock receipt field drand_round does not match the draw"},
@@ -239,7 +249,13 @@ defmodule WallopCore.Invariants.TamperFreqTest do
               {"weather_fallback_reason set",
                %{payload | "weather_fallback_reason" => @weather_reason},
                stored.("weather_fallback_reason")},
-              {"the Land Obs tag", %{payload | "entropy_composition" => LandObs.tag()}, pair}
+              {"the Land Obs tag", %{payload | "entropy_composition" => LandObs.tag()}, pair},
+              {"executed_at with an offset",
+               %{payload | "executed_at" => offset_rfc(x.input.executed_at, 0)},
+               not_canonical(offset_rfc(x.input.executed_at, 0))},
+              {"executed_at at +01:00",
+               %{payload | "executed_at" => offset_rfc(x.input.executed_at, 1)},
+               not_canonical(offset_rfc(x.input.executed_at, 1))}
             ],
             # On a fallback the reason is already there.
             tampered != payload do
