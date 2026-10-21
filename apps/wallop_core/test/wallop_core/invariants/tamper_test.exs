@@ -503,7 +503,9 @@ defmodule WallopCore.Invariants.TamperTest do
         # Refused either by the schedule arithmetic (core runs with the
         # UTC-only time zone database) or, failing that, by the canonical
         # serialiser's non-UTC check. Never signed.
-        assert_raise ArgumentError, fn -> builder.(Map.put(input, field, uk)) end
+        assert_raise ArgumentError,
+                     ~r/non-UTC DateTime|Calendar\.UTCOnlyTimeZoneDatabase/,
+                     fn -> builder.(Map.put(input, field, uk)) end
       end
     end
 
