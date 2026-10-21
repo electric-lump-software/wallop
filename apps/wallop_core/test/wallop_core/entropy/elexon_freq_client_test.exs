@@ -50,6 +50,38 @@ defmodule WallopCore.Entropy.ElexonFreqClientTest do
     refute List.keymember?(headers, "apikey", 0)
   end
 
+  # Real responses for 00:45 to 01:15 UTC on the two UK clock-change days.
+  # The window T = 00:59:00 runs to 01:00:45 UTC, straddling the changeover.
+  # Values are worked out by hand from the fixture readings (49.86 is
+  # 49860 once padded to three decimals).
+  @clock_changes [
+    {"2026-03-29", ~U[2026-03-29 00:59:00.000000Z],
+     "49926;49933;49931;49936;49866;49888;49862;49860"},
+    {"2025-10-26", ~U[2025-10-26 00:59:00.000000Z],
+     "50047;50035;50026;50012;49987;49954;49942;49932"}
+  ]
+
+  for {date, start, value} <- @clock_changes do
+    @date date
+    @start start
+    @clock_value value
+
+    test "the window straddling 01:00 UTC on #{@date} gives its 8 readings in time order" do
+      path =
+        Path.expand("../../fixtures/elexon/freq-#{@date}T00-45-00_01-15-00.json", __DIR__)
+
+      body = File.read!(path)
+      serve(200, body)
+
+      assert {:ok, %{value: @clock_value, raw: ^body, freq_start: @start}} =
+               ElexonFreqClient.fetch_window(@start)
+
+      assert_received {:request, _conn, params, _headers}
+      assert params["measurementDateTimeFrom"] == "#{@date}T00:59:00Z"
+      assert params["measurementDateTimeTo"] == "#{@date}T01:00:45Z"
+    end
+  end
+
   test "every shared window vector gives the same result through the client" do
     vectors = @vectors |> File.read!() |> Jason.decode!()
     {:ok, start, 0} = DateTime.from_iso8601(vectors["freq_start"])
