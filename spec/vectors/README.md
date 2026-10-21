@@ -43,6 +43,10 @@ the current protocol.
 
 - `freq-window-v1.json` — the grid-frequency window rule (tag `drand-quicknet+elexon-freq-v1`): raw Elexon FREQ bodies and the `freq_value` of the window at `freq_start`, or `invalid` with the first failing reason (and reading time). Shape: `{description, rules, freq_start, cases: [{name, body, value} | {name, body, invalid: {reason, at?}}]}`; `body` is the response text, its rows are `body.data`, and every number is read from its JSON text. Covers the row rule (non-objects ignored; every matching object row counts, so a row with no `frequency` invalidates the window or makes it a duplicate), exact-text timestamps (`...T19:55:00.000Z` matches nothing), repeated keys (a key twice in one object, at any depth, makes the body invalid with reason `duplicate_key` and no `at`: a top-level `data` twice, and a row with two `frequency` or two `measurementTime` keys), the bounds, the number grammar and stuck runs of 5 and 6. A verifier must refuse every `invalid` case; the reason is core's.
 
+### Schedules
+
+- `schedule-boundaries-v1.json` — v6 draw schedules for both entropy tags, from a reference implementation written independently of core. `landobs` and `freq` hold every whole-minute `draw_at` from 22:00 to 02:59 UTC across seven windows (`window`): the end and start of UK summer time (2026-10-24/25, 2027-03-27/28), a month end, a year end, February 2027 (no leap day) and both sides of 29 February 2028. `landobs_grid_seconds` and `freq_grid_seconds` add the off-minute quicknet grid points 23:59:03–23:59:57 and 00:30:03–00:30:57 of each window. Each landobs case gives `round`, `weather_time`, `backup_cutover`, `fetch_deadline` and `latest_lock_at`; each freq case gives `round`, `freq_start`, `fetch_deadline` and `latest_lock_at`. Times are UTC, whole seconds, `YYYY-MM-DDTHH:MM:SSZ`. `landobs_w30_not_w40` is a draw whose `weather_time` differs between W = 30 min and W = 40 min. Every implementation's schedule functions must match every case.
+
 ### End-to-end
 
 - `end-to-end.json` — full pipeline: entries → hash → seed → winners
