@@ -54,8 +54,11 @@ defmodule WallopCore.Invariants.SuiteTest do
   alias Ash.Resource.Info
   alias WallopCore.InvariantCase
   alias WallopCore.ProofBundle
+  alias WallopCore.Protocol.Tags.LandObs
   alias WallopCore.Resources.Draw
   alias WallopCore.Weather.Observations
+  alias WallopCore.Weather.Schedule
+  alias WallopCore.Weather.Stations
 
   @dir __DIR__
   @ids ~w(INV-1 INV-2 INV-3 INV-4 INV-5 INV-6 INV-7 INV-8 INV-8b INV-9 INV-10 INV-11 INV-12 INV-13
@@ -175,17 +178,17 @@ defmodule WallopCore.Invariants.SuiteTest do
 
   # Part M. Each marker is the first thing its task delivers.
   defp landed?(:pending_task_M2) do
-    {:ok, s} = WallopCore.Weather.Schedule.schedule(~U[2026-10-14 20:00:00Z])
+    {:ok, s} = Schedule.schedule(~U[2026-10-14 20:00:00Z])
     Map.has_key?(s, :freq_start)
   end
 
-  defp landed?(:pending_task_M3), do: WallopCore.Weather.Stations.ids() == ["wmo-03749"]
+  defp landed?(:pending_task_M3), do: Stations.ids() == ["wmo-03749"]
 
   defp landed?(:pending_task_M4),
-    do: "freq_start" in WallopCore.Protocol.Tags.LandObs.lock_keys()
+    do: "freq_start" in LandObs.lock_keys()
 
   defp landed?(:pending_task_M5),
-    do: "freq_value" in WallopCore.Protocol.Tags.LandObs.exec_keys()
+    do: "freq_value" in LandObs.exec_keys()
 
   defp landed?(:pending_task_M6) do
     windows = Module.concat([WallopCore, Frequency, Windows])
