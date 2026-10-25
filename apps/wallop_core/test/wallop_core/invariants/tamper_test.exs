@@ -1342,11 +1342,11 @@ defmodule WallopCore.Invariants.TamperTest do
       landobs = TamperProfiles.LandObs
       v = vector(landobs)
 
-      assert Enum.map(v["bases"], & &1["name"]) == ~w(observed freq_fallback fallback)
+      assert Enum.map(v["bases"], & &1["name"]) == ~w(observed freq_window fallback)
       names = Enum.map(landobs.cases(), fn {n, _, _, f, _, _, _} -> {n, f} end)
 
       for c <- v["cases"] do
-        assert c["base"] in ~w(observed freq_fallback fallback), c["name"]
+        assert c["base"] in ~w(observed freq_window fallback), c["name"]
         assert {c["name"], c["field"]} in names, c["name"]
       end
 

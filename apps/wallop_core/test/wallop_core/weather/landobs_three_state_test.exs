@@ -11,6 +11,7 @@ defmodule WallopCore.Weather.LandObsThreeStateTest do
 
   alias WallopCore.Drand.Quicknet
   alias WallopCore.Entropy.{DrandClient, ObservationDrawWorker, V6Rules}
+  alias WallopCore.InvariantCase
   alias WallopCore.ProofBundle
   alias WallopCore.Protocol
   alias WallopCore.Protocol.Tags.{Freq, LandObs, V6Keys}
@@ -270,7 +271,7 @@ defmodule WallopCore.Weather.LandObsThreeStateTest do
       a = executed(key, 10, :weather)
 
       # Stored state the draws guard refuses: a window beside a reading.
-      with_triggers_off(fn ->
+      InvariantCase.with_triggers_off(fn ->
         Repo.query!("UPDATE draws SET freq_value = $2 WHERE id = $1", [
           Ecto.UUID.dump!(a.id),
           @freq
@@ -282,16 +283,6 @@ defmodule WallopCore.Weather.LandObsThreeStateTest do
       e = entropy(tampered)
       assert e["weather_value"] == @value
       refute Map.has_key?(e, "freq_value")
-    end
-
-    defp with_triggers_off(fun) do
-      Repo.query!("SET session_replication_role = replica")
-
-      try do
-        fun.()
-      after
-        Repo.query!("RESET session_replication_role")
-      end
     end
   end
 end

@@ -69,6 +69,8 @@ defmodule WallopCore.TamperProfiles.LandObs do
   @impl true
   def exec_keys, do: LandObs.exec_keys()
   @impl true
+  # Published name; internally the kind stays :freq_fallback (state b).
+  def base_name(:freq_fallback), do: "freq_window"
   def base_name(kind), do: Atom.to_string(kind)
   @impl true
   def locked_at, do: @locked_at
@@ -147,7 +149,8 @@ defmodule WallopCore.TamperProfiles.LandObs do
       {"lock_drand_round_plus_one", :observed, :lock, "drand_round", V.round() + 1,
        "+1 round (same observation hour)", ~w(receipt_field_consistency)},
       {"lock_drand_round_minus_one", :observed, :lock, "drand_round", V.round() - 1,
-       "-1 round (same observation hour)", ~w(receipt_field_consistency)},
+       "-1 round (same observation hour, the previous window)",
+       ~w(receipt_field_consistency weather_observation_window)},
       {"lock_drand_round_next_hour", :observed, :lock, "drand_round", next_hour_round,
        "+1 hour of rounds (+1200)", ~w(receipt_field_consistency weather_observation_window)},
       {"lock_drand_round_string", :observed, :lock, "drand_round", Integer.to_string(V.round()),
@@ -195,7 +198,7 @@ defmodule WallopCore.TamperProfiles.LandObs do
        V.forecast_tag(), "a different tag",
        ~w(bundle_shape receipt_field_consistency weather_observation_window)},
       {"lock_schema_version_5", :observed, :lock, "schema_version", "5", "a different schema",
-       ~w(bundle_shape receipt_field_consistency weather_observation_window)},
+       ~w(bundle_shape lock_signature receipt_field_consistency weather_observation_window)},
       {"lock_draw_id_other", :observed, :lock, "draw_id", V.other_uuid(), "another draw",
        ~w(receipt_field_consistency)},
       {"lock_operator_id_other", :observed, :lock, "operator_id", V.other_uuid(),
@@ -256,7 +259,7 @@ defmodule WallopCore.TamperProfiles.LandObs do
        V.forecast_tag(), "a different tag",
        ~w(bundle_shape receipt_field_consistency weather_observation_window)},
       {"exec_schema_version_4", :observed, :exec, "schema_version", "4", "a different schema",
-       ~w(bundle_shape receipt_field_consistency weather_observation_window)},
+       ~w(bundle_shape exec_signature receipt_field_consistency weather_observation_window)},
       {"exec_entry_hash_other", :observed, :exec, "entry_hash", V.other_hash(), "another hash",
        ~w(exec_receipt_entry_hash)},
       {"exec_executed_at_before_round", :observed, :exec, "executed_at", rfc(add_us(pub, -1)),
@@ -317,19 +320,19 @@ defmodule WallopCore.TamperProfiles.LandObs do
       {"exec_freq_reason_other_on_fallback", :fallback, :exec, "freq_fallback_reason",
        "unreachable", "another reason on a drand-only fallback",
        ~w(bundle_shape receipt_field_consistency seed_recomputation weather_observation_window)},
-      {"exec_freq_value_other_on_freq_fallback", :freq_fallback, :exec, "freq_value",
+      {"exec_freq_value_other_on_freq_window", :freq_fallback, :exec, "freq_value",
        "50013;50018;50012;49983;49980;49953;49912;49883", "first reading +1 mHz",
        ~w(drand_bls_signature seed_recomputation)},
-      {"exec_freq_value_null_on_freq_fallback", :freq_fallback, :exec, "freq_value", nil,
+      {"exec_freq_value_null_on_freq_window", :freq_fallback, :exec, "freq_value", nil,
        "nil with the weather reason and no freq reason",
        ~w(drand_bls_signature receipt_field_consistency seed_recomputation weather_observation_window)},
       {"exec_freq_fallback_reason_beside_value", :freq_fallback, :exec, "freq_fallback_reason",
        Protocol.freq_fallback_reason(), "the frequency reason beside a window",
        ~w(receipt_field_consistency seed_recomputation weather_observation_window)},
-      {"exec_freq_value_grammar_on_freq_fallback", :freq_fallback, :exec, "freq_value",
+      {"exec_freq_value_grammar_on_freq_window", :freq_fallback, :exec, "freq_value",
        "50000;50000;50000;50000;50000;50000;50012;50013", "a stuck run of 6",
        ~w(bundle_shape drand_bls_signature seed_recomputation)},
-      {"exec_weather_reason_null_on_freq_fallback", :freq_fallback, :exec,
+      {"exec_weather_reason_null_on_freq_window", :freq_fallback, :exec,
        "weather_fallback_reason", nil, "nil beside a window",
        ~w(receipt_field_consistency seed_recomputation weather_observation_window)},
       {"exec_entropy_composition_freq", :observed, :exec, "entropy_composition", Freq.tag(),
