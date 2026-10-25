@@ -32,12 +32,7 @@ defmodule WallopCore.InvariantCase do
   # its tag from the tests it delivers; once no test uses a tag, it may be
   # removed here too.
   @pending_tags [
-    :pending_task_13,
-    :pending_task_M2,
-    :pending_task_M3,
-    :pending_task_M4,
-    :pending_task_M5,
-    :pending_task_M6
+    :pending_task_13
   ]
 
   @doc "Tags of invariants whose task has not landed. Excluded by default."

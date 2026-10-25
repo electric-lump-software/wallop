@@ -3,8 +3,7 @@ defmodule WallopCore.Invariants.GroupMMiddleWallopTest do
   Group M: observation-weather draws use Middle Wallop only. When its
   reading misses the fetch deadline they use the grid-frequency window of
   the same drand round, and when that is missing too, drand alone
-  (INV-M1 to INV-M9). Each invariant carries `@tag :pending_task_M<n>`
-  until task n of its plan delivers it.
+  (INV-M1 to INV-M9).
   """
   use WallopCore.InvariantCase, async: false
   use Oban.Testing, repo: WallopCore.Repo
