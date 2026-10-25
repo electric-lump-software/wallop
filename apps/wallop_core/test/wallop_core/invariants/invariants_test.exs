@@ -20,6 +20,7 @@ defmodule WallopCore.Invariants.SuiteTest do
       `spec/vectors/proof-bundle-v6-tamper-freq.json`.
     * Group F, `group_f_frequency_test.exs`: the grid-frequency tag (INV-F1
       to INV-F7), with ids `INV-F<n>` and pending tags `pending_task_F<n>`.
+    * Group M, `group_m_middle_wallop_test.exs`: Middle Wallop only, with the grid-frequency fallback (INV-M1 to INV-M9), with pending tags pending_task_M<n>.
 
   The rule: an invariant that a later task delivers is written now, against
   that task's planned interface, and tagged `@tag :pending_task_<N>` on the
@@ -58,7 +59,8 @@ defmodule WallopCore.Invariants.SuiteTest do
 
   @dir __DIR__
   @ids ~w(INV-1 INV-2 INV-3 INV-4 INV-5 INV-6 INV-7 INV-8 INV-8b INV-9 INV-10 INV-11 INV-12 INV-13
-          INV-F1 INV-F2 INV-F3 INV-F4 INV-F5 INV-F6 INV-F7)
+          INV-F1 INV-F2 INV-F3 INV-F4 INV-F5 INV-F6 INV-F7
+          INV-M1 INV-M2 INV-M3 INV-M4 INV-M5 INV-M6 INV-M7 INV-M8 INV-M9)
 
   defp sources do
     for path <- Path.wildcard(Path.join(@dir, "*_test.exs")),
@@ -68,7 +70,7 @@ defmodule WallopCore.Invariants.SuiteTest do
 
   defp used_pending_tags do
     sources()
-    |> Enum.flat_map(fn {_, source} -> Regex.scan(~r/@tag :(pending_task_F?\d+)/, source) end)
+    |> Enum.flat_map(fn {_, source} -> Regex.scan(~r/@tag :(pending_task_[FM]?\d+)/, source) end)
     |> Enum.map(fn [_, tag] -> String.to_atom(tag) end)
     |> Enum.uniq()
   end
@@ -81,7 +83,7 @@ defmodule WallopCore.Invariants.SuiteTest do
 
   test "INV-* every invariant test is named after its invariant" do
     for {file, source} <- sources(), name <- names(source) do
-      assert name =~ ~r/^INV-F?\d+b? /, "#{file}: #{inspect(name)}"
+      assert name =~ ~r/^INV-[FM]?\d+b? /, "#{file}: #{inspect(name)}"
     end
   end
 
@@ -114,8 +116,9 @@ defmodule WallopCore.Invariants.SuiteTest do
       lines = String.split(source, "\n")
 
       for {line, i} <- Enum.with_index(lines),
-          line =~ ~r/pending_task_F?\d/ do
-        assert line =~ ~r/^\s*@tag :pending_task_F?\d+$/, "#{file}:#{i + 1}: #{String.trim(line)}"
+          line =~ ~r/pending_task_[FM]?\d/ do
+        assert line =~ ~r/^\s*@tag :pending_task_[FM]?\d+$/,
+               "#{file}:#{i + 1}: #{String.trim(line)}"
 
         next =
           lines
@@ -168,6 +171,25 @@ defmodule WallopCore.Invariants.SuiteTest do
         entropy_composition: "drand-quicknet+elexon-freq-v1"
       }) ==
         {:ok, :freq}
+  end
+
+  # Part M. Each marker is the first thing its task delivers.
+  defp landed?(:pending_task_M2) do
+    {:ok, s} = WallopCore.Weather.Schedule.schedule(~U[2026-10-14 20:00:00Z])
+    Map.has_key?(s, :freq_start)
+  end
+
+  defp landed?(:pending_task_M3), do: WallopCore.Weather.Stations.ids() == ["wmo-03749"]
+
+  defp landed?(:pending_task_M4),
+    do: "freq_start" in WallopCore.Protocol.Tags.LandObs.lock_keys()
+
+  defp landed?(:pending_task_M5),
+    do: "freq_value" in WallopCore.Protocol.Tags.LandObs.exec_keys()
+
+  defp landed?(:pending_task_M6) do
+    windows = Module.concat([WallopCore, Frequency, Windows])
+    Code.ensure_loaded?(windows) and function_exported?(windows, :waiting_tags, 0)
   end
 
   test "INV-* a landed task has removed its pending tags" do
