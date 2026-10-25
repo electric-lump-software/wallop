@@ -9,13 +9,14 @@ defmodule WallopCore.TamperProfiles do
   the bytes of another tag's file.
   """
 
-  @type kind :: :observed | :fallback
+  @type kind :: :observed | :freq_fallback | :fallback
   @type case_tuple ::
           {String.t(), kind(), :lock | :exec | :both, String.t(), term(), String.t(),
            [String.t()]}
 
   @callback tag() :: String.t()
   @callback vector_file() :: String.t()
+  @callback kinds() :: [kind()]
   @callback description() :: String.t()
   @callback lock_keys() :: [String.t()]
   @callback exec_keys() :: [String.t()]
@@ -29,22 +30,29 @@ defmodule WallopCore.TamperProfiles do
 end
 
 defmodule WallopCore.TamperProfiles.LandObs do
-  @moduledoc "The Land Observations tag's tamper profile: the original cases, unchanged."
+  @moduledoc """
+  The Land Observations tag's tamper profile. Its bases are the three
+  execution states: `:observed` (a reading), `:freq_fallback` (no reading,
+  the round's grid-frequency window) and `:fallback` (neither, drand alone).
+  """
   @behaviour WallopCore.TamperProfiles
 
   alias WallopCore.Drand.Quicknet
   alias WallopCore.Protocol
-  alias WallopCore.Protocol.Tags.LandObs
+  alias WallopCore.Protocol.Tags.{Freq, LandObs}
   alias WallopCore.TamperVectors, as: V
   alias WallopCore.Weather.{Schedule, Stations}
 
   @weather_value "141;1025;85;2432"
+  @freq_value "50012;50018;50012;49983;49980;49953;49912;49883"
   @locked_at ~U[2026-10-14 18:00:00.123456Z]
 
   @impl true
   def tag, do: LandObs.tag()
   @impl true
   def vector_file, do: "proof-bundle-v6-tamper.json"
+  @impl true
+  def kinds, do: [:observed, :freq_fallback, :fallback]
 
   @impl true
   def description,
@@ -88,6 +96,18 @@ defmodule WallopCore.TamperProfiles.LandObs do
     }
   end
 
+  # State (b): no reading by F; the round's grid-frequency window.
+  def exec_fields(:freq_fallback) do
+    %{
+      weather_station: Stations.primary().id,
+      weather_value: nil,
+      weather_observation_time: nil,
+      weather_fallback_reason: Protocol.landobs_fallback_reason(),
+      freq_value: @freq_value,
+      freq_fallback_reason: nil
+    }
+  end
+
   # State (c): no reading and no window, so drand alone.
   def exec_fields(:fallback) do
     %{
@@ -104,10 +124,14 @@ defmodule WallopCore.TamperProfiles.LandObs do
   def seed(entry_hash, randomness, :observed),
     do: Protocol.compute_seed(entry_hash, randomness, @weather_value)
 
+  def seed(entry_hash, randomness, :freq_fallback),
+    do: Protocol.compute_freq_seed(entry_hash, randomness, @freq_value)
+
   def seed(entry_hash, randomness, :fallback), do: Protocol.compute_seed(entry_hash, randomness)
 
   @impl true
   def entropy(:observed), do: %{"weather_value" => @weather_value}
+  def entropy(:freq_fallback), do: %{"freq_value" => @freq_value}
   def entropy(:fallback), do: %{}
 
   @impl true
@@ -253,8 +277,8 @@ defmodule WallopCore.TamperProfiles.LandObs do
        ~w(winner_selection)},
       {"exec_signing_key_id_other", :observed, :exec, "signing_key_id", "deadbeef",
        "an unknown key", ~w(exec_signature)},
-      {"exec_weather_station_not_listed", :observed, :exec, "weather_station", "wmo-03772",
-       "a station not in the tag", ~w(bundle_shape receipt_field_consistency)},
+      {"exec_weather_station_not_middle_wallop", :observed, :exec, "weather_station", "wmo-03772",
+       "a station other than Middle Wallop", ~w(bundle_shape receipt_field_consistency)},
       {"exec_weather_station_null", :observed, :exec, "weather_station", nil, "nil",
        ~w(bundle_shape receipt_field_consistency)},
       {"exec_weather_value_other", :observed, :exec, "weather_value", "142;1025;85;2432",
@@ -264,22 +288,25 @@ defmodule WallopCore.TamperProfiles.LandObs do
       {"exec_weather_observation_time_plus_hour", :observed, :exec, "weather_observation_time",
        rfc(add_h(wt, 1)), "+1 hour", ~w(weather_observation_window)},
       {"exec_weather_observation_time_null", :observed, :exec, "weather_observation_time", nil,
-       "nil with a value", ~w(weather_observation_window)},
+       "nil with a value",
+       ~w(receipt_field_consistency seed_recomputation weather_observation_window)},
       {"exec_weather_observation_time_offset_utc", :observed, :exec, "weather_observation_time",
        offset(wt, 0), "a +00:00 offset", ~w(bundle_shape weather_observation_window)},
       {"exec_weather_observation_time_offset_bst", :observed, :exec, "weather_observation_time",
        offset(wt, 1), "the same instant at +01:00", ~w(bundle_shape weather_observation_window)},
       {"exec_weather_fallback_reason_on_observed", :observed, :exec, "weather_fallback_reason",
        Protocol.landobs_fallback_reason(), "a reason with a value",
-       ~w(weather_observation_window)},
+       ~w(receipt_field_consistency seed_recomputation weather_observation_window)},
       {"exec_fallback_station_wittering", :fallback, :exec, "weather_station", "wmo-03462",
        "Wittering on a fallback", ~w(bundle_shape receipt_field_consistency)},
       {"exec_fallback_reason_v5", :fallback, :exec, "weather_fallback_reason", "unreachable",
-       "a schema 4 reason", ~w(bundle_shape weather_observation_window)},
+       "a schema 4 reason",
+       ~w(bundle_shape receipt_field_consistency seed_recomputation weather_observation_window)},
       {"exec_fallback_reason_null", :fallback, :exec, "weather_fallback_reason", nil,
-       "nil on a fallback", ~w(weather_observation_window)},
-      {"exec_freq_value_on_observed", :observed, :exec, "freq_value",
-       "50012;50018;50012;49983;49980;49953;49912;49883", "a window beside a reading",
+       "nil on a fallback",
+       ~w(receipt_field_consistency seed_recomputation weather_observation_window)},
+      {"exec_freq_value_on_observed", :observed, :exec, "freq_value", @freq_value,
+       "a window beside a reading",
        ~w(drand_bls_signature receipt_field_consistency seed_recomputation weather_observation_window)},
       {"exec_freq_fallback_reason_on_observed", :observed, :exec, "freq_fallback_reason",
        Protocol.freq_fallback_reason(), "the frequency reason beside a reading",
@@ -290,6 +317,24 @@ defmodule WallopCore.TamperProfiles.LandObs do
       {"exec_freq_reason_other_on_fallback", :fallback, :exec, "freq_fallback_reason",
        "unreachable", "another reason on a drand-only fallback",
        ~w(bundle_shape receipt_field_consistency seed_recomputation weather_observation_window)},
+      {"exec_freq_value_other_on_freq_fallback", :freq_fallback, :exec, "freq_value",
+       "50013;50018;50012;49983;49980;49953;49912;49883", "first reading +1 mHz",
+       ~w(drand_bls_signature seed_recomputation)},
+      {"exec_freq_value_null_on_freq_fallback", :freq_fallback, :exec, "freq_value", nil,
+       "nil with the weather reason and no freq reason",
+       ~w(drand_bls_signature receipt_field_consistency seed_recomputation weather_observation_window)},
+      {"exec_freq_fallback_reason_beside_value", :freq_fallback, :exec, "freq_fallback_reason",
+       Protocol.freq_fallback_reason(), "the frequency reason beside a window",
+       ~w(receipt_field_consistency seed_recomputation weather_observation_window)},
+      {"exec_freq_value_grammar_on_freq_fallback", :freq_fallback, :exec, "freq_value",
+       "50000;50000;50000;50000;50000;50000;50012;50013", "a stuck run of 6",
+       ~w(bundle_shape drand_bls_signature seed_recomputation)},
+      {"exec_weather_reason_null_on_freq_fallback", :freq_fallback, :exec,
+       "weather_fallback_reason", nil, "nil beside a window",
+       ~w(receipt_field_consistency seed_recomputation weather_observation_window)},
+      {"exec_entropy_composition_freq", :observed, :exec, "entropy_composition", Freq.tag(),
+       "the grid-frequency tag",
+       ~w(bundle_shape receipt_field_consistency weather_observation_window)},
       {"exec_jcs_version_other", :observed, :exec, "jcs_version", "sha256-jcs-v2",
        "a different value", ~w(bundle_shape)},
       {"exec_signature_algorithm_other", :observed, :exec, "signature_algorithm", "ed448",
@@ -374,6 +419,8 @@ defmodule WallopCore.TamperProfiles.Freq do
   def tag, do: Freq.tag()
   @impl true
   def vector_file, do: "proof-bundle-v6-tamper-freq.json"
+  @impl true
+  def kinds, do: [:observed, :fallback]
 
   @impl true
   def description,

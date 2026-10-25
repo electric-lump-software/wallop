@@ -25,7 +25,7 @@ defmodule WallopCore.Invariants.TamperTest do
     * **Database.** Real v6 draws, locked in time on generated schedules,
       take a receipt built by the real builder (the positive control); every
       `{:db, field}` mutation is then refused with its exact message.
-      Completed v6 draws (observed from Middle Wallop, or fallback) take
+      Completed v6 draws (one per state: reading, grid window, drand only) take
       the execution receipt the signer would build; every execution
       mutation the builder can't see (`{:verifier, _}`, `{:producer, _}`) is
       then refused by the execution receipt trigger with its exact message,
@@ -102,14 +102,14 @@ defmodule WallopCore.Invariants.TamperTest do
   end
 
   # A valid lock v6 / execution v5 input pair: any round, `locked_at` at or
-  # before the limit, `executed_at` at or after pub(R), observed (either
-  # station) or fallback.
+  # before the limit, `executed_at` at or after pub(R), in any of the three
+  # execution states.
   defp v6_inputs do
     gen all(
           round <- integer(1_000_000..90_000_000),
           lock_back <- one_of([constant(0), integer(1..(4 * @hour_us))]),
           exec_after <- one_of([constant(0), integer(1..600_000_000)]),
-          kind <- member_of([:observed, :fallback]),
+          kind <- member_of(TamperProfiles.LandObs.kinds()),
           station <- member_of(Stations.ids()),
           value <- weather_value()
         ) do
@@ -235,7 +235,8 @@ defmodule WallopCore.Invariants.TamperTest do
       {"locked_at string", %{l | locked_at: rfc(l.locked_at)},
        {:raise, "lock v6 locked_at must be a DateTime"}},
       {"weather_station Wittering", %{l | weather_station: "wmo-03462"}, {:raise, station}},
-      {"weather_station unlisted", %{l | weather_station: "wmo-03772"}, {:raise, station}},
+      {"weather_station not Middle Wallop", %{l | weather_station: "wmo-03772"},
+       {:raise, station}},
       {"weather_station nil", %{l | weather_station: nil}, {:raise, station}},
       {"weather_station atom", %{l | weather_station: :"wmo-03749"}, {:raise, station}},
       {"freq_start +15s", %{l | freq_start: DateTime.add(t, 15)}, {:raise, window.(r)}},
@@ -351,7 +352,8 @@ defmodule WallopCore.Invariants.TamperTest do
        {:raise, "exec v5 executed_at must not be nil"}},
       {"executed_at string", %{e | executed_at: rfc(e.executed_at)},
        {:raise, "exec v5 executed_at must be a DateTime"}},
-      {"weather_station unlisted", %{e | weather_station: "wmo-03772"}, {:raise, station}},
+      {"weather_station not Middle Wallop", %{e | weather_station: "wmo-03772"},
+       {:raise, station}},
       {"weather_station nil", %{e | weather_station: nil}, {:raise, station}},
       {"drand_chain mainnet", %{e | drand_chain: @mainnet}, {:raise, chain_message(@mainnet)}},
       {"drand_chain nil", %{e | drand_chain: nil},
@@ -423,6 +425,28 @@ defmodule WallopCore.Invariants.TamperTest do
     ]
   end
 
+  defp exec_weather_mutations(:freq_fallback, e, _r, wt) do
+    [
+      {"weather_station Wittering beside a window", %{e | weather_station: "wmo-03462"},
+       {:raise, "exec v5 weather_station must be #{Stations.primary().id}"}},
+      {"weather_value set beside a window", %{e | weather_value: "141;1025;85;2432"},
+       {:raise, @exec_fields}},
+      {"weather_observation_time set beside a window", %{e | weather_observation_time: wt},
+       {:raise, @exec_fields}},
+      {"weather_fallback_reason nil beside a window", %{e | weather_fallback_reason: nil},
+       {:raise, @exec_fields}},
+      {"freq_value one step off", %{e | freq_value: bump_first_reading(e.freq_value)},
+       {:verifier, "freq_value"}},
+      {"freq_value nil with no freq reason", %{e | freq_value: nil}, {:raise, @exec_fields}},
+      {"freq_value a stuck run of 6",
+       %{e | freq_value: "50000;50000;50000;50000;50000;50000;50012;50013"},
+       {:raise, "exec v5 freq_value does not match the grid-frequency grammar"}},
+      {"freq_value a number", %{e | freq_value: 50_012}, {:raise, @exec_fields}},
+      {"freq_fallback_reason beside a window",
+       %{e | freq_fallback_reason: Protocol.freq_fallback_reason()}, {:raise, @exec_fields}}
+    ]
+  end
+
   defp exec_weather_mutations(:fallback, e, _r, wt) do
     [
       {"weather_station Wittering on a fallback", %{e | weather_station: "wmo-03462"},
@@ -445,6 +469,12 @@ defmodule WallopCore.Invariants.TamperTest do
        %{e | freq_value: "50012", freq_fallback_reason: nil},
        {:raise, "exec v5 freq_value does not match the grid-frequency grammar"}}
     ]
+  end
+
+  # The window with its first reading 1 mHz higher: still on grammar.
+  defp bump_first_reading(window) do
+    [first | rest] = String.split(window, ";")
+    Enum.join([Integer.to_string(String.to_integer(first) + 1) | rest], ";")
   end
 
   # The same instant as the UTC `dt`, as a Europe/London DateTime with a
@@ -780,8 +810,8 @@ defmodule WallopCore.Invariants.TamperTest do
     end
 
     test "INV-2 (tamper, database) an execution receipt integer written as a float or an exponent is refused" do
-      for kind <- [:observed, :fallback] do
-        x = completed_v6_receipt_input(kind, hours_ago: if(kind == :observed, do: 2, else: 3))
+      for {kind, hours_ago} <- [observed: 2, freq_fallback: 5, fallback: 3] do
+        x = completed_v6_receipt_input(db_kind(kind), hours_ago: hours_ago)
         json = build_exec(x.input)
         assert insert_exec_receipt(json, x.cols) == nil, "#{kind}"
 
@@ -799,9 +829,15 @@ defmodule WallopCore.Invariants.TamperTest do
 
   # ── Database: the execution receipt ───────────────────────────────
 
-  @exec_weather ~w(weather_station weather_value weather_observation_time weather_fallback_reason)
+  # Fields the trigger checks against the stored reading or window.
+  @exec_stored ~w(weather_station weather_value weather_observation_time weather_fallback_reason
+                  freq_value freq_fallback_reason)
 
-  defp exec_db_message(field) when field in @exec_weather,
+  # The vector state's name in `completed_v6_receipt_input/2`.
+  defp db_kind(:freq_fallback), do: :frequency
+  defp db_kind(kind), do: kind
+
+  defp exec_db_message(field) when field in @exec_stored,
     do: "v6 execution receipt field #{field} does not match the stored observation"
 
   defp exec_db_message(field), do: "v6 execution receipt field #{field} does not match the draw"
@@ -818,38 +854,43 @@ defmodule WallopCore.Invariants.TamperTest do
     property "INV-2 (tamper, database) each builder-invisible execution mutation is refused, with a positive control",
              %{key: key} do
       check all(
-              kind <- member_of([:observed, :fallback]),
               station <- member_of(Stations.ids()),
               value <- weather_value(),
-              max_runs: 12
+              max_runs: 6
             ) do
-        # An hour of its own for each run: one reading per hour.
-        hours_ago = 24 + System.unique_integer([:positive, :monotonic])
+        # Every run completes one draw per state: a reading, the grid
+        # window, drand alone.
+        for kind <- TamperProfiles.LandObs.kinds() do
+          # An hour of its own for each draw: one reading per hour.
+          hours_ago = 24 + System.unique_integer([:positive, :monotonic])
 
-        x =
-          completed_v6_receipt_input(kind,
-            api_key: key,
-            station: station,
-            value: value,
-            hours_ago: hours_ago
-          )
+          x =
+            completed_v6_receipt_input(db_kind(kind),
+              api_key: key,
+              station: station,
+              value: value,
+              hours_ago: hours_ago
+            )
 
-        c = %{exec: x.input, kind: kind, round: x.round, wt: x.wt, exec_after: x.exec_after}
+          c = %{exec: x.input, kind: kind, round: x.round, wt: x.wt, exec_after: x.exec_after}
 
-        # Positive control: the real builder's receipt for the draw.
-        assert insert_exec_receipt(build_exec(x.input), x.cols) == nil
+          # Positive control: the real builder's receipt for the draw.
+          assert insert_exec_receipt(build_exec(x.input), x.cols) == nil, "#{kind}"
 
-        for {label, input, expected} <- exec_mutations(c) do
-          case expected do
-            {layer, field} when layer in [:verifier, :producer, :no_layer] ->
-              expected = if field in @exec_db_unbound, do: nil, else: exec_db_message(field)
-              assert insert_exec_receipt(build_exec(input), x.cols) == expected, label
+          for {label, input, expected} <- exec_mutations(c) do
+            case expected do
+              {layer, field} when layer in [:verifier, :producer, :no_layer] ->
+                expected = if field in @exec_db_unbound, do: nil, else: exec_db_message(field)
 
-            {:raise, _} ->
-              :builder
+                assert insert_exec_receipt(build_exec(input), x.cols) == expected,
+                       "#{kind}: #{label}"
 
-            :same_bytes ->
-              :builder
+              {:raise, _} ->
+                :builder
+
+              :same_bytes ->
+                :builder
+            end
           end
         end
       end
@@ -886,7 +927,7 @@ defmodule WallopCore.Invariants.TamperTest do
                payload
                | "weather_observation_time" => offset_rfc(x.input.weather_observation_time, 1)
              }, cols, not_canonical(offset_rfc(x.input.weather_observation_time, 1))},
-            {"station unlisted", %{payload | "weather_station" => "wmo-03772"}, cols,
+            {"station not Middle Wallop", %{payload | "weather_station" => "wmo-03772"}, cols,
              exec_db_message("weather_station")},
             {"reading with a fallback reason",
              %{payload | "weather_fallback_reason" => LandObs.fallback_reason()}, cols,
@@ -1195,7 +1236,7 @@ defmodule WallopCore.Invariants.TamperTest do
                profile.tag()
 
         for base <- vector(profile)["bases"] do
-          {lock_jcs, exec_jcs} = TamperVectors.base_by_name(base["name"])
+          {lock_jcs, exec_jcs} = TamperVectors.base_by_name(profile, base["name"])
           {_, lock, exec} = receipts(base["bundle"])
           assert Jcs.encode(lock) == lock_jcs
           assert Jcs.encode(exec) == exec_jcs
@@ -1255,7 +1296,7 @@ defmodule WallopCore.Invariants.TamperTest do
 
     test "INV-2 (tamper vectors) every signed field has a refusing case, or is verifier-blind" do
       for profile <- TamperVectors.profiles() do
-        names = Enum.map([:observed, :fallback], &profile.base_name/1)
+        names = Enum.map(profile.kinds(), &profile.base_name/1)
         own = Enum.filter(vector(profile)["cases"], &(&1["base"] in names))
         assert own != [], profile.tag()
 
@@ -1301,11 +1342,11 @@ defmodule WallopCore.Invariants.TamperTest do
       landobs = TamperProfiles.LandObs
       v = vector(landobs)
 
-      assert Enum.map(v["bases"], & &1["name"]) == ~w(observed fallback)
+      assert Enum.map(v["bases"], & &1["name"]) == ~w(observed freq_fallback fallback)
       names = Enum.map(landobs.cases(), fn {n, _, _, f, _, _, _} -> {n, f} end)
 
       for c <- v["cases"] do
-        assert c["base"] in ~w(observed fallback), c["name"]
+        assert c["base"] in ~w(observed freq_fallback fallback), c["name"]
         assert {c["name"], c["field"]} in names, c["name"]
       end
 

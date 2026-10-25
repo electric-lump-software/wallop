@@ -143,8 +143,8 @@ defmodule WallopCore.TamperVectors do
   end
 
   @doc """
-  Builder input for `profile`'s base execution receipt, `:observed` or
-  `:fallback`, linked to `lock_jcs`. The seed and results are computed, so
+  Builder input for `profile`'s base execution receipt, one of
+  `profile.kinds()`, linked to `lock_jcs`. The seed and results are computed, so
   they agree.
   """
   def exec_input(profile \\ TamperProfiles.LandObs, kind, lock_jcs) do
@@ -180,7 +180,7 @@ defmodule WallopCore.TamperVectors do
   end
 
   @doc """
-  `profile`'s base `{lock_jcs, exec_jcs}` for `:observed` or `:fallback`,
+  `profile`'s base `{lock_jcs, exec_jcs}` for one of `profile.kinds()`,
   from the real builders.
   """
   def base(profile \\ TamperProfiles.LandObs, kind) do
@@ -188,14 +188,12 @@ defmodule WallopCore.TamperVectors do
     {lock_jcs, Protocol.build_v6_execution_payload(exec_input(profile, kind, lock_jcs))}
   end
 
-  @doc "The base `{lock_jcs, exec_jcs}` whose name (in any profile) is `name`."
-  def base_by_name(name) do
-    [{profile, kind}] =
-      for profile <- @profiles,
-          kind <- [:observed, :fallback],
-          profile.base_name(kind) == name,
-          do: {profile, kind}
-
+  @doc """
+  `profile`'s base `{lock_jcs, exec_jcs}` named `name`. Base names are
+  unique within a profile's file, not across files.
+  """
+  def base_by_name(profile, name) do
+    [kind] = for kind <- profile.kinds(), profile.base_name(kind) == name, do: kind
     base(profile, kind)
   end
 
@@ -211,7 +209,7 @@ defmodule WallopCore.TamperVectors do
       "description" => profile.description(),
       "keys" => keys(),
       "bases" =>
-        for kind <- [:observed, :fallback] do
+        for kind <- profile.kinds() do
           {lock_jcs, exec_jcs} = base(profile, kind)
 
           %{
