@@ -22,17 +22,30 @@ defmodule WallopCore.Resources.Draw.Changes.DeclareEntropyV6 do
 
     * the hour's fetch job, `WeatherObservationWorker.new_for_hour/1`, which
       is unique per hour and so shared by every draw of that hour;
+    * T's window job, `FrequencyWindowWorker.new_for_start/1`, unique per
+      T across both tags. It is fetched whether or not the weather
+      arrives: for draw times before weather_time + 35m15s the window
+      opens before the weather fallback is settled at F + 1 min (and, for
+      the first five rounds after weather_time + 31m, also closes before
+      it). A lost window job is not re-driven; the draw then ends drand
+      only on a weather fallback, visibly;
     * this draw's execution job, `ObservationDrawWorker`, at the result time
       plus `Schedule.execution_delay_seconds/0`.
 
-  It never inserts an `EntropyWorker` job. If either insert fails, the lock
+  It never inserts an `EntropyWorker` job. If any insert fails, the lock
   rolls back. The lock is broadcast once it has committed (an
   `after_transaction` hook), never from inside the transaction.
   """
   use Ash.Resource.Change
 
   alias WallopCore.Drand.Quicknet
-  alias WallopCore.Entropy.{ObservationDrawWorker, WeatherObservationWorker}
+
+  alias WallopCore.Entropy.{
+    FrequencyWindowWorker,
+    ObservationDrawWorker,
+    WeatherObservationWorker
+  }
+
   alias WallopCore.Weather.{Schedule, Stations}
 
   @impl true
@@ -72,6 +85,7 @@ defmodule WallopCore.Resources.Draw.Changes.DeclareEntropyV6 do
       )
 
     with {:ok, _} <- Oban.insert(WeatherObservationWorker.new_for_hour(draw.weather_time)),
+         {:ok, _} <- Oban.insert(FrequencyWindowWorker.new_for_start(draw.freq_start)),
          {:ok, _} <- Oban.insert(execute) do
       {:ok, draw}
     end

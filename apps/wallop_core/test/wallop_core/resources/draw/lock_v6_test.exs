@@ -4,7 +4,14 @@ defmodule WallopCore.Resources.Draw.LockV6Test do
   import WallopCore.TestHelpers
 
   alias WallopCore.Drand.Quicknet
-  alias WallopCore.Entropy.{EntropyWorker, ObservationDrawWorker, WeatherObservationWorker}
+
+  alias WallopCore.Entropy.{
+    EntropyWorker,
+    FrequencyWindowWorker,
+    ObservationDrawWorker,
+    WeatherObservationWorker
+  }
+
   alias WallopCore.Protocol.Tags.LandObs
   alias WallopCore.Resources.Draw
   alias WallopCore.Weather.{Schedule, Stations}
@@ -34,7 +41,7 @@ defmodule WallopCore.Resources.Draw.LockV6Test do
     :ok
   end
 
-  test "a v6 lock with draw_at signs lock v6, derives everything, and enqueues both jobs" do
+  test "a v6 lock with draw_at signs lock v6, derives everything, and enqueues all three jobs" do
     {_op, key} = create_v6_operator()
     draw_at = next_hour_draw_at(3)
     {:ok, s} = Schedule.schedule(draw_at)
@@ -72,6 +79,12 @@ defmodule WallopCore.Resources.Draw.LockV6Test do
       worker: ObservationDrawWorker,
       args: %{draw_id: locked.id},
       scheduled_at: DateTime.add(s.expected_result_at, 5)
+    )
+
+    assert_enqueued(
+      worker: FrequencyWindowWorker,
+      args: %{freq_start: FrequencyWindowWorker.start_arg(locked.freq_start)},
+      scheduled_at: DateTime.add(locked.freq_start, 135)
     )
 
     refute_enqueued(worker: EntropyWorker, args: %{draw_id: locked.id})
@@ -151,6 +164,8 @@ defmodule WallopCore.Resources.Draw.LockV6Test do
       worker: WeatherObservationWorker,
       args: %{weather_time: WeatherObservationWorker.hour_arg(s.weather_time)}
     )
+
+    refute_enqueued(worker: FrequencyWindowWorker)
   end
 
   test "an operator flag flip between building and running the lock aborts it" do

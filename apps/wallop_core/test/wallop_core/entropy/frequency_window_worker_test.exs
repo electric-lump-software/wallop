@@ -10,6 +10,7 @@ defmodule WallopCore.Entropy.FrequencyWindowWorkerTest do
   alias WallopCore.Frequency.{Schedule, Windows}
   alias WallopCore.Repo
   alias WallopCore.Resources.Draw
+  alias WallopCore.Weather.Schedule, as: WeatherSchedule
 
   @value "50012;50018;50012;49983;49980;49953;49912;49883"
   @poll [:wallop_core, :frequency, :poll]
@@ -151,6 +152,26 @@ defmodule WallopCore.Entropy.FrequencyWindowWorkerTest do
       assert :ok = run(t)
       refute_received :fetched
       assert Windows.for_start(t) == nil
+    end
+
+    test "fetches T's window when only weather-tag draws wait on it" do
+      {_op, key} = create_v6_operator()
+      round = Quicknet.round_at_or_after(DateTime.add(DateTime.utc_now(), 60))
+
+      d =
+        put_v6_awaiting!(
+          open_draw_with_entries(key),
+          WeatherSchedule.weather_time_for_round(round),
+          round
+        )
+
+      elexon(d.freq_start, @value)
+      assert Windows.pending_draw_ids(d.freq_start) == [d.id]
+      assert :ok == run(d.freq_start)
+      assert_received :fetched
+      assert %{value: @value} = Windows.for_start(d.freq_start)
+      assert Windows.for_draw(d).value == @value
+      assert status(d) == :awaiting_entropy
     end
 
     test "no waiting draw, or T already stored: done without fetching" do

@@ -1,7 +1,8 @@
 defmodule WallopCore.Entropy.FrequencyWindowWorker do
   @moduledoc """
   Fetches the 8 GB grid frequency readings of one window start T and stores
-  them once, for every grid-frequency draw waiting on T.
+  them once, for every draw waiting on T, of either tag
+  (`Windows.waiting_tags/0`).
 
   One live job per T (unique on `freq_start` among incomplete jobs),
   however many draws lock for it. A finished job (completed, cancelled or

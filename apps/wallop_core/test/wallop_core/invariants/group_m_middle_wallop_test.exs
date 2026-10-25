@@ -262,7 +262,6 @@ defmodule WallopCore.Invariants.GroupMMiddleWallopTest do
     assert {checked, broken} == {1200 * length(@hours), 0}
   end
 
-  @tag :pending_task_M6
   test "INV-M8 a weather-tag lock enqueues T's window job in the lock transaction, once per T" do
     ensure_infrastructure_key()
     {_op, key} = create_v6_operator()

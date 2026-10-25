@@ -10,20 +10,26 @@ defmodule WallopCore.Entropy.ObservationDrawWorkerTest do
   alias WallopCore.Entropy.{
     DrandClient,
     EntropyWorker,
+    FrequencyWindowWorker,
     ObservationDrawWorker,
     StuckDrawRedriver,
     V6Execution,
     V6Rules
   }
 
+  alias WallopCore.Frequency.Schedule, as: FreqSchedule
+  alias WallopCore.ProofBundle
   alias WallopCore.Protocol
   alias WallopCore.Resources.{Draw, ExecutionReceipt}
   alias WallopCore.Weather.{Observations, Schedule, Stations}
+
+  import Ecto.Query, only: [from: 2]
 
   require Ash.Query
 
   @w Schedule.fetch_window_seconds()
   @value "141;1025;85;2432"
+  @freq "50012;50018;50012;49983;49980;49953;49912;49883"
   # A real quicknet beacon: the randomness is sha256 of the signature.
   @randomness "140117383b03a0c0c7a899a32b8cbd2ffff9e2569504037c358ee8c7c2efe2fd"
   @signature "b6541e41bb68ff318e8bd74b9f6e168ae6424476c432241420c38427df58c6ef33fe009ce202a7101120ab481702fddf"
@@ -80,6 +86,11 @@ defmodule WallopCore.Entropy.ObservationDrawWorkerTest do
   defp exec_payload(draw) do
     %{execution_receipt: receipt} = Ash.load!(reload(draw), :execution_receipt, authorize?: false)
     Jason.decode!(receipt.payload_jcs)
+  end
+
+  defp done_receipt_jcs(draw) do
+    %{execution_receipt: receipt} = Ash.load!(reload(draw), :execution_receipt, authorize?: false)
+    receipt.payload_jcs
   end
 
   defp execution_receipt_count(draw) do
@@ -252,6 +263,98 @@ defmodule WallopCore.Entropy.ObservationDrawWorkerTest do
 
       assert :ok = perform_job(ObservationDrawWorker, %{draw_id: draw.id})
       refute_received {:drand_fetched, _}
+    end
+  end
+
+  describe "the round's grid-frequency window, end to end" do
+    # A weather-tag draw at d = 0, pub(R) = wt + 31 min, on the latest hour
+    # whose pub(R) is at least 10 s ago: every deadline has passed. The
+    # window job the lock would insert is inserted too. No reading is
+    # stored for the hour.
+    defp draw_at_wt_plus_31m do
+      {_op, key} = create_v6_operator()
+      latest = DateTime.to_unix(DateTime.utc_now()) - 1860 - 10
+      wt = DateTime.from_unix!((latest - Integer.mod(latest, 3600)) * 1_000_000, :microsecond)
+      round = Quicknet.round_at_or_after(DateTime.add(wt, 1860))
+      assert DateTime.compare(Schedule.pub_time(round), DateTime.add(wt, 1860)) == :eq
+      assert DateTime.compare(Schedule.weather_time_for_round(round), wt) == :eq
+
+      draw = put_v6_awaiting!(open_draw_with_entries(key), wt, round)
+      {:ok, _} = Oban.insert(FrequencyWindowWorker.new_for_start(draw.freq_start))
+      draw
+    end
+
+    test "a draw at wt + 31m completes from the window" do
+      draw = draw_at_wt_plus_31m()
+      put_frequency_window!(draw.freq_start, @freq)
+      assert :ok = perform_job(ObservationDrawWorker, %{draw_id: draw.id})
+
+      done = reload(draw)
+      assert done.status == :completed
+      assert done.weather_value == nil
+      assert done.weather_fallback_reason == "no_observation_by_deadline"
+      assert {done.freq_value, done.freq_fallback_reason} == {@freq, nil}
+
+      {seed, _} = Protocol.compute_freq_seed(done.entry_hash, @randomness, @freq)
+      assert done.seed == Base.encode16(seed, case: :lower)
+
+      assert execution_receipt_count(draw) == 1
+      payload = exec_payload(draw)
+      assert {payload["freq_value"], payload["freq_fallback_reason"]} == {@freq, nil}
+    end
+
+    test "a lost window job ends drand only on a weather fallback" do
+      draw = draw_at_wt_plus_31m()
+
+      Repo.delete_all(
+        from(j in Oban.Job, where: j.worker == "WallopCore.Entropy.FrequencyWindowWorker")
+      )
+
+      # F_freq + M has passed: pub(R) = T + 360 >= F_freq + M.
+      assert DateTime.compare(
+               DateTime.utc_now(),
+               DateTime.add(
+                 FreqSchedule.fetch_deadline(draw.freq_start),
+                 FreqSchedule.margin_seconds()
+               )
+             ) == :gt
+
+      assert :ok = perform_job(ObservationDrawWorker, %{draw_id: draw.id})
+
+      done = reload(draw)
+      assert done.status == :completed
+      assert done.weather_fallback_reason == "no_observation_by_deadline"
+      assert {done.freq_value, done.freq_fallback_reason} == {nil, "no_frequency_by_deadline"}
+
+      {seed, _} = Protocol.compute_seed(done.entry_hash, @randomness)
+      assert done.seed == Base.encode16(seed, case: :lower)
+    end
+
+    test "the weather reading wins over a stored window" do
+      draw = draw_at_wt_plus_31m()
+      put_observation!(Stations.primary().id, draw.weather_time, @value)
+      put_frequency_window!(draw.freq_start, @freq)
+      assert :ok = perform_job(ObservationDrawWorker, %{draw_id: draw.id})
+
+      # State (a): the draw, its signed receipt and its proof bundle.
+      done = reload(draw)
+      assert done.status == :completed
+      assert {done.weather_value, done.weather_fallback_reason} == {@value, nil}
+      assert {done.freq_value, done.freq_fallback_reason} == {nil, nil}
+
+      {seed, _} = Protocol.compute_seed(done.entry_hash, @randomness, @value)
+      assert done.seed == Base.encode16(seed, case: :lower)
+
+      payload = exec_payload(draw)
+      assert {payload["weather_value"], payload["weather_fallback_reason"]} == {@value, nil}
+      assert {payload["freq_value"], payload["freq_fallback_reason"]} == {nil, nil}
+
+      {:ok, json} = ProofBundle.build(done)
+      bundle = Jason.decode!(json)
+      assert bundle["entropy"]["weather_value"] == @value
+      refute Map.has_key?(bundle["entropy"], "freq_value")
+      refute Map.has_key?(bundle["entropy"], "freq_fallback_reason")
+      assert bundle["execution_receipt"]["payload_jcs"] == done_receipt_jcs(draw)
     end
   end
 

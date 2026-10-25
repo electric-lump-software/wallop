@@ -5,6 +5,7 @@ defmodule WallopCore.Frequency.WindowStoreTest do
 
   alias WallopCore.Drand.Quicknet
   alias WallopCore.Frequency.{Schedule, Windows}
+  alias WallopCore.Protocol.Tags.{Freq, LandObs}
   alias WallopCore.Resources.FrequencyWindow
 
   @value "50012;50018;50012;49983;49980;49953;49912;49883"
@@ -159,6 +160,59 @@ defmodule WallopCore.Frequency.WindowStoreTest do
     assert Windows.pending_draw_ids(t) == []
     assert Windows.for_draw(a).value == @value
     assert Windows.for_draw(a.id).value == @value
+  end
+
+  # Each case gets its own T inside its window (now - T in [135, 330)), so
+  # one stored window never decides another case.
+  defp case_start(i), do: aligned_freq_start(-(135 + 15 * i))
+
+  defp set_status!(draw, status) do
+    Repo.query!("SET session_replication_role = replica")
+
+    try do
+      Repo.query!("UPDATE draws SET status = $2 WHERE id = $1", [
+        Ecto.UUID.dump!(draw.id),
+        Atom.to_string(status)
+      ])
+    after
+      Repo.query!("RESET session_replication_role")
+    end
+  end
+
+  test "pending_draw_ids waits for exactly the draws the store's insert trigger waits for" do
+    assert Windows.waiting_tags() == [Freq.tag(), LandObs.tag()]
+
+    {_op, v6_key} = create_v6_operator()
+    {_op, freq_key} = create_freq_operator()
+    round = Quicknet.round_at_or_after(DateTime.add(DateTime.utc_now(), 3600))
+
+    cases =
+      for tag <- [Freq.tag(), LandObs.tag()],
+          status <- [:awaiting_entropy, :pending_entropy, :completed, :failed, :expired],
+          do: {tag, status}
+
+    for {{tag, status}, i} <- Enum.with_index(cases) do
+      t = case_start(i)
+
+      draw =
+        if tag == Freq.tag(),
+          do: put_freq_awaiting!(open_draw_with_entries(freq_key), t, round),
+          else:
+            put_v6_awaiting!(open_draw_with_entries(v6_key), ~U[2026-10-14 19:00:00Z], round,
+              freq_start: t
+            )
+
+      if status != :awaiting_entropy, do: set_status!(draw, status)
+
+      waits? = status in [:awaiting_entropy, :pending_entropy]
+      label = "#{tag} #{status}"
+
+      assert Windows.pending_draw_ids(t) == if(waits?, do: [draw.id], else: []), label
+
+      stored = Windows.store(t, @value, elexon_body(t, @value))
+      assert match?({:ok, _}, stored) == waits?, label
+      unless waits?, do: assert(message(stored) =~ "no draw is waiting for this window", label)
+    end
   end
 
   test "actors can't read or store windows" do

@@ -209,6 +209,41 @@ defmodule WallopCore.Entropy.StuckDrawRedriverTest do
     end
   end
 
+  describe "window jobs" do
+    test "the re-driver never re-drives a window job" do
+      ref = :telemetry_test.attach_event_handlers(self(), [@event])
+      {_op, key} = create_v6_operator()
+
+      # T's window is open now: the round publishes in a minute.
+      open_round = round_at(60)
+
+      open =
+        put_v6_awaiting!(
+          open_draw_with_entries(key),
+          Schedule.weather_time_for_round(open_round),
+          open_round
+        )
+
+      # Stuck: past pub(R) + 15 min, so its execution job comes back.
+      stuck = stuck_v6(-20 * 60)
+
+      Repo.query!("DELETE FROM oban_jobs WHERE worker = $1", [inspect(FrequencyWindowWorker)])
+
+      assert stuck.id in StuckDrawRedriver.redrive()
+      StuckDrawRedriver.redrive()
+
+      for t <- [open.freq_start, stuck.freq_start] do
+        refute_enqueued(
+          worker: FrequencyWindowWorker,
+          args: %{freq_start: FrequencyWindowWorker.start_arg(t)}
+        )
+      end
+
+      refute_enqueued(worker: FrequencyWindowWorker)
+      refute_received {@event, ^ref, _, %{kind: :fetch, weather_time: nil}}
+    end
+  end
+
   describe "fetch jobs" do
     # A v6 draw for the next whole hour (F still ahead), with its hour's
     # fetch job gone.

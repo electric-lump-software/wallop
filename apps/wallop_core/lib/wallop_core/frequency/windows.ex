@@ -34,7 +34,7 @@ defmodule WallopCore.Frequency.Windows do
   """
   @spec for_draw(Draw.t() | String.t()) :: FrequencyWindow.t() | nil
   def for_draw(%Draw{lock_schema_version: "6", freq_start: %DateTime{} = t} = draw) do
-    if draw.entropy_composition in [Freq.tag(), LandObs.tag()], do: for_start(t)
+    if draw.entropy_composition in waiting_tags(), do: for_start(t)
   end
 
   def for_draw(%Draw{}), do: nil
@@ -85,19 +85,28 @@ defmodule WallopCore.Frequency.Windows do
   end
 
   @doc """
-  The ids of grid-frequency draws of T that are waiting for entropy, while
-  nothing is stored for T; [] once it is.
+  The tags whose draws complete with T's window: grid frequency, and
+  observation weather when its reading misses F.
+  """
+  @spec waiting_tags() :: [String.t()]
+  def waiting_tags, do: [Freq.tag(), LandObs.tag()]
+
+  @doc """
+  The ids of draws of T (either tag in `waiting_tags/0`) that are waiting
+  for entropy, while nothing is stored for T; [] once it is. The same draws
+  the store's insert trigger waits for: lock schema 6, a tag in
+  `waiting_tags/0`, `freq_start` T, awaiting or pending entropy.
   """
   @spec pending_draw_ids(DateTime.t()) :: [String.t()]
   def pending_draw_ids(%DateTime{} = freq_start) do
     if for_start(freq_start) do
       []
     else
-      tag = Freq.tag()
+      tags = waiting_tags()
 
       Draw
       |> Ash.Query.filter(
-        lock_schema_version == "6" and entropy_composition == ^tag and
+        lock_schema_version == "6" and entropy_composition in ^tags and
           freq_start == ^freq_start and status in [:awaiting_entropy, :pending_entropy]
       )
       |> Ash.Query.select([:id])
