@@ -8,11 +8,11 @@ defmodule WallopCore.Resources.WeatherObservation do
 
     * the hour needs at least one observation-weather draw waiting for
       entropy;
-    * the primary station only within [observation_time, F - 10 min], the
-      backup only within (F - 10 min, F]. These windows are checked on the
-      database clock at statement time (statement_timestamp());
-    * one row per hour, so a backup can't be stored once the primary is, and
-      a second insert for the hour, even a concurrent one, is refused;
+    * Middle Wallop only, within [observation_time, F]. This window is
+      checked on the database clock at statement time
+      (statement_timestamp());
+    * one row per hour, so a second insert for the hour, even a concurrent
+      one, is refused;
     * the transaction must commit by F: a deferred check at COMMIT, on the
       wall clock then (clock_timestamp()), bounds the commit by F, so no
       insert can be held open until drand publishes and then kept or dropped.
@@ -49,8 +49,8 @@ defmodule WallopCore.Resources.WeatherObservation do
       )
 
       check_constraint(:station, "weather_observations_station",
-        check: "station = ANY (wallop_landobs_stations())",
-        message: "is not a station of the observation protocol"
+        check: "station = wallop_landobs_primary_station()",
+        message: "is not the station of the observation protocol"
       )
     end
 
@@ -60,22 +60,16 @@ defmodule WallopCore.Resources.WeatherObservation do
     custom_statements do
       statement :wallop_landobs_observation_allowed do
         # True when `station` may store a reading for `weather_time` at
-        # `now_utc`. The insert trigger calls it with the DB clock; tests
-        # call it with exact instants.
+        # `now_utc`: Middle Wallop only, within [wt, F]. The insert trigger
+        # calls it with the DB clock; tests call it with exact instants.
         up("""
         CREATE OR REPLACE FUNCTION wallop_landobs_observation_allowed(
           station text, weather_time timestamp, now_utc timestamp)
         RETURNS boolean
         LANGUAGE sql IMMUTABLE STRICT AS $$
-          SELECT CASE
-            WHEN station = wallop_landobs_primary_station() THEN
-              now_utc >= weather_time
-              AND now_utc <= weather_time + wallop_landobs_fetch_window() - interval '10 minutes'
-            WHEN station = wallop_landobs_backup_station() THEN
-              now_utc > weather_time + wallop_landobs_fetch_window() - interval '10 minutes'
-              AND now_utc <= weather_time + wallop_landobs_fetch_window()
-            ELSE false
-          END
+          SELECT station = wallop_landobs_primary_station()
+             AND now_utc >= weather_time
+             AND now_utc <= weather_time + wallop_landobs_fetch_window()
         $$
         """)
 
@@ -87,8 +81,8 @@ defmodule WallopCore.Resources.WeatherObservation do
       statement :guard_weather_observation_insert do
         # One row per observation hour; the unique index on observation_time
         # makes it the only row, so every draw of the hour gets the same
-        # station and value. A backup row can't follow a primary one, and a
-        # concurrent insert for the hour waits on the index, then fails.
+        # station and value. Only Middle Wallop may store, within [wt, F].
+        # A concurrent insert for the hour waits on the index, then fails.
         #
         # The waiting draws of the hour are locked FOR SHARE, which is enough:
         # it conflicts with the row lock a completion UPDATE takes, so a

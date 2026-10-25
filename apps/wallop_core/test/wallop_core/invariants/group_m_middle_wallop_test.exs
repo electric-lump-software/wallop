@@ -70,7 +70,6 @@ defmodule WallopCore.Invariants.GroupMMiddleWallopTest do
     ])
   end
 
-  @tag :pending_task_M3
   test "INV-M1 the observation tag names one station, Middle Wallop, in Elixir and SQL" do
     assert Stations.ids() == ["wmo-03749"]
     assert sql_one("SELECT wallop_landobs_primary_station()") == "wmo-03749"
@@ -90,7 +89,6 @@ defmodule WallopCore.Invariants.GroupMMiddleWallopTest do
     end
   end
 
-  @tag :pending_task_M3
   test "INV-M2 Middle Wallop's reading may be stored anywhere in [wt, F] and nowhere else" do
     w_us = Schedule.fetch_window_seconds() * 1_000_000
     old_cutover = w_us - 600_000_000

@@ -198,7 +198,7 @@ defmodule WallopCore.Invariants.LockAndGuardTest do
     {"winner_count", :plus_one},
     {"drand_chain", {:string, String.duplicate("0", 64)}},
     {"drand_round", :plus_one},
-    {"weather_station", :backup_station},
+    {"weather_station", :wittering},
     {"weather_time", :plus_hour},
     {"signing_key_id", {:string, "deadbeef"}}
   ]
@@ -217,7 +217,7 @@ defmodule WallopCore.Invariants.LockAndGuardTest do
   defp tamper(:uuid, _), do: Ecto.UUID.generate()
   defp tamper({:string, value}, _), do: value
   defp tamper(:plus_one, value), do: value + 1
-  defp tamper(:backup_station, _), do: Stations.backup().id
+  defp tamper(:wittering, _), do: "wmo-03462"
 
   defp tamper(:plus_hour, value) do
     {:ok, t, 0} = DateTime.from_iso8601(value)

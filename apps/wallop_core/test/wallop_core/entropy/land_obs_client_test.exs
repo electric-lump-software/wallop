@@ -58,13 +58,13 @@ defmodule WallopCore.Entropy.LandObsClientTest do
     assert value == "98;1029;92;1919"
   end
 
-  test "picks the requested hour, not the first or the latest row (backup station)" do
-    body = fixture("gcrem9.json")
+  test "picks the requested hour, not the first or the latest row" do
+    body = fixture("gcnfur.json")
     serve(body)
-    hour = hour_at("gcrem9.json", 2)
+    hour = hour_at("gcnfur.json", 2)
 
-    assert {:ok, %{value: "87;1027;90;2467", raw: ^body, observation_time: ^hour}} =
-             LandObsClient.fetch_hour("gcrem9", hour)
+    assert {:ok, %{value: "83;1029;95;1806", raw: ^body, observation_time: ^hour}} =
+             LandObsClient.fetch_hour("gcnfur", hour)
   end
 
   test "an hour not in the response is :missing_hour; a repeated hour is :duplicate_hour" do
@@ -154,6 +154,10 @@ defmodule WallopCore.Entropy.LandObsClientTest do
 
     assert {:error, :unknown_station} =
              LandObsClient.fetch_hour("gcpvj0", ~U[2026-10-14 19:00:00Z])
+
+    # Wittering is not a station of the tag.
+    assert {:error, :unknown_station} =
+             LandObsClient.fetch_hour("gcrem9", ~U[2026-10-14 19:00:00Z])
 
     assert {:error, :not_an_hour} = LandObsClient.fetch_hour("gcnfur", ~U[2026-10-14 19:00:01Z])
 

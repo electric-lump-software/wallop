@@ -72,7 +72,6 @@ defmodule WallopCore.ScheduleBoundariesTest do
         assert_time(s.draw_at, c["draw_at"], label <> " draw_at")
         assert_time(s.expected_result_at, c["draw_at"], label <> " expected_result_at")
         assert_time(s.weather_time, c["weather_time"], label <> " weather_time")
-        assert_time(s.backup_cutover, c["backup_cutover"], label <> " backup_cutover")
         assert_time(s.fetch_deadline, c["fetch_deadline"], label <> " fetch_deadline")
         assert_time(s.latest_lock_at, c["latest_lock_at"], label <> " latest_lock_at")
 
@@ -118,9 +117,9 @@ defmodule WallopCore.ScheduleBoundariesSqlTest do
     * landobs: `wallop_landobs_weather_time(round)` is `weather_time`;
       `wallop_v6_fetch_deadline` is the fetch deadline;
       `wallop_landobs_lock_allowed` holds at `latest_lock_at` and not 1 µs
-      later; `wallop_landobs_observation_allowed` takes the primary
-      station up to the backup cutover and the backup station after it,
-      up to the fetch deadline and not 1 µs later;
+      later; `wallop_landobs_observation_allowed` takes Middle Wallop
+      from `weather_time` up to the fetch deadline and not 1 µs either
+      side, and no other station;
     * freq: `wallop_freq_start(round)` is `freq_start`;
       `wallop_freq_fetch_deadline` and `wallop_v6_fetch_deadline` are the
       fetch deadline; `wallop_freq_store_allowed` holds at the deadline
@@ -151,7 +150,7 @@ defmodule WallopCore.ScheduleBoundariesSqlTest do
   end
 
   test "the SQL checks cover at least 200 cases, among them every case that straddles a date" do
-    landobs_keys = ~w(weather_time backup_cutover fetch_deadline latest_lock_at)
+    landobs_keys = ~w(weather_time fetch_deadline latest_lock_at)
     freq_keys = ~w(freq_start fetch_deadline latest_lock_at)
     straddling = Enum.count(landobs_cases(), &straddles?(&1, landobs_keys))
     straddling_freq = Enum.count(freq_cases(), &straddles?(&1, freq_keys))
@@ -170,35 +169,34 @@ defmodule WallopCore.ScheduleBoundariesSqlTest do
         SELECT c.r,
                wallop_quicknet_pub_time(c.r) = c.draw_at,
                wallop_landobs_weather_time(c.r) = c.wt,
-               wallop_v6_fetch_deadline($6, wallop_landobs_weather_time(c.r), NULL) = c.f,
+               wallop_v6_fetch_deadline($5, wallop_landobs_weather_time(c.r), NULL) = c.f,
                wallop_landobs_lock_allowed(c.lock, wallop_landobs_weather_time(c.r)),
                wallop_landobs_lock_allowed(c.lock + interval '1 microsecond',
                                            wallop_landobs_weather_time(c.r)),
-               wallop_landobs_observation_allowed($7, c.wt, c.cut),
-               wallop_landobs_observation_allowed($7, c.wt, c.cut + interval '1 microsecond'),
-               wallop_landobs_observation_allowed($8, c.wt, c.cut),
-               wallop_landobs_observation_allowed($8, c.wt, c.cut + interval '1 microsecond'),
-               wallop_landobs_observation_allowed($8, c.wt, c.f),
-               wallop_landobs_observation_allowed($8, c.wt, c.f + interval '1 microsecond')
+               wallop_landobs_observation_allowed($6, c.wt, c.wt - interval '1 microsecond'),
+               wallop_landobs_observation_allowed($6, c.wt, c.wt),
+               wallop_landobs_observation_allowed($6, c.wt, c.f),
+               wallop_landobs_observation_allowed($6, c.wt, c.f + interval '1 microsecond'),
+               wallop_landobs_observation_allowed($8, c.wt, c.wt),
+               wallop_landobs_observation_allowed($8, c.wt, c.f)
         FROM unnest($1::bigint[], $2::timestamp[], $3::timestamp[], $4::timestamp[],
-                    $5::timestamp[], $9::timestamp[]) AS c(r, draw_at, wt, cut, f, lock)
+                    $7::timestamp[]) AS c(r, draw_at, wt, f, lock)
         """,
         [
           Enum.map(cases, & &1["round"]),
           Enum.map(cases, &naive(&1["draw_at"])),
           Enum.map(cases, &naive(&1["weather_time"])),
-          Enum.map(cases, &naive(&1["backup_cutover"])),
           Enum.map(cases, &naive(&1["fetch_deadline"])),
           LandObs.tag(),
           Stations.primary().id,
-          Stations.backup().id,
-          Enum.map(cases, &naive(&1["latest_lock_at"]))
+          Enum.map(cases, &naive(&1["latest_lock_at"])),
+          "wmo-03462"
         ]
       )
 
     assert length(rows) == length(cases)
 
-    expected = [true, true, true, true, false, true, false, false, true, true, false]
+    expected = [true, true, true, true, false, false, true, true, false, false, false]
 
     for [round | got] <- rows do
       assert got == expected, "landobs round #{round}"

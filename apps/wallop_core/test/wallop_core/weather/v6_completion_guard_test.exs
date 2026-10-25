@@ -13,7 +13,7 @@ defmodule WallopCore.Weather.V6CompletionGuardTest do
 
   @w Schedule.fetch_window_seconds()
   @primary Stations.primary().id
-  @backup Stations.backup().id
+  @wittering "wmo-03462"
   @stored_only "v6 draw must complete with its stored observation"
   @fallback_only "v6 draw may fall back only after the fetch deadline with nothing stored"
 
@@ -88,7 +88,7 @@ defmodule WallopCore.Weather.V6CompletionGuardTest do
 
   test "an observation is stored, after F, and the draw is completed as a fallback: refused" do
     draw = pending(-(@w - 5 * 60), -10)
-    {:ok, obs} = store(@backup, draw)
+    {:ok, obs} = store(@primary, draw)
     shift_window_back!(draw)
 
     assert complete(draw, @fallback, [LandObs.fallback_reason()]) == @stored_only
@@ -120,7 +120,7 @@ defmodule WallopCore.Weather.V6CompletionGuardTest do
     {_op, key} = create_v6_operator()
     wt = DateTime.utc_now() |> DateTime.add(-(@w - 5 * 60)) |> DateTime.truncate(:second)
     [a, b] = for _ <- 1..2, do: pending_at(wt, -10, key)
-    {:ok, obs} = store(@backup, a)
+    {:ok, obs} = store(@primary, a)
     shift_window_back!(a)
 
     for draw <- [a, b] do
@@ -136,14 +136,14 @@ defmodule WallopCore.Weather.V6CompletionGuardTest do
     end
   end
 
-  describe "the backup is used only when nothing was stored for the primary in its window" do
-    test "a draw with a primary reading can't take the backup's, by store or by completion" do
+  describe "only Middle Wallop's reading is ever stored" do
+    test "a draw with a reading can't take another, by store or by completion" do
       draw = pending(-5 * 60, -10)
       {:ok, primary} = store(@primary, draw, "141;1025;85;2432")
 
-      # The backup's window is closed now, and a reading is already stored:
-      # both refuse it.
-      assert {:error, _} = store(@backup, draw)
+      # Wittering has no window, and a reading is already stored: both
+      # refuse it.
+      assert {:error, _} = store(@wittering, draw)
 
       shift_window_back!(draw)
 
@@ -156,17 +156,17 @@ defmodule WallopCore.Weather.V6CompletionGuardTest do
              ]) == nil
     end
 
-    test "in the backup window a draw with nothing stored takes the backup, never the primary" do
+    test "late in the window a draw with nothing stored takes Middle Wallop, never Wittering" do
       draw = pending(-(@w - 5 * 60), -10)
-      assert {:error, _} = store(@primary, draw)
-      assert {:ok, backup} = store(@backup, draw)
-      assert {:error, _} = store(@backup, draw)
-      assert Observations.for_draw(draw).station == @backup
+      assert {:error, _} = store(@wittering, draw)
+      assert {:ok, reading} = store(@primary, draw)
+      assert {:error, _} = store(@wittering, draw)
+      assert Observations.for_draw(draw).station == @primary
 
       shift_window_back!(draw)
 
       assert complete(draw, "weather_value = $3, weather_observation_time = weather_time", [
-               backup.value
+               reading.value
              ]) == nil
     end
   end

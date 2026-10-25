@@ -152,7 +152,6 @@ defmodule WallopCore.Weather.SqlSchedulePropertyTest do
 
     test "the station literals" do
       assert sql_one("SELECT wallop_landobs_primary_station()") == Stations.primary().id
-      assert sql_one("SELECT wallop_landobs_stations()") == Stations.ids()
     end
   end
 end

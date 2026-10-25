@@ -6,15 +6,14 @@ defmodule WallopCore.Protocol.Tags.LandObs do
   The tag adds no fields to the lock 5 / execution 4 field sets. It sets
   the weather rules:
 
-    * lock: `weather_station` is the first station; `weather_time` is the
+    * lock: `weather_station` is Middle Wallop's; `weather_time` is the
       observation hour of `drand_round` (a whole UTC hour); `locked_at` is
       no later than `weather_time` minus the lock offset (46 minutes), to
       the microsecond.
-    * execution: `weather_station` is one of the tag's stations. Either the
-      value matches the Land Observations grammar and bounds, the
-      observation time is the round's observation hour and the reason is
-      nil; or value and time are nil, the reason is
-      `"no_observation_by_deadline"` and the station is the first station.
+    * execution: `weather_station` is Middle Wallop's. Either the value
+      matches the Land Observations grammar and bounds, the observation
+      time is the round's observation hour and the reason is nil; or value
+      and time are nil and the reason is `"no_observation_by_deadline"`.
       `executed_at` is not earlier than the round's publication.
 
   Every rule here is frozen by the tag. Changing one needs a new tag.
@@ -111,10 +110,10 @@ defmodule WallopCore.Protocol.Tags.LandObs do
   def validate_exec!(
         %{weather_station: station, drand_round: round, executed_at: executed_at} = input
       ) do
-    ids = Stations.ids()
-    require!(station in ids, "exec v5 weather_station must be one of #{inspect(ids)}")
+    primary = Stations.primary().id
+    require!(station == primary, "exec v5 weather_station must be #{primary}")
     require!(valid_round?(round), "exec v5 drand_round must be a positive integer")
-    validate_weather!(input, station, round)
+    validate_weather!(input, round)
 
     require!(
       match?(%DateTime{}, executed_at) and
@@ -129,7 +128,6 @@ defmodule WallopCore.Protocol.Tags.LandObs do
            weather_value: value,
            weather_observation_time: %DateTime{} = observed
          },
-         _station,
          round
        ) do
     # valid_value?/1 checks the grammar and the frozen bounds.
@@ -152,15 +150,11 @@ defmodule WallopCore.Protocol.Tags.LandObs do
            weather_value: nil,
            weather_observation_time: nil
          },
-         station,
          _round
-       ) do
-    # A fallback used no station, so it names the tag's first one.
-    primary = Stations.primary().id
-    require!(station == primary, "exec v5 fallback must name #{primary}")
-  end
+       ),
+       do: :ok
 
-  defp validate_weather!(_input, _station, _round) do
+  defp validate_weather!(_input, _round) do
     raise ArgumentError,
           "exec v5 weather fields must be a value and observation time with a null " <>
             "reason, or both null with reason #{inspect(@fallback_reason)}"

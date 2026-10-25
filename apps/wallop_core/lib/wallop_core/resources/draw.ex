@@ -77,7 +77,8 @@ defmodule WallopCore.Resources.Draw do
     # The SQL side of the observation-weather protocol. Every constant mirrors
     # an Elixir one and has an equality test in sql_schedule_property_test.exs:
     # WallopCore.Drand.Quicknet, WallopCore.Weather.Schedule,
-    # WallopCore.Weather.Stations and WallopCore.Protocol.Tags.LandObs.
+    # WallopCore.Weather.Stations (the one station) and
+    # WallopCore.Protocol.Tags.LandObs.
     # Tag-specific functions are named after the source (wallop_landobs_*).
     # Times are `timestamp` holding UTC; "now" is
     # statement_timestamp() AT TIME ZONE 'UTC'; no timestamptz anywhere.
@@ -143,24 +144,6 @@ defmodule WallopCore.Resources.Draw do
         """)
 
         down("DROP FUNCTION IF EXISTS wallop_landobs_primary_station()")
-      end
-
-      statement :wallop_landobs_stations do
-        up("""
-        CREATE OR REPLACE FUNCTION wallop_landobs_stations() RETURNS text[]
-        LANGUAGE sql IMMUTABLE AS $$ SELECT ARRAY['wmo-03749', 'wmo-03462']::text[] $$
-        """)
-
-        down("DROP FUNCTION IF EXISTS wallop_landobs_stations()")
-      end
-
-      statement :wallop_landobs_backup_station do
-        up("""
-        CREATE OR REPLACE FUNCTION wallop_landobs_backup_station() RETURNS text
-        LANGUAGE sql IMMUTABLE AS $$ SELECT text 'wmo-03462' $$
-        """)
-
-        down("DROP FUNCTION IF EXISTS wallop_landobs_backup_station()")
       end
 
       statement :wallop_landobs_valid_value do

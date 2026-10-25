@@ -15,7 +15,6 @@ defmodule WallopCore.Weather.ScheduleTest do
       assert s.round == 33_068_212
       assert s.expected_result_at == ~U[2026-10-14 20:00:00.000000Z]
       assert s.weather_time == ~U[2026-10-14 19:00:00.000000Z]
-      assert s.backup_cutover == ~U[2026-10-14 19:20:00.000000Z]
       assert s.fetch_deadline == ~U[2026-10-14 19:30:00.000000Z]
       assert s.latest_lock_at == ~U[2026-10-14 18:14:00.000000Z]
     end

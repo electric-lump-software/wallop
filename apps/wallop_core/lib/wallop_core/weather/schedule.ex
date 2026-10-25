@@ -9,27 +9,24 @@ defmodule WallopCore.Weather.Schedule do
 
     * round R is the round with pub(R) == draw_at;
     * weather_time is the latest whole UTC hour h with h + W + 60s <= pub(R);
-    * the fetch deadline F is weather_time + W; the backup cutover is F - 10 min;
+    * the fetch deadline F is weather_time + W;
     * a lock is allowed only while now <= weather_time - 46 min.
 
   When the hour's reading isn't stored by F, the draw uses the grid-frequency
   window of the same round, starting at `freq_start`
   (`WallopCore.Frequency.Schedule`); its constants are frozen by this tag too.
 
-  W, the 46-minute offset and the 10-minute cutover are frozen by the
-  `drand-quicknet+metoffice-landobs-v1` tag. Changing any of them needs a
-  new tag.
+  W, the 46-minute offset and the grid-frequency fallback's constants are
+  frozen by the `drand-quicknet+metoffice-landobs-v1` tag. Changing any of
+  them needs a new tag.
   """
 
   alias WallopCore.Drand.Quicknet
   alias WallopCore.Frequency.Schedule, as: FreqSchedule
 
-  # W, the observation fetch window. Measured p99 Land Observations
-  # publication latency (15 minutes) + 10 minutes, rounded up to 30 so the
-  # primary source keeps 5 minutes of headroom before the backup cutover.
+  # W, the observation fetch window. W is 30 minutes, final.
   # Mirrored by the SQL function wallop_landobs_fetch_window().
   @fetch_window_seconds 30 * 60
-  @backup_cutover_before_deadline_seconds 10 * 60
   @lock_offset_seconds 46 * 60
   @observation_slack_seconds 60
   @first_poll_after_weather_time_seconds 5 * 60
@@ -47,7 +44,6 @@ defmodule WallopCore.Weather.Schedule do
           draw_at: DateTime.t(),
           round: pos_integer(),
           weather_time: DateTime.t(),
-          backup_cutover: DateTime.t(),
           fetch_deadline: DateTime.t(),
           latest_lock_at: DateTime.t(),
           expected_result_at: DateTime.t(),
@@ -82,7 +78,6 @@ defmodule WallopCore.Weather.Schedule do
       draw_at: pub,
       round: round,
       weather_time: wt,
-      backup_cutover: backup_cutover(wt),
       fetch_deadline: fetch_deadline(wt),
       latest_lock_at: latest_lock_at(wt),
       expected_result_at: pub,
@@ -107,10 +102,6 @@ defmodule WallopCore.Weather.Schedule do
 
   @spec fetch_deadline(DateTime.t()) :: DateTime.t()
   def fetch_deadline(wt), do: DateTime.add(wt, @fetch_window_seconds)
-
-  @spec backup_cutover(DateTime.t()) :: DateTime.t()
-  def backup_cutover(wt),
-    do: DateTime.add(wt, @fetch_window_seconds - @backup_cutover_before_deadline_seconds)
 
   @spec latest_lock_at(DateTime.t()) :: DateTime.t()
   def latest_lock_at(wt), do: DateTime.add(wt, -@lock_offset_seconds)

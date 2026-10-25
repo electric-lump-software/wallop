@@ -1,9 +1,9 @@
 defmodule WallopCore.Weather.Stations do
   @moduledoc """
-  The ordered station list of the `drand-quicknet+metoffice-landobs-v1` tag:
-  Middle Wallop first, Wittering as the backup. The Land Observations API
-  identifies stations only by geohash, and carries no station id, so the
-  geohash-to-WMO mapping below is wallop's own.
+  The one station of the `drand-quicknet+metoffice-landobs-v1` tag, Middle
+  Wallop. The Land Observations API identifies it only by geohash and
+  carries no station id, so the geohash-to-WMO mapping below is wallop's
+  own.
   """
 
   @type station :: %{
@@ -21,17 +21,10 @@ defmodule WallopCore.Weather.Stations do
       geohash: "gcnfur",
       name: "Middle Wallop",
       verified_on: ~D[2026-10-15]
-    },
-    %{
-      id: "wmo-03462",
-      wmo: "03462",
-      geohash: "gcrem9",
-      name: "Wittering",
-      verified_on: ~D[2026-10-15]
     }
   ]
 
-  @doc "Every station, in the order frozen by the tag."
+  @doc "Every station of the tag: Middle Wallop alone."
   @spec all() :: [station()]
   def all, do: @stations
 
@@ -39,11 +32,7 @@ defmodule WallopCore.Weather.Stations do
   @spec primary() :: station()
   def primary, do: hd(@stations)
 
-  @doc "The backup station."
-  @spec backup() :: station()
-  def backup, do: Enum.at(@stations, 1)
-
-  @doc "The station ids, in order."
+  @doc "The station ids."
   @spec ids() :: [String.t()]
   def ids, do: Enum.map(@stations, & &1.id)
 

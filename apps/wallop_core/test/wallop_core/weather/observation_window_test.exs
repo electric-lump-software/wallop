@@ -24,59 +24,33 @@ defmodule WallopCore.Weather.ObservationWindowTest do
     sql_one("SELECT wallop_landobs_observation_allowed($1, $2, $3)", [station, @wt, now])
   end
 
-  test "exact boundaries, in a non-UTC session" do
+  test "exact boundaries, in a non-UTC session: Middle Wallop within [wt, F], nothing else ever" do
     Repo.query!("SET LOCAL TIME ZONE 'Asia/Kolkata'")
-    cutover = (@w - 10 * 60) * 1_000_000
     deadline = @w * 1_000_000
 
-    #   instant              primary  backup
-    for {offset, primary, backup} <- [
-          {-1, false, false},
-          {0, true, false},
-          {cutover, true, false},
-          {cutover + 1, false, true},
-          {deadline, false, true},
-          {deadline + 1, false, false}
+    for {offset, expected} <- [
+          {-1, false},
+          {0, true},
+          {deadline - 600_000_001, true},
+          {deadline - 599_999_999, true},
+          {deadline, true},
+          {deadline + 1, false}
         ] do
-      assert allowed?(Stations.primary().id, offset) == primary, "primary at #{offset}us"
-      assert allowed?(Stations.backup().id, offset) == backup, "backup at #{offset}us"
+      assert allowed?("wmo-03749", offset) == expected, "at #{offset}us"
+      refute allowed?("wmo-03462", offset), "Wittering at #{offset}us"
     end
 
     refute allowed?("wmo-99999", 0)
   end
 
-  test "the boundaries are Schedule's backup cutover and fetch deadline" do
+  test "the boundary is Schedule's fetch deadline" do
     wt = DateTime.from_naive!(@wt, "Etc/UTC")
-    assert DateTime.diff(Schedule.backup_cutover(wt), wt) == @w - 10 * 60
     assert DateTime.diff(Schedule.fetch_deadline(wt), wt) == @w
   end
 
-  describe "the SQL station literals equal Stations" do
-    test "the backup station and the full list" do
-      assert sql_one("SELECT wallop_landobs_backup_station()") == Stations.backup().id
-      assert sql_one("SELECT wallop_landobs_primary_station()") == Stations.primary().id
-      assert sql_one("SELECT wallop_landobs_stations()") == Stations.ids()
-
-      assert sql_one(
-               "SELECT ARRAY[wallop_landobs_primary_station(), wallop_landobs_backup_station()]"
-             ) ==
-               Stations.ids()
-    end
-
-    test "the table's station CHECK accepts exactly Stations.ids()" do
-      assert constraint_def("weather_observations_station") =~ "wallop_landobs_stations()"
-
-      for id <- Stations.ids() do
-        assert sql_one("SELECT $1 = ANY (wallop_landobs_stations())", [id]), id
-      end
-
-      refute sql_one("SELECT $1 = ANY (wallop_landobs_stations())", ["wmo-99999"])
-    end
-
-    test "every station in Stations has a window, and nothing else does" do
-      in_window = for id <- Stations.ids(), do: allowed?(id, 0) or allowed?(id, @w * 1_000_000)
-      assert Enum.all?(in_window)
-    end
+  test "the station CHECK names the primary station function" do
+    assert constraint_def("weather_observations_station") =~ "wallop_landobs_primary_station()"
+    assert sql_one("SELECT wallop_landobs_primary_station()") == Stations.primary().id
   end
 
   describe "the value CHECK is LandObsGrammar.valid_value?/1" do

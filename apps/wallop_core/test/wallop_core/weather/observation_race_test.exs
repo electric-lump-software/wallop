@@ -6,9 +6,6 @@ defmodule WallopCore.Weather.ObservationRaceTest do
     * A completion that arrives while the hour's store is uncommitted waits
       on the draw's row lock and then reads the store afresh: it can't fall
       back past a reading that commits first.
-    * A primary insert still uncommitted at the backup cutover, and a backup
-      insert for the same hour after it: the backup waits on the hour's
-      unique index and is then refused.
     * Two different primary values for one hour at once: the first wins and
       the second waits, then is refused.
 
@@ -31,11 +28,10 @@ defmodule WallopCore.Weather.ObservationRaceTest do
   alias WallopCore.Drand.Quicknet
   alias WallopCore.Protocol.Tags.LandObs
   alias WallopCore.Repo
-  alias WallopCore.Weather.{Schedule, Stations}
+  alias WallopCore.Weather.Stations
 
   @blocked_ms 300
   @value "141;1025;85;2432"
-  @w Schedule.fetch_window_seconds()
   @unique "duplicate key value violates unique constraint \"weather_observations_one_per_hour_index\""
 
   setup do
@@ -107,32 +103,6 @@ defmodule WallopCore.Weather.ObservationRaceTest do
     end
   end
 
-  describe "a backup insert during an uncommitted primary insert, across the cutover" do
-    @tag :slow
-    test "waits, then is refused once the primary commits", %{key: key} do
-      {draw, t1, t2} = across_cutover(key)
-
-      send(t1, :commit)
-      assert_receive {:result, ^t1, :committed}, 5_000
-      assert_receive {:result, ^t2, {:refused, @unique}}, 5_000
-
-      assert stored(draw) == [{Stations.primary().id, @value}]
-    end
-
-    @tag :slow
-    test "control: is stored if the primary rolls back", %{key: key} do
-      {draw, t1, t2} = across_cutover(key)
-
-      send(t1, :rollback)
-      assert_receive {:result, ^t1, :rolled_back}, 5_000
-      assert_receive {:done_statement, ^t2}, 5_000
-      send(t2, :commit)
-      assert_receive {:result, ^t2, :committed}, 5_000
-
-      assert stored(draw) == [{Stations.backup().id, "90;1025;85;2432"}]
-    end
-  end
-
   describe "two different primary values for one hour at once" do
     test "the first wins; the second waits, then is refused", %{key: key} do
       {draw, t1, t2} = two_primaries(key)
@@ -155,24 +125,6 @@ defmodule WallopCore.Weather.ObservationRaceTest do
 
       assert stored(draw) == [{Stations.primary().id, "142;1025;85;2432"}]
     end
-  end
-
-  # The cutover is 6 to 7 seconds ahead: the primary's statement runs inside
-  # the primary window; the backup's after the cutover, inside its own. The
-  # lead covers the fixture's signing and the spawn on a loaded machine.
-  defp across_cutover(key) do
-    draw = pending_draw(key, -(@w - 10 * 60) + 7)
-    cutover = Schedule.backup_cutover(draw.weather_time)
-
-    t1 = in_transaction(insert(draw, Stations.primary().id))
-    assert_receive {:done_statement, ^t1}, 5_000
-    assert DateTime.compare(db_now(), cutover) == :lt
-
-    wait_until_db_clock_after(cutover)
-    t2 = in_transaction(insert(draw, Stations.backup().id, "90;1025;85;2432"))
-    refute_receive {:done_statement, ^t2}, @blocked_ms
-
-    {draw, t1, t2}
   end
 
   defp two_primaries(key) do
@@ -223,22 +175,6 @@ defmodule WallopCore.Weather.ObservationRaceTest do
         other -> send(parent, {:result, me, other})
       end
     end)
-  end
-
-  defp db_now do
-    unboxed(fn ->
-      %{rows: [[now]]} = Repo.query!("SELECT clock_timestamp() AT TIME ZONE 'UTC'")
-      DateTime.from_naive!(now, "Etc/UTC")
-    end)
-  end
-
-  defp wait_until_db_clock_after(t) do
-    if DateTime.compare(db_now(), t) == :gt do
-      :ok
-    else
-      Process.sleep(200)
-      wait_until_db_clock_after(t)
-    end
   end
 
   defp status(draw) do

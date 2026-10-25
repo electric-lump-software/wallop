@@ -7,7 +7,7 @@ defmodule WallopCore.Weather.ObservationStoreTest do
 
   @w Schedule.fetch_window_seconds()
   @primary Stations.primary().id
-  @backup Stations.backup().id
+  @wittering "wmo-03462"
   @value "141;1025;85;2432"
   @already "an observation is already stored for this hour"
   @no_draw "no observation-weather draw is waiting for this hour"
@@ -66,7 +66,7 @@ defmodule WallopCore.Weather.ObservationStoreTest do
 
     assert refused(store(@primary, draw)) =~ @already
     assert refused(store(@primary, draw, "142;1025;85;2432")) =~ @already
-    assert {:error, _} = store(@backup, draw)
+    assert {:error, _} = store(@wittering, draw)
   end
 
   test "every draw of the hour reads the hour's one reading" do
@@ -86,30 +86,29 @@ defmodule WallopCore.Weather.ObservationStoreTest do
     assert Observations.for_hour(wt).id == obs.id
   end
 
-  test "the trigger uses the window: primary refused before weather_time, backup refused early" do
+  test "the trigger uses the window: Middle Wallop within [wt, F], Wittering never" do
     early = v6_draw_with_weather_time(60)
     assert refused(store(@primary, early)) =~ "#{@primary} observation outside its window"
 
-    in_primary = v6_draw_with_weather_time(-5 * 60)
-    assert refused(store(@backup, in_primary)) =~ "#{@backup} observation outside its window"
+    in_window = v6_draw_with_weather_time(-5 * 60)
 
-    in_backup = v6_draw_with_weather_time(-(@w - 5 * 60))
-    assert refused(store(@primary, in_backup)) =~ "#{@primary} observation outside its window"
-    assert {:ok, %{station: @backup}} = store(@backup, in_backup)
+    assert refused(store(@wittering, in_window)) =~
+             "#{@wittering} observation outside its window"
+
+    late_in_window = v6_draw_with_weather_time(-(@w - 5 * 60))
+
+    assert refused(store(@wittering, late_in_window)) =~
+             "#{@wittering} observation outside its window"
+
+    assert {:ok, %{station: @primary}} = store(@primary, late_in_window)
 
     after_deadline = v6_draw_with_weather_time(-(@w + 30))
 
-    assert refused(store(@backup, after_deadline)) =~
-             "#{@backup} observation outside its window"
-  end
+    assert refused(store(@primary, after_deadline)) =~
+             "#{@primary} observation outside its window"
 
-  test "a backup can't be stored once the hour has a primary row" do
-    draw = v6_draw_with_weather_time(-(@w - 5 * 60))
-    # A primary row for the hour, as if stored in the primary window.
-    with_triggers_off(fn -> raw_insert!(@primary, draw.weather_time) end)
-
-    assert refused(store(@backup, draw)) =~ @already
-    assert Observations.for_draw(draw).station == @primary
+    assert refused(store(@wittering, after_deadline)) =~
+             "#{@wittering} observation outside its window"
   end
 
   test "values must match the grammar and bounds; stations are closed; the hour needs a waiting draw" do
@@ -132,11 +131,13 @@ defmodule WallopCore.Weather.ObservationStoreTest do
     # the CHECK refuses it too, even with every trigger off.
     assert refused(store("wmo-99999", draw)) =~ "wmo-99999 observation outside its window"
 
-    assert_raise Postgrex.Error, ~r/weather_observations_station/, fn ->
-      Repo.transaction(fn ->
-        Repo.query!("SET LOCAL session_replication_role = replica")
-        raw_insert!("wmo-99999", draw.weather_time)
-      end)
+    for station <- ["wmo-99999", @wittering] do
+      assert_raise Postgrex.Error, ~r/weather_observations_station/, fn ->
+        Repo.transaction(fn ->
+          Repo.query!("SET LOCAL session_replication_role = replica")
+          raw_insert!(station, draw.weather_time)
+        end)
+      end
     end
 
     # Nothing above was stored: the hour still takes its reading.

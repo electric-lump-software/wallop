@@ -13,7 +13,6 @@ defmodule WallopCore.Entropy.WeatherObservationWorkerTest do
 
   @w Schedule.fetch_window_seconds()
   @primary Stations.primary().id
-  @backup Stations.backup().id
   @poll [:wallop_core, :weather, :poll]
   @stored [:wallop_core, :weather, :stored]
   @store_refused [:wallop_core, :weather, :store_refused]
@@ -45,15 +44,14 @@ defmodule WallopCore.Entropy.WeatherObservationWorkerTest do
     {wt, draws}
   end
 
-  # Serves each station's body (nil: a 503), and tells the test which
-  # stations were asked.
-  defp stub_stations(%{"gcnfur" => primary, "gcrem9" => backup}) do
+  # Serves Middle Wallop's body (nil: a 503), and tells the test which
+  # geohash was asked.
+  defp stub_primary(body) do
     test = self()
 
     Req.Test.stub(LandObsClient, fn conn ->
       geohash = conn.request_path |> String.split("/") |> List.last()
       send(test, {:fetched, geohash})
-      body = if geohash == "gcnfur", do: primary, else: backup
       Plug.Conn.send_resp(conn, if(body, do: 200, else: 503), body || "{}")
     end)
   end
@@ -82,7 +80,7 @@ defmodule WallopCore.Entropy.WeatherObservationWorkerTest do
   describe "storing" do
     test "stores the primary reading once for the hour, shared by every pending draw" do
       {wt, draws} = v6_draws(-6 * 60, 3)
-      stub_stations(%{"gcnfur" => row(wt, 14.11), "gcrem9" => row(wt, 9.0)})
+      stub_primary(row(wt, 14.11))
       ref = attach([@poll, @stored])
 
       assert :ok = run(wt)
@@ -93,18 +91,17 @@ defmodule WallopCore.Entropy.WeatherObservationWorkerTest do
 
       assert Observations.pending_draw_ids(wt) == []
 
-      for station <- [@primary, @backup] do
-        assert_receive {@poll, ^ref, %{count: 1},
-                        %{station: ^station, weather_time: ^wt, ok?: true, error: nil}}
-      end
+      assert_receive {@poll, ^ref, %{count: 1},
+                      %{station: @primary, weather_time: ^wt, ok?: true, error: nil}}
 
+      refute_receive {@poll, ^ref, _, _}
       assert_receive {@stored, ^ref, %{count: 1}, %{station: @primary, weather_time: ^wt}}
       refute_receive {@stored, ^ref, _, _}
     end
 
-    test "keeps polling while the primary row is missing, before the cutover" do
+    test "keeps polling while the reading is missing" do
       {wt, [d]} = v6_draws(-6 * 60, 1)
-      stub_stations(%{"gcnfur" => "[]", "gcrem9" => row(wt, 9.0)})
+      stub_primary("[]")
       ref = attach([@poll])
 
       assert {:snooze, s} = run(wt)
@@ -113,27 +110,34 @@ defmodule WallopCore.Entropy.WeatherObservationWorkerTest do
       assert Observations.for_hour(wt) == nil
 
       assert_receive {@poll, ^ref, _, %{station: @primary, ok?: false, error: :missing_hour}}
-      # The backup is polled (and measured), but not stored in the primary window.
-      assert_receive {@poll, ^ref, _, %{station: @backup, ok?: true}}
+      refute_receive {@poll, ^ref, _, _}
     end
 
-    test "after the cutover only the backup can be stored" do
+    test "each poll fetches Middle Wallop once, so an hour costs at most 26 calls" do
       {wt, [d]} = v6_draws(-(@w - 5 * 60), 1)
-      stub_stations(%{"gcnfur" => row(wt, 14.11), "gcrem9" => row(wt, 9.0)})
+      stub_primary(row(wt, 14.11))
       assert :ok = run(wt)
-      assert %{station: @backup, value: "90;1025;85;2432"} = Observations.for_draw(d.id)
+      assert %{station: @primary, value: "141;1025;85;2432"} = Observations.for_draw(d.id)
+
+      assert_receive {:fetched, "gcnfur"}
+      refute_receive {:fetched, _}, 50
+
+      assert div(
+               Schedule.fetch_window_seconds() - Schedule.first_poll_after_weather_time_seconds(),
+               Schedule.poll_interval_seconds()
+             ) + 1 == 26
     end
 
     test "the last poll is made before F, not after it" do
       {wt, _} = v6_draws(-(@w - 20), 1)
-      stub_stations(%{"gcnfur" => row(wt, 14.11), "gcrem9" => nil})
+      stub_primary(nil)
       assert {:snooze, s} = run(wt)
       assert s <= 15
     end
 
     test "after F it stops without fetching or storing" do
       {wt, [d]} = v6_draws(-(@w + 60), 1)
-      stub_stations(%{"gcnfur" => row(wt, 14.11), "gcrem9" => row(wt, 9.0)})
+      stub_primary(row(wt, 14.11))
       assert :ok = run(wt)
       assert Observations.for_draw(d.id) == nil
       refute_received {:fetched, _}
@@ -145,7 +149,7 @@ defmodule WallopCore.Entropy.WeatherObservationWorkerTest do
       {:ok, _} =
         Observations.store(@primary, %{value: "150;1025;85;2432", raw: "[]", observation_time: wt})
 
-      stub_stations(%{"gcnfur" => row(wt, 14.11), "gcrem9" => row(wt, 9.0)})
+      stub_primary(row(wt, 14.11))
       assert :ok = run(wt)
       assert %{value: "150;1025;85;2432"} = Observations.for_draw(d.id)
       refute_received {:fetched, _}
@@ -179,7 +183,7 @@ defmodule WallopCore.Entropy.WeatherObservationWorkerTest do
 
     test "any other refused store is reported and the job polls again" do
       {wt, [d]} = v6_draws(-6 * 60, 1)
-      stub_stations(%{"gcnfur" => row(wt, 14.11), "gcrem9" => row(wt, 9.0)})
+      stub_primary(row(wt, 14.11))
       ref = attach([@store_refused])
 
       # The store refuses to run inside a caller's transaction.
@@ -195,7 +199,7 @@ defmodule WallopCore.Entropy.WeatherObservationWorkerTest do
 
     test "nothing pending for the hour: done, without fetching" do
       wt = DateTime.utc_now() |> DateTime.add(-6 * 60) |> DateTime.truncate(:second)
-      stub_stations(%{"gcnfur" => row(wt, 14.11), "gcrem9" => row(wt, 9.0)})
+      stub_primary(row(wt, 14.11))
       assert :ok = run(wt)
       refute_received {:fetched, _}
     end
@@ -211,7 +215,7 @@ defmodule WallopCore.Entropy.WeatherObservationWorkerTest do
         ])
       end)
 
-      stub_stations(%{"gcnfur" => row(wt, 14.11), "gcrem9" => row(wt, 9.0)})
+      stub_primary(row(wt, 14.11))
       assert :ok = run(wt)
       assert Observations.for_hour(wt) == nil
       refute_received {:fetched, _}
@@ -224,7 +228,7 @@ defmodule WallopCore.Entropy.WeatherObservationWorkerTest do
       {:ok, s} = Schedule.schedule(Schedule.default_draw_at(DateTime.utc_now()))
       {_op, key} = create_v6_operator()
       put_v6_awaiting!(open_draw_with_entries(key), next_hour, s.round)
-      stub_stations(%{"gcnfur" => "[]", "gcrem9" => "[]"})
+      stub_primary("[]")
 
       assert {:snooze, wait} = run(next_hour)
       expected = DateTime.diff(DateTime.add(next_hour, 5 * 60), DateTime.utc_now())
@@ -255,10 +259,10 @@ defmodule WallopCore.Entropy.WeatherObservationWorkerTest do
       assert {:snooze, _} = run(wt)
       assert Observations.for_draw(d.id) == nil
 
-      for station <- [@primary, @backup] do
-        assert_receive {@poll, ^ref, %{count: 1},
-                        %{station: ^station, ok?: false, error: :no_api_key}}
-      end
+      assert_receive {@poll, ^ref, %{count: 1},
+                      %{station: @primary, ok?: false, error: :no_api_key}}
+
+      refute_receive {@poll, ^ref, _, _}
     end
 
     test "an exception during a poll snoozes until F instead of failing the job" do
@@ -270,19 +274,17 @@ defmodule WallopCore.Entropy.WeatherObservationWorkerTest do
       log = capture_log(fn -> assert {:snooze, _} = run(wt) end)
       assert Observations.for_draw(d.id) == nil
 
-      # Counted per station, in both events.
-      for station <- [@primary, @backup] do
-        assert_receive {@poll_error, ^ref, %{count: 1},
-                        %{weather_time: ^wt, station: ^station, kind: :error}}
+      # Counted in both events.
+      assert_receive {@poll_error, ^ref, %{count: 1},
+                      %{weather_time: ^wt, station: @primary, kind: :error}}
 
-        assert_receive {@poll, ^ref, %{count: 1},
-                        %{
-                          station: ^station,
-                          weather_time: ^wt,
-                          ok?: false,
-                          error: {:raised, :error}
-                        }}
-      end
+      assert_receive {@poll, ^ref, %{count: 1},
+                      %{
+                        station: @primary,
+                        weather_time: ^wt,
+                        ok?: false,
+                        error: {:raised, :error}
+                      }}
 
       assert log =~ "ArgumentError"
 
@@ -332,9 +334,9 @@ defmodule WallopCore.Entropy.WeatherObservationWorkerTest do
       log = capture_log(fn -> assert {:snooze, _} = run(wt) end)
 
       assert_receive {@poll, ^ref, _, %{error: {:unexpected_status, 503}} = m1}
-      assert_receive {@poll, ^ref, _, %{error: {:unexpected_status, 503}} = m2}
+      refute_receive {@poll, ^ref, _, _}
 
-      for text <- [log, inspect(m1), inspect(m2)] do
+      for text <- [log, inspect(m1)] do
         refute text =~ "SHOULD-NOT-APPEAR"
       end
     end
@@ -359,7 +361,7 @@ defmodule WallopCore.Entropy.WeatherObservationWorkerTest do
       end
 
       # The canonical form runs: an hour long past F stops without fetching.
-      stub_stations(%{"gcnfur" => "[]", "gcrem9" => "[]"})
+      stub_primary("[]")
 
       assert :ok =
                perform_job(WeatherObservationWorker, %{weather_time: "2026-10-14T19:00:00Z"})
@@ -458,68 +460,61 @@ defmodule WallopCore.Entropy.WeatherObservationWorkerTest do
     end
   end
 
-  describe "the station follows from the database clock alone" do
+  describe "the window follows from the database clock alone" do
     @wt ~N[2026-10-14 19:00:00.000000]
 
-    defp sql_allowed(station, now) do
+    test "window_state/2 mirrors the store's window exactly" do
+      wt = ~U[2026-10-14 19:00:00.000000Z]
+      f = Schedule.fetch_deadline(wt)
+
+      assert WeatherObservationWorker.window_state(DateTime.add(wt, -1, :microsecond), wt) ==
+               :not_yet
+
+      assert WeatherObservationWorker.window_state(wt, wt) == :open
+      assert WeatherObservationWorker.window_state(DateTime.add(wt, 1201), wt) == :open
+      assert WeatherObservationWorker.window_state(f, wt) == :open
+
+      assert WeatherObservationWorker.window_state(DateTime.add(f, 1, :microsecond), wt) ==
+               :closed
+    end
+
+    defp sql_allowed(now) do
       %{rows: [[v]]} =
-        Repo.query!("SELECT wallop_landobs_observation_allowed($1, $2, $3)", [station, @wt, now])
+        Repo.query!("SELECT wallop_landobs_observation_allowed($1, $2, $3)", [@primary, @wt, now])
 
       v
     end
 
-    defp expected_from_sql(now) do
-      case {sql_allowed(@primary, now), sql_allowed(@backup, now)} do
-        {true, false} -> {:ok, @primary}
-        {false, true} -> {:ok, @backup}
-        {false, false} -> :neither
-      end
+    defp worker_open?(now) do
+      WeatherObservationWorker.window_state(
+        DateTime.from_naive!(now, "Etc/UTC"),
+        DateTime.from_naive!(@wt, "Etc/UTC")
+      ) == :open
     end
 
-    defp worker_choice(now) do
-      case WeatherObservationWorker.station_for(
-             DateTime.from_naive!(now, "Etc/UTC"),
-             DateTime.from_naive!(@wt, "Etc/UTC")
-           ) do
-        {:ok, station} -> {:ok, station.id}
-        _ -> :neither
-      end
-    end
-
-    test "at every window boundary, the worker's station is the one the store allows" do
-      cutover = (@w - 10 * 60) * 1_000_000
+    test "at every window boundary, the worker stores exactly when the store allows" do
+      old_cutover = (@w - 10 * 60) * 1_000_000
       deadline = @w * 1_000_000
 
       for offset <- [
             -1,
             0,
             1,
-            cutover - 1,
-            cutover,
-            cutover + 1,
+            old_cutover,
+            old_cutover + 1,
             deadline - 1,
             deadline,
             deadline + 1
           ] do
         now = NaiveDateTime.add(@wt, offset, :microsecond)
-        assert worker_choice(now) == expected_from_sql(now), "at #{offset}us"
+        assert worker_open?(now) == sql_allowed(now), "at #{offset}us"
       end
-
-      wt = DateTime.from_naive!(@wt, "Etc/UTC")
-
-      assert WeatherObservationWorker.station_for(DateTime.add(wt, -1, :microsecond), wt) ==
-               :not_yet
-
-      assert WeatherObservationWorker.station_for(
-               DateTime.add(wt, @w * 1_000_000 + 1, :microsecond),
-               wt
-             ) == :closed
     end
 
     property "and at any instant around the window" do
       check all(offset <- integer(-3_600_000_000..(2 * @w * 1_000_000)), max_runs: 300) do
         now = NaiveDateTime.add(@wt, offset, :microsecond)
-        assert worker_choice(now) == expected_from_sql(now)
+        assert worker_open?(now) == sql_allowed(now)
       end
     end
   end

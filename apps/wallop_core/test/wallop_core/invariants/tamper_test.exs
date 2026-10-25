@@ -6,7 +6,7 @@ defmodule WallopCore.Invariants.TamperTest do
     * **Builders.** Generated valid inputs go through the real
       `Protocol.build_v6_lock_payload/1` and `build_v6_execution_payload/1`.
       Each signed field is then mutated one step at a time (±1 µs, ±1 round,
-      ±1 hour, the other station, another chain or tag, nil, a wrong type),
+      ±1 hour, Wittering, another chain or tag, nil, a wrong type),
       and so are the pairs that must agree. Each mutation is either refused
       by the builder with its exact message, or classified:
         - `:same_bytes`: the builder signs exactly the base bytes (a whole
@@ -16,8 +16,8 @@ defmodule WallopCore.Invariants.TamperTest do
         - `{:verifier, field}`: a field the builder can't see and the
           database doesn't bind; `spec/vectors/proof-bundle-v6-tamper.json`
           must carry a case for it, which the Rust verifier refuses;
-        - `{:producer, field}`: another valid value (a later `executed_at`,
-          the other listed station). No offline check can tell it from the
+        - `{:producer, field}`: another valid value (a later
+          `executed_at`). No offline check can tell it from the
           truth; only the producer, from the draw row, knows it, and the
           execution receipt trigger binds it to the row;
         - `{:no_layer, field}`: refused by no layer today. These are listed
@@ -25,7 +25,7 @@ defmodule WallopCore.Invariants.TamperTest do
     * **Database.** Real v6 draws, locked in time on generated schedules,
       take a receipt built by the real builder (the positive control); every
       `{:db, field}` mutation is then refused with its exact message.
-      Completed v6 draws (observed from either station, or fallback) take
+      Completed v6 draws (observed from Middle Wallop, or fallback) take
       the execution receipt the signer would build; every execution
       mutation the builder can't see (`{:verifier, _}`, `{:producer, _}`) is
       then refused by the execution receipt trigger with its exact message,
@@ -68,7 +68,7 @@ defmodule WallopCore.Invariants.TamperTest do
 
   # Execution fields that only the producer can know: another valid value
   # is indistinguishable offline. The execution receipt trigger binds both.
-  @producer_only ~w(executed_at weather_station)
+  @producer_only ~w(executed_at)
 
   # Mutations no layer refuses today. Reported as findings. A change that
   # adds a check moves a field out of here.
@@ -221,7 +221,7 @@ defmodule WallopCore.Invariants.TamperTest do
       {"locked_at nil", %{l | locked_at: nil}, {:raise, "lock v6 locked_at must not be nil"}},
       {"locked_at string", %{l | locked_at: rfc(l.locked_at)},
        {:raise, "lock v6 locked_at must be a DateTime"}},
-      {"weather_station other", %{l | weather_station: Stations.backup().id}, {:raise, station}},
+      {"weather_station Wittering", %{l | weather_station: "wmo-03462"}, {:raise, station}},
       {"weather_station unlisted", %{l | weather_station: "wmo-03772"}, {:raise, station}},
       {"weather_station nil", %{l | weather_station: nil}, {:raise, station}},
       {"weather_station atom", %{l | weather_station: :"wmo-03749"}, {:raise, station}},
@@ -272,7 +272,7 @@ defmodule WallopCore.Invariants.TamperTest do
   defp exec_mutations(%{exec: e, kind: kind, round: r, wt: wt, exec_after: after_us}) do
     obs_hour = &exec_obs_hour/1
     before = &exec_before/1
-    station = "exec v5 weather_station must be one of #{inspect(Stations.ids())}"
+    station = "exec v5 weather_station must be #{Stations.primary().id}"
     observed? = kind == :observed
 
     # A round n steps on: the observation hour must still match (observed),
@@ -356,14 +356,14 @@ defmodule WallopCore.Invariants.TamperTest do
   @exec_grammar "exec v5 weather_value does not match the Land Observations grammar and bounds"
 
   defp exec_weather_mutations(:observed, e, r, wt) do
-    other = Enum.find(Stations.ids(), &(&1 != e.weather_station))
     [t, mslp, rh, vis] = String.split(e.weather_value, ";")
 
     bumped =
       Enum.join([String.to_integer(t) + if(t == "600", do: -1, else: 1), mslp, rh, vis], ";")
 
     [
-      {"weather_station other", %{e | weather_station: other}, {:producer, "weather_station"}},
+      {"weather_station Wittering", %{e | weather_station: "wmo-03462"},
+       {:raise, "exec v5 weather_station must be #{Stations.primary().id}"}},
       {"weather_observation_time +1h", %{e | weather_observation_time: hours(wt, 1)},
        {:raise, exec_obs_hour(r)}},
       {"weather_observation_time -1h", %{e | weather_observation_time: hours(wt, -1)},
@@ -390,8 +390,8 @@ defmodule WallopCore.Invariants.TamperTest do
 
   defp exec_weather_mutations(:fallback, e, _r, wt) do
     [
-      {"weather_station other on a fallback", %{e | weather_station: Stations.backup().id},
-       {:raise, "exec v5 fallback must name #{Stations.primary().id}"}},
+      {"weather_station Wittering on a fallback", %{e | weather_station: "wmo-03462"},
+       {:raise, "exec v5 weather_station must be #{Stations.primary().id}"}},
       {"weather_value set on a fallback", %{e | weather_value: "141;1025;85;2432"},
        {:raise, @exec_fields}},
       {"weather_observation_time set on a fallback", %{e | weather_observation_time: wt},
@@ -632,7 +632,7 @@ defmodule WallopCore.Invariants.TamperTest do
       pair = "a v6 lock receipt must carry its draw's schema and entropy_composition"
 
       for {label, tampered, tampered_cols, message} <- [
-            {"station", %{payload | "weather_station" => Stations.backup().id}, cols,
+            {"station", %{payload | "weather_station" => "wmo-03462"}, cols,
              db_message("weather_station")},
             {"chain", %{payload | "drand_chain" => @mainnet}, cols, db_message("drand_chain")},
             {"round +1h", %{payload | "drand_round" => s.round + 1200}, cols,
@@ -920,7 +920,7 @@ defmodule WallopCore.Invariants.TamperTest do
       case name do
         :update_round -> {"drand_round = drand_round + 1", []}
         :update_weather_time -> {"weather_time = weather_time + interval '1 hour'", []}
-        :update_station -> {"weather_station = $2", [Stations.backup().id]}
+        :update_station -> {"weather_station = $2", ["wmo-03462"]}
         :update_chain -> {"drand_chain = $2", [@mainnet]}
       end
 

@@ -114,14 +114,16 @@ defmodule WallopCore.Invariants.ObservationAndExecutionTest do
   # ── INV-7 ─────────────────────────────────────────────────────────
 
   describe "INV-7 one (station, value) per hour; every draw of the hour completes with it or the fallback" do
-    test "INV-7 one reading per hour, shared by every draw of the hour (primary)" do
-      # Five minutes after weather_time: always in the primary window.
+    test "INV-7 one reading per hour, shared by every draw of the hour (early in the window)" do
+      # Five minutes after weather_time.
       assert_one_reading_per_hour(three_draws_sharing_wt(-5 * 60), Stations.primary().id)
     end
 
-    test "INV-7 one reading per hour, shared by every draw of the hour (backup)" do
-      # Five minutes before F: always in the backup window.
-      assert_one_reading_per_hour(three_draws_sharing_wt(-(@w - 5 * 60)), Stations.backup().id)
+    test "INV-7 one reading per hour, shared by every draw of the hour (late in the window)" do
+      # Five minutes before F: still Middle Wallop's window, and never Wittering's.
+      draws = three_draws_sharing_wt(-(@w - 5 * 60))
+      assert {:error, _} = store("wmo-03462", hd(draws))
+      assert_one_reading_per_hour(draws, Stations.primary().id)
     end
 
     test "INV-7 the hour stores one observation, from one station" do
@@ -132,15 +134,14 @@ defmodule WallopCore.Invariants.ObservationAndExecutionTest do
       assert error_text(elem(store(Stations.primary().id, draw), 1)) =~
                "an observation is already stored for this hour"
 
-      # The backup is refused too (its window is closed now, and the hour
-      # has its row).
-      assert {:error, _} = store(Stations.backup().id, draw)
+      # Wittering is refused too (it has no window, and the hour has its row).
+      assert {:error, _} = store("wmo-03462", draw)
       assert Observations.for_draw(draw).station == Stations.primary().id
     end
 
     test "INV-7 every draw of the hour completes with the hour's reading, never another or the fallback" do
       draws = three_draws_sharing_wt(-(@w - 5 * 60), -10)
-      {:ok, obs} = store(Stations.backup().id, hd(draws))
+      {:ok, obs} = store(Stations.primary().id, hd(draws))
       shift_window_back!(hd(draws))
       message = "v6 draw must complete with its stored observation"
 
@@ -218,7 +219,7 @@ defmodule WallopCore.Invariants.ObservationAndExecutionTest do
 
     test "INV-8 with an observation stored, only that observation completes the draw" do
       draw = v6_draw(-(@w - 5 * 60), -10)
-      {:ok, obs} = store(Stations.backup().id, draw)
+      {:ok, obs} = store(Stations.primary().id, draw)
       shift_window_back!(draw)
       draw = to_pending!(draw)
       message = "v6 draw must complete with its stored observation"
@@ -261,12 +262,12 @@ defmodule WallopCore.Invariants.ObservationAndExecutionTest do
       # hour: the execution receipt signs the observation time, and its
       # builder refuses one that isn't the round's hour. The round published
       # 10 seconds ago, so the hour's window closed before it; the reading is
-      # placed directly (the store refuses writes after F), from the backup.
+      # placed directly (the store refuses writes after F).
       {_op, key} = create_v6_operator()
       round = round_at(-10)
       wt = Schedule.weather_time_for_round(round)
       draw = put_v6_awaiting!(open_draw_with_entries(key), wt, round)
-      put_observation!(Stations.backup().id, wt, @value)
+      put_observation!(Stations.primary().id, wt, @value)
       obs = Observations.for_draw(draw)
 
       done = execute_v6!(draw)
@@ -324,12 +325,12 @@ defmodule WallopCore.Invariants.ObservationAndExecutionTest do
     @tag :slow
     test "INV-8b an insert made before F but committed after F is refused at commit" do
       # F is 6 to 7 seconds ahead: the store's statement runs inside the
-      # backup window, before F; the commit waits until F has passed.
+      # window, before F; the commit waits until F has passed.
       draw = unboxed_v6_draw(-(@w - 7))
       f = Schedule.fetch_deadline(draw.weather_time)
 
       outcome =
-        store_and_commit(draw, Stations.backup().id, fn ->
+        store_and_commit(draw, Stations.primary().id, fn ->
           assert DateTime.compare(db_now(), f) == :lt
           wait_until_db_clock_after(f)
         end)

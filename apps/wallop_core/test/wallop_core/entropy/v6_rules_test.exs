@@ -46,7 +46,7 @@ defmodule WallopCore.Entropy.V6RulesTest do
 
   test "completion attributes: the reading, or the fallback by rule" do
     wt = ~U[2026-10-15 12:00:00.000000Z]
-    reading = %{station: "wmo-03462", value: "141;1025;85;2432", raw: "[]", observation_time: wt}
+    reading = %{station: "wmo-03749", value: "141;1025;85;2432", raw: "[]", observation_time: wt}
 
     assert V6Rules.completion_attrs(:landobs, reading) == %{
              weather_value: "141;1025;85;2432",

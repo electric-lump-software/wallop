@@ -10,13 +10,11 @@ defmodule WallopCore.Entropy.WeatherObservationWorker do
   store is first write wins, so it can't change a stored reading. Build it with `new_for_hour/1`, which writes the hour in one
   canonical form and schedules the first poll for weather_time + 5 min.
 
-  Each run polls both stations (the backup too, so its latency is measured)
-  and then reads the database clock. That clock alone decides what may be
-  stored, by `station_for/2`: the primary from weather_time to the backup
-  cutover (F - 10 min), the backup after the cutover up to the fetch deadline
-  F, and nothing after F. These are the windows the store's insert trigger
-  enforces, so this worker has no choice to make. A run past F stops without
-  storing.
+  Each run polls Middle Wallop once and then reads the database clock. That
+  clock alone decides whether the reading may be stored (`window_state/2`):
+  from weather_time to the fetch deadline F, the window the store's insert
+  trigger enforces. Polling once a minute from weather_time + 5 min to F
+  costs at most 26 calls an hour. A run past F stops without storing.
 
   The store is one call per hour, made outside any transaction. If it is
   refused because the hour already has a row (another run got there first),
@@ -34,11 +32,11 @@ defmodule WallopCore.Entropy.WeatherObservationWorker do
   exception module names), never response bodies, request structs or the
   API key.
 
-  Telemetry:
+  Telemetry (`station`, when set, is always `"wmo-03749"`):
 
     * `[:wallop_core, :weather, :poll]`, `%{count: 1}`,
-      `%{station, weather_time, ok?, error}`: one per station per poll,
-      including a fetch that raised (`error: {:raised, kind}`);
+      `%{station, weather_time, ok?, error}`: one per poll, including a
+      fetch that raised (`error: {:raised, kind}`);
     * `[:wallop_core, :weather, :stored]`, `%{count: 1}`,
       `%{station, weather_time}`: the hour's reading was stored by this run;
     * `[:wallop_core, :weather, :store_refused]`, `%{count: 1}`,
@@ -74,7 +72,7 @@ defmodule WallopCore.Entropy.WeatherObservationWorker do
   end
 
   # The client's own timeouts are per chunk (connect 5 s, receive 10 s), so
-  # each fetch is also capped here; both stations are fetched at once.
+  # each fetch is also capped here.
   # Fetch cap + store (5 s statement timeout) + reads stay under the job
   # timeout, and the job timeout stays under the poll interval.
   @fetch_timeout_ms 20_000
@@ -115,25 +113,17 @@ defmodule WallopCore.Entropy.WeatherObservationWorker do
   end
 
   @doc """
-  What may be stored for `weather_time` at database time `now`: the window's
-  station, `:not_yet` before weather_time, or `:closed` after the fetch
-  deadline. Mirrors `wallop_landobs_observation_allowed()` exactly.
+  Whether a reading for `weather_time` may be stored at database time
+  `now`: `:not_yet` before weather_time, `:open` up to and including the
+  fetch deadline F, `:closed` after it. Mirrors
+  `wallop_landobs_observation_allowed()` exactly.
   """
-  @spec station_for(DateTime.t(), DateTime.t()) ::
-          {:ok, Stations.station()} | :not_yet | :closed
-  def station_for(%DateTime{} = now, %DateTime{} = weather_time) do
+  @spec window_state(DateTime.t(), DateTime.t()) :: :open | :not_yet | :closed
+  def window_state(%DateTime{} = now, %DateTime{} = weather_time) do
     cond do
-      DateTime.compare(now, weather_time) == :lt ->
-        :not_yet
-
-      DateTime.compare(now, Schedule.backup_cutover(weather_time)) != :gt ->
-        {:ok, Stations.primary()}
-
-      DateTime.compare(now, Schedule.fetch_deadline(weather_time)) != :gt ->
-        {:ok, Stations.backup()}
-
-      true ->
-        :closed
+      DateTime.compare(now, weather_time) == :lt -> :not_yet
+      DateTime.compare(now, Schedule.fetch_deadline(weather_time)) != :gt -> :open
+      true -> :closed
     end
   end
 
@@ -178,7 +168,7 @@ defmodule WallopCore.Entropy.WeatherObservationWorker do
     now = DbClock.now()
 
     cond do
-      station_for(now, wt) == :closed ->
+      window_state(now, wt) == :closed ->
         :ok
 
       DateTime.compare(now, first_poll_at(wt)) == :lt ->
@@ -198,22 +188,18 @@ defmodule WallopCore.Entropy.WeatherObservationWorker do
   end
 
   defp poll(wt) do
-    results = fetch_all(wt)
-    Enum.each(results, fn {station_id, result} -> report(wt, station_id, result) end)
+    station = Stations.primary()
+    result = fetch_one(station.geohash, wt)
+    report(wt, station.id, result)
 
     # The clock is read after fetching, so the decision is as close to the
     # store as it can be. The trigger checks it again on its own clock.
     now = DbClock.now()
 
-    case station_for(now, wt) do
-      {:ok, station} ->
-        with {:ok, reading} <- result_for(results, station) do
-          store(wt, station, reading)
-        end
-
-        if Observations.pending_draw_ids(wt) == [],
-          do: :ok,
-          else: next_poll(now, wt)
+    case window_state(now, wt) do
+      :open ->
+        with {:ok, reading} <- result, do: store(wt, station, reading)
+        if Observations.pending_draw_ids(wt) == [], do: :ok, else: next_poll(now, wt)
 
       :closed ->
         :ok
@@ -223,35 +209,25 @@ defmodule WallopCore.Entropy.WeatherObservationWorker do
     end
   end
 
-  defp fetch_all(wt) do
-    stations = Stations.all()
-    tasks = Enum.map(stations, fn s -> Task.async(fn -> fetch_one(s.geohash, wt) end) end)
-    yields = Task.yield_many(tasks, timeout: @fetch_timeout_ms, on_timeout: :kill_task)
+  # One fetch, capped at @fetch_timeout_ms; a fetch still running then is
+  # killed and counts as {:error, :poll_timeout}.
+  defp fetch_one(geohash, wt) do
+    task = Task.async(fn -> fetch(geohash, wt) end)
 
-    Enum.zip_with(stations, yields, fn station, {_task, outcome} ->
-      result =
-        case outcome do
-          {:ok, result} -> result
-          nil -> {:error, :poll_timeout}
-          {:exit, _} -> {:raised, :exit, nil}
-        end
-
-      {station.id, result}
-    end)
+    case Task.yield(task, @fetch_timeout_ms) || Task.shutdown(task, :brutal_kill) do
+      {:ok, result} -> result
+      nil -> {:error, :poll_timeout}
+      {:exit, _} -> {:raised, :exit, nil}
+    end
   end
 
-  defp fetch_one(geohash, wt) do
+  defp fetch(geohash, wt) do
     @client.fetch_hour(geohash, wt)
   rescue
     e -> {:raised, :error, e.__struct__}
   catch
     :exit, _ -> {:raised, :exit, nil}
     :throw, _ -> {:raised, :throw, nil}
-  end
-
-  defp result_for(results, station) do
-    {_, result} = List.keyfind(results, station.id, 0)
-    result
   end
 
   defp report(wt, station_id, {:raised, kind, module} = result) do

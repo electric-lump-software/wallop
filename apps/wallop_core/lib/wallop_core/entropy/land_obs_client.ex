@@ -7,7 +7,7 @@ defmodule WallopCore.Entropy.LandObsClient do
   their JSON text by `WallopCore.Weather.LandObsGrammar` (never as floats),
   and only the row for exactly the requested hour is used.
 
-  Only the tag's stations (`WallopCore.Weather.Stations`) can be fetched.
+  Only the tag's one station (`WallopCore.Weather.Stations`) can be fetched.
 
   The HTTP request is deliberately narrow: https only, no redirects (a 3xx
   is an error), no retries (the caller's job decides when to try again),

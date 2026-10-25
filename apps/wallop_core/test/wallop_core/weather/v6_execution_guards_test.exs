@@ -199,10 +199,13 @@ defmodule WallopCore.Weather.V6ExecutionGuardsTest do
     end
 
     test "another station than the stored reading's is refused" do
-      x = completed_v6_receipt_input(:observed, station: Stations.backup().id)
-      input = %{x.input | weather_station: Stations.primary().id}
+      x = completed_v6_receipt_input(:observed)
+      assert x.input.weather_station == Stations.primary().id
 
-      assert insert_exec_receipt(build(input), x.cols) ==
+      tampered =
+        x.input |> build() |> Jason.decode!() |> Map.put("weather_station", "wmo-03462")
+
+      assert insert_exec_receipt(Jason.encode!(tampered), x.cols) ==
                "v6 execution receipt field weather_station does not match the stored observation"
     end
   end

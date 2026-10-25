@@ -83,8 +83,8 @@ defmodule WallopCore.Weather.V6DrawGuardTest do
                "v6 weather_time must follow from drand_round"
     end
 
-    test "the station must be the tag's first", %{draw: d, s: s} do
-      assert lock(d, s.weather_time, s.round, station: Stations.backup().id) ==
+    test "the station must be Middle Wallop", %{draw: d, s: s} do
+      assert lock(d, s.weather_time, s.round, station: "wmo-03462") ==
                "v6 lock weather_station must be #{Stations.primary().id}"
     end
 
@@ -283,7 +283,7 @@ defmodule WallopCore.Weather.V6DrawGuardTest do
         {"winner_count", payload["winner_count"] + 1},
         {"drand_chain", String.duplicate("0", 64)},
         {"drand_round", payload["drand_round"] + 1},
-        {"weather_station", Stations.backup().id},
+        {"weather_station", "wmo-03462"},
         {"weather_time", rfc(DateTime.add(s.weather_time, 3600))},
         {"signing_key_id", "deadbeef"}
       ]

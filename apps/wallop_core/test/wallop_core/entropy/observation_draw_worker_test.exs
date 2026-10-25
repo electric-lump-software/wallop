@@ -173,33 +173,31 @@ defmodule WallopCore.Entropy.ObservationDrawWorkerTest do
       assert_receive {[:wallop_core, :v6, :executed], ^ref, _, %{station: nil, fallback?: true}}
     end
 
-    for station <- [Stations.primary().id, Stations.backup().id] do
-      @station station
-      test "a stored reading (#{station}) is used, and the receipt names its station" do
-        ref = :telemetry_test.attach_event_handlers(self(), [[:wallop_core, :v6, :executed]])
-        draw = v6_draw_on_round_hour(@station)
-        assert :ok = perform_job(ObservationDrawWorker, %{draw_id: draw.id})
+    test "a stored reading is used, and the receipt names its station" do
+      station = Stations.primary().id
+      ref = :telemetry_test.attach_event_handlers(self(), [[:wallop_core, :v6, :executed]])
+      draw = v6_draw_on_round_hour(station)
+      assert :ok = perform_job(ObservationDrawWorker, %{draw_id: draw.id})
 
-        done = reload(draw)
-        assert done.status == :completed
-        assert done.weather_value == @value
-        assert done.weather_observation_time == draw.weather_time
-        assert done.weather_fallback_reason == nil
-        # The draws row keeps the lock's station; the receipt names the one used.
-        assert done.weather_station == Stations.primary().id
+      done = reload(draw)
+      assert done.status == :completed
+      assert done.weather_value == @value
+      assert done.weather_observation_time == draw.weather_time
+      assert done.weather_fallback_reason == nil
+      # The draws row and the receipt both name Middle Wallop.
+      assert done.weather_station == Stations.primary().id
 
-        {seed, _} = Protocol.compute_seed(done.entry_hash, @randomness, @value)
-        assert done.seed == Base.encode16(seed, case: :lower)
+      {seed, _} = Protocol.compute_seed(done.entry_hash, @randomness, @value)
+      assert done.seed == Base.encode16(seed, case: :lower)
 
-        payload = exec_payload(draw)
-        assert payload["schema_version"] == "5"
-        assert payload["weather_station"] == @station
-        assert payload["weather_value"] == @value
-        assert payload["weather_fallback_reason"] == nil
+      payload = exec_payload(draw)
+      assert payload["schema_version"] == "5"
+      assert payload["weather_station"] == station
+      assert payload["weather_value"] == @value
+      assert payload["weather_fallback_reason"] == nil
 
-        assert_receive {[:wallop_core, :v6, :executed], ^ref, _,
-                        %{station: @station, fallback?: false}}
-      end
+      assert_receive {[:wallop_core, :v6, :executed], ^ref, _,
+                      %{station: ^station, fallback?: false}}
     end
 
     test "the signer recomputes the seed: the weather seed matches, any other is refused" do
@@ -256,7 +254,7 @@ defmodule WallopCore.Entropy.ObservationDrawWorkerTest do
       draw = put_v6_awaiting!(open_draw_with_entries(key), wt, round_at(-10))
 
       {:ok, _} =
-        Observations.store(Stations.backup().id, %{
+        Observations.store(Stations.primary().id, %{
           value: "90;1025;85;2432",
           raw: "[]",
           observation_time: wt
@@ -562,7 +560,7 @@ defmodule WallopCore.Entropy.ObservationDrawWorkerTest do
       # refuses an observation time that isn't the round's whole hour. No retry can fix
       # stored state, so the job stops at once.
       {_op, draw} = v6_draw_after_deadline(60)
-      put_observation!(Stations.backup().id, draw.weather_time, @value)
+      put_observation!(Stations.primary().id, draw.weather_time, @value)
 
       assert {:cancel, reason} =
                perform_job(ObservationDrawWorker, %{draw_id: draw.id}, attempt: 1)

@@ -289,7 +289,7 @@ defmodule WallopCore.ProtocolV6Test do
       assert v6["locked_at"] == "2026-10-14T18:00:00.123456Z"
     end
 
-    test "refuses anything but the first station and a whole-hour weather_time" do
+    test "refuses anything but Middle Wallop and a whole-hour weather_time" do
       assert_raise ArgumentError, fn ->
         Protocol.build_v6_lock_payload(%{@lock | weather_station: "wmo-03462"})
       end
@@ -336,10 +336,12 @@ defmodule WallopCore.ProtocolV6Test do
   end
 
   describe "exec v5 under the landobs tag" do
-    test "accepts the backup station and the rule-based fallback" do
-      assert is_binary(
-               Protocol.build_v6_execution_payload(%{@exec | weather_station: "wmo-03462"})
-             )
+    test "accepts Middle Wallop's reading and the rule-based fallback, never Wittering" do
+      assert is_binary(Protocol.build_v6_execution_payload(@exec))
+
+      assert_raise ArgumentError, ~r/weather_station must be wmo-03749/, fn ->
+        Protocol.build_v6_execution_payload(%{@exec | weather_station: "wmo-03462"})
+      end
 
       decoded = Jason.decode!(Protocol.build_v6_execution_payload(@fallback))
       assert decoded["weather_fallback_reason"] == "no_observation_by_deadline"
@@ -399,7 +401,7 @@ defmodule WallopCore.ProtocolV6Test do
       end
     end
 
-    test "a fallback names the primary station, never the backup" do
+    test "a fallback names Middle Wallop, never Wittering" do
       assert Jason.decode!(Protocol.build_v6_execution_payload(@fallback))["weather_station"] ==
                "wmo-03749"
 
