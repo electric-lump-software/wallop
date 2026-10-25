@@ -46,6 +46,7 @@ defmodule WallopCore.Invariants.TamperTest do
   @moduletag :invariant
 
   alias WallopCore.Drand.Quicknet
+  alias WallopCore.Frequency.Schedule, as: FreqSchedule
   alias WallopCore.ProofBundle
   alias WallopCore.Protocol
   alias WallopCore.Protocol.Tags.LandObs
@@ -63,8 +64,8 @@ defmodule WallopCore.Invariants.TamperTest do
   # Signed lock keys the receipt trigger binds to the draw row or the
   # receipt columns (see INV-2 in Group A).
   @db_bound ~w(commitment_hash drand_chain drand_round draw_id entropy_composition entry_hash
-               locked_at operator_id operator_slug schema_version sequence signing_key_id
-               weather_station weather_time winner_count)
+               freq_start locked_at operator_id operator_slug schema_version sequence
+               signing_key_id weather_station weather_time winner_count)
 
   # Execution fields that only the producer can know: another valid value
   # is indistinguishable offline. The execution receipt trigger binds both.
@@ -83,6 +84,9 @@ defmodule WallopCore.Invariants.TamperTest do
 
   defp same_hour?(round, wt),
     do: DateTime.compare(Schedule.weather_time_for_round(round), wt) == :eq
+
+  defp same_window?(round, t),
+    do: DateTime.compare(FreqSchedule.freq_start_for_round(round), t) == :eq
 
   # ── Generators ─────────────────────────────────────────────────────
 
@@ -116,6 +120,7 @@ defmodule WallopCore.Invariants.TamperTest do
         TamperVectors.lock_input()
         | drand_round: round,
           weather_time: wt,
+          freq_start: FreqSchedule.freq_start_for_round(round),
           locked_at: us(Schedule.latest_lock_at(wt), -lock_back)
       }
 
@@ -166,9 +171,17 @@ defmodule WallopCore.Invariants.TamperTest do
     whole = "lock v6 weather_time must be a whole UTC hour"
     station = "lock v6 weather_station must be #{Stations.primary().id}"
     positive = "lock v6 drand_round must be a positive integer"
+    window = &"lock v6 freq_start is not the window start for drand round #{&1}"
+    t = l.freq_start
 
+    # A round n steps on must keep both its observation hour and its
+    # grid-frequency window, or the builder refuses it.
     round_step = fn n ->
-      if same_hour?(r + n, wt), do: {:db, "drand_round"}, else: {:raise, obs_hour.(r + n)}
+      cond do
+        not same_hour?(r + n, wt) -> {:raise, obs_hour.(r + n)}
+        not same_window?(r + n, t) -> {:raise, window.(r + n)}
+        true -> {:db, "drand_round"}
+      end
     end
 
     late_unless = fn ok?, field -> if ok?, do: {:db, field}, else: {:raise, late} end
@@ -225,6 +238,14 @@ defmodule WallopCore.Invariants.TamperTest do
       {"weather_station unlisted", %{l | weather_station: "wmo-03772"}, {:raise, station}},
       {"weather_station nil", %{l | weather_station: nil}, {:raise, station}},
       {"weather_station atom", %{l | weather_station: :"wmo-03749"}, {:raise, station}},
+      {"freq_start +15s", %{l | freq_start: DateTime.add(t, 15)}, {:raise, window.(r)}},
+      {"freq_start -15s", %{l | freq_start: DateTime.add(t, -15)}, {:raise, window.(r)}},
+      {"freq_start +1µs", %{l | freq_start: us(t, 1)}, {:raise, window.(r)}},
+      {"freq_start +1h", %{l | freq_start: hours(t, 1)}, {:raise, window.(r)}},
+      {"freq_start nil", %{l | freq_start: nil}, {:raise, window.(r)}},
+      {"freq_start string", %{l | freq_start: rfc(t)}, {:raise, window.(r)}},
+      {"freq_start missing", Map.delete(l, :freq_start),
+       {:raise, "lock v6 input must carry :freq_start"}},
       {"drand_chain mainnet", %{l | drand_chain: @mainnet}, {:raise, chain_message(@mainnet)}},
       {"drand_chain upper case", %{l | drand_chain: String.upcase(l.drand_chain)},
        {:raise, chain_message(String.upcase(l.drand_chain))}},
@@ -248,9 +269,14 @@ defmodule WallopCore.Invariants.TamperTest do
       {"drand_round float", %{l | drand_round: r * 1.0}, {:raise, positive}},
       # Pairs that must agree.
       {"drand_round +1h with weather_time +1h",
-       %{l | drand_round: r + 1200, weather_time: hours(wt, 1)}, {:db, "drand_round"}},
+       %{l | drand_round: r + 1200, weather_time: hours(wt, 1)}, {:raise, window.(r + 1200)}},
       {"drand_round -1h with weather_time -1h",
-       %{l | drand_round: r - 1200, weather_time: hours(wt, -1)},
+       %{l | drand_round: r - 1200, weather_time: hours(wt, -1)}, {:raise, window.(r - 1200)}},
+      {"drand_round, weather_time and freq_start +1h",
+       %{l | drand_round: r + 1200, weather_time: hours(wt, 1), freq_start: hours(t, 1)},
+       {:db, "drand_round"}},
+      {"drand_round, weather_time and freq_start -1h",
+       %{l | drand_round: r - 1200, weather_time: hours(wt, -1), freq_start: hours(t, -1)},
        late_unless.(back >= @hour_us, "drand_round")},
       {"weather_time +1h with locked_at +1h",
        %{l | weather_time: hours(wt, 1), locked_at: hours(l.locked_at, 1)},
@@ -258,11 +284,12 @@ defmodule WallopCore.Invariants.TamperTest do
       {"weather_time -1h with locked_at -1h",
        %{l | weather_time: hours(wt, -1), locked_at: hours(l.locked_at, -1)},
        {:raise, obs_hour.(r)}},
-      {"all three +1h",
+      {"all four +1h",
        %{
          l
          | drand_round: r + 1200,
            weather_time: hours(wt, 1),
+           freq_start: hours(t, 1),
            locked_at: hours(l.locked_at, 1)
        }, {:db, "locked_at"}}
     ] ++ invisible ++ nils
@@ -490,7 +517,7 @@ defmodule WallopCore.Invariants.TamperTest do
       freq_exec = TamperVectors.exec_input(TamperProfiles.Freq, :observed, freq_lock_jcs)
 
       for {builder, input, fields} <- [
-            {&build_lock/1, lock, [:locked_at, :weather_time]},
+            {&build_lock/1, lock, [:locked_at, :weather_time, :freq_start]},
             {&build_lock/1, freq_lock, [:locked_at, :freq_start]},
             {&build_exec/1, exec, [:executed_at, :weather_observation_time]},
             {&build_exec/1, freq_exec, [:executed_at]}
@@ -554,6 +581,7 @@ defmodule WallopCore.Invariants.TamperTest do
       drand_round: payload["drand_round"],
       weather_station: payload["weather_station"],
       weather_time: s.weather_time,
+      freq_start: FreqSchedule.freq_start_for_round(payload["drand_round"]),
       wallop_core_version: payload["wallop_core_version"],
       fair_pick_version: payload["fair_pick_version"]
     }
@@ -649,6 +677,23 @@ defmodule WallopCore.Invariants.TamperTest do
             {"weather_time at +01:00",
              %{payload | "weather_time" => offset_rfc(s.weather_time, 1)}, cols,
              not_canonical(offset_rfc(s.weather_time, 1))},
+            {"freq_start +15s",
+             %{
+               payload
+               | "freq_start" => rfc(DateTime.add(FreqSchedule.freq_start_for_round(s.round), 15))
+             }, cols, db_message("freq_start")},
+            {"freq_start -15s",
+             %{
+               payload
+               | "freq_start" =>
+                   rfc(DateTime.add(FreqSchedule.freq_start_for_round(s.round), -15))
+             }, cols, db_message("freq_start")},
+            {"freq_start null", %{payload | "freq_start" => nil}, cols, db_message("freq_start")},
+            {"freq_start at +01:00",
+             %{
+               payload
+               | "freq_start" => offset_rfc(FreqSchedule.freq_start_for_round(s.round), 1)
+             }, cols, not_canonical(offset_rfc(FreqSchedule.freq_start_for_round(s.round), 1))},
             {"locked_at with an offset",
              %{payload | "locked_at" => offset_rfc(cols.locked_at, 0)}, cols,
              not_canonical(offset_rfc(cols.locked_at, 0))},

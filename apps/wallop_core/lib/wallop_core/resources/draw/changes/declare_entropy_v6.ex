@@ -7,6 +7,8 @@ defmodule WallopCore.Resources.Draw.Changes.DeclareEntropyV6 do
 
     * `drand_round`, the quicknet round that publishes at `draw_at`;
     * `weather_time`, the observation hour that follows from that round;
+    * `freq_start`, the grid-frequency window start of that round, used if
+      the hour's reading isn't stored by F;
     * `weather_station`, the tag's primary station;
     * `drand_chain`, the quicknet chain.
 
@@ -48,6 +50,7 @@ defmodule WallopCore.Resources.Draw.Changes.DeclareEntropyV6 do
         |> Ash.Changeset.force_change_attribute(:drand_round, s.round)
         |> Ash.Changeset.force_change_attribute(:weather_station, Stations.primary().id)
         |> Ash.Changeset.force_change_attribute(:weather_time, s.weather_time)
+        |> Ash.Changeset.force_change_attribute(:freq_start, s.freq_start)
         |> Ash.Changeset.force_change_attribute(:status, :awaiting_entropy)
         |> Ash.Changeset.after_action(fn _changeset, draw -> enqueue(draw) end)
         |> Ash.Changeset.after_transaction(&announce/2)

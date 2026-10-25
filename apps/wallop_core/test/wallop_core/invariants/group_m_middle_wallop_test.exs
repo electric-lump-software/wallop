@@ -112,7 +112,6 @@ defmodule WallopCore.Invariants.GroupMMiddleWallopTest do
     end
   end
 
-  @tag :pending_task_M4
   test "INV-M3 a weather-tag lock carries freq_start, the window start its round implies" do
     {_op, key} = create_v6_operator()
     s = in_time_schedule()

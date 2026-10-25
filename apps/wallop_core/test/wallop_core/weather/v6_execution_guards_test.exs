@@ -213,7 +213,7 @@ defmodule WallopCore.Weather.V6ExecutionGuardsTest do
   describe "receipt key sets" do
     test "the SQL key sets equal the tag's" do
       for {fun, keys} <- [
-            {"wallop_landobs_lock_keys", LandObs.lock_keys()},
+            {"wallop_v6_lock_keys", LandObs.lock_keys()},
             {"wallop_landobs_exec_keys", LandObs.exec_keys()}
           ] do
         assert %{rows: [[^keys]]} = Repo.query!("SELECT #{fun}()")

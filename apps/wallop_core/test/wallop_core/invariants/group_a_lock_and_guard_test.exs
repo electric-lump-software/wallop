@@ -200,6 +200,7 @@ defmodule WallopCore.Invariants.LockAndGuardTest do
     {"drand_round", :plus_one},
     {"weather_station", :wittering},
     {"weather_time", :plus_hour},
+    {"freq_start", :plus_15s},
     {"signing_key_id", {:string, "deadbeef"}}
   ]
 
@@ -218,6 +219,11 @@ defmodule WallopCore.Invariants.LockAndGuardTest do
   defp tamper({:string, value}, _), do: value
   defp tamper(:plus_one, value), do: value + 1
   defp tamper(:wittering, _), do: "wmo-03462"
+
+  defp tamper(:plus_15s, value) do
+    {:ok, t, 0} = DateTime.from_iso8601(value)
+    rfc(DateTime.add(t, 15))
+  end
 
   defp tamper(:plus_hour, value) do
     {:ok, t, 0} = DateTime.from_iso8601(value)

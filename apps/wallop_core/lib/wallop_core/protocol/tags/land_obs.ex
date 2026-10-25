@@ -3,13 +3,14 @@ defmodule WallopCore.Protocol.Tags.LandObs do
   Receipt rules for the `drand-quicknet+metoffice-landobs-v1` entropy tag,
   carried by lock receipt schema 6 and execution receipt schema 5.
 
-  The tag adds no fields to the lock 5 / execution 4 field sets. It sets
-  the weather rules:
+  The lock adds `freq_start` to the lock 5 field set; the execution adds
+  no fields to the execution 4 field set. It sets the weather rules:
 
     * lock: `weather_station` is Middle Wallop's; `weather_time` is the
-      observation hour of `drand_round` (a whole UTC hour); `locked_at` is
-      no later than `weather_time` minus the lock offset (46 minutes), to
-      the microsecond.
+      observation hour of `drand_round` (a whole UTC hour); `freq_start` is
+      the grid-frequency window start of `drand_round`, the window the tag
+      falls back to; `locked_at` is no later than `weather_time` minus the
+      lock offset (46 minutes), to the microsecond.
     * execution: `weather_station` is Middle Wallop's. Either the value
       matches the Land Observations grammar and bounds, the observation
       time is the round's observation hour and the reason is nil; or value
@@ -22,18 +23,14 @@ defmodule WallopCore.Protocol.Tags.LandObs do
   @behaviour WallopCore.Protocol.Tag
 
   alias WallopCore.Drand.Quicknet
+  alias WallopCore.Frequency.Schedule, as: FreqSchedule
+  alias WallopCore.Protocol.Tags.V6Keys
   alias WallopCore.Weather.LandObsGrammar
   alias WallopCore.Weather.Schedule
   alias WallopCore.Weather.Stations
 
   @tag "drand-quicknet+metoffice-landobs-v1"
   @fallback_reason "no_observation_by_deadline"
-
-  @lock_keys ~w(commitment_hash drand_chain drand_round draw_id entropy_composition
-                entry_hash fair_pick_version jcs_version locked_at operator_id
-                operator_slug schema_version sequence signature_algorithm
-                signing_key_id wallop_core_version weather_station weather_time
-                winner_count)
 
   @exec_keys ~w(drand_chain drand_randomness drand_round drand_signature
                 drand_signature_algorithm draw_id entropy_composition entry_hash executed_at
@@ -56,17 +53,18 @@ defmodule WallopCore.Protocol.Tags.LandObs do
   @doc "Every key of a lock receipt under this tag, sorted."
   @impl true
   @spec lock_keys() :: [String.t()]
-  def lock_keys, do: @lock_keys
+  def lock_keys, do: V6Keys.lock_keys()
 
   @doc "Every key of an execution receipt under this tag, sorted."
   @impl true
   @spec exec_keys() :: [String.t()]
   def exec_keys, do: @exec_keys
 
-  @doc "Fields the tag adds to the lock receipt. None."
+  @doc "Fields the tag adds to the lock receipt: `freq_start`, the round's window start."
   @impl true
   @spec lock_fields(map()) :: map()
-  def lock_fields(_input), do: %{}
+  def lock_fields(%{freq_start: %DateTime{} = t}),
+    do: %{"freq_start" => WallopCore.Time.to_rfc3339_usec(t)}
 
   @doc "Fields the tag adds to the execution receipt. None."
   @impl true
@@ -76,12 +74,14 @@ defmodule WallopCore.Protocol.Tags.LandObs do
   @doc "Raises `ArgumentError` unless the lock input follows the tag's rules."
   @impl true
   @spec validate_lock!(map()) :: :ok
-  def validate_lock!(%{
-        weather_station: station,
-        weather_time: weather_time,
-        drand_round: round,
-        locked_at: locked_at
-      }) do
+  def validate_lock!(
+        %{
+          weather_station: station,
+          weather_time: weather_time,
+          drand_round: round,
+          locked_at: locked_at
+        } = input
+      ) do
     primary = Stations.primary().id
     require!(station == primary, "lock v6 weather_station must be #{primary}")
 
@@ -95,6 +95,15 @@ defmodule WallopCore.Protocol.Tags.LandObs do
     require!(
       DateTime.compare(weather_time, Schedule.weather_time_for_round(round)) == :eq,
       "lock v6 weather_time is not the observation hour for drand round #{round}"
+    )
+
+    require!(Map.has_key?(input, :freq_start), "lock v6 input must carry :freq_start")
+    freq_start = Map.fetch!(input, :freq_start)
+
+    require!(
+      match?(%DateTime{}, freq_start) and
+        DateTime.compare(freq_start, FreqSchedule.freq_start_for_round(round)) == :eq,
+      "lock v6 freq_start is not the window start for drand round #{round}"
     )
 
     require!(

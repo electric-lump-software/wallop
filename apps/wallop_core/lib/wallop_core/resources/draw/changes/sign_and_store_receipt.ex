@@ -191,7 +191,7 @@ defmodule WallopCore.Resources.Draw.Changes.SignAndStoreReceipt do
       :entropy_composition,
       Ash.Changeset.get_attribute(changeset, :entropy_composition)
     )
-    # The grid-frequency tag signs it; the Land Obs tag ignores it (nil).
+    # Both lock schema 6 tags sign it.
     |> Map.put(:freq_start, Ash.Changeset.get_attribute(changeset, :freq_start))
     |> Protocol.build_v6_lock_payload()
   end

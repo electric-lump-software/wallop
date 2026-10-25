@@ -204,21 +204,24 @@ defmodule WallopCore.ProtocolFreqTest do
     end
   end
 
-  test "the Land Observations tag never signs a frequency field" do
+  test "the Land Observations lock signs the same freq_start as the frequency lock" do
     landobs = %{@lock | entropy_composition: Protocol.landobs_entropy_composition()}
 
-    refute Map.has_key?(
-             Jason.decode!(
-               Protocol.build_v6_lock_payload(
-                 Map.merge(landobs, %{
-                   weather_station: "wmo-03749",
-                   weather_time: ~U[2026-10-14 19:00:00.000000Z],
-                   locked_at: ~U[2026-10-14 18:00:00.000000Z]
-                 })
-               )
-             ),
-             "freq_start"
-           )
+    landobs_lock =
+      Jason.decode!(
+        Protocol.build_v6_lock_payload(
+          Map.merge(landobs, %{
+            weather_station: "wmo-03749",
+            weather_time: ~U[2026-10-14 19:00:00.000000Z],
+            locked_at: ~U[2026-10-14 18:00:00.000000Z]
+          })
+        )
+      )
+
+    freq_lock = Jason.decode!(Protocol.build_v6_lock_payload(@lock))
+    assert landobs_lock["freq_start"] == "2026-10-14T19:54:00.000000Z"
+    assert landobs_lock["freq_start"] == freq_lock["freq_start"]
+    assert Enum.sort(Map.keys(landobs_lock)) == Enum.sort(Map.keys(freq_lock))
   end
 
   test "lock v6 bytes under the frequency tag, written out by hand" do
@@ -249,7 +252,7 @@ defmodule WallopCore.ProtocolFreqTest do
                ~s("weather_station":null,"weather_value":null})
   end
 
-  test "frequency inputs never change Land Observations bytes" do
+  test "frequency inputs never change Land Observations execution bytes" do
     landobs_lock = %{
       @lock
       | entropy_composition: Protocol.landobs_entropy_composition(),
@@ -266,8 +269,8 @@ defmodule WallopCore.ProtocolFreqTest do
         weather_value: "141;1025;85;2432"
     }
 
-    assert Protocol.build_v6_lock_payload(landobs_lock) ==
-             Protocol.build_v6_lock_payload(Map.delete(landobs_lock, :freq_start))
+    assert Jason.decode!(Protocol.build_v6_lock_payload(landobs_lock))["freq_start"] ==
+             "2026-10-14T19:54:00.000000Z"
 
     bare_exec = Map.drop(landobs_exec, [:freq_value, :freq_fallback_reason])
 

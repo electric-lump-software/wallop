@@ -257,25 +257,6 @@ defmodule WallopCore.Resources.Draw do
         down("DROP FUNCTION IF EXISTS wallop_receipt_integer(text, jsonb, text)")
       end
 
-      statement :wallop_landobs_lock_keys do
-        # Tags.LandObs.lock_keys/0: every key of the receipt under the Land Obs
-        # tag, sorted bytewise (COLLATE "C").
-        up("""
-        CREATE OR REPLACE FUNCTION wallop_landobs_lock_keys() RETURNS text[]
-        LANGUAGE sql IMMUTABLE AS $$
-          SELECT ARRAY[
-            'commitment_hash', 'drand_chain', 'drand_round', 'draw_id',
-            'entropy_composition', 'entry_hash', 'fair_pick_version', 'jcs_version',
-            'locked_at', 'operator_id', 'operator_slug', 'schema_version', 'sequence',
-            'signature_algorithm', 'signing_key_id', 'wallop_core_version',
-            'weather_station', 'weather_time', 'winner_count'
-          ]::text[]
-        $$
-        """)
-
-        down("DROP FUNCTION IF EXISTS wallop_landobs_lock_keys()")
-      end
-
       statement :wallop_landobs_exec_keys do
         # Tags.LandObs.exec_keys/0: every key of the receipt under the Land Obs
         # tag, sorted bytewise (COLLATE "C").
@@ -453,24 +434,6 @@ defmodule WallopCore.Resources.Draw do
         down("DROP FUNCTION IF EXISTS wallop_freq_valid_value(text)")
       end
 
-      statement :wallop_freq_lock_keys do
-        # Tags.Freq.lock_keys/0, sorted bytewise (COLLATE "C").
-        up("""
-        CREATE OR REPLACE FUNCTION wallop_freq_lock_keys() RETURNS text[]
-        LANGUAGE sql IMMUTABLE AS $$
-          SELECT ARRAY[
-            'commitment_hash', 'drand_chain', 'drand_round', 'draw_id',
-            'entropy_composition', 'entry_hash', 'fair_pick_version', 'freq_start',
-            'jcs_version', 'locked_at', 'operator_id', 'operator_slug', 'schema_version',
-            'sequence', 'signature_algorithm', 'signing_key_id', 'wallop_core_version',
-            'weather_station', 'weather_time', 'winner_count'
-          ]::text[]
-        $$
-        """)
-
-        down("DROP FUNCTION IF EXISTS wallop_freq_lock_keys()")
-      end
-
       statement :wallop_freq_exec_keys do
         # Tags.Freq.exec_keys/0, sorted bytewise (COLLATE "C").
         up("""
@@ -490,6 +453,25 @@ defmodule WallopCore.Resources.Draw do
         """)
 
         down("DROP FUNCTION IF EXISTS wallop_freq_exec_keys()")
+      end
+
+      statement :wallop_v6_lock_keys do
+        # Tags.V6Keys.lock_keys/0: every key of a lock receipt schema 6,
+        # under either tag, sorted bytewise (COLLATE "C").
+        up("""
+        CREATE OR REPLACE FUNCTION wallop_v6_lock_keys() RETURNS text[]
+        LANGUAGE sql IMMUTABLE AS $$
+          SELECT ARRAY[
+            'commitment_hash', 'drand_chain', 'drand_round', 'draw_id',
+            'entropy_composition', 'entry_hash', 'fair_pick_version', 'freq_start',
+            'jcs_version', 'locked_at', 'operator_id', 'operator_slug', 'schema_version',
+            'sequence', 'signature_algorithm', 'signing_key_id', 'wallop_core_version',
+            'weather_station', 'weather_time', 'winner_count'
+          ]::text[]
+        $$
+        """)
+
+        down("DROP FUNCTION IF EXISTS wallop_v6_lock_keys()")
       end
 
       statement :wallop_v6_fetch_deadline do
@@ -537,13 +519,11 @@ defmodule WallopCore.Resources.Draw do
           -- Exactly the tag's keys, so no extra or look-alike field rides
           -- along. A duplicate key is not seen here (jsonb keeps the last
           -- value); the verifier refuses it.
-          IF d.entropy_composition IS NOT DISTINCT FROM wallop_landobs_tag() THEN
-            keys := wallop_landobs_lock_keys();
-          ELSIF d.entropy_composition IS NOT DISTINCT FROM wallop_freq_tag() THEN
-            keys := wallop_freq_lock_keys();
-          ELSE
+          IF d.entropy_composition IS DISTINCT FROM wallop_landobs_tag()
+             AND d.entropy_composition IS DISTINCT FROM wallop_freq_tag() THEN
             RAISE EXCEPTION 'no lock receipt rules for entropy_composition %', d.entropy_composition;
           END IF;
+          keys := wallop_v6_lock_keys();
           IF jsonb_typeof(p) IS DISTINCT FROM 'object'
              OR (SELECT array_agg(k ORDER BY k COLLATE "C") FROM jsonb_object_keys(p) k)
                 IS DISTINCT FROM keys THEN
@@ -590,9 +570,10 @@ defmodule WallopCore.Resources.Draw do
           IF wallop_parse_rfc3339_usec(p->>'weather_time') IS DISTINCT FROM d.weather_time THEN
             RAISE EXCEPTION 'v6 lock receipt field % does not match the draw', 'weather_time';
           END IF;
-          -- Under every other tag the key set has no freq_start and the
-          -- row's is NULL, so NULL meets NULL.
-          IF wallop_parse_rfc3339_usec(p->>'freq_start') IS DISTINCT FROM d.freq_start THEN
+          -- Both tags sign freq_start: the window start the drand round
+          -- implies, never NULL (a JSON null or a NULL column refuses).
+          IF wallop_parse_rfc3339_usec(p->>'freq_start') IS DISTINCT FROM d.freq_start
+             OR d.freq_start IS DISTINCT FROM wallop_freq_start(d.drand_round) THEN
             RAISE EXCEPTION 'v6 lock receipt field % does not match the draw', 'freq_start';
           END IF;
           IF p->>'signing_key_id' IS DISTINCT FROM r.signing_key_id
@@ -697,7 +678,7 @@ defmodule WallopCore.Resources.Draw do
                AND NEW.lock_schema_version IS NULL AND NEW.entropy_composition IS NULL THEN
               IF NEW.freq_start IS NOT NULL OR NEW.freq_value IS NOT NULL
                  OR NEW.freq_fallback_reason IS NOT NULL THEN
-                RAISE EXCEPTION 'frequency fields are set only on grid-frequency draws';
+                RAISE EXCEPTION 'frequency fields are set only on lock schema 6 draws';
               END IF;
               RETURN NEW;
             END IF;
@@ -729,11 +710,6 @@ defmodule WallopCore.Resources.Draw do
                 NEW.lock_schema_version, NEW.entropy_composition;
             END IF;
 
-            IF NEW.entropy_composition IS DISTINCT FROM wallop_freq_tag()
-               AND (NEW.freq_start IS NOT NULL OR NEW.freq_value IS NOT NULL
-                    OR NEW.freq_fallback_reason IS NOT NULL) THEN
-              RAISE EXCEPTION 'frequency fields are set only on grid-frequency draws';
-            END IF;
             -- A grid-frequency draw never carries a weather column, at any
             -- status: its seed has no weather input.
             IF NEW.entropy_composition IS NOT DISTINCT FROM wallop_freq_tag()
@@ -768,6 +744,9 @@ defmodule WallopCore.Resources.Draw do
                 END IF;
                 IF NEW.weather_station IS DISTINCT FROM wallop_landobs_primary_station() THEN
                   RAISE EXCEPTION 'v6 lock weather_station must be %', wallop_landobs_primary_station();
+                END IF;
+                IF NEW.freq_start IS DISTINCT FROM wallop_freq_start(NEW.drand_round) THEN
+                  RAISE EXCEPTION 'freq_start must follow from drand_round';
                 END IF;
                 IF wallop_landobs_lock_allowed(clock_timestamp() AT TIME ZONE 'UTC', NEW.weather_time)
                    IS NOT TRUE THEN
@@ -1077,7 +1056,7 @@ defmodule WallopCore.Resources.Draw do
             END IF;
             IF NEW.freq_start IS NOT NULL OR NEW.freq_value IS NOT NULL
                OR NEW.freq_fallback_reason IS NOT NULL THEN
-              RAISE EXCEPTION 'frequency fields are set only on grid-frequency draws';
+              RAISE EXCEPTION 'frequency fields are set only on lock schema 6 draws';
             END IF;
             RETURN NEW;
           END;

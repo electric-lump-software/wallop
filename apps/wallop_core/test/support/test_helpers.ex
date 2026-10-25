@@ -254,12 +254,21 @@ defmodule WallopCore.TestHelpers do
   the receipt, or on the value derived from `drand_round`, never on the
   stored `weather_time` as if it had been signed.
 
-  Options: `:entropy_composition` (default: the Land Observations tag).
+  Options:
+
+    * `:entropy_composition` (default: the Land Observations tag);
+    * `:freq_start`, the row's grid-frequency window start (default:
+      `FreqSchedule.freq_start_for_round(drand_round)`, the value both lock
+      schema 6 tags carry; `nil` leaves the column NULL).
+
   Returns the draw with `expected_result_at` loaded.
   """
   def put_v6_awaiting!(draw, %DateTime{} = weather_time, drand_round, opts \\ [])
       when is_integer(drand_round) do
     tag = Keyword.get(opts, :entropy_composition, Protocol.landobs_entropy_composition())
+
+    freq_start =
+      Keyword.get_lazy(opts, :freq_start, fn -> FreqSchedule.freq_start_for_round(drand_round) end)
 
     entries = Entries.load_for_draw(draw.id)
     {hash, canonical} = Protocol.entry_hash({draw.id, entries})
@@ -269,7 +278,7 @@ defmodule WallopCore.TestHelpers do
         """
         UPDATE draws SET status = 'awaiting_entropy', lock_schema_version = '6',
           entropy_composition = $7, entry_hash = $2, entry_canonical = $3, drand_chain = $4,
-          drand_round = $5, weather_station = $8, weather_time = $6
+          drand_round = $5, weather_station = $8, weather_time = $6, freq_start = $9
         WHERE id = $1
         """,
         [
@@ -280,7 +289,8 @@ defmodule WallopCore.TestHelpers do
           drand_round,
           DateTime.to_naive(weather_time),
           tag,
-          Stations.primary().id
+          Stations.primary().id,
+          freq_start && DateTime.to_naive(freq_start)
         ]
       )
 
@@ -377,6 +387,7 @@ defmodule WallopCore.TestHelpers do
         drand_round: drand_round,
         weather_station: Stations.primary().id,
         weather_time: signed_wt,
+        freq_start: FreqSchedule.freq_start_for_round(drand_round),
         wallop_core_version: to_string(Application.spec(:wallop_core, :vsn)),
         fair_pick_version: to_string(Application.spec(:fair_pick, :vsn))
       })

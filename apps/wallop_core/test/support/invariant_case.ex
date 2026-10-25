@@ -96,7 +96,7 @@ defmodule WallopCore.InvariantCase do
   @lock_sql """
   UPDATE draws SET status = $5, lock_schema_version = $6, entropy_composition = $7,
     drand_chain = $8, drand_round = $2, weather_time = $3, weather_station = $4,
-    entry_hash = $9, entry_canonical = $10
+    entry_hash = $9, entry_canonical = $10, freq_start = $11
   WHERE id = $1
   """
 
@@ -117,6 +117,12 @@ defmodule WallopCore.InvariantCase do
         overrides
       )
 
+    # Both lock schema 6 tags carry it; default it only for the Land Obs tag.
+    freq_start =
+      Keyword.get_lazy(overrides, :freq_start, fn ->
+        if o[:tag] == LandObs.tag(), do: FreqSchedule.freq_start_for_round(round)
+      end)
+
     {hash, canonical} = entry_hash(draw)
 
     params = [
@@ -129,7 +135,8 @@ defmodule WallopCore.InvariantCase do
       o[:tag],
       o[:chain],
       hash,
-      canonical
+      canonical,
+      freq_start && DateTime.to_naive(freq_start)
     ]
 
     Repo.transaction(fn -> Repo.query!(@lock_sql, params) end)
@@ -189,6 +196,7 @@ defmodule WallopCore.InvariantCase do
         drand_round: s.round,
         weather_station: Stations.primary().id,
         weather_time: s.weather_time,
+        freq_start: FreqSchedule.freq_start_for_round(s.round),
         wallop_core_version: "0.0.0",
         fair_pick_version: to_string(Application.spec(:fair_pick, :vsn))
       }

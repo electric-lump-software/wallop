@@ -71,7 +71,8 @@ defmodule WallopCore.TamperProfiles.LandObs do
       entropy_composition: LandObs.tag(),
       locked_at: @locked_at,
       weather_station: Stations.primary().id,
-      weather_time: Schedule.weather_time_for_round(V.round())
+      weather_time: Schedule.weather_time_for_round(V.round()),
+      freq_start: WallopCore.Frequency.Schedule.freq_start_for_round(V.round())
     }
   end
 
@@ -107,6 +108,7 @@ defmodule WallopCore.TamperProfiles.LandObs do
   @impl true
   def cases do
     wt = Schedule.weather_time_for_round(V.round())
+    t = WallopCore.Frequency.Schedule.freq_start_for_round(V.round())
     pub = Quicknet.pub_time(V.round())
     latest = Schedule.latest_lock_at(wt)
     next_hour_round = V.round() + 1200
@@ -148,6 +150,16 @@ defmodule WallopCore.TamperProfiles.LandObs do
        "Wittering", ~w(bundle_shape receipt_field_consistency)},
       {"lock_weather_station_null", :observed, :lock, "weather_station", nil, "nil",
        ~w(bundle_shape lock_signature receipt_field_consistency)},
+      {"lock_freq_start_plus_15s", :observed, :lock, "freq_start", rfc(DateTime.add(t, 15)),
+       "+15 s (the next window)", ~w(weather_observation_window)},
+      {"lock_freq_start_minus_15s", :observed, :lock, "freq_start", rfc(DateTime.add(t, -15)),
+       "-15 s (the previous window)", ~w(weather_observation_window)},
+      {"lock_freq_start_plus_1s", :observed, :lock, "freq_start", rfc(DateTime.add(t, 1)),
+       "+1 s (not a window start)", ~w(bundle_shape weather_observation_window)},
+      {"lock_freq_start_null", :observed, :lock, "freq_start", nil, "nil",
+       ~w(bundle_shape lock_signature weather_observation_window)},
+      {"lock_freq_start_offset_bst", :observed, :lock, "freq_start", offset(t, 1),
+       "the same instant at +01:00", ~w(bundle_shape weather_observation_window)},
       {"lock_drand_chain_mainnet", :observed, :lock, "drand_chain", V.mainnet_chain(),
        "a different chain", ~w(receipt_field_consistency)},
       {"lock_entropy_composition_forecast", :observed, :lock, "entropy_composition",

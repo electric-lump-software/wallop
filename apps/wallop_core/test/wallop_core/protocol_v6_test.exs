@@ -2,6 +2,7 @@ defmodule WallopCore.ProtocolV6Test do
   use ExUnit.Case, async: true
   alias WallopCore.Drand.Quicknet
   alias WallopCore.Entropy.DrandClient
+  alias WallopCore.Frequency.Schedule, as: FreqSchedule
   alias WallopCore.Protocol
   alias WallopCore.Protocol.Tags.{Freq, LandObs}
 
@@ -28,6 +29,8 @@ defmodule WallopCore.ProtocolV6Test do
     drand_round: 33_068_212,
     weather_station: "wmo-03749",
     weather_time: ~U[2026-10-14 19:00:00.000000Z],
+    # The round's grid-frequency window start, the tag's fallback window.
+    freq_start: ~U[2026-10-14 19:54:00.000000Z],
     wallop_core_version: "0.29.0",
     fair_pick_version: @fair_pick
   }
@@ -75,7 +78,6 @@ defmodule WallopCore.ProtocolV6Test do
       weather_station: nil,
       weather_time: nil
   }
-  @freq_lock Map.put(@freq_lock, :freq_start, ~U[2026-10-14 19:54:00.000000Z])
 
   @freq_exec %{
     @exec
@@ -119,19 +121,21 @@ defmodule WallopCore.ProtocolV6Test do
     end
   end
 
-  test "the landobs tag adds no fields: its key lists are the lock 5 / exec 4 key sets" do
+  test "the landobs lock adds only freq_start to the lock 5 keys; its exec keys are exec 4's" do
     lock_v5 = Jason.decode!(Protocol.build_receipt_payload(v5_input(@lock)))
     exec_v4 = Jason.decode!(Protocol.build_execution_receipt_payload(v5_input(@exec)))
 
-    assert LandObs.lock_keys() == Map.keys(lock_v5)
+    assert LandObs.lock_keys() == Enum.sort(["freq_start" | Map.keys(lock_v5)])
+    assert length(LandObs.lock_keys()) == 20
+    assert LandObs.lock_keys() == Freq.lock_keys()
     assert LandObs.exec_keys() == Map.keys(exec_v4)
   end
 
   # The same input, as the lock 5 / execution 4 builders take it: no tag,
-  # the old station and an old-style value.
+  # no freq_start, the old station and an old-style value.
   defp v5_input(input) do
     input
-    |> Map.delete(:entropy_composition)
+    |> Map.drop([:entropy_composition, :freq_start])
     |> Map.put(:weather_station, "middle-wallop")
     |> old_style_value()
   end
@@ -335,6 +339,23 @@ defmodule WallopCore.ProtocolV6Test do
     end
   end
 
+  test "a Land Obs lock signs freq_start, the window start of its round, and refuses any other" do
+    input = @lock
+    t = FreqSchedule.freq_start_for_round(input.drand_round)
+    payload = Protocol.build_v6_lock_payload(Map.put(input, :freq_start, t))
+    assert Jason.decode!(payload)["freq_start"] == WallopCore.Time.to_rfc3339_usec(t)
+
+    for bad <- [nil, DateTime.add(t, 15), DateTime.add(t, -15)] do
+      assert_raise ArgumentError, ~r/freq_start/, fn ->
+        Protocol.build_v6_lock_payload(Map.put(input, :freq_start, bad))
+      end
+    end
+
+    assert_raise ArgumentError, ~r/freq_start/, fn ->
+      Protocol.build_v6_lock_payload(Map.delete(input, :freq_start))
+    end
+  end
+
   describe "exec v5 under the landobs tag" do
     test "accepts Middle Wallop's reading and the rule-based fallback, never Wittering" do
       assert is_binary(Protocol.build_v6_execution_payload(@exec))
@@ -438,7 +459,8 @@ defmodule WallopCore.ProtocolV6Test do
                  ~s("draw_id":"22222222-2222-2222-2222-222222222222",) <>
                  ~s("entropy_composition":"drand-quicknet+metoffice-landobs-v1",) <>
                  ~s("entry_hash":"#{String.duplicate("ab", 32)}",) <>
-                 ~s("fair_pick_version":"0.2.0","jcs_version":"sha256-jcs-v1",) <>
+                 ~s("fair_pick_version":"0.2.0",) <>
+                 ~s("freq_start":"2026-10-14T19:54:00.000000Z","jcs_version":"sha256-jcs-v1",) <>
                  ~s("locked_at":"2026-10-14T18:00:00.123456Z",) <>
                  ~s("operator_id":"11111111-1111-1111-1111-111111111111",) <>
                  ~s("operator_slug":"acme-prizes","schema_version":"6","sequence":7,) <>
@@ -451,7 +473,7 @@ defmodule WallopCore.ProtocolV6Test do
       sha = &(:crypto.hash(:sha256, &1) |> Base.encode16(case: :lower))
 
       assert sha.(Protocol.build_v6_lock_payload(@lock)) ==
-               "b8b0943389d5d3e6c455bbc7b812b6ebd6bde35619d59f1fc4b2014a48dba616"
+               "16d671bd16da0f6c4ef6bf9343b0aaacb9e43f0284614ac23a2093cf24826c78"
 
       assert sha.(Protocol.build_v6_execution_payload(@exec)) ==
                "eda3da304ced89945e31865dcca54f111c9ed7c0a112f3e889a0e5db88d27317"

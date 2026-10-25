@@ -24,7 +24,7 @@ defmodule WallopCore.Weather.V6LockReceiptRaceTest do
   @lock_sql """
   UPDATE draws SET status = 'awaiting_entropy', lock_schema_version = '6',
     entropy_composition = $2, drand_chain = $3, drand_round = $4, weather_time = $5,
-    weather_station = $6, entry_hash = $7, entry_canonical = $8
+    weather_station = $6, entry_hash = $7, entry_canonical = $8, freq_start = $9
   WHERE id = $1
   """
 
@@ -131,7 +131,8 @@ defmodule WallopCore.Weather.V6LockReceiptRaceTest do
       DateTime.to_naive(s.weather_time),
       Stations.primary().id,
       hash,
-      canonical
+      canonical,
+      DateTime.to_naive(s.freq_start)
     ])
   end
 

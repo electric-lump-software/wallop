@@ -76,7 +76,7 @@ defmodule WallopCore.Frequency.FreqDrawGuardTest do
                dump(d.id),
                DateTime.to_naive(s.freq_start)
              ]) ==
-               "frequency fields are set only on grid-frequency draws"
+               "frequency fields are set only on lock schema 6 draws"
 
       assert raw_freq_lock(d, s) == nil
 
@@ -92,17 +92,22 @@ defmodule WallopCore.Frequency.FreqDrawGuardTest do
              ]) == "frequency results are set only when a draw completes"
     end
 
-    test "a Land Observations draw can't carry them", %{s: s} do
+    test "a Land Observations draw carries freq_start, frozen once locked, and no results before completion" do
       {_op, key} = create_v6_operator()
       d = open_draw_with_entries(key)
       ws = in_time_schedule()
       assert raw_lock(d, ws.weather_time, ws.round) == nil
 
-      assert try_sql("UPDATE draws SET freq_start = $2 WHERE id = $1", [
+      assert try_sql(
+               "UPDATE draws SET freq_start = freq_start + interval '15 seconds' WHERE id = $1",
+               [dump(d.id)]
+             ) ==
+               "freq_start is frozen once a draw has left open"
+
+      assert try_sql("UPDATE draws SET freq_value = $2 WHERE id = $1", [
                dump(d.id),
-               DateTime.to_naive(s.freq_start)
-             ]) ==
-               "frequency fields are set only on grid-frequency draws"
+               "50012;50018;50012;49983;49980;49953;49912;49883"
+             ]) == "frequency results are set only when a draw completes"
     end
 
     test "a draw can't be inserted with them", %{draw: d} do
@@ -120,7 +125,7 @@ defmodule WallopCore.Frequency.FreqDrawGuardTest do
                  FROM draws WHERE id = $1
                  """,
                  [dump(d.id), dump(Ecto.UUID.generate()), value]
-               ) == "frequency fields are set only on grid-frequency draws",
+               ) == "frequency fields are set only on lock schema 6 draws",
                col
       end
     end
@@ -246,7 +251,7 @@ defmodule WallopCore.Frequency.FreqDrawGuardTest do
       assert {draw.lock_schema_version, draw.entropy_composition} == {nil, nil}
 
       assert try_sql("UPDATE draws SET freq_value = 'x' WHERE id = $1", [dump(draw.id)]) ==
-               "frequency fields are set only on grid-frequency draws"
+               "frequency fields are set only on lock schema 6 draws"
 
       %{rows: [[src]]} = Repo.query!("SELECT prosrc FROM pg_proc WHERE proname = 'guard_v6_draw'")
       [early, _rest] = String.split(src, "RETURN NEW;", parts: 2)
@@ -293,15 +298,20 @@ defmodule WallopCore.Frequency.FreqDrawGuardTest do
       assert raw_freq_lock(d, s) == "v6 lock receipt field freq_start does not match the draw"
     end
 
-    test "a Land Observations receipt carrying freq_start is refused by its key set" do
+    test "a Land Observations receipt must sign its round's freq_start" do
       {_op, key} = create_v6_operator()
       d = open_draw_with_entries(key)
       ws = in_time_schedule()
       {payload, cols} = valid_receipt(d, ws)
       assert raw_lock(d, ws.weather_time, ws.round) == nil
 
-      assert insert_receipt(Map.put(payload, "freq_start", "2026-10-14T19:54:00.000000Z"), cols) ==
+      assert insert_receipt(Map.delete(payload, "freq_start"), cols) ==
                "v6 lock receipt keys are not the tag's key set"
+
+      for bad <- [nil, rfc(DateTime.add(FreqSchedule.freq_start_for_round(ws.round), 15))] do
+        assert insert_receipt(%{payload | "freq_start" => bad}, cols) ==
+                 "v6 lock receipt field freq_start does not match the draw"
+      end
     end
   end
 

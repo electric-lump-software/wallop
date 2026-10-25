@@ -57,6 +57,11 @@ defmodule WallopCore.Resources.Draw.LockV6Test do
     assert payload["weather_time"] == WallopCore.Time.to_rfc3339_usec(s.weather_time)
     assert payload["weather_station"] == "wmo-03749"
 
+    assert locked.freq_start == WallopCore.Frequency.Schedule.freq_start_for_round(s.round)
+
+    assert Jason.decode!(locked.receipt.payload_jcs)["freq_start"] ==
+             WallopCore.Time.to_rfc3339_usec(locked.freq_start)
+
     assert_enqueued(
       worker: WeatherObservationWorker,
       args: %{weather_time: WeatherObservationWorker.hour_arg(s.weather_time)},

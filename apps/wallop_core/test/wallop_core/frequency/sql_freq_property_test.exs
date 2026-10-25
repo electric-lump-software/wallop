@@ -50,7 +50,7 @@ defmodule WallopCore.Frequency.SqlFreqPropertyTest do
 
   test "the SQL key sets equal the tag's, sorted bytewise" do
     %{rows: [[lock, exec]]} =
-      Repo.query!("SELECT wallop_freq_lock_keys(), wallop_freq_exec_keys()")
+      Repo.query!("SELECT wallop_v6_lock_keys(), wallop_freq_exec_keys()")
 
     assert lock == Freq.lock_keys()
     assert exec == Freq.exec_keys()

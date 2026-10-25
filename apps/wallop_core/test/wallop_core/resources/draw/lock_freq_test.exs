@@ -80,6 +80,7 @@ defmodule WallopCore.Resources.Draw.LockFreqTest do
       drand_round: locked.drand_round,
       weather_station: locked.weather_station,
       weather_time: locked.weather_time,
+      freq_start: locked.freq_start,
       wallop_core_version: to_string(Application.spec(:wallop_core, :vsn)),
       fair_pick_version: to_string(Application.spec(:fair_pick, :vsn))
     }
@@ -423,14 +424,14 @@ defmodule WallopCore.Resources.Draw.LockFreqTest do
   end
 
   describe "the other protocols' locks are unchanged" do
-    test "an observation lock: the Land Obs receipt bytes, no freq_start, its own jobs" do
+    test "an observation lock: the Land Obs receipt bytes, its round's freq_start, its own jobs" do
       {_op, key} = create_v6_operator()
       draw_at = next_hour_draw_at(3)
       {:ok, locked} = lock(open_draw_with_entries(key), key, %{draw_at: draw_at})
       locked = reload(locked)
 
       assert {locked.lock_schema_version, locked.entropy_composition} == {"6", LandObs.tag()}
-      assert locked.freq_start == nil
+      assert locked.freq_start == Schedule.freq_start_for_round(locked.drand_round)
       assert locked.receipt.payload_jcs == rebuilt_v6_payload(locked, %{})
       assert Enum.sort(Map.keys(Jason.decode!(locked.receipt.payload_jcs))) == LandObs.lock_keys()
 
