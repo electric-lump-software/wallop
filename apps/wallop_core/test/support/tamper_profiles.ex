@@ -585,12 +585,15 @@ defmodule WallopCore.TamperProfiles.Freq do
        rfc(hour), "a weather hour", ~w(bundle_shape)},
       {"freq_exec_weather_fallback_reason_set", :observed, :exec, "weather_fallback_reason",
        weather, "the weather reason beside a frequency value", ~w(bundle_shape)},
+      # The exec signature verifies: the harness re-signs the mutated bytes,
+      # and the receipt still parses because both tags share one exec key
+      # set. Rejection comes from bundle_shape, receipt_field_consistency
+      # and weather_observation_window.
       {"freq_exec_entropy_composition_landobs", :observed, :exec, "entropy_composition",
        LandObs.tag(), "the Land Obs tag (a frequency lock with a Land Obs exec)",
-       ~w(bundle_shape exec_signature receipt_field_consistency weather_observation_window)},
+       ~w(bundle_shape receipt_field_consistency weather_observation_window)},
       {"freq_exec_entropy_composition_unknown", :observed, :exec, "entropy_composition", unknown,
-       "an unknown tag",
-       ~w(bundle_shape exec_signature receipt_field_consistency weather_observation_window)},
+       "an unknown tag", ~w(bundle_shape receipt_field_consistency weather_observation_window)},
       {"freq_exec_schema_version_4", :observed, :exec, "schema_version", "4",
        "a different schema",
        ~w(bundle_shape exec_signature receipt_field_consistency weather_observation_window)},
