@@ -12,12 +12,17 @@ defmodule WallopCore.Weather.Schedule do
     * the fetch deadline F is weather_time + W; the backup cutover is F - 10 min;
     * a lock is allowed only while now <= weather_time - 46 min.
 
+  When the hour's reading isn't stored by F, the draw uses the grid-frequency
+  window of the same round, starting at `freq_start`
+  (`WallopCore.Frequency.Schedule`); its constants are frozen by this tag too.
+
   W, the 46-minute offset and the 10-minute cutover are frozen by the
   `drand-quicknet+metoffice-landobs-v1` tag. Changing any of them needs a
   new tag.
   """
 
   alias WallopCore.Drand.Quicknet
+  alias WallopCore.Frequency.Schedule, as: FreqSchedule
 
   # W, the observation fetch window. Measured p99 Land Observations
   # publication latency (15 minutes) + 10 minutes, rounded up to 30 so the
@@ -45,7 +50,9 @@ defmodule WallopCore.Weather.Schedule do
           backup_cutover: DateTime.t(),
           fetch_deadline: DateTime.t(),
           latest_lock_at: DateTime.t(),
-          expected_result_at: DateTime.t()
+          expected_result_at: DateTime.t(),
+          freq_start: DateTime.t(),
+          freq_fetch_deadline: DateTime.t()
         }
 
   @spec fetch_window_seconds() :: pos_integer()
@@ -69,6 +76,7 @@ defmodule WallopCore.Weather.Schedule do
   defp schedule_for_round(round) do
     wt = weather_time_for_round(round)
     pub = pub_time(round)
+    t = FreqSchedule.freq_start_for_round(round)
 
     %{
       draw_at: pub,
@@ -77,7 +85,9 @@ defmodule WallopCore.Weather.Schedule do
       backup_cutover: backup_cutover(wt),
       fetch_deadline: fetch_deadline(wt),
       latest_lock_at: latest_lock_at(wt),
-      expected_result_at: pub
+      expected_result_at: pub,
+      freq_start: t,
+      freq_fetch_deadline: FreqSchedule.fetch_deadline(t)
     }
   end
 

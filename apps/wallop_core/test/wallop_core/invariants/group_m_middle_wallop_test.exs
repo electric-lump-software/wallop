@@ -221,7 +221,6 @@ defmodule WallopCore.Invariants.GroupMMiddleWallopTest do
     end
   end
 
-  @tag :pending_task_M2
   test "INV-M7 both stores settle before drand for every draw second of the hour" do
     for wt <- @hours, d <- 0..3597//3 do
       wt_u = DateTime.to_unix(wt)
