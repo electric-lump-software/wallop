@@ -79,7 +79,22 @@ defmodule WallopCore.Invariants.GroupMMiddleWallopTest do
                "('wallop_landobs_stations', 'wallop_landobs_backup_station')"
            ) == 0
 
-    assert constraint_def("weather_observations_station") =~ "wallop_landobs_primary_station()"
+    assert constraint_def("weather_observations_station") ==
+             "CHECK ((station = wallop_landobs_primary_station()))"
+
+    # With every trigger off only the CHECK stands, and it names itself.
+    Repo.query!("SET session_replication_role = replica")
+
+    try do
+      assert try_sql(
+               "INSERT INTO weather_observations (id, station, observation_time, value, raw, stored_at) " <>
+                 "VALUES ($1, 'wmo-03462', $2, $3, '[]', $2)",
+               [dump(Ecto.UUID.generate()), @wt, @value]
+             ) ==
+               ~s(new row for relation "weather_observations" violates check constraint "weather_observations_station")
+    after
+      Repo.query!("RESET session_replication_role")
+    end
 
     for offset_s <- [0, 1200, 1201, 1800] do
       now = NaiveDateTime.add(@wt, offset_s)
@@ -155,6 +170,8 @@ defmodule WallopCore.Invariants.GroupMMiddleWallopTest do
     assert complete(d, {nil, nil, @no_obs, @freq, nil}) == fallback_only
     assert complete(d, {nil, nil, @no_obs, nil, nil}) == fallback_only
     assert complete(d, {nil, nil, nil, nil, @no_freq}) == fallback_only
+    # A reading made up when none is stored.
+    assert complete(d, {@value, d.weather_time, nil, nil, nil}) == fallback_only
 
     # A window stored for T: only (b), with exactly that window.
     d = pending_past(key, 40)
@@ -162,6 +179,10 @@ defmodule WallopCore.Invariants.GroupMMiddleWallopTest do
     assert complete(d, {nil, nil, @no_obs, @freq, nil}) == nil
     assert complete(d, {nil, nil, @no_obs, nil, @no_freq}) == window_only
     assert complete(d, {nil, nil, @no_obs, @freq, @no_freq}) == window_only
+    # Another window's value, and no frequency value or reason at all.
+    other = "50018;50012;49983;49980;49953;49912;49883;49887"
+    assert complete(d, {nil, nil, @no_obs, other, nil}) == window_only
+    assert complete(d, {nil, nil, @no_obs, nil, nil}) == window_only
 
     # The hour's reading stored (and a window too): only (a), freq fields null.
     d = pending_past(key, 70)
@@ -178,21 +199,39 @@ defmodule WallopCore.Invariants.GroupMMiddleWallopTest do
     fallback_only = "v6 draw may fall back only after the fetch deadline with nothing stored"
     now = DateTime.utc_now() |> DateTime.truncate(:second)
 
-    # F = now: F + 1 min is still ahead.
+    w = Schedule.fetch_window_seconds()
+
+    # F = now: F + 1 min is still ahead. Neither (c) nor (b), even with
+    # T's window stored.
     d = pending_past(key)
-    shift!(d, weather_time: DateTime.add(now, -Schedule.fetch_window_seconds()))
+    shift!(d, weather_time: DateTime.add(now, -w))
     assert complete(d, {nil, nil, @no_obs, nil, @no_freq}) == fallback_only
+    put_frequency_window!(d.freq_start, @freq)
+    assert complete(d, {nil, nil, @no_obs, @freq, nil}) == fallback_only
 
-    # F long past, F_freq + M just ahead of now (T on the 15 s grid, as the
-    # window table's CHECK requires): (c) refused, (b) with a stored window accepted.
+    # F + 1 min just past: (b) with that window is accepted.
+    shift!(d, weather_time: DateTime.add(now, -(w + 61)))
+    assert complete(d, {nil, nil, @no_obs, @freq, nil}) == nil
+
+    # F long past, now strictly between F_freq and F_freq + M (T on the
+    # 15 s grid, as the window table's CHECK requires): (c) refused, (b)
+    # with a stored window accepted. F_freq is the last 15 s boundary at or
+    # before now; with under 3 s left before the next one, wait past it.
     d = pending_past(key, 40)
-    now_u = DateTime.to_unix(now)
+    now_u = DateTime.to_unix(DateTime.utc_now())
 
-    settle =
-      FreqSchedule.span_seconds() + FreqSchedule.fetch_window_seconds() +
-        FreqSchedule.margin_seconds()
+    now_u =
+      case rem(now_u, 15) do
+        r when r >= 12 -> Process.sleep((15 - r) * 1000 + 100) && now_u + 15 - r
+        _ -> now_u
+      end
 
-    t = DateTime.from_unix!(now_u + rem(15 - rem(now_u, 15), 15) + 15 - settle)
+    t =
+      DateTime.from_unix!(
+        now_u - rem(now_u, 15) - FreqSchedule.span_seconds() -
+          FreqSchedule.fetch_window_seconds()
+      )
+
     shift!(d, freq_start: t)
     assert complete(d, {nil, nil, @no_obs, nil, @no_freq}) == fallback_only
     put_frequency_window!(t, @freq)
@@ -248,9 +287,11 @@ defmodule WallopCore.Invariants.GroupMMiddleWallopTest do
              AND wt + wallop_landobs_fetch_window() + interval '60 seconds' <= pub
              AND wallop_freq_fetch_deadline(wallop_freq_start(r)) + wallop_freq_margin() <= pub
              AND wt - wallop_landobs_lock_offset() <= wallop_freq_start(r) - wallop_freq_lock_gap()
-             AND wallop_freq_start(r) >= wt + interval '25 minutes' AS ok
+             AND wallop_freq_start(r) >= wt + interval '25 minutes'
+             AND wallop_freq_start(r) = wt + make_interval(secs => 1500 + d - d % 15)
+             AND current_setting('TimeZone') = 'Asia/Kolkata' AS ok
           FROM (
-            SELECT wt, wt + make_interval(secs => 1860 + d) AS pub,
+            SELECT wt, d, wt + make_interval(secs => 1860 + d) AS pub,
                    (EXTRACT(EPOCH FROM wt)::bigint + 1860 + d - #{@genesis}) / 3 + 1 AS r
             FROM unnest($1::timestamp[]) wt, generate_series(0, 3597, 3) d
           ) s
@@ -265,19 +306,41 @@ defmodule WallopCore.Invariants.GroupMMiddleWallopTest do
   test "INV-M8 a weather-tag lock enqueues T's window job in the lock transaction, once per T" do
     ensure_infrastructure_key()
     {_op, key} = create_v6_operator()
+    {_op, freq_key} = create_freq_operator()
     s = in_time_schedule()
     t = FreqSchedule.freq_start_for_round(s.round)
     arg = %{freq_start: FrequencyWindowWorker.start_arg(t)}
 
-    for _ <- 1..2 do
-      {:ok, _} =
+    lock = fn key, fail? ->
+      changeset =
         key
         |> open_draw_with_entries()
         |> Ash.Changeset.for_update(:lock, %{draw_at: s.draw_at}, actor: key)
-        |> Ash.update()
+
+      # Fails after every other after_action (the enqueue included), so the
+      # whole lock rolls back last.
+      changeset =
+        if fail?,
+          do:
+            Ash.Changeset.before_action(changeset, fn cs ->
+              Ash.Changeset.after_action(cs, fn _cs, _draw -> {:error, "rolled back last"} end)
+            end),
+          else: changeset
+
+      Ash.update(changeset)
+    end
+
+    # A lock that rolls back leaves no window job.
+    assert {:error, _} = lock.(key, true)
+    assert all_enqueued(worker: FrequencyWindowWorker) == []
+
+    # Two weather-tag locks and a grid-frequency lock of the same T: one job.
+    for k <- [key, key, freq_key] do
+      assert {:ok, %{freq_start: ^t}} = lock.(k, false)
     end
 
     assert length(all_enqueued(worker: FrequencyWindowWorker, args: arg)) == 1
+    assert length(all_enqueued(worker: FrequencyWindowWorker)) == 1
     assert Windows.waiting_tags() == [Freq.tag(), LandObs.tag()]
   end
 
@@ -292,6 +355,18 @@ defmodule WallopCore.Invariants.GroupMMiddleWallopTest do
              NaiveDateTime.add(DateTime.to_naive(d.weather_time), Schedule.fetch_window_seconds())
 
     assert try_sql("UPDATE draws SET status = 'failed' WHERE id = $1", [dump(d.id)]) ==
+             "a v6 draw can't fail once its fetch deadline has passed"
+
+    # By behaviour: the weather F 5 s past, F_freq and pub(R) still ahead.
+    # A guard that used F_freq for this tag would let it fail.
+    round = Quicknet.round_at_or_after(DateTime.add(DateTime.utc_now(), 60))
+    wt = DateTime.utc_now() |> DateTime.add(-(Schedule.fetch_window_seconds() + 5))
+    ahead = put_v6_awaiting!(open_draw_with_entries(key), DateTime.truncate(wt, :second), round)
+
+    assert DateTime.compare(FreqSchedule.fetch_deadline(ahead.freq_start), DateTime.utc_now()) ==
+             :gt
+
+    assert try_sql("UPDATE draws SET status = 'failed' WHERE id = $1", [dump(ahead.id)]) ==
              "a v6 draw can't fail once its fetch deadline has passed"
   end
 end

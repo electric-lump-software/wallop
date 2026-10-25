@@ -47,8 +47,7 @@ defmodule WallopCore.Weather.Schedule do
           fetch_deadline: DateTime.t(),
           latest_lock_at: DateTime.t(),
           expected_result_at: DateTime.t(),
-          freq_start: DateTime.t(),
-          freq_fetch_deadline: DateTime.t()
+          freq_start: DateTime.t()
         }
 
   @spec fetch_window_seconds() :: pos_integer()
@@ -72,7 +71,6 @@ defmodule WallopCore.Weather.Schedule do
   defp schedule_for_round(round) do
     wt = weather_time_for_round(round)
     pub = pub_time(round)
-    t = FreqSchedule.freq_start_for_round(round)
 
     %{
       draw_at: pub,
@@ -81,8 +79,7 @@ defmodule WallopCore.Weather.Schedule do
       fetch_deadline: fetch_deadline(wt),
       latest_lock_at: latest_lock_at(wt),
       expected_result_at: pub,
-      freq_start: t,
-      freq_fetch_deadline: FreqSchedule.fetch_deadline(t)
+      freq_start: FreqSchedule.freq_start_for_round(round)
     }
   end
 

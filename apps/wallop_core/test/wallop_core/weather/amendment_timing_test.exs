@@ -8,10 +8,10 @@ defmodule WallopCore.Weather.AmendmentTimingTest do
   alias WallopCore.Frequency.Schedule, as: FreqSchedule
   alias WallopCore.Weather.Schedule
 
-  test "the weather schedule carries the round's window start and its fetch deadline" do
+  test "the weather schedule carries the round's window start" do
     {:ok, s} = Schedule.schedule(~U[2026-10-14 20:00:00Z])
     assert s.freq_start == ~U[2026-10-14 19:54:00.000000Z]
-    assert s.freq_fetch_deadline == FreqSchedule.fetch_deadline(s.freq_start)
+    refute Map.has_key?(s, :freq_fetch_deadline)
     assert s.freq_start == FreqSchedule.freq_start_for_round(s.round)
   end
 
@@ -27,10 +27,11 @@ defmodule WallopCore.Weather.AmendmentTimingTest do
     closes_first =
       for d <- 0..3597//3,
           {:ok, s} = Schedule.schedule(DateTime.from_unix!(wt + 1860 + d)),
-          DateTime.to_unix(s.freq_fetch_deadline) < DateTime.to_unix(s.fetch_deadline) + 60,
+          DateTime.to_unix(FreqSchedule.fetch_deadline(s.freq_start)) <
+            DateTime.to_unix(s.fetch_deadline) + 60,
           do: d
 
-    assert Enum.max(opens_first) == 252 and Enum.min(opens_first) == 0
+    assert opens_first == Enum.to_list(0..252//3)
     assert closes_first == [0, 3, 6, 9, 12]
   end
 end

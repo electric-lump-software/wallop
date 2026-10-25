@@ -275,10 +275,15 @@ defmodule WallopCore.Weather.V6ExecutionGuardsTest do
     end
 
     test "(c) waits until M past T's fetch deadline; (b) does not need to" do
-      # T 300 s back on the 15 s grid: F_freq + M = T + 360 s is still ahead,
-      # while the weather's F + 1 min is long past. Completed with triggers
-      # off: the completion guard would refuse (c) too.
-      t = aligned_freq_start(-300)
+      # Now strictly between F_freq and F_freq + M: F_freq = T + 345 s is the
+      # last 15 s boundary at or before now (waiting past the next one when
+      # under 3 s are left), while the weather's F + 1 min is long past.
+      # Completed with triggers off: the completion guard would refuse (c) too.
+      r = rem(DateTime.to_unix(DateTime.utc_now()), 15)
+      if r >= 12, do: Process.sleep((15 - r) * 1000 + 100)
+      t = aligned_freq_start(-345)
+      assert DateTime.compare(DateTime.add(t, 345), DateTime.utc_now()) == :lt
+      assert DateTime.compare(DateTime.add(t, 360), DateTime.utc_now()) == :gt
 
       early =
         completed_v6_receipt_input(:fallback, hours_ago: 4, freq_start: t, triggers_off: true)
@@ -491,6 +496,26 @@ defmodule WallopCore.Weather.V6ExecutionGuardsTest do
 
       later = completed_v6_receipt_input(:fallback, weather_time: wt_with_deadline_ago(90))
       assert insert_exec_receipt(build(later.input), later.cols) == nil
+
+      # (b) waits for F + 1 min too, even with T's window stored.
+      early_b =
+        completed_v6_receipt_input(:frequency,
+          weather_time: wt_with_deadline_ago(30),
+          freq_value: @freq,
+          triggers_off: true
+        )
+
+      assert insert_exec_receipt(build(early_b.input), early_b.cols) == @grace
+
+      later_b =
+        completed_v6_receipt_input(:frequency,
+          weather_time: wt_with_deadline_ago(90),
+          freq_value: @freq,
+          # Another round, so another T: one window per T.
+          hours_ago: 1
+        )
+
+      assert insert_exec_receipt(build(later_b.input), later_b.cols) == nil
     end
 
     test "failing is refused from F, allowed before it" do
