@@ -16,14 +16,17 @@ defmodule WallopCore.Resources.Draw.Changes.ExecuteV6 do
 
   Then it reads the stored reading for the draw's hour (Land Obs) or the
   stored window for its start T (grid frequency), under the row lock.
-  If there is one, the seed uses it. If there is none, the draw is
-  drand-only with the rules' fallback reason: by rule, because the store
-  can no longer change after F. There is no other choice to make. The
+  If there is one, the seed uses it. Under Land Obs, with no reading it
+  uses the round's stored grid-frequency window, and with neither it is
+  drand only, all by rule from stored state. Under grid frequency, with no
+  window it is drand only. The stores can no longer change after their
+  deadlines, so there is no other choice to make. The
   attributes the tag sets come from `V6Rules.completion_attrs/2`.
 
   The draws guard refuses any completion that differs from the stored
   reading or the fallback rule, and refuses the fallback until a minute past
-  F (Land Obs) or M past F (grid frequency). The execution receipt guard
+  F (Land Obs; drand only there also waits until M past T's F) or M past F
+  (grid frequency). The execution receipt guard
   binds the signed receipt to the completed draw, its lock receipt and the
   stored reading or window (or the fallback rule), so a receipt that
   disagrees with any of them is refused too.

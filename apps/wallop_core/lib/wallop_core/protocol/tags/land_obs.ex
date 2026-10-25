@@ -4,25 +4,36 @@ defmodule WallopCore.Protocol.Tags.LandObs do
   carried by lock receipt schema 6 and execution receipt schema 5.
 
   The lock adds `freq_start` to the lock 5 field set; the execution adds
-  no fields to the execution 4 field set. It sets the weather rules:
+  `freq_value` and `freq_fallback_reason` to the execution 4 field set. It
+  sets the weather rules:
 
     * lock: `weather_station` is Middle Wallop's; `weather_time` is the
       observation hour of `drand_round` (a whole UTC hour); `freq_start` is
       the grid-frequency window start of `drand_round`, the window the tag
       falls back to; `locked_at` is no later than `weather_time` minus the
       lock offset (46 minutes), to the microsecond.
-    * execution: `weather_station` is Middle Wallop's. Either the value
-      matches the Land Observations grammar and bounds, the observation
-      time is the round's observation hour and the reason is nil; or value
-      and time are nil and the reason is `"no_observation_by_deadline"`.
+    * execution: `weather_station` is Middle Wallop's, and the receipt is
+      in exactly one of three states. (a) Weather: the value matches the
+      Land Observations grammar and bounds, the observation time is the
+      round's observation hour, and `weather_fallback_reason`,
+      `freq_value` and `freq_fallback_reason` are all nil. (b) Grid
+      frequency: weather value and time are nil, the weather reason is
+      `"no_observation_by_deadline"`, `freq_value` matches the
+      grid-frequency grammar and `freq_fallback_reason` is nil. (c) drand
+      only: as (b), but `freq_value` is nil and `freq_fallback_reason` is
+      `"no_frequency_by_deadline"`. Any other combination is refused.
       `executed_at` is not earlier than the round's publication.
 
   Every rule here is frozen by the tag. Changing one needs a new tag.
+  The constants of the grid-frequency fallback (T, K, W_freq, M, N, the
+  grammar, the row rule) are those of `drand-quicknet+elexon-freq-v1`,
+  frozen by this tag by reference: changing any of them changes both tags.
   """
 
   @behaviour WallopCore.Protocol.Tag
 
   alias WallopCore.Drand.Quicknet
+  alias WallopCore.Frequency.FreqGrammar
   alias WallopCore.Frequency.Schedule, as: FreqSchedule
   alias WallopCore.Protocol.Tags.V6Keys
   alias WallopCore.Weather.LandObsGrammar
@@ -31,14 +42,7 @@ defmodule WallopCore.Protocol.Tags.LandObs do
 
   @tag "drand-quicknet+metoffice-landobs-v1"
   @fallback_reason "no_observation_by_deadline"
-
-  @exec_keys ~w(drand_chain drand_randomness drand_round drand_signature
-                drand_signature_algorithm draw_id entropy_composition entry_hash executed_at
-                fair_pick_version jcs_version lock_receipt_hash merkle_algorithm
-                operator_id operator_slug results schema_version seed sequence
-                signature_algorithm signing_key_id wallop_core_version
-                weather_fallback_reason weather_observation_time weather_station
-                weather_value)
+  @freq_fallback_reason "no_frequency_by_deadline"
 
   @doc "The entropy tag."
   @impl true
@@ -58,7 +62,7 @@ defmodule WallopCore.Protocol.Tags.LandObs do
   @doc "Every key of an execution receipt under this tag, sorted."
   @impl true
   @spec exec_keys() :: [String.t()]
-  def exec_keys, do: @exec_keys
+  def exec_keys, do: V6Keys.exec_keys()
 
   @doc "Fields the tag adds to the lock receipt: `freq_start`, the round's window start."
   @impl true
@@ -66,10 +70,31 @@ defmodule WallopCore.Protocol.Tags.LandObs do
   def lock_fields(%{freq_start: %DateTime{} = t}),
     do: %{"freq_start" => WallopCore.Time.to_rfc3339_usec(t)}
 
-  @doc "Fields the tag adds to the execution receipt. None."
+  @doc "Fields the tag adds to the execution receipt: `freq_value`, `freq_fallback_reason`."
   @impl true
   @spec exec_fields(map()) :: map()
-  def exec_fields(_input), do: %{}
+  def exec_fields(input),
+    do: %{
+      "freq_value" => Map.fetch!(input, :freq_value),
+      "freq_fallback_reason" => Map.fetch!(input, :freq_fallback_reason)
+    }
+
+  @doc """
+  Which of the tag's three execution states the fields are in: `:weather`
+  (a), `:frequency` (b) or `:drand_only` (c); `:error` for any other
+  combination. Reads only the five keys of the table.
+  """
+  @spec exec_state(map()) :: {:ok, :weather | :frequency | :drand_only} | :error
+  def exec_state(%{} = f) do
+    case {Map.get(f, :weather_value), Map.get(f, :weather_observation_time),
+          Map.get(f, :weather_fallback_reason), Map.get(f, :freq_value),
+          Map.get(f, :freq_fallback_reason)} do
+      {v, %DateTime{}, nil, nil, nil} when is_binary(v) -> {:ok, :weather}
+      {nil, nil, @fallback_reason, v, nil} when is_binary(v) -> {:ok, :frequency}
+      {nil, nil, @fallback_reason, nil, @freq_fallback_reason} -> {:ok, :drand_only}
+      _ -> :error
+    end
+  end
 
   @doc "Raises `ArgumentError` unless the lock input follows the tag's rules."
   @impl true
@@ -119,10 +144,35 @@ defmodule WallopCore.Protocol.Tags.LandObs do
   def validate_exec!(
         %{weather_station: station, drand_round: round, executed_at: executed_at} = input
       ) do
+    # Present on every input, like the base keys; nil only where the rules allow it.
+    for key <- [:freq_value, :freq_fallback_reason],
+        do: require!(Map.has_key?(input, key), "exec v5 input must carry #{inspect(key)}")
+
     primary = Stations.primary().id
     require!(station == primary, "exec v5 weather_station must be #{primary}")
     require!(valid_round?(round), "exec v5 drand_round must be a positive integer")
-    validate_weather!(input, round)
+
+    case exec_state(input) do
+      {:ok, :weather} ->
+        validate_weather!(input, round)
+
+      {:ok, :frequency} ->
+        require!(
+          FreqGrammar.valid_value?(input.freq_value),
+          "exec v5 freq_value does not match the grid-frequency grammar"
+        )
+
+      {:ok, :drand_only} ->
+        :ok
+
+      :error ->
+        raise ArgumentError,
+              "exec v5 fields must be in one of three states: a weather value and " <>
+                "observation time with no reasons; no weather, reason " <>
+                "#{inspect(@fallback_reason)}, a freq_value and no freq reason; or no " <>
+                "weather, reason #{inspect(@fallback_reason)}, no freq_value and freq " <>
+                "reason #{inspect(@freq_fallback_reason)}"
+    end
 
     require!(
       match?(%DateTime{}, executed_at) and
@@ -131,14 +181,7 @@ defmodule WallopCore.Protocol.Tags.LandObs do
     )
   end
 
-  defp validate_weather!(
-         %{
-           weather_fallback_reason: nil,
-           weather_value: value,
-           weather_observation_time: %DateTime{} = observed
-         },
-         round
-       ) do
+  defp validate_weather!(%{weather_value: value, weather_observation_time: observed}, round) do
     # valid_value?/1 checks the grammar and the frozen bounds.
     require!(
       LandObsGrammar.valid_value?(value),
@@ -151,22 +194,6 @@ defmodule WallopCore.Protocol.Tags.LandObs do
       DateTime.compare(observed, Schedule.weather_time_for_round(round)) == :eq,
       "exec v5 weather_observation_time is not the observation hour for drand round #{round}"
     )
-  end
-
-  defp validate_weather!(
-         %{
-           weather_fallback_reason: @fallback_reason,
-           weather_value: nil,
-           weather_observation_time: nil
-         },
-         _round
-       ),
-       do: :ok
-
-  defp validate_weather!(_input, _round) do
-    raise ArgumentError,
-          "exec v5 weather fields must be a value and observation time with a null " <>
-            "reason, or both null with reason #{inspect(@fallback_reason)}"
   end
 
   defp valid_round?(round), do: is_integer(round) and round >= 1

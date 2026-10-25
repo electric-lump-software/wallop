@@ -252,7 +252,7 @@ defmodule WallopCore.ProtocolFreqTest do
                ~s("weather_station":null,"weather_value":null})
   end
 
-  test "frequency inputs never change Land Observations execution bytes" do
+  test "a Land Obs execution in state (a) signs both frequency fields as null" do
     landobs_lock = %{
       @lock
       | entropy_composition: Protocol.landobs_entropy_composition(),
@@ -266,18 +266,23 @@ defmodule WallopCore.ProtocolFreqTest do
       | entropy_composition: Protocol.landobs_entropy_composition(),
         weather_station: "wmo-03749",
         weather_observation_time: ~U[2026-10-14 19:00:00.000000Z],
-        weather_value: "141;1025;85;2432"
+        weather_value: "141;1025;85;2432",
+        freq_value: nil,
+        freq_fallback_reason: nil
     }
 
     assert Jason.decode!(Protocol.build_v6_lock_payload(landobs_lock))["freq_start"] ==
              "2026-10-14T19:54:00.000000Z"
 
-    bare_exec = Map.drop(landobs_exec, [:freq_value, :freq_fallback_reason])
+    assert Protocol.build_v6_execution_payload(landobs_exec) =~
+             ~s("freq_fallback_reason":null,"freq_value":null,)
 
-    assert Protocol.build_v6_execution_payload(landobs_exec) ==
-             Protocol.build_v6_execution_payload(bare_exec)
-
-    refute Protocol.build_v6_execution_payload(landobs_exec) =~ "freq_"
+    # Both keys are required, as under the grid-frequency tag.
+    for key <- [:freq_value, :freq_fallback_reason] do
+      assert_raise ArgumentError, ~r/must carry/, fn ->
+        Protocol.build_v6_execution_payload(Map.delete(landobs_exec, key))
+      end
+    end
   end
 
   test "an unknown tag still raises" do

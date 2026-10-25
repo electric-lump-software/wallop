@@ -14,7 +14,7 @@ defmodule WallopCore.Weather.V6ExecutionGuardsTest do
 
   alias WallopCore.Drand.Quicknet
   alias WallopCore.Protocol
-  alias WallopCore.Protocol.Tags.LandObs
+  alias WallopCore.Protocol.Tags.{Freq, LandObs}
   alias WallopCore.Resources.Draw
   alias WallopCore.Weather.{Schedule, Stations}
 
@@ -51,10 +51,15 @@ defmodule WallopCore.Weather.V6ExecutionGuardsTest do
       signing_key_id: "k"
     }
 
+  # State (c): no reading and no window, so drand alone.
   defp complete_by_fallback(draw) do
     try_sql(
-      "UPDATE draws SET status = 'completed', executed_at = $2, weather_fallback_reason = $3 WHERE id = $1",
-      [dump(draw.id), NaiveDateTime.utc_now(), LandObs.fallback_reason()]
+      """
+      UPDATE draws SET status = 'completed', executed_at = $2, weather_fallback_reason = $3,
+        freq_fallback_reason = $4
+      WHERE id = $1
+      """,
+      [dump(draw.id), NaiveDateTime.utc_now(), LandObs.fallback_reason(), Freq.fallback_reason()]
     )
   end
 
@@ -84,8 +89,8 @@ defmodule WallopCore.Weather.V6ExecutionGuardsTest do
                "a schema 5 execution receipt needs a draw locked under schema 6"
     end
 
-    test "accepts the signer's receipt, observed or fallback" do
-      for {kind, hours} <- [observed: 1, fallback: 2] do
+    test "accepts the signer's receipt in each of the three states" do
+      for {kind, hours} <- [observed: 1, frequency: 2, fallback: 3] do
         x = completed_v6_receipt_input(kind, hours_ago: hours)
         assert insert_exec_receipt(build(x.input), x.cols) == nil, "#{kind}"
       end
@@ -191,7 +196,8 @@ defmodule WallopCore.Weather.V6ExecutionGuardsTest do
         x.input
         | weather_value: @value,
           weather_observation_time: x.wt,
-          weather_fallback_reason: nil
+          weather_fallback_reason: nil,
+          freq_fallback_reason: nil
       }
 
       assert insert_exec_receipt(build(input), x.cols) ==
@@ -210,11 +216,92 @@ defmodule WallopCore.Weather.V6ExecutionGuardsTest do
     end
   end
 
+  describe "the three states" do
+    # The signer's receipt for state `kind`, with `key` set to `value` (a
+    # decoded JSON term) and nothing else changed.
+    defp receipt_with(x, key, value),
+      do: x.input |> build() |> Jason.decode!() |> Map.put(key, value) |> Jason.encode!()
+
+    defp refusal(field),
+      do: "v6 execution receipt field #{field} does not match the stored observation"
+
+    @freq "50012;50018;50012;49983;49980;49953;49912;49883"
+
+    test "(a) refuses either freq field set" do
+      x = completed_v6_receipt_input(:observed, hours_ago: 1)
+      assert insert_exec_receipt(build(x.input), x.cols) == nil
+
+      assert insert_exec_receipt(receipt_with(x, "freq_value", @freq), x.cols) ==
+               refusal("freq_value")
+
+      assert insert_exec_receipt(
+               receipt_with(x, "freq_fallback_reason", Freq.fallback_reason()),
+               x.cols
+             ) == refusal("freq_fallback_reason")
+    end
+
+    test "(b) refuses a freq_value that is null, a number or another window, and a freq reason" do
+      x = completed_v6_receipt_input(:frequency, hours_ago: 2, freq_value: @freq)
+      assert insert_exec_receipt(build(x.input), x.cols) == nil
+
+      for value <- [nil, 50_012, "50018;50012;49983;49980;49953;49912;49883;49887"] do
+        assert insert_exec_receipt(receipt_with(x, "freq_value", value), x.cols) ==
+                 refusal("freq_value"),
+               inspect(value)
+      end
+
+      assert insert_exec_receipt(
+               receipt_with(x, "freq_fallback_reason", Freq.fallback_reason()),
+               x.cols
+             ) == refusal("freq_fallback_reason")
+
+      # The weather side of (b) is the weather fallback's.
+      assert insert_exec_receipt(receipt_with(x, "weather_fallback_reason", nil), x.cols) ==
+               refusal("weather_fallback_reason")
+    end
+
+    test "(c) refuses a missing freq reason, another reason, or a freq_value" do
+      x = completed_v6_receipt_input(:fallback, hours_ago: 3)
+      assert insert_exec_receipt(build(x.input), x.cols) == nil
+
+      for reason <- [nil, "no_observation_by_deadline"] do
+        assert insert_exec_receipt(receipt_with(x, "freq_fallback_reason", reason), x.cols) ==
+                 refusal("freq_fallback_reason"),
+               inspect(reason)
+      end
+
+      assert insert_exec_receipt(receipt_with(x, "freq_value", @freq), x.cols) ==
+               refusal("freq_value")
+    end
+
+    test "(c) waits until M past T's fetch deadline; (b) does not need to" do
+      # T 300 s back on the 15 s grid: F_freq + M = T + 360 s is still ahead,
+      # while the weather's F + 1 min is long past. Completed with triggers
+      # off: the completion guard would refuse (c) too.
+      t = aligned_freq_start(-300)
+
+      early =
+        completed_v6_receipt_input(:fallback, hours_ago: 4, freq_start: t, triggers_off: true)
+
+      assert insert_exec_receipt(build(early.input), early.cols) == @grace
+
+      stored =
+        completed_v6_receipt_input(:frequency,
+          hours_ago: 5,
+          freq_start: aligned_freq_start(-285),
+          freq_value: @freq,
+          triggers_off: true
+        )
+
+      assert insert_exec_receipt(build(stored.input), stored.cols) == nil
+    end
+  end
+
   describe "receipt key sets" do
     test "the SQL key sets equal the tag's" do
       for {fun, keys} <- [
             {"wallop_v6_lock_keys", LandObs.lock_keys()},
-            {"wallop_landobs_exec_keys", LandObs.exec_keys()}
+            {"wallop_v6_exec_keys", LandObs.exec_keys()}
           ] do
         assert %{rows: [[^keys]]} = Repo.query!("SELECT #{fun}()")
       end

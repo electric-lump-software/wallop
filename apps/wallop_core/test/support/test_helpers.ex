@@ -407,6 +407,41 @@ defmodule WallopCore.TestHelpers do
     |> Ash.create!(authorize?: false)
   end
 
+  @doc """
+  A valid execution receipt schema 5 input under the Land Obs tag, in
+  state (a): Middle Wallop's reading for the hour of drand round
+  33_068_212 (publishes 2026-10-14 20:00:00Z; observation hour 19:00:00Z),
+  no fallback reason and no grid-frequency fields. Not tied to any row.
+  """
+  def landobs_exec_input do
+    %{
+      entropy_composition: "drand-quicknet+metoffice-landobs-v1",
+      draw_id: "22222222-2222-2222-2222-222222222222",
+      operator_id: "11111111-1111-1111-1111-111111111111",
+      operator_slug: "acme-prizes",
+      sequence: 7,
+      lock_receipt_hash: String.duplicate("cd", 32),
+      entry_hash: String.duplicate("ab", 32),
+      drand_chain: "52db9ba70e0cc0f6eaf7803dd07447a1f5477735fd3f661792ba94600c84e971",
+      drand_round: 33_068_212,
+      drand_randomness: "140117383b03a0c0c7a899a32b8cbd2ffff9e2569504037c358ee8c7c2efe2fd",
+      drand_signature:
+        "b6541e41bb68ff318e8bd74b9f6e168ae6424476c432241420c38427df58c6ef33fe009ce202a7101120ab481702fddf",
+      weather_station: "wmo-03749",
+      weather_observation_time: ~U[2026-10-14 19:00:00.000000Z],
+      weather_value: "141;1025;85;2432",
+      weather_fallback_reason: nil,
+      freq_value: nil,
+      freq_fallback_reason: nil,
+      wallop_core_version: "0.29.0",
+      fair_pick_version: Application.spec(:fair_pick, :vsn) |> to_string(),
+      seed: String.duplicate("ef", 32),
+      results: ["33333333-3333-3333-3333-333333333333"],
+      executed_at: ~U[2026-10-14 20:00:06.000000Z],
+      signing_key_id: "cafebabe"
+    }
+  end
+
   @doc "The 15-second boundary at or before now + `offset_seconds`."
   def aligned_freq_start(offset_seconds) do
     u = DateTime.to_unix(DateTime.utc_now()) + offset_seconds

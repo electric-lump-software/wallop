@@ -152,6 +152,27 @@ defmodule WallopCore.Resources.Draw.ExecuteV6Test do
     assert payload["fair_pick_version"] == to_string(Application.spec(:fair_pick, :vsn))
   end
 
+  test "no reading by F: the round's stored grid-frequency window feeds the seed" do
+    freq = "50012;50018;50012;49983;49980;49953;49912;49883"
+    pending = pending_v6(-(@w + 60), -10)
+    put_frequency_window!(pending.freq_start, freq)
+    assert {:ok, done} = execute(pending)
+
+    assert {done.weather_value, done.weather_fallback_reason} ==
+             {nil, "no_observation_by_deadline"}
+
+    assert {done.freq_value, done.freq_fallback_reason} == {freq, nil}
+
+    {seed, _} =
+      WallopCore.Protocol.compute_freq_seed(done.entry_hash, @args.drand_randomness, freq)
+
+    assert done.seed == Base.encode16(seed, case: :lower)
+
+    %{execution_receipt: receipt} = Ash.load!(done, :execution_receipt, authorize?: false)
+    payload = Jason.decode!(receipt.payload_jcs)
+    assert {payload["freq_value"], payload["freq_fallback_reason"]} == {freq, nil}
+  end
+
   describe "entry hash" do
     test "entries that still hash to entry_hash execute" do
       pending = pending_v6(-(@w + 60), -10)

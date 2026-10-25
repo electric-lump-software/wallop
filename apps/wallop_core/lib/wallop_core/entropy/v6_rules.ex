@@ -81,12 +81,23 @@ defmodule WallopCore.Entropy.V6Rules do
   def drand_pub_time(:landobs, draw), do: Quicknet.pub_time(draw.drand_round)
   def drand_pub_time(:freq, draw), do: Quicknet.pub_time(draw.drand_round)
 
-  @doc "The reading stored for the draw, or nil."
+  @doc """
+  The reading stored for the draw, or nil. Land Obs, one of three states:
+  (a) the hour's weather reading `%{station, value, raw, observation_time}`;
+  else (b) the round's grid-frequency window `%{value, raw, freq_start}`;
+  else (c) nil, drand alone. A stored window is not consulted when there
+  is a reading. Grid frequency: T's window, or nil.
+  """
   @spec reading(rules(), map()) :: reading() | nil
   def reading(:landobs, draw) do
     case Observations.for_draw(draw) do
-      nil -> nil
-      obs -> Map.take(obs, [:station, :value, :raw, :observation_time])
+      nil ->
+        # No reading for the hour: the round's grid-frequency window, if stored.
+        with %{} = window <- Windows.for_draw(draw),
+             do: Map.take(window, [:value, :raw, :freq_start])
+
+      obs ->
+        Map.take(obs, [:station, :value, :raw, :observation_time])
     end
   end
 
@@ -102,7 +113,10 @@ defmodule WallopCore.Entropy.V6Rules do
   def seed(:landobs, entry_hash, randomness, nil),
     do: Protocol.compute_seed(entry_hash, randomness)
 
-  def seed(:landobs, entry_hash, randomness, %{value: value}),
+  def seed(:landobs, entry_hash, randomness, %{freq_start: _, value: value}),
+    do: Protocol.compute_freq_seed(entry_hash, randomness, value)
+
+  def seed(:landobs, entry_hash, randomness, %{station: _, value: value}),
     do: Protocol.compute_seed(entry_hash, randomness, value)
 
   def seed(:freq, entry_hash, randomness, nil),
@@ -112,28 +126,30 @@ defmodule WallopCore.Entropy.V6Rules do
     do: Protocol.compute_freq_seed(entry_hash, randomness, value)
 
   @doc """
-  The draw attributes the tag sets at completion. Land Obs: the reading's
-  value, raw response and observation time with no fallback reason, or all
-  three nil with the fallback reason when there is no reading. Grid
+  The draw attributes the tag sets at completion. Land Obs sets all five
+  fields of its three-state table, plus the reading's raw response:
+  (a) the reading's value, raw response and observation time, every reason
+  and `freq_value` nil; (b) no weather, the weather fallback reason, the
+  window's `freq_value` and no freq reason; (c) no weather, the weather
+  fallback reason, no `freq_value` and the freq fallback reason. Grid
   frequency: `freq_value` with no fallback reason, or nil with the reason;
   nothing else (the window's raw bytes stay in the window's own row).
   """
   @spec completion_attrs(rules(), reading() | nil) :: map()
-  def completion_attrs(:landobs, nil) do
-    %{
-      weather_value: nil,
-      weather_raw: nil,
-      weather_observation_time: nil,
-      weather_fallback_reason: fallback_reason(:landobs)
-    }
-  end
+  def completion_attrs(:landobs, nil),
+    do: landobs_fallback(%{freq_value: nil, freq_fallback_reason: fallback_reason(:freq)})
 
-  def completion_attrs(:landobs, %{} = reading) do
+  def completion_attrs(:landobs, %{freq_start: _, value: value}),
+    do: landobs_fallback(%{freq_value: value, freq_fallback_reason: nil})
+
+  def completion_attrs(:landobs, %{station: _} = reading) do
     %{
       weather_value: reading.value,
       weather_raw: reading.raw,
       weather_observation_time: reading.observation_time,
-      weather_fallback_reason: nil
+      weather_fallback_reason: nil,
+      freq_value: nil,
+      freq_fallback_reason: nil
     }
   end
 
@@ -143,13 +159,27 @@ defmodule WallopCore.Entropy.V6Rules do
   def completion_attrs(:freq, %{value: value}),
     do: %{freq_value: value, freq_fallback_reason: nil}
 
+  defp landobs_fallback(freq) do
+    Map.merge(
+      %{
+        weather_value: nil,
+        weather_raw: nil,
+        weather_observation_time: nil,
+        weather_fallback_reason: fallback_reason(:landobs)
+      },
+      freq
+    )
+  end
+
   @doc """
-  The tag's inputs to the execution receipt builder, from a completed draw:
-  `entropy_composition`, the weather fields, and the station whose reading
-  was used, read again from the store (the first station on a fallback).
-  `{:error, message}` when the draw's value isn't the stored reading, or
-  when the draw's seed isn't the seed of its inputs, computed again (the
-  weather seed with a value, the drand-only seed without).
+  The tag's inputs to the execution receipt builder, from a completed draw.
+  Land Obs: `entropy_composition`, the weather fields, `freq_value` and
+  `freq_fallback_reason`, and the station whose reading was used, read
+  again from the store (Middle Wallop's on a fallback). `{:error, message}`
+  when the draw's weather value isn't the stored reading, its `freq_value`
+  isn't T's stored window, or its seed isn't the seed of its inputs,
+  computed again for its state: (a) the weather seed, (b) the frequency
+  seed, (c) the drand-only seed.
 
   Grid frequency: every weather field nil, and `freq_value` and
   `freq_fallback_reason` from the draw, once `freq_value` is checked
@@ -160,6 +190,7 @@ defmodule WallopCore.Entropy.V6Rules do
   @spec receipt_input(rules(), map()) :: {:ok, map()} | {:error, String.t()}
   def receipt_input(:landobs, draw) do
     with {:ok, station} <- receipt_station(:landobs, draw),
+         :ok <- receipt_window(draw),
          :ok <- receipt_seed(:landobs, draw) do
       {:ok,
        %{
@@ -167,7 +198,9 @@ defmodule WallopCore.Entropy.V6Rules do
          weather_station: station,
          weather_observation_time: draw.weather_observation_time,
          weather_value: draw.weather_value,
-         weather_fallback_reason: draw.weather_fallback_reason
+         weather_fallback_reason: draw.weather_fallback_reason,
+         freq_value: draw.freq_value,
+         freq_fallback_reason: draw.freq_fallback_reason
        }}
     end
   end
@@ -197,9 +230,9 @@ defmodule WallopCore.Entropy.V6Rules do
     end
   end
 
-  # The signer's re-check: the value it signs is the one stored for T. On a
-  # fallback there is nothing to compare; the draws guard allowed it only
-  # past F + M with nothing stored.
+  # The signer's re-check: the value it signs is the one stored for T, under
+  # either tag. On a fallback there is nothing to compare; the draws guard
+  # allowed it only past F + M with nothing stored.
   defp receipt_window(%{freq_value: nil}), do: :ok
 
   defp receipt_window(draw) do
@@ -213,10 +246,15 @@ defmodule WallopCore.Entropy.V6Rules do
   # signed inputs, computed here straight from Protocol rather than through
   # seed/4, so a wrong seed clause can't sign its own output.
   defp receipt_seed(:landobs, draw) do
-    draw.weather_value
-    |> case do
-      nil -> Protocol.compute_seed(draw.entry_hash, draw.drand_randomness)
-      value -> Protocol.compute_seed(draw.entry_hash, draw.drand_randomness, value)
+    cond do
+      draw.weather_value ->
+        Protocol.compute_seed(draw.entry_hash, draw.drand_randomness, draw.weather_value)
+
+      draw.freq_value ->
+        Protocol.compute_freq_seed(draw.entry_hash, draw.drand_randomness, draw.freq_value)
+
+      true ->
+        Protocol.compute_seed(draw.entry_hash, draw.drand_randomness)
     end
     |> same_seed(draw, "the draw's seed is not the Land Observations seed of its inputs")
   end
@@ -249,22 +287,37 @@ defmodule WallopCore.Entropy.V6Rules do
   @doc """
   Telemetry metadata for `[:wallop_core, :v6, :executed]`, from a completed
   draw: the tag, the station whose reading was used (nil under the
-  grid-frequency tag) and whether the draw fell back to drand alone.
+  grid-frequency tag and on a weather fallback), whether the draw fell
+  back from its tag's primary source, and `source`, the input that fed the
+  seed: `:weather`, `:frequency` or `:drand_only`.
   """
   @spec report_meta(rules(), map()) :: %{
           entropy_composition: String.t(),
           station: String.t() | nil,
-          fallback?: boolean()
+          fallback?: boolean(),
+          source: :weather | :frequency | :drand_only
         }
   def report_meta(:landobs, draw) do
-    station = with %{station: s} <- reading(:landobs, draw), do: s
-    %{entropy_composition: draw.entropy_composition, station: station, fallback?: is_nil(station)}
+    {station, source} =
+      case reading(:landobs, draw) do
+        %{station: s} -> {s, :weather}
+        %{freq_start: _} -> {nil, :frequency}
+        nil -> {nil, :drand_only}
+      end
+
+    %{
+      entropy_composition: draw.entropy_composition,
+      station: station,
+      fallback?: source != :weather,
+      source: source
+    }
   end
 
   def report_meta(:freq, draw),
     do: %{
       entropy_composition: draw.entropy_composition,
       station: nil,
-      fallback?: is_nil(draw.freq_value)
+      fallback?: is_nil(draw.freq_value),
+      source: if(draw.freq_value, do: :frequency, else: :drand_only)
     }
 end

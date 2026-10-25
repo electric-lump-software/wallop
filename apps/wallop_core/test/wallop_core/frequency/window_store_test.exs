@@ -98,9 +98,22 @@ defmodule WallopCore.Frequency.WindowStoreTest do
     assert constraint(db_store(off_grid, @value)) == "frequency_windows_on_grid"
   end
 
-  test "no waiting grid-frequency draw for the window: refused" do
-    assert message(db_store(inside(), @value)) =~
-             "no grid-frequency draw is waiting for this window"
+  test "no waiting draw for the window: refused" do
+    assert message(db_store(inside(), @value)) =~ "no draw is waiting for this window"
+  end
+
+  test "a window is stored when only a weather-tag draw waits on its T" do
+    {_op, key} = create_v6_operator()
+    round = Quicknet.round_at_or_after(DateTime.add(DateTime.utc_now(), 60))
+
+    d =
+      put_v6_awaiting!(
+        open_draw_with_entries(key),
+        WallopCore.Weather.Schedule.weather_time_for_round(round),
+        round
+      )
+
+    assert {:ok, _} = Windows.store(d.freq_start, @value, elexon_body(d.freq_start, @value))
   end
 
   test "it refuses to run inside a caller's transaction, and sets short timeouts" do

@@ -240,7 +240,8 @@ defmodule WallopCore.Invariants.ObservationAndExecutionTest do
 
     test "INV-8 with nothing stored, only the rule's fallback completes, and only after F" do
       message = "v6 draw may fall back only after the fetch deadline with nothing stored"
-      fallback = "weather_fallback_reason = $3"
+      # State (c): no reading and no window stored.
+      fallback = "weather_fallback_reason = $3, freq_fallback_reason = 'no_frequency_by_deadline'"
 
       before_f = v6_draw(-5 * 60, -10) |> to_pending!()
       assert complete(before_f, fallback, [LandObs.fallback_reason()]) == message
@@ -287,6 +288,8 @@ defmodule WallopCore.Invariants.ObservationAndExecutionTest do
       assert done.status == :completed
       assert {done.weather_value, done.weather_observation_time} == {nil, nil}
       assert done.weather_fallback_reason == LandObs.fallback_reason()
+      # No window stored for its T either: state (c), drand alone.
+      assert {done.freq_value, done.freq_fallback_reason} == {nil, "no_frequency_by_deadline"}
       assert DateTime.compare(done.executed_at, Quicknet.pub_time(done.drand_round)) != :lt
     end
 

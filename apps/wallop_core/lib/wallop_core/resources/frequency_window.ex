@@ -81,7 +81,7 @@ defmodule WallopCore.Resources.FrequencyWindow do
       statement :guard_frequency_window_insert do
         # One row per T; the unique index on freq_start makes it the only
         # row, so every draw of T gets the same value. The waiting draws of
-        # T are locked FOR SHARE in id order: a completion UPDATE then waits
+        # T (either tag) are locked FOR SHARE in id order: a completion UPDATE then waits
         # for this store to end and its guard reads the store afresh, and a
         # completion already under way makes this insert wait and then not
         # count that draw.
@@ -99,16 +99,20 @@ defmodule WallopCore.Resources.FrequencyWindow do
               RAISE EXCEPTION 'a v6 write must run under READ COMMITTED isolation';
             END IF;
 
+            -- Every draw that may complete with T's window: grid-frequency
+            -- draws, and observation-weather draws whose reading may miss F.
+            -- Whether the weather falls back can't be known when the window
+            -- is stored, and a stored window is harmless when it doesn't.
             PERFORM 1 FROM draws
               WHERE freq_start = NEW.freq_start
                 AND lock_schema_version = '6'
-                AND entropy_composition = wallop_freq_tag()
+                AND entropy_composition IN (wallop_freq_tag(), wallop_landobs_tag())
                 AND status IN ('awaiting_entropy', 'pending_entropy')
               ORDER BY id
               FOR SHARE;
 
             IF NOT FOUND THEN
-              RAISE EXCEPTION 'no grid-frequency draw is waiting for this window';
+              RAISE EXCEPTION 'no draw is waiting for this window';
             END IF;
             IF wallop_freq_store_allowed(NEW.freq_start, now_utc) IS NOT TRUE THEN
               RAISE EXCEPTION 'frequency window outside its fetch window';

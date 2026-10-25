@@ -8,6 +8,7 @@ defmodule WallopCore.Entropy.V6RulesTest do
 
   @landobs LandObs.tag()
   @unknown "drand-quicknet+metoffice-landobs-v2"
+  @window_value "50018;50012;49983;49980;49953;49912;49883;49887"
 
   defp pair(schema, tag), do: %{lock_schema_version: schema, entropy_composition: tag}
 
@@ -44,7 +45,7 @@ defmodule WallopCore.Entropy.V6RulesTest do
              "unknown lock_schema_version and entropy_composition pair: (<NULL>, #{@landobs})"
   end
 
-  test "completion attributes: the reading, or the fallback by rule" do
+  test "completion attributes: the reading, the window, or drand alone, by rule" do
     wt = ~U[2026-10-15 12:00:00.000000Z]
     reading = %{station: "wmo-03749", value: "141;1025;85;2432", raw: "[]", observation_time: wt}
 
@@ -52,18 +53,33 @@ defmodule WallopCore.Entropy.V6RulesTest do
              weather_value: "141;1025;85;2432",
              weather_raw: "[]",
              weather_observation_time: wt,
-             weather_fallback_reason: nil
+             weather_fallback_reason: nil,
+             freq_value: nil,
+             freq_fallback_reason: nil
+           }
+
+    window = %{value: @window_value, raw: "{}", freq_start: ~U[2026-10-15 12:54:00.000000Z]}
+
+    assert V6Rules.completion_attrs(:landobs, window) == %{
+             weather_value: nil,
+             weather_raw: nil,
+             weather_observation_time: nil,
+             weather_fallback_reason: Protocol.landobs_fallback_reason(),
+             freq_value: @window_value,
+             freq_fallback_reason: nil
            }
 
     assert V6Rules.completion_attrs(:landobs, nil) == %{
              weather_value: nil,
              weather_raw: nil,
              weather_observation_time: nil,
-             weather_fallback_reason: Protocol.landobs_fallback_reason()
+             weather_fallback_reason: Protocol.landobs_fallback_reason(),
+             freq_value: nil,
+             freq_fallback_reason: Protocol.freq_fallback_reason()
            }
   end
 
-  # A completed Land Obs fallback draw as the signer sees it.
+  # A completed Land Obs drand-only draw (state (c)) as the signer sees it.
   defp landobs_fallback(overrides \\ %{}) do
     hash = String.duplicate("ab", 32)
     r = String.duplicate("c", 64)
@@ -77,7 +93,9 @@ defmodule WallopCore.Entropy.V6RulesTest do
         seed: Base.encode16(seed, case: :lower),
         weather_value: nil,
         weather_observation_time: nil,
-        weather_fallback_reason: Protocol.landobs_fallback_reason()
+        weather_fallback_reason: Protocol.landobs_fallback_reason(),
+        freq_value: nil,
+        freq_fallback_reason: Protocol.freq_fallback_reason()
       },
       overrides
     )
@@ -93,7 +111,9 @@ defmodule WallopCore.Entropy.V6RulesTest do
                 weather_station: Stations.primary().id,
                 weather_value: nil,
                 weather_observation_time: nil,
-                weather_fallback_reason: Protocol.landobs_fallback_reason()
+                weather_fallback_reason: Protocol.landobs_fallback_reason(),
+                freq_value: nil,
+                freq_fallback_reason: Protocol.freq_fallback_reason()
               }}
   end
 
@@ -126,8 +146,12 @@ defmodule WallopCore.Entropy.V6RulesTest do
     r = String.duplicate("c", 64)
     assert V6Rules.seed(:landobs, hash, r, nil) == Protocol.compute_seed(hash, r)
 
-    assert V6Rules.seed(:landobs, hash, r, %{value: "1;1000;1;1"}) ==
+    assert V6Rules.seed(:landobs, hash, r, %{station: "wmo-03749", value: "1;1000;1;1"}) ==
              Protocol.compute_seed(hash, r, "1;1000;1;1")
+
+    # No reading: the round's grid-frequency window, with the frequency seed.
+    assert V6Rules.seed(:landobs, hash, r, %{freq_start: ~U[2026-10-15 12:54:00Z], value: "x"}) ==
+             Protocol.compute_freq_seed(hash, r, "x")
   end
 
   describe "the grid-frequency rules" do
@@ -214,13 +238,23 @@ defmodule WallopCore.Entropy.V6RulesTest do
 
     test "report metadata names the tag and whether it fell back" do
       assert V6Rules.report_meta(:freq, %{entropy_composition: Freq.tag(), freq_value: nil}) ==
-               %{entropy_composition: Freq.tag(), station: nil, fallback?: true}
+               %{
+                 entropy_composition: Freq.tag(),
+                 station: nil,
+                 fallback?: true,
+                 source: :drand_only
+               }
 
       assert V6Rules.report_meta(:freq, %{
                entropy_composition: Freq.tag(),
                freq_value: @freq_value
              }) ==
-               %{entropy_composition: Freq.tag(), station: nil, fallback?: false}
+               %{
+                 entropy_composition: Freq.tag(),
+                 station: nil,
+                 fallback?: false,
+                 source: :frequency
+               }
     end
   end
 end

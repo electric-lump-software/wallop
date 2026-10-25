@@ -25,7 +25,7 @@ defmodule WallopCore.InvariantCase do
       put_freq_awaiting!: 3,
       put_frequency_window!: 2,
       put_observation!: 3,
-      put_v6_awaiting!: 3
+      put_v6_awaiting!: 4
     ]
 
   # One tag per task that still owes the suite an invariant. A task removes
@@ -518,9 +518,13 @@ defmodule WallopCore.InvariantCase do
   A v6 draw completed the way execution leaves it, ready for its execution
   receipt, built through every draws guard. Its round published a few
   seconds ago and its weather_time is that round's observation hour, so the
-  fetch deadline and the fallback grace have passed. `kind` is `:observed`
-  (a reading from `opts[:station]`, default the primary, with
-  `opts[:value]`, is stored for the hour) or `:fallback` (nothing stored).
+  fetch deadline and the fallback grace have passed. `kind` is one of the
+  tag's three states: `:observed`, state (a) (a reading from
+  `opts[:station]`, default the primary, with `opts[:value]`, is stored
+  for the hour); `:frequency`, state (b) (no reading; the round's window,
+  `opts[:freq_value]`, is stored); or `:fallback`, state (c) (nothing
+  stored). `opts[:freq_start]` stores another freq_start, as
+  `put_v6_awaiting!/4` takes it.
   `opts[:hours_ago]` moves the round that many hours back, so several
   draws in one test can each have an hour of their own. `opts[:weather_time]`
   stores another weather_time (the receipt still signs the round's own
@@ -532,7 +536,8 @@ defmodule WallopCore.InvariantCase do
   the receipt row's columns, `exec_after` the µs from pub(R) to
   `executed_at`.
   """
-  def completed_v6_receipt_input(kind, opts \\ []) when kind in [:observed, :fallback] do
+  def completed_v6_receipt_input(kind, opts \\ [])
+      when kind in [:observed, :frequency, :fallback] do
     require Ash.Query
 
     station = Keyword.get(opts, :station, Stations.primary().id)
@@ -545,8 +550,11 @@ defmodule WallopCore.InvariantCase do
       Quicknet.round_at_or_after(DateTime.add(DateTime.utc_now(), -10 - hours_ago * 3600))
 
     wt = Keyword.get(opts, :weather_time, Schedule.weather_time_for_round(round))
-    draw = put_v6_awaiting!(open_draw_with_entries(api_key), wt, round)
+    freq_value = Keyword.get(opts, :freq_value, "50012;50018;50012;49983;49980;49953;49912;49883")
+    awaiting = Keyword.take(opts, [:freq_start])
+    draw = put_v6_awaiting!(open_draw_with_entries(api_key), wt, round, awaiting)
     if kind == :observed, do: put_observation!(station, wt, value)
+    if kind == :frequency, do: put_frequency_window!(draw.freq_start, freq_value)
     complete = if opts[:triggers_off], do: &with_triggers_off/1, else: & &1.()
 
     executed_at = DateTime.utc_now()
@@ -566,10 +574,17 @@ defmodule WallopCore.InvariantCase do
       :crypto.hash(:sha256, Base.decode16!(signature, case: :lower))
       |> Base.encode16(case: :lower)
 
-    {obs_value, obs_time, reason, exec_station} =
+    {obs_value, obs_time, reason, exec_station, freq, freq_reason} =
       case kind do
-        :observed -> {value, wt, nil, station}
-        :fallback -> {nil, nil, LandObs.fallback_reason(), Stations.primary().id}
+        :observed ->
+          {value, wt, nil, station, nil, nil}
+
+        :frequency ->
+          {nil, nil, LandObs.fallback_reason(), Stations.primary().id, freq_value, nil}
+
+        :fallback ->
+          {nil, nil, LandObs.fallback_reason(), Stations.primary().id, nil,
+           Protocol.freq_fallback_reason()}
       end
 
     Repo.query!("UPDATE draws SET status = 'pending_entropy' WHERE id = $1", [dump(draw.id)])
@@ -579,7 +594,8 @@ defmodule WallopCore.InvariantCase do
         """
         UPDATE draws SET status = 'completed', executed_at = $2, seed = $3, seed_source = 'entropy',
           results = $4, drand_randomness = $5, drand_signature = $6, weather_value = $7,
-          weather_observation_time = $8, weather_fallback_reason = $9
+          weather_observation_time = $8, weather_fallback_reason = $9, freq_value = $10,
+          freq_fallback_reason = $11
         WHERE id = $1
         """,
         [
@@ -591,7 +607,9 @@ defmodule WallopCore.InvariantCase do
           signature,
           obs_value,
           obs_time && DateTime.to_naive(obs_time),
-          reason
+          reason,
+          freq,
+          freq_reason
         ]
       )
     end)
@@ -629,6 +647,8 @@ defmodule WallopCore.InvariantCase do
       weather_observation_time: obs_time,
       weather_value: obs_value,
       weather_fallback_reason: reason,
+      freq_value: freq,
+      freq_fallback_reason: freq_reason,
       wallop_core_version: to_string(Application.spec(:wallop_core, :vsn)),
       fair_pick_version: lock_payload["fair_pick_version"],
       seed: seed,

@@ -257,27 +257,6 @@ defmodule WallopCore.Resources.Draw do
         down("DROP FUNCTION IF EXISTS wallop_receipt_integer(text, jsonb, text)")
       end
 
-      statement :wallop_landobs_exec_keys do
-        # Tags.LandObs.exec_keys/0: every key of the receipt under the Land Obs
-        # tag, sorted bytewise (COLLATE "C").
-        up("""
-        CREATE OR REPLACE FUNCTION wallop_landobs_exec_keys() RETURNS text[]
-        LANGUAGE sql IMMUTABLE AS $$
-          SELECT ARRAY[
-            'drand_chain', 'drand_randomness', 'drand_round', 'drand_signature',
-            'drand_signature_algorithm', 'draw_id', 'entropy_composition', 'entry_hash',
-            'executed_at', 'fair_pick_version', 'jcs_version', 'lock_receipt_hash',
-            'merkle_algorithm', 'operator_id', 'operator_slug', 'results', 'schema_version',
-            'seed', 'sequence', 'signature_algorithm', 'signing_key_id',
-            'wallop_core_version', 'weather_fallback_reason', 'weather_observation_time',
-            'weather_station', 'weather_value'
-          ]::text[]
-        $$
-        """)
-
-        down("DROP FUNCTION IF EXISTS wallop_landobs_exec_keys()")
-      end
-
       # The grid-frequency tag (drand-quicknet+elexon-freq-v1). Every constant
       # mirrors WallopCore.Frequency.Schedule, WallopCore.Frequency.FreqGrammar
       # or WallopCore.Protocol.Tags.Freq and has an equality test in
@@ -434,27 +413,6 @@ defmodule WallopCore.Resources.Draw do
         down("DROP FUNCTION IF EXISTS wallop_freq_valid_value(text)")
       end
 
-      statement :wallop_freq_exec_keys do
-        # Tags.Freq.exec_keys/0, sorted bytewise (COLLATE "C").
-        up("""
-        CREATE OR REPLACE FUNCTION wallop_freq_exec_keys() RETURNS text[]
-        LANGUAGE sql IMMUTABLE AS $$
-          SELECT ARRAY[
-            'drand_chain', 'drand_randomness', 'drand_round', 'drand_signature',
-            'drand_signature_algorithm', 'draw_id', 'entropy_composition', 'entry_hash',
-            'executed_at', 'fair_pick_version', 'freq_fallback_reason', 'freq_value',
-            'jcs_version', 'lock_receipt_hash', 'merkle_algorithm', 'operator_id',
-            'operator_slug', 'results', 'schema_version', 'seed', 'sequence',
-            'signature_algorithm', 'signing_key_id', 'wallop_core_version',
-            'weather_fallback_reason', 'weather_observation_time', 'weather_station',
-            'weather_value'
-          ]::text[]
-        $$
-        """)
-
-        down("DROP FUNCTION IF EXISTS wallop_freq_exec_keys()")
-      end
-
       statement :wallop_v6_lock_keys do
         # Tags.V6Keys.lock_keys/0: every key of a lock receipt schema 6,
         # under either tag, sorted bytewise (COLLATE "C").
@@ -472,6 +430,28 @@ defmodule WallopCore.Resources.Draw do
         """)
 
         down("DROP FUNCTION IF EXISTS wallop_v6_lock_keys()")
+      end
+
+      statement :wallop_v6_exec_keys do
+        # Tags.V6Keys.exec_keys/0: every key of an execution receipt schema
+        # 5, under either tag, sorted bytewise (COLLATE "C").
+        up("""
+        CREATE OR REPLACE FUNCTION wallop_v6_exec_keys() RETURNS text[]
+        LANGUAGE sql IMMUTABLE AS $$
+          SELECT ARRAY[
+            'drand_chain', 'drand_randomness', 'drand_round', 'drand_signature',
+            'drand_signature_algorithm', 'draw_id', 'entropy_composition', 'entry_hash',
+            'executed_at', 'fair_pick_version', 'freq_fallback_reason', 'freq_value',
+            'jcs_version', 'lock_receipt_hash', 'merkle_algorithm', 'operator_id',
+            'operator_slug', 'results', 'schema_version', 'seed', 'sequence',
+            'signature_algorithm', 'signing_key_id', 'wallop_core_version',
+            'weather_fallback_reason', 'weather_observation_time', 'weather_station',
+            'weather_value'
+          ]::text[]
+        $$
+        """)
+
+        down("DROP FUNCTION IF EXISTS wallop_v6_exec_keys()")
       end
 
       statement :wallop_v6_fetch_deadline do
@@ -625,12 +605,13 @@ defmodule WallopCore.Resources.Draw do
         # every forecast and historic draw: it returns early, after refusing
         # the grid-frequency columns on such a row, and never reaches a tag
         # arm. Setting the pair outside a lock is refused below.
-        # The completion clauses read weather_observations by the draw's
-        # weather_time (Land Obs) or frequency_windows by its freq_start
-        # (grid frequency); PL/pgSQL resolves each table only when a draw of
-        # that tag completes. The draws row keeps the lock's weather_station (frozen);
-        # the reading's station is fixed by the hour's single row, and the
-        # execution receipt carries it.
+        # The Land Obs completion reads weather_observations by weather_time
+        # and, with no reading, frequency_windows by freq_start: the three
+        # states of the tag. The grid-frequency completion reads
+        # frequency_windows by freq_start. PL/pgSQL resolves each table only
+        # when a draw of that tag completes. The draws row keeps the lock's
+        # weather_station (frozen); the reading's station is fixed by the
+        # hour's single row, and the execution receipt carries it.
         #
         # Once a v6 draw has left open it can't be deleted, and once the DB
         # clock reaches its fetch deadline F it can't move to failed, from
@@ -800,25 +781,41 @@ defmodule WallopCore.Resources.Draw do
               END IF;
 
               IF OLD.entropy_composition = wallop_landobs_tag() THEN
-                -- One row per observation hour: every draw of the hour
-                -- completes with it. VOLATILE, so this read takes a fresh
-                -- snapshot once a store holding this row's lock has ended.
+                -- Exactly one of three states. VOLATILE reads, after this
+                -- row's lock, so a store that held it is seen once it ends.
                 SELECT station, value, observation_time INTO obs FROM weather_observations
                   WHERE observation_time = OLD.weather_time;
                 IF FOUND THEN
+                  -- (a) The hour's reading. The window is not consulted,
+                  -- even if one is stored.
                   IF NEW.weather_value IS DISTINCT FROM obs.value
                      OR NEW.weather_observation_time IS DISTINCT FROM obs.observation_time
-                     OR NEW.weather_fallback_reason IS NOT NULL THEN
+                     OR NEW.weather_fallback_reason IS NOT NULL
+                     OR NEW.freq_value IS NOT NULL OR NEW.freq_fallback_reason IS NOT NULL THEN
                     RAISE EXCEPTION 'v6 draw must complete with its stored observation';
                   END IF;
-                -- The fallback waits a minute past F, so a store that commits
-                -- at F is visible to every draw of the hour by then. Execution
-                -- is at or after pub(R) >= F + 60s anyway.
-                ELSIF NEW.weather_value IS NOT NULL OR NEW.weather_observation_time IS NOT NULL
-                      OR NEW.weather_fallback_reason IS DISTINCT FROM wallop_landobs_fallback_reason()
-                      OR (now_utc > OLD.weather_time + wallop_landobs_fetch_window() + interval '1 minute')
-                         IS NOT TRUE THEN
-                  RAISE EXCEPTION 'v6 draw may fall back only after the fetch deadline with nothing stored';
+                ELSE
+                  -- No reading: the weather falls back, a minute past F, so a
+                  -- store that commits at F is visible to every draw first.
+                  IF NEW.weather_value IS NOT NULL OR NEW.weather_observation_time IS NOT NULL
+                     OR NEW.weather_fallback_reason IS DISTINCT FROM wallop_landobs_fallback_reason()
+                     OR (now_utc > OLD.weather_time + wallop_landobs_fetch_window() + interval '1 minute')
+                        IS NOT TRUE THEN
+                    RAISE EXCEPTION 'v6 draw may fall back only after the fetch deadline with nothing stored';
+                  END IF;
+                  SELECT value INTO win FROM frequency_windows WHERE freq_start = OLD.freq_start;
+                  IF FOUND THEN
+                    -- (b) T's window.
+                    IF NEW.freq_value IS DISTINCT FROM win.value OR NEW.freq_fallback_reason IS NOT NULL THEN
+                      RAISE EXCEPTION 'v6 draw must complete with its stored frequency window';
+                    END IF;
+                  -- (c) Neither, and M past T's fetch deadline too.
+                  ELSIF NEW.freq_value IS NOT NULL
+                        OR NEW.freq_fallback_reason IS DISTINCT FROM wallop_freq_fallback_reason()
+                        OR (now_utc > wallop_freq_fetch_deadline(OLD.freq_start) + wallop_freq_margin())
+                           IS NOT TRUE THEN
+                    RAISE EXCEPTION 'v6 draw may fall back only after the fetch deadline with nothing stored';
+                  END IF;
                 END IF;
               ELSIF OLD.entropy_composition = wallop_freq_tag() THEN
                 -- Its weather columns are refused above, at every status.
@@ -1083,8 +1080,10 @@ defmodule WallopCore.Resources.Draw do
         # historic draw) takes its execution receipt exactly as before, but
         # never a schema 5 one. A v6 draw's receipt is bound field by field
         # to the completed draw, its stored lock receipt, the operator, the
-        # infrastructure keyring and, by tag, the hour's stored observation
-        # or T's stored frequency window (or the fallback rule). The seed and the winners are bound to the draw's
+        # infrastructure keyring and, by tag, the stored state: under Land
+        # Obs the hour's observation, else T's frequency window, else the
+        # drand-only fallback rule; under grid frequency T's window, else the
+        # fallback rule. The seed and the winners are bound to the draw's
         # columns, never recomputed here.
         up("""
         DO $do$
@@ -1101,6 +1100,8 @@ defmodule WallopCore.Resources.Draw do
             lp jsonb;
             obs RECORD;
             win RECORD;
+            win_value text;
+            win_stored boolean;
             keys text[];
             stored boolean;
             field text;
@@ -1143,20 +1144,16 @@ defmodule WallopCore.Resources.Draw do
 
             -- The tag's rules, or a refusal: nothing falls through to
             -- another tag.
-            IF d.lock_schema_version IS DISTINCT FROM '6' THEN
-              RAISE EXCEPTION 'no execution receipt rules for (%, %)',
-                d.lock_schema_version, d.entropy_composition;
-            ELSIF d.entropy_composition IS NOT DISTINCT FROM wallop_landobs_tag() THEN
-              keys := wallop_landobs_exec_keys();
-            ELSIF d.entropy_composition IS NOT DISTINCT FROM wallop_freq_tag() THEN
-              keys := wallop_freq_exec_keys();
-            ELSE
-              -- Belt and braces: unreachable today, since the draws guard
-              -- lets a schema 6 draw carry only these two tags. Kept so a
-              -- tag added there without rules here is refused, not passed.
+            IF d.lock_schema_version IS DISTINCT FROM '6'
+               OR (d.entropy_composition IS DISTINCT FROM wallop_landobs_tag()
+                   AND d.entropy_composition IS DISTINCT FROM wallop_freq_tag()) THEN
+              -- The second test is belt and braces: the draws guard lets a
+              -- schema 6 draw carry only these two tags. Kept so a tag added
+              -- there without rules here is refused, not passed.
               RAISE EXCEPTION 'no execution receipt rules for (%, %)',
                 d.lock_schema_version, d.entropy_composition;
             END IF;
+            keys := wallop_v6_exec_keys();
 
             raw := convert_from(NEW.payload_jcs, 'UTF8');
             p := raw::jsonb;
@@ -1247,10 +1244,11 @@ defmodule WallopCore.Resources.Draw do
             END IF;
 
             IF d.entropy_composition IS NOT DISTINCT FROM wallop_landobs_tag() THEN
-              -- The hour's one stored reading, or else the fallback rule.
+              -- Mirrors the completion guard field by field: one of three states.
               SELECT station, value, observation_time INTO obs FROM weather_observations
                 WHERE observation_time = d.weather_time;
               stored := FOUND;
+              win_stored := false;
               IF stored THEN
                 bad := CASE
                   WHEN p->>'weather_station' IS DISTINCT FROM obs.station THEN 'weather_station'
@@ -1262,8 +1260,13 @@ defmodule WallopCore.Resources.Draw do
                     THEN 'weather_observation_time'
                   WHEN p->'weather_fallback_reason' IS DISTINCT FROM 'null'::jsonb
                     THEN 'weather_fallback_reason'
+                  WHEN p->'freq_value' IS DISTINCT FROM 'null'::jsonb THEN 'freq_value'
+                  WHEN p->'freq_fallback_reason' IS DISTINCT FROM 'null'::jsonb
+                    THEN 'freq_fallback_reason'
                 END;
               ELSE
+                SELECT value INTO win_value FROM frequency_windows WHERE freq_start = d.freq_start;
+                win_stored := FOUND;
                 bad := CASE
                   WHEN p->>'weather_station' IS DISTINCT FROM wallop_landobs_primary_station()
                     THEN 'weather_station'
@@ -1273,16 +1276,31 @@ defmodule WallopCore.Resources.Draw do
                   WHEN jsonb_typeof(p->'weather_fallback_reason') IS DISTINCT FROM 'string'
                        OR p->>'weather_fallback_reason' IS DISTINCT FROM wallop_landobs_fallback_reason()
                     THEN 'weather_fallback_reason'
+                  WHEN win_stored AND (jsonb_typeof(p->'freq_value') IS DISTINCT FROM 'string'
+                                       OR p->>'freq_value' IS DISTINCT FROM win_value)
+                    THEN 'freq_value'
+                  WHEN win_stored AND p->'freq_fallback_reason' IS DISTINCT FROM 'null'::jsonb
+                    THEN 'freq_fallback_reason'
+                  WHEN NOT win_stored AND p->'freq_value' IS DISTINCT FROM 'null'::jsonb
+                    THEN 'freq_value'
+                  WHEN NOT win_stored
+                       AND (jsonb_typeof(p->'freq_fallback_reason') IS DISTINCT FROM 'string'
+                            OR p->>'freq_fallback_reason' IS DISTINCT FROM wallop_freq_fallback_reason())
+                    THEN 'freq_fallback_reason'
                 END;
               END IF;
               IF bad IS NOT NULL THEN
                 RAISE EXCEPTION 'v6 execution receipt field % does not match the stored observation', bad;
               END IF;
 
-              -- Mirrors the completion guard: nothing stored, and a minute
-              -- past the fetch deadline.
+              -- Both clocks, as in the completion guard.
               IF NOT stored
                  AND (now_utc > d.weather_time + wallop_landobs_fetch_window() + interval '1 minute')
+                     IS NOT TRUE THEN
+                RAISE EXCEPTION 'a v6 execution receipt may fall back only after the fetch deadline with nothing stored';
+              END IF;
+              IF NOT stored AND NOT win_stored
+                 AND (now_utc > wallop_freq_fetch_deadline(d.freq_start) + wallop_freq_margin())
                      IS NOT TRUE THEN
                 RAISE EXCEPTION 'a v6 execution receipt may fall back only after the fetch deadline with nothing stored';
               END IF;

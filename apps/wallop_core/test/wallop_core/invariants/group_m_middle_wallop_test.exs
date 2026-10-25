@@ -130,7 +130,6 @@ defmodule WallopCore.Invariants.GroupMMiddleWallopTest do
     assert sql_one("SELECT wallop_v6_lock_keys()") == LandObs.lock_keys()
   end
 
-  @tag :pending_task_M5
   test "INV-M4 T's window is stored when only weather-tag draws wait on T" do
     {_op, key} = create_v6_operator()
     round = Quicknet.round_at_or_after(DateTime.add(DateTime.utc_now(), 60))
@@ -144,7 +143,6 @@ defmodule WallopCore.Invariants.GroupMMiddleWallopTest do
     assert %{value: @freq} = Windows.for_start(t)
   end
 
-  @tag :pending_task_M5
   test "INV-M5 a weather-tag draw completes in exactly one of the three states" do
     {_op, key} = create_v6_operator()
     stored_only = "v6 draw must complete with its stored observation"
@@ -175,7 +173,6 @@ defmodule WallopCore.Invariants.GroupMMiddleWallopTest do
     assert complete(d, {nil, nil, @no_obs, @freq, nil}) == stored_only
   end
 
-  @tag :pending_task_M5
   test "INV-M6 (b) and (c) need now > F + 1 min; (c) also needs now > F_freq + M" do
     {_op, key} = create_v6_operator()
     fallback_only = "v6 draw may fall back only after the fetch deadline with nothing stored"
@@ -285,7 +282,6 @@ defmodule WallopCore.Invariants.GroupMMiddleWallopTest do
     assert Windows.waiting_tags() == [Freq.tag(), LandObs.tag()]
   end
 
-  @tag :pending_task_M5
   test "INV-M9 a weather-tag draw still can't fail from the weather F, the earlier deadline" do
     {_op, key} = create_v6_operator()
     d = pending_past(key)

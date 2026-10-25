@@ -59,8 +59,10 @@ defmodule WallopCore.Entropy.V6Execution do
   clock, so a skew over 5 s is reported.
 
   Telemetry: `[:wallop_core, :v6, :executed]`
-  (`%{entropy_composition, station, fallback?}`, from
-  `WallopCore.Entropy.V6Rules.report_meta/2`),
+  (`%{entropy_composition, station, fallback?, source}`, from
+  `WallopCore.Entropy.V6Rules.report_meta/2`; `source` is `:weather`,
+  `:frequency` or `:drand_only`, the input that fed the seed, so a
+  weather-tag draw that ended on drand alone is visible per draw),
   `[:wallop_core, :v6, :execute_error]` (`%{draw_id}`),
   `[:wallop_core, :v6, :exec_refused]` (`%{draw_id, reason}`),
   `[:wallop_core, :v6, :drand_exhausted]` (`%{draw_id, reason}`) and

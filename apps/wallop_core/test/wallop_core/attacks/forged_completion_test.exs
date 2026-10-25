@@ -33,7 +33,7 @@ defmodule WallopCore.Attacks.ForgedCompletionTest do
     seed_source = 'entropy', results = ARRAY[$4::jsonb],
     drand_randomness = $5, drand_signature = $6,
     weather_value = NULL, weather_observation_time = NULL,
-    weather_fallback_reason = $7
+    weather_fallback_reason = $7, freq_fallback_reason = 'no_frequency_by_deadline'
   WHERE id = $1
   """
 

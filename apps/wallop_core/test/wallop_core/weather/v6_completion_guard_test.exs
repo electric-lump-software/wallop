@@ -50,7 +50,8 @@ defmodule WallopCore.Weather.V6CompletionGuardTest do
     e in Postgrex.Error -> e.postgres.message
   end
 
-  @fallback "weather_fallback_reason = $3"
+  # The fallback here is state (c): no reading and no window stored.
+  @fallback "weather_fallback_reason = $3, freq_fallback_reason = 'no_frequency_by_deadline'"
 
   defp reading(draw, value),
     do: %{value: value, raw: "[]", observation_time: draw.weather_time}

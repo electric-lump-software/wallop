@@ -2,14 +2,15 @@ defmodule WallopCore.Frequency.Windows do
   @moduledoc """
   Storage and lookups for grid-frequency windows
   (`WallopCore.Resources.FrequencyWindow`): one window per start T, shared
-  by every grid-frequency draw of T. What may be stored, and when, is
+  by every draw of T: grid-frequency draws, and observation-weather draws
+  whose reading missed its deadline. What may be stored, and when, is
   decided by the database on its own clock; this module only asks.
   """
 
   require Ash.Query
 
   alias WallopCore.Frequency.FreqGrammar
-  alias WallopCore.Protocol.Tags.Freq
+  alias WallopCore.Protocol.Tags.{Freq, LandObs}
   alias WallopCore.Repo
   alias WallopCore.Resources.{Draw, FrequencyWindow}
 
@@ -26,13 +27,14 @@ defmodule WallopCore.Frequency.Windows do
   end
 
   @doc """
-  The window a draw uses: the one stored for its `freq_start`. nil for a
-  draw that isn't a grid-frequency draw, or whose T has none. Takes the
-  draw or its id.
+  The window stored for a draw's `freq_start`, under either lock schema 6
+  tag. nil for any other draw, or one whose T has none. Under the
+  observation-weather tag the draw uses it only when there is no reading
+  for its hour. Takes the draw or its id.
   """
   @spec for_draw(Draw.t() | String.t()) :: FrequencyWindow.t() | nil
   def for_draw(%Draw{lock_schema_version: "6", freq_start: %DateTime{} = t} = draw) do
-    if draw.entropy_composition == Freq.tag(), do: for_start(t)
+    if draw.entropy_composition in [Freq.tag(), LandObs.tag()], do: for_start(t)
   end
 
   def for_draw(%Draw{}), do: nil
@@ -43,8 +45,8 @@ defmodule WallopCore.Frequency.Windows do
   @doc """
   Stores the window for T. Refuses unless `value` is exactly what `raw`
   (the Elexon response body) gives for T, so the stored bytes always prove
-  the stored value. The database refuses it unless a grid-frequency draw of
-  T is waiting, T is in its window on the database clock, nothing is stored
+  the stored value. The database refuses it unless a draw of T (either
+  tag) is waiting, T is in its window on the database clock, nothing is stored
   for T yet, and the transaction commits by F.
 
   Runs in its own transaction and refuses to run inside a caller's, with

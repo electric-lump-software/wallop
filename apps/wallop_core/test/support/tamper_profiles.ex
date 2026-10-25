@@ -82,16 +82,21 @@ defmodule WallopCore.TamperProfiles.LandObs do
       weather_station: Stations.primary().id,
       weather_value: @weather_value,
       weather_observation_time: Schedule.weather_time_for_round(V.round()),
-      weather_fallback_reason: nil
+      weather_fallback_reason: nil,
+      freq_value: nil,
+      freq_fallback_reason: nil
     }
   end
 
+  # State (c): no reading and no window, so drand alone.
   def exec_fields(:fallback) do
     %{
       weather_station: Stations.primary().id,
       weather_value: nil,
       weather_observation_time: nil,
-      weather_fallback_reason: Protocol.landobs_fallback_reason()
+      weather_fallback_reason: Protocol.landobs_fallback_reason(),
+      freq_value: nil,
+      freq_fallback_reason: Protocol.freq_fallback_reason()
     }
   end
 
@@ -273,6 +278,18 @@ defmodule WallopCore.TamperProfiles.LandObs do
        "a schema 4 reason", ~w(bundle_shape weather_observation_window)},
       {"exec_fallback_reason_null", :fallback, :exec, "weather_fallback_reason", nil,
        "nil on a fallback", ~w(weather_observation_window)},
+      {"exec_freq_value_on_observed", :observed, :exec, "freq_value",
+       "50012;50018;50012;49983;49980;49953;49912;49883", "a window beside a reading",
+       ~w(drand_bls_signature receipt_field_consistency seed_recomputation weather_observation_window)},
+      {"exec_freq_fallback_reason_on_observed", :observed, :exec, "freq_fallback_reason",
+       Protocol.freq_fallback_reason(), "the frequency reason beside a reading",
+       ~w(receipt_field_consistency seed_recomputation weather_observation_window)},
+      {"exec_freq_reason_null_on_fallback", :fallback, :exec, "freq_fallback_reason", nil,
+       "nil on a drand-only fallback",
+       ~w(receipt_field_consistency seed_recomputation weather_observation_window)},
+      {"exec_freq_reason_other_on_fallback", :fallback, :exec, "freq_fallback_reason",
+       "unreachable", "another reason on a drand-only fallback",
+       ~w(bundle_shape receipt_field_consistency seed_recomputation weather_observation_window)},
       {"exec_jcs_version_other", :observed, :exec, "jcs_version", "sha256-jcs-v2",
        "a different value", ~w(bundle_shape)},
       {"exec_signature_algorithm_other", :observed, :exec, "signature_algorithm", "ed448",

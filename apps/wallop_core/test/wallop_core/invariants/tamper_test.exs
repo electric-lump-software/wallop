@@ -379,7 +379,12 @@ defmodule WallopCore.Invariants.TamperTest do
 
   defp exec_before(round), do: "exec v5 executed_at is before drand round #{round} was published"
 
-  @exec_fields ~s(exec v5 weather fields must be a value and observation time with a null reason, or both null with reason "no_observation_by_deadline")
+  @exec_fields ~s(exec v5 fields must be in one of three states: a weather value and ) <>
+                 ~s(observation time with no reasons; no weather, reason ) <>
+                 ~s("no_observation_by_deadline", a freq_value and no freq reason; or no ) <>
+                 ~s(weather, reason "no_observation_by_deadline", no freq_value and freq ) <>
+                 ~s(reason "no_frequency_by_deadline")
+  @window "50012;50018;50012;49983;49980;49953;49912;49883"
   @exec_grammar "exec v5 weather_value does not match the Land Observations grammar and bounds"
 
   defp exec_weather_mutations(:observed, e, r, wt) do
@@ -406,9 +411,12 @@ defmodule WallopCore.Invariants.TamperTest do
        {:raise, @exec_grammar}},
       {"weather_value out of bounds", %{e | weather_value: "601;1025;85;2432"},
        {:raise, @exec_grammar}},
-      {"weather_value nil", %{e | weather_value: nil}, {:raise, @exec_grammar}},
+      {"weather_value nil", %{e | weather_value: nil}, {:raise, @exec_fields}},
       {"weather_fallback_reason set", %{e | weather_fallback_reason: LandObs.fallback_reason()},
        {:raise, @exec_fields}},
+      {"freq_value set beside a reading", %{e | freq_value: @window}, {:raise, @exec_fields}},
+      {"freq_fallback_reason set beside a reading",
+       %{e | freq_fallback_reason: Protocol.freq_fallback_reason()}, {:raise, @exec_fields}},
       {"drand_round +1h with weather_observation_time +1h",
        %{e | drand_round: r + 1200, weather_observation_time: hours(wt, 1)},
        {:raise, exec_before(r + 1200)}}
@@ -425,7 +433,17 @@ defmodule WallopCore.Invariants.TamperTest do
        {:raise, @exec_fields}},
       {"weather_fallback_reason schema 4", %{e | weather_fallback_reason: "unreachable"},
        {:raise, @exec_fields}},
-      {"weather_fallback_reason nil", %{e | weather_fallback_reason: nil}, {:raise, @exec_fields}}
+      {"weather_fallback_reason nil", %{e | weather_fallback_reason: nil},
+       {:raise, @exec_fields}},
+      {"freq_fallback_reason nil on a drand-only fallback", %{e | freq_fallback_reason: nil},
+       {:raise, @exec_fields}},
+      {"freq_fallback_reason other on a drand-only fallback",
+       %{e | freq_fallback_reason: "unreachable"}, {:raise, @exec_fields}},
+      {"freq_value set on a drand-only fallback", %{e | freq_value: @window},
+       {:raise, @exec_fields}},
+      {"freq_value off grammar with the weather reason",
+       %{e | freq_value: "50012", freq_fallback_reason: nil},
+       {:raise, "exec v5 freq_value does not match the grid-frequency grammar"}}
     ]
   end
 

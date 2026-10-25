@@ -157,6 +157,8 @@ defmodule WallopCore.Entropy.ObservationDrawWorkerTest do
       assert done.weather_value == nil
       assert done.weather_observation_time == nil
       assert done.weather_fallback_reason == "no_observation_by_deadline"
+      # No window stored for its T either: state (c), drand alone.
+      assert {done.freq_value, done.freq_fallback_reason} == {nil, "no_frequency_by_deadline"}
       assert done.drand_randomness == @randomness
       assert done.weather_station == Stations.primary().id
 
@@ -170,7 +172,11 @@ defmodule WallopCore.Entropy.ObservationDrawWorkerTest do
       assert payload["weather_value"] == nil
       assert payload["weather_fallback_reason"] == "no_observation_by_deadline"
 
-      assert_receive {[:wallop_core, :v6, :executed], ^ref, _, %{station: nil, fallback?: true}}
+      assert {payload["freq_value"], payload["freq_fallback_reason"]} ==
+               {nil, "no_frequency_by_deadline"}
+
+      assert_receive {[:wallop_core, :v6, :executed], ^ref, _,
+                      %{station: nil, fallback?: true, source: :drand_only}}
     end
 
     test "a stored reading is used, and the receipt names its station" do
@@ -196,8 +202,10 @@ defmodule WallopCore.Entropy.ObservationDrawWorkerTest do
       assert payload["weather_value"] == @value
       assert payload["weather_fallback_reason"] == nil
 
+      assert {payload["freq_value"], payload["freq_fallback_reason"]} == {nil, nil}
+
       assert_receive {[:wallop_core, :v6, :executed], ^ref, _,
-                      %{station: ^station, fallback?: false}}
+                      %{station: ^station, fallback?: false, source: :weather}}
     end
 
     test "the signer recomputes the seed: the weather seed matches, any other is refused" do

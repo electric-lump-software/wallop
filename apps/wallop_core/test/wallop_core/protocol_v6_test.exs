@@ -35,36 +35,23 @@ defmodule WallopCore.ProtocolV6Test do
     fair_pick_version: @fair_pick
   }
 
-  @exec %{
-    entropy_composition: @landobs,
-    draw_id: @lock.draw_id,
-    operator_id: @lock.operator_id,
-    operator_slug: "acme-prizes",
-    sequence: 7,
-    lock_receipt_hash: String.duplicate("cd", 32),
-    entry_hash: @lock.entry_hash,
-    drand_chain: @lock.drand_chain,
-    drand_round: 33_068_212,
-    drand_randomness: "140117383b03a0c0c7a899a32b8cbd2ffff9e2569504037c358ee8c7c2efe2fd",
-    drand_signature:
-      "b6541e41bb68ff318e8bd74b9f6e168ae6424476c432241420c38427df58c6ef33fe009ce202a7101120ab481702fddf",
-    weather_station: "wmo-03749",
-    weather_observation_time: ~U[2026-10-14 19:00:00.000000Z],
-    weather_value: "141;1025;85;2432",
-    weather_fallback_reason: nil,
-    wallop_core_version: "0.29.0",
-    fair_pick_version: @fair_pick,
-    seed: String.duplicate("ef", 32),
-    results: ["33333333-3333-3333-3333-333333333333"],
-    executed_at: ~U[2026-10-14 20:00:06.000000Z],
-    signing_key_id: "cafebabe"
-  }
+  # State (a): Middle Wallop's reading, with the lock above's draw.
+  @exec WallopCore.TestHelpers.landobs_exec_input()
 
+  # State (c): no reading and no window, so drand alone.
   @fallback %{
     @exec
     | weather_value: nil,
       weather_observation_time: nil,
-      weather_fallback_reason: "no_observation_by_deadline"
+      weather_fallback_reason: "no_observation_by_deadline",
+      freq_fallback_reason: "no_frequency_by_deadline"
+  }
+
+  # State (b): no reading, so the round's grid-frequency window.
+  @freq_fallback %{
+    @fallback
+    | freq_value: "50018;50012;49983;49980;49953;49912;49883;49887",
+      freq_fallback_reason: nil
   }
 
   # One entry per accepted entropy tag: {tag module, lock input, exec input}.
@@ -86,10 +73,11 @@ defmodule WallopCore.ProtocolV6Test do
       weather_observation_time: nil,
       weather_value: nil
   }
-  @freq_exec Map.merge(@freq_exec, %{
-               freq_value: "50018;50012;49983;49980;49953;49912;49883;49887",
-               freq_fallback_reason: nil
-             })
+  @freq_exec %{
+    @freq_exec
+    | freq_value: "50018;50012;49983;49980;49953;49912;49883;49887",
+      freq_fallback_reason: nil
+  }
 
   @accepted_tags [{LandObs, @lock, @exec}, {Freq, @freq_lock, @freq_exec}]
 
@@ -121,21 +109,26 @@ defmodule WallopCore.ProtocolV6Test do
     end
   end
 
-  test "the landobs lock adds only freq_start to the lock 5 keys; its exec keys are exec 4's" do
+  test "the landobs lock adds only freq_start to the lock 5 keys; exec adds only the freq fields" do
     lock_v5 = Jason.decode!(Protocol.build_receipt_payload(v5_input(@lock)))
     exec_v4 = Jason.decode!(Protocol.build_execution_receipt_payload(v5_input(@exec)))
 
     assert LandObs.lock_keys() == Enum.sort(["freq_start" | Map.keys(lock_v5)])
     assert length(LandObs.lock_keys()) == 20
     assert LandObs.lock_keys() == Freq.lock_keys()
-    assert LandObs.exec_keys() == Map.keys(exec_v4)
+
+    assert LandObs.exec_keys() ==
+             Enum.sort(["freq_fallback_reason", "freq_value" | Map.keys(exec_v4)])
+
+    assert length(LandObs.exec_keys()) == 28
+    assert LandObs.exec_keys() == Freq.exec_keys()
   end
 
   # The same input, as the lock 5 / execution 4 builders take it: no tag,
   # no freq_start, the old station and an old-style value.
   defp v5_input(input) do
     input
-    |> Map.drop([:entropy_composition, :freq_start])
+    |> Map.drop([:entropy_composition, :freq_start, :freq_value, :freq_fallback_reason])
     |> Map.put(:weather_station, "middle-wallop")
     |> old_style_value()
   end
@@ -243,9 +236,9 @@ defmodule WallopCore.ProtocolV6Test do
         end
       end
 
-      # weather_fallback_reason is nil on an observed receipt; nil on a
-      # fallback is the case to refuse.
-      for key <- Map.keys(@exec) -- [:weather_fallback_reason] do
+      # The reasons and freq_value are nil on an observed receipt; nil
+      # where its state needs a value is the case to refuse.
+      for key <- Map.keys(@exec) -- [:weather_fallback_reason, :freq_value, :freq_fallback_reason] do
         assert_raise ArgumentError, fn ->
           Protocol.build_v6_execution_payload(%{@exec | key => nil})
         end
@@ -253,6 +246,10 @@ defmodule WallopCore.ProtocolV6Test do
 
       assert_raise ArgumentError, fn ->
         Protocol.build_v6_execution_payload(%{@fallback | weather_fallback_reason: nil})
+      end
+
+      assert_raise ArgumentError, fn ->
+        Protocol.build_v6_execution_payload(%{@fallback | freq_fallback_reason: nil})
       end
 
       assert_raise ArgumentError, ~r/executed_at must be a DateTime/, fn ->
@@ -370,6 +367,16 @@ defmodule WallopCore.ProtocolV6Test do
 
       assert Map.has_key?(decoded, "weather_observation_time") and
                decoded["weather_observation_time"] == nil
+
+      assert decoded["freq_fallback_reason"] == "no_frequency_by_deadline"
+      assert Map.has_key?(decoded, "freq_value") and decoded["freq_value"] == nil
+
+      decoded = Jason.decode!(Protocol.build_v6_execution_payload(@freq_fallback))
+      assert decoded["weather_fallback_reason"] == "no_observation_by_deadline"
+      assert decoded["freq_value"] == @freq_fallback.freq_value
+
+      assert Map.has_key?(decoded, "freq_fallback_reason") and
+               decoded["freq_fallback_reason"] == nil
     end
 
     test "refuses partial fallbacks, v5 reasons, foreign stations and off-grammar values" do
@@ -378,6 +385,13 @@ defmodule WallopCore.ProtocolV6Test do
         %{@exec | weather_station: nil},
         %{@fallback | weather_fallback_reason: "unreachable"},
         %{@fallback | weather_fallback_reason: nil},
+        %{@fallback | freq_fallback_reason: nil},
+        %{@fallback | freq_fallback_reason: "unreachable"},
+        %{@exec | freq_value: @freq_fallback.freq_value},
+        %{@exec | freq_fallback_reason: "no_frequency_by_deadline"},
+        %{@freq_fallback | freq_value: "50018;50012"},
+        %{@freq_fallback | freq_fallback_reason: "no_frequency_by_deadline"},
+        %{@freq_fallback | weather_fallback_reason: nil},
         %{@exec | weather_value: nil},
         %{@exec | weather_observation_time: nil},
         %{@exec | weather_fallback_reason: "no_observation_by_deadline"},
@@ -476,10 +490,13 @@ defmodule WallopCore.ProtocolV6Test do
                "16d671bd16da0f6c4ef6bf9343b0aaacb9e43f0284614ac23a2093cf24826c78"
 
       assert sha.(Protocol.build_v6_execution_payload(@exec)) ==
-               "eda3da304ced89945e31865dcca54f111c9ed7c0a112f3e889a0e5db88d27317"
+               "2a402cece4c76615cc5157c80f9010c84a3ab1c4d728deebde06a2afe9cf0383"
 
       assert sha.(Protocol.build_v6_execution_payload(@fallback)) ==
-               "06a9dbbc0adedc7557894c3e31d4d0ad34492fb9e2e8c79b4df863ab54a2f2b2"
+               "95dc7aeae249abdf0f5d230d60ce43b6d5b38cbb65ad792ee06745d4918f772a"
+
+      assert sha.(Protocol.build_v6_execution_payload(@freq_fallback)) ==
+               "2368d111cdabf74b91bfee9a1239d9ec71cef722b82b330ef7ab4b8699c7e9d6"
     end
 
     test "exec v5 fallback bytes carry explicit nulls" do
@@ -489,6 +506,9 @@ defmodule WallopCore.ProtocolV6Test do
                ~s("weather_fallback_reason":"no_observation_by_deadline",) <>
                  ~s("weather_observation_time":null,"weather_station":"wmo-03749",) <>
                  ~s("weather_value":null})
+
+      assert payload =~
+               ~s("freq_fallback_reason":"no_frequency_by_deadline","freq_value":null,)
 
       assert payload =~ ~s("schema_version":"5")
     end
