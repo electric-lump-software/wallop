@@ -401,6 +401,9 @@ defmodule WallopCore.Resources.Draw.LockFreqTest do
         assert {:error, _} = changeset |> fail_last() |> Ash.update()
         assert Ash.get!(Draw, draw.id, authorize?: false).status == :open
         assert broadcasts(draw.id) == []
+        # The rolled-back lock takes its jobs with it, T's window job included.
+        refute_enqueued(worker: FrequencyWindowWorker)
+        refute_enqueued(worker: ObservationDrawWorker, args: %{draw_id: draw.id})
       end
     end
 

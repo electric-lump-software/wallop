@@ -328,13 +328,38 @@ defmodule WallopCore.Entropy.ObservationDrawWorkerTest do
 
       {seed, _} = Protocol.compute_seed(done.entry_hash, @randomness)
       assert done.seed == Base.encode16(seed, case: :lower)
+
+      # State (c) in the signed receipt and in the proof bundle's copy of it.
+      {:ok, json} = ProofBundle.build(done)
+      bundle = Jason.decode!(json)
+
+      for p <- [exec_payload(draw), Jason.decode!(bundle["execution_receipt"]["payload_jcs"])] do
+        # Signed as nulls, not left out.
+        assert Enum.all?(
+                 ~w(weather_value weather_observation_time freq_value),
+                 &Map.has_key?(p, &1)
+               )
+
+        assert {p["weather_value"], p["weather_observation_time"], p["weather_fallback_reason"]} ==
+                 {nil, nil, "no_observation_by_deadline"}
+
+        assert {p["freq_value"], p["freq_fallback_reason"]} == {nil, "no_frequency_by_deadline"}
+      end
+
+      # The bundle's entropy carries neither value.
+      refute Map.has_key?(bundle["entropy"], "weather_value")
+      refute Map.has_key?(bundle["entropy"], "freq_value")
     end
 
     test "the weather reading wins over a stored window" do
+      ref = :telemetry_test.attach_event_handlers(self(), [[:wallop_core, :v6, :executed]])
       draw = draw_at_wt_plus_31m()
       put_observation!(Stations.primary().id, draw.weather_time, @value)
       put_frequency_window!(draw.freq_start, @freq)
       assert :ok = perform_job(ObservationDrawWorker, %{draw_id: draw.id})
+
+      assert_receive {[:wallop_core, :v6, :executed], ^ref, _,
+                      %{source: :weather, fallback?: false}}
 
       # State (a): the draw, its signed receipt and its proof bundle.
       done = reload(draw)
