@@ -233,6 +233,14 @@ defmodule WallopCore.Invariants.GroupMMiddleWallopTest do
       )
 
     shift!(d, freq_start: t)
+    f_freq = FreqSchedule.fetch_deadline(t)
+    assert DateTime.compare(f_freq, DateTime.utc_now()) == :lt
+
+    assert DateTime.compare(
+             DateTime.add(f_freq, FreqSchedule.margin_seconds()),
+             DateTime.utc_now()
+           ) == :gt
+
     assert complete(d, {nil, nil, @no_obs, nil, @no_freq}) == fallback_only
     put_frequency_window!(t, @freq)
     assert complete(d, {nil, nil, @no_obs, @freq, nil}) == nil
@@ -279,7 +287,7 @@ defmodule WallopCore.Invariants.GroupMMiddleWallopTest do
     %{rows: [[checked, broken]]} =
       Repo.query!(
         """
-        SELECT count(*), count(*) FILTER (WHERE NOT ok) FROM (
+        SELECT count(*), count(*) FILTER (WHERE ok IS NOT TRUE) FROM (
           SELECT wallop_landobs_weather_time(r) = wt
              AND wallop_quicknet_pub_time(r) = pub
              AND wallop_freq_fetch_deadline(wallop_freq_start(r))
@@ -331,7 +339,8 @@ defmodule WallopCore.Invariants.GroupMMiddleWallopTest do
     end
 
     # A lock that rolls back leaves no window job.
-    assert {:error, _} = lock.(key, true)
+    assert {:error, err} = lock.(key, true)
+    assert Exception.message(err) =~ "rolled back last"
     assert all_enqueued(worker: FrequencyWindowWorker) == []
 
     # Two weather-tag locks and a grid-frequency lock of the same T: one job.

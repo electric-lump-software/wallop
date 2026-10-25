@@ -398,7 +398,8 @@ defmodule WallopCore.Resources.Draw.LockFreqTest do
         {draw, key, args} = v6_lock_setup(@setup)
         changeset = Ash.Changeset.for_update(draw, :lock, args, actor: key)
         subscribe(draw)
-        assert {:error, _} = changeset |> fail_last() |> Ash.update()
+        assert {:error, err} = changeset |> fail_last() |> Ash.update()
+        assert Exception.message(err) =~ "rolled back last"
         assert Ash.get!(Draw, draw.id, authorize?: false).status == :open
         assert broadcasts(draw.id) == []
         # The rolled-back lock takes its jobs with it, T's window job included.
