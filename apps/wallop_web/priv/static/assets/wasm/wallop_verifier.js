@@ -122,6 +122,35 @@ export function compute_seed_drand_only_wasm(entry_hash, drand_randomness) {
 }
 
 /**
+ * WASM entry point for the grid-frequency seed.
+ * @param {string} entry_hash
+ * @param {string} drand_randomness
+ * @param {string} freq_value
+ * @returns {any}
+ */
+export function compute_seed_freq_wasm(entry_hash, drand_randomness, freq_value) {
+    try {
+        const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
+        const ptr0 = passStringToWasm0(entry_hash, wasm.__wbindgen_export, wasm.__wbindgen_export2);
+        const len0 = WASM_VECTOR_LEN;
+        const ptr1 = passStringToWasm0(drand_randomness, wasm.__wbindgen_export, wasm.__wbindgen_export2);
+        const len1 = WASM_VECTOR_LEN;
+        const ptr2 = passStringToWasm0(freq_value, wasm.__wbindgen_export, wasm.__wbindgen_export2);
+        const len2 = WASM_VECTOR_LEN;
+        wasm.compute_seed_freq_wasm(retptr, ptr0, len0, ptr1, len1, ptr2, len2);
+        var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
+        var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
+        var r2 = getDataViewMemory0().getInt32(retptr + 4 * 2, true);
+        if (r2) {
+            throw takeObject(r1);
+        }
+        return takeObject(r0);
+    } finally {
+        wasm.__wbindgen_add_to_stack_pointer(16);
+    }
+}
+
+/**
  * WASM entry point for compute_seed.
  * @param {string} entry_hash
  * @param {string} drand_randomness
@@ -236,6 +265,48 @@ export function key_id_wasm(public_key_hex) {
 }
 
 /**
+ * The state of an execution receipt under the observation-weather tag,
+ * read from its signed payload (`payload_jcs`) by the same three-state
+ * table the verifier enforces: `"weather"`, `"frequency"` or
+ * `"drand_only"`. Any other combination of the five fields, or a payload
+ * that is not a JSON object, is an error. A page picks its seed formula
+ * from this, never from which field happens to be present.
+ *
+ * This selects a seed formula; it is not a check. It does not verify
+ * signatures, the tag, the station or `freq_start`. Only
+ * `verify_bundle_*` decides whether a bundle is valid, and a page must
+ * show no seed match unless that gate passes.
+ * @param {string} exec_payload_jcs
+ * @returns {string}
+ */
+export function landobs_exec_state_wasm(exec_payload_jcs) {
+    let deferred3_0;
+    let deferred3_1;
+    try {
+        const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
+        const ptr0 = passStringToWasm0(exec_payload_jcs, wasm.__wbindgen_export, wasm.__wbindgen_export2);
+        const len0 = WASM_VECTOR_LEN;
+        wasm.landobs_exec_state_wasm(retptr, ptr0, len0);
+        var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
+        var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
+        var r2 = getDataViewMemory0().getInt32(retptr + 4 * 2, true);
+        var r3 = getDataViewMemory0().getInt32(retptr + 4 * 3, true);
+        var ptr2 = r0;
+        var len2 = r1;
+        if (r3) {
+            ptr2 = 0; len2 = 0;
+            throw takeObject(r2);
+        }
+        deferred3_0 = ptr2;
+        deferred3_1 = len2;
+        return getStringFromWasm0(ptr2, len2);
+    } finally {
+        wasm.__wbindgen_add_to_stack_pointer(16);
+        wasm.__wbindgen_export4(deferred3_0, deferred3_1, 1);
+    }
+}
+
+/**
  * WASM entry point for lock_receipt_hash.
  * @param {string} payload_jcs
  * @returns {string}
@@ -314,20 +385,34 @@ export function receipt_schema_version_wasm(payload_jcs) {
 }
 
 /**
- * Verify a v5/v4 (resolver-driven) bundle in the browser. The JS side
- * resolves keys out of band — from `/operator/:slug/keys` (attestable
- * mode) or from a pinned `.well-known` document (attributable mode) —
- * and passes them in as `resolved_keys_js`. The WASM verifier then runs
- * `verify_bundle_with` against a synthetic resolver wrapping that array.
+ * Verify a whole v5/v4 (resolver-driven) proof bundle in the browser.
  *
- * The `mode` argument is recorded on the returned report and MUST match
- * the trust root the JS side actually consulted. The verifier crate does
- * not police this association — see `verify_bundle_with` doc.
+ * **This is the browser gate.** The proof page's green result must come
+ * from this function returning `true` in attestable mode, and from
+ * nothing else: not from `verify_drand_wasm`, not from the deprecated
+ * `verify_full_wasm`, not from the per-line checks the page shows
+ * alongside it.
  *
- * Returns `true` iff the bundle passes every reachable verification step
- * under the supplied resolver and mode. Per-step diagnostics are not
- * surfaced from this entry point yet — the WASM caller already runs its
- * own UI; full report serialisation is a follow-up.
+ * It runs the full step pipeline (`verify_bundle_with`): the same checks
+ * as the CLI, including the drand BLS signature, the entropy binding and
+ * temporal binding.
+ *
+ * Keys: the JS side fetches them out of band and passes them in as
+ * `resolved_keys_js`, an array of
+ * `{key_id, public_key_hex, key_class, inserted_at}`. For the attestable
+ * gate (`mode = "attestable"`) they must come from wallop's
+ * `/operator/:slug/keys` endpoint, never from the bundle or other page
+ * data: keys taken from the bundle being verified prove only that the
+ * bundle agrees with itself. `"attributable"` is for keys checked against
+ * a pinned `.well-known` document.
+ *
+ * The `mode` argument is recorded on the report and MUST match the trust
+ * root the JS side actually consulted. The verifier crate does not police
+ * this association — see `verify_bundle_with`.
+ *
+ * Returns `true` iff the report passes (`VerificationReport::passed`).
+ * A bundle that fails to parse, an unknown mode or a malformed key is an
+ * `Err`. Per-step diagnostics are not surfaced from this entry point yet.
  * @param {string} bundle_json
  * @param {any} resolved_keys_js
  * @param {string} mode
@@ -354,7 +439,86 @@ export function verify_bundle_with_resolved_keys_wasm(bundle_json, resolved_keys
 }
 
 /**
- * WASM entry point for verify_full.
+ * WASM entry point for the drand check on its own, so the proof page can
+ * show it as a separate line. True iff the chain is the pinned quicknet
+ * chain, the BLS signature is valid for `round`, and
+ * sha256(signature) == randomness.
+ *
+ * Pass every value from the signed execution receipt (`drand_chain`,
+ * `drand_round`, `drand_signature`, `drand_randomness`), never from
+ * unsigned page data such as the bundle's `entropy` block: a genuine
+ * beacon for some other round proves nothing about this draw.
+ *
+ * Hex inputs must be lower case, as the receipt carries them. The chain
+ * hash and randomness are compared exactly, so upper case is rejected
+ * (fails closed).
+ *
+ * Never a gate: it does not check that the beacon belongs to this draw,
+ * fed its seed, or published after the lock. The gate is
+ * `verify_bundle_with_resolved_keys_wasm`.
+ * @param {string} chain_hash
+ * @param {bigint} round
+ * @param {string} signature_hex
+ * @param {string} randomness_hex
+ * @returns {boolean}
+ */
+export function verify_drand_wasm(chain_hash, round, signature_hex, randomness_hex) {
+    const ptr0 = passStringToWasm0(chain_hash, wasm.__wbindgen_export, wasm.__wbindgen_export2);
+    const len0 = WASM_VECTOR_LEN;
+    const ptr1 = passStringToWasm0(signature_hex, wasm.__wbindgen_export, wasm.__wbindgen_export2);
+    const len1 = WASM_VECTOR_LEN;
+    const ptr2 = passStringToWasm0(randomness_hex, wasm.__wbindgen_export, wasm.__wbindgen_export2);
+    const len2 = WASM_VECTOR_LEN;
+    const ret = wasm.verify_drand_wasm(ptr0, len0, round, ptr1, len1, ptr2, len2);
+    return ret !== 0;
+}
+
+/**
+ * WASM entry point for `verify_freq`: winners recomputed with the
+ * grid-frequency seed.
+ *
+ * Choose between `verify_wasm` and `verify_freq_wasm` from the signed
+ * execution receipt, never from which value happens to be present. Under
+ * the grid-frequency tag, use `verify_freq_wasm`. Under the weather tag,
+ * `landobs_exec_state_wasm` decides: `verify_wasm` with the value in state
+ * (a) `"weather"`, `verify_freq_wasm` with the value in state (b)
+ * `"frequency"`, and either with no value in state (c) `"drand_only"`.
+ * @param {string} draw_id
+ * @param {any} entries_js
+ * @param {string} drand_randomness
+ * @param {string | null | undefined} freq_value
+ * @param {number} count
+ * @param {any} expected_results_js
+ * @returns {boolean}
+ */
+export function verify_freq_wasm(draw_id, entries_js, drand_randomness, freq_value, count, expected_results_js) {
+    try {
+        const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
+        const ptr0 = passStringToWasm0(draw_id, wasm.__wbindgen_export, wasm.__wbindgen_export2);
+        const len0 = WASM_VECTOR_LEN;
+        const ptr1 = passStringToWasm0(drand_randomness, wasm.__wbindgen_export, wasm.__wbindgen_export2);
+        const len1 = WASM_VECTOR_LEN;
+        var ptr2 = isLikeNone(freq_value) ? 0 : passStringToWasm0(freq_value, wasm.__wbindgen_export, wasm.__wbindgen_export2);
+        var len2 = WASM_VECTOR_LEN;
+        wasm.verify_freq_wasm(retptr, ptr0, len0, addHeapObject(entries_js), ptr1, len1, ptr2, len2, count, addHeapObject(expected_results_js));
+        var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
+        var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
+        var r2 = getDataViewMemory0().getInt32(retptr + 4 * 2, true);
+        if (r2) {
+            throw takeObject(r1);
+        }
+        return r0 !== 0;
+    } finally {
+        wasm.__wbindgen_add_to_stack_pointer(16);
+    }
+}
+
+/**
+ * WASM entry point for `verify_full`.
+ *
+ * **Deprecated: it checks less than the step pipeline.** It is not a
+ * gate; the proof page gates on `verify_bundle_with_resolved_keys_wasm`.
+ * See `verify_full` for exactly what it does and does not check.
  *
  * `winner_count` is extracted from the signed lock receipt, not passed externally.
  * @param {string} lock_receipt_jcs
