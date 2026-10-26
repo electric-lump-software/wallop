@@ -7,9 +7,21 @@
  * is checked, and the verdict, live in verify_core.js.
  */
 import anime from "animejs/lib/anime.es.js"
-import { computeChecks, fetchPublishedProof, hasReceipts } from "./verify_core.js"
+import { GENERIC_RED, computeChecks, fetchPublishedProof, hasReceipts } from "./verify_core.js"
 
 const VERDICT_COLOURS = { green: "#4ade80", amber: "#fbbf24", red: "#f87171" }
+
+const COULDNT_RUN =
+  "COULDN'T RUN — your browser couldn't load the checker, so nothing was verified. " +
+  "Try another browser, or the command below."
+const COULDNT_CHECK =
+  "COULDN'T CHECK — the proof couldn't be fetched, so nothing was verified. Try again in a moment."
+const AMBER = {
+  none: "NOT FULLY VERIFIED — the draw maths agrees with this page, but this draw has no signed " +
+    "receipts, so we can't confirm it wasn't changed afterwards. Nothing is wrong; there's just less to check.",
+  partial: "NOT FULLY VERIFIED — the draw maths agrees with this page, but this draw's signed " +
+    "receipts are incomplete, so we can't confirm it wasn't changed afterwards. Please tell the organiser."
+}
 
 // Lazy-loaded WASM module
 let wasmModule = null
@@ -146,7 +158,7 @@ class VerifyRunner {
       wasm = await loadWasm()
     } catch (e) {
       this.markFailed(line0)
-      this.showResult("red", "Failed to load WASM verifier: " + e.message)
+      this.showResult("amber", COULDNT_RUN)
       return
     }
 
@@ -156,7 +168,9 @@ class VerifyRunner {
         published = await fetchPublishedProof(d)
       } catch (e) {
         this.markFailed(line0)
-        this.showResult("red", "FAILED — could not fetch the published proof: " + e.message)
+        // A refused bundle (e.g. 500 proof_chain_incomplete) is a failed proof;
+        // only a request that got no answer is "couldn't check".
+        this.showResult(e.kind === "network" ? "amber" : "red", e.kind === "network" ? COULDNT_CHECK : GENERIC_RED)
         return
       }
     }
@@ -167,7 +181,7 @@ class VerifyRunner {
     try {
       result = computeChecks(wasm, d, published)
     } catch (e) {
-      this.showResult("red", "FAILED — verification error: " + e.message)
+      this.showResult("red", GENERIC_RED)
       return
     }
     if (result.fatal) {
@@ -177,13 +191,15 @@ class VerifyRunner {
 
     for (let check of result.lines) {
       let line = await this.showLine(check)
+      // Shown values stay green only on a line that passed.
+      if (line.mono && check.status !== "pass") line.mono.style.color = "#888"
       if (check.status === "fail") {
         this.markFailed(line)
         this.showResult("red", check.failMessage)
         return
       }
       if (check.status === "pass") this.markDone(line, check.passLabel)
-      else this.markNeutral(line, check.status === "unconfirmed" ? "not confirmed" : "unsigned")
+      else this.markNeutral(line, check.status === "unconfirmed" ? "not confirmed (see result)" : "no receipt")
     }
 
     this.showVerdict(result)
@@ -194,29 +210,30 @@ class VerifyRunner {
     await this.typeText(line.text, check.text, check.typeSpeed || 25)
     if (check.waitLabel) this.startWaiting(line, check.waitLabel)
     if (check.kind === "count") {
-      let counter = this.addMono(line.row)
-      await this.countUp(counter, parseInt(check.count), 1200)
-      counter.textContent = check.mono
+      line.mono = this.addMono(line.row)
+      await this.countUp(line.mono, parseInt(check.count), 1200)
+      line.mono.textContent = check.mono
     } else if (check.mono) {
-      await scrambleText(this.addMono(line.row), check.mono, check.scrambleMs || 1200)
+      line.mono = this.addMono(line.row)
+      await scrambleText(line.mono, check.mono, check.scrambleMs || 1200)
     }
     return line
   }
 
   showVerdict(result) {
     if (result.verdict === "amber") {
-      this.showResult("amber",
-        "NOT FULLY VERIFIED — the draw maths agrees with this page, but there are no signed receipts to check it against")
+      this.showResult("amber", AMBER[result.receiptState] || AMBER.none)
       return
     }
     if (result.verdict !== "green") {
-      this.showResult("red", "FAILED — the published proof bundle did not verify against the published keys")
+      this.showResult("red", GENERIC_RED)
       return
     }
-    this.showResult("green", "VERIFIED — all checks passed, receipts valid, chain intact")
+    this.showResult("green", "VERIFIED — everything we could check, checked out")
     if (result.fallbackLabel) this.addNote(result.fallbackLabel, "#facc15")
     this.addNote(
-      `Checked against the keys ${window.location.host} publishes. For an independent check, use the command below.`,
+      `Checked against the signing keys ${window.location.host} publishes. Those come from the same ` +
+      "place as this page, so for a check that doesn't rely on us, use the command below.",
       "#888")
     if (result.bmrsYear) {
       this.addNote(`Contains BMRS data © Elexon Limited copyright and database right ${result.bmrsYear}`, "#888")

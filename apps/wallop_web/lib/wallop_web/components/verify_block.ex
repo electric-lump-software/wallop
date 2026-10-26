@@ -45,8 +45,8 @@ defmodule WallopWeb.Components.VerifyBlock do
           data-infra-keys-url={~p"/infrastructure/keys"}
         >
           <p data-verify-hint class="text-[10px] text-[#999] mb-1.5">
-            Runs locally in your browser via WebAssembly, over the proof bundle
-            and keys this site publishes.
+            Runs in your browser, using the proof and signing keys this site
+            publishes. Nothing is sent to us.
           </p>
           <button data-verify-btn class="btn btn-neutral btn-sm rounded-lg">
             Verify independently
@@ -70,10 +70,9 @@ defmodule WallopWeb.Components.VerifyBlock do
             The browser-side check fetches the published proof bundle and
             checks its signatures and maths against the keys this site
             publishes. It catches accidents and tampering with the bundle,
-            but the keys come from the same place as the bundle, so it does
-            <em>not</em> defend against a tampered mirror or a compromised
-            CDN — an attacker serving a forged bundle alongside their own
-            keys would also pass every step.
+            but the keys come from the same place as the bundle, so it
+            <em>won't</em> protect you if someone copied this page and swapped
+            in their own proof and keys.
           </p>
           <div :if={@verify_command}>
             <p :if={@verify_command.mode == :bundled} class="mt-2 leading-relaxed">

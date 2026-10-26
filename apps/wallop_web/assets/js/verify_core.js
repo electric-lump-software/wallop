@@ -12,6 +12,11 @@
  * publishes. No line shows a pass that the gate has not backed.
  */
 
+/** The red verdict when no single line names the problem. */
+export const GENERIC_RED =
+  "FAILED — something in this draw's proof doesn't check out. The lines above show what. " +
+  "Please tell the organiser, and don't rely on this result."
+
 export const LANDOBS_TAG = "drand-quicknet+metoffice-landobs-v1"
 export const FREQ_TAG = "drand-quicknet+elexon-freq-v1"
 
@@ -22,9 +27,21 @@ const V6_EXEC_SCHEMA = "5"
 // serde_wasm_bindgen may return a Map instead of a plain object.
 const field = (value, key) => (value instanceof Map ? value.get(key) : value[key])
 
+const RECEIPT_ATTRS = ["lockReceiptJcs", "lockSignatureHex", "operatorPublicKeyHex",
+                       "executionReceiptJcs", "executionSignatureHex", "infraPublicKeyHex"]
+
 export function hasReceipts(d) {
-  return !!(d.lockReceiptJcs && d.lockSignatureHex && d.operatorPublicKeyHex &&
-            d.executionReceiptJcs && d.executionSignatureHex && d.infraPublicKeyHex)
+  return RECEIPT_ATTRS.every(k => !!d[k])
+}
+
+/**
+ * "full", "partial" (a receipt or signature is there, but not all of
+ * them) or "none". A public key on its own is not a receipt.
+ */
+export function receiptState(d) {
+  if (hasReceipts(d)) return "full"
+  const receiptParts = ["lockReceiptJcs", "lockSignatureHex", "executionReceiptJcs", "executionSignatureHex"]
+  return receiptParts.some(k => !!d[k]) ? "partial" : "none"
 }
 
 /** Map a `/operator/:slug/keys` or `/infrastructure/keys` body to the rows the WASM expects. */
@@ -38,23 +55,69 @@ export function keyRows(body) {
   }))
 }
 
+function fetchError(kind, message) {
+  const e = new Error(message)
+  e.kind = kind
+  return e
+}
+
 /**
  * Fetch the published bundle (its bytes, untouched) and the published
  * operator and infrastructure keys. Throws on anything short of three
- * successful responses: a refused bundle is never treated as checkable.
+ * successful responses, with `kind`:
+ *
+ * - "network": a request never got an answer. Nothing was checked.
+ * - "refused": the site answered but would not serve a checkable proof
+ *   (a non-2xx such as 500 proof_chain_incomplete, a missing URL, or
+ *   unreadable keys). That is a failure of the draw's proof, never green.
  */
 export async function fetchPublishedProof(d, fetchImpl = url => fetch(url)) {
   if (!d.bundleUrl || !d.operatorKeysUrl || !d.infraKeysUrl) {
-    throw new Error("this page does not say where its proof is published")
+    throw fetchError("refused", "this page does not say where its proof is published")
   }
-  const [bundleRes, opRes, infraRes] = await Promise.all([
-    fetchImpl(d.bundleUrl), fetchImpl(d.operatorKeysUrl), fetchImpl(d.infraKeysUrl)
-  ])
+  let responses
+  try {
+    responses = await Promise.all([
+      fetchImpl(d.bundleUrl), fetchImpl(d.operatorKeysUrl), fetchImpl(d.infraKeysUrl)
+    ])
+  } catch (e) {
+    throw fetchError("network", e && e.message ? e.message : String(e))
+  }
+  const [bundleRes, opRes, infraRes] = responses
   if (!bundleRes.ok || !opRes.ok || !infraRes.ok) {
-    throw new Error("the bundle or the keys could not be fetched")
+    throw fetchError("refused", "the site would not serve the bundle or the keys")
   }
-  const bundleJson = await bundleRes.text()
-  return { bundleJson, keys: [...keyRows(await opRes.json()), ...keyRows(await infraRes.json())] }
+  try {
+    const bundleJson = await bundleRes.text()
+    return { bundleJson, keys: [...keyRows(await opRes.json()), ...keyRows(await infraRes.json())] }
+  } catch (e) {
+    throw fetchError("refused", "the published keys could not be read")
+  }
+}
+
+/**
+ * The lines check what the page carries; the gate checks the published
+ * bundle. Tie them together: every value a line uses must be the
+ * published one, and the keys the signature lines use must be published
+ * keys of the right class. Returns null when they agree, or what differs.
+ */
+export function pageBindingProblem(d, bundle, keys) {
+  const sortedEntries = list => list.map(e => ({ uuid: e.uuid, weight: e.weight }))
+    .sort((a, b) => (a.uuid < b.uuid ? -1 : a.uuid > b.uuid ? 1 : 0))
+  const results = list => list.map(r => ({ entry_id: r.entry_id, position: r.position }))
+  const same = (a, b) => JSON.stringify(a) === JSON.stringify(b)
+  const published = cls => keys.some(k => k.key_class === cls && k.public_key_hex === (cls === "operator" ? d.operatorPublicKeyHex : d.infraPublicKeyHex))
+
+  if (d.drawId !== bundle.draw_id) return "draw id"
+  if (d.lockReceiptJcs !== bundle.lock_receipt.payload_jcs) return "lock receipt"
+  if (d.lockSignatureHex !== bundle.lock_receipt.signature_hex) return "lock signature"
+  if (d.executionReceiptJcs !== bundle.execution_receipt.payload_jcs) return "execution receipt"
+  if (d.executionSignatureHex !== bundle.execution_receipt.signature_hex) return "execution signature"
+  if (!same(sortedEntries(JSON.parse(d.entriesJson)), sortedEntries(bundle.entries))) return "entries"
+  if (!same(results(JSON.parse(d.resultsJson)), results(bundle.results))) return "results"
+  if (!published("operator")) return "operator key"
+  if (!published("infrastructure")) return "infrastructure key"
+  return null
 }
 
 /** The gate. Anything but a plain `true` (including a throw) is a refusal. */
@@ -125,7 +188,8 @@ export function seedPlan(wasm, exec, execJcs, d) {
   // Forecast and older receipts keep the existing path.
   const plan = page(d.weatherValue ? "weather" : "drand_only")
   if (plan.formula === "drand_only" && exec.weather_fallback_reason) {
-    plan.fallbackLabel = `drand only (weather fallback: ${exec.weather_fallback_reason})`
+    plan.fallbackLabel = "Weather data wasn't available for this draw, so the seed came from " +
+      `drand's public randomness beacon alone (reason: ${exec.weather_fallback_reason})`
   }
   return plan
 }
@@ -170,7 +234,8 @@ function verifyWinners(wasm, plan, d, entries, expected, count) {
 export function computeChecks(wasm, d, published) {
   const receipts = hasReceipts(d)
   const result = {
-    hasReceipts: receipts, gate: null, lines: [], verdict: null, fatal: null,
+    hasReceipts: receipts, receiptState: receiptState(d), gate: null, bindingProblem: null,
+    lines: [], verdict: null, fatal: null,
     formula: null, fallbackLabel: null, bmrsYear: null
   }
   const refuse = message => {
@@ -183,14 +248,18 @@ export function computeChecks(wasm, d, published) {
   let exec = null
   let execJcs = null
   if (receipts) {
-    if (!published) return refuse("FAILED — could not fetch the published proof bundle and keys")
+    if (!published) return refuse(GENERIC_RED)
+    let bundle
     try {
-      execJcs = JSON.parse(published.bundleJson).execution_receipt.payload_jcs
+      bundle = JSON.parse(published.bundleJson)
+      execJcs = bundle.execution_receipt.payload_jcs
       exec = JSON.parse(execJcs)
+      result.bindingProblem = pageBindingProblem(d, bundle, published.keys)
     } catch (_e) {
-      return refuse("FAILED — the published proof bundle could not be read")
+      return refuse(GENERIC_RED)
     }
-    result.gate = runGate(wasm, published.bundleJson, published.keys)
+    // A page that differs from what was published is refused like a bad bundle.
+    result.gate = result.bindingProblem === null && runGate(wasm, published.bundleJson, published.keys)
   }
 
   const lines = result.lines
@@ -306,15 +375,16 @@ export function computeChecks(wasm, d, published) {
       JSON.stringify(JSON.parse(d.resultsJson).map(r => r.entry_id)))) return done()
 
   // drand, from the signed execution receipt in the published bundle.
-  // A line, never a gate: "published after the lock" is the gate's check.
-  if (!check({ id: "drand", text: "drand beacon → ", waitLabel: "genuine, published after the lock",
-               passLabel: "genuine, published after the lock" },
+  // A line, never a gate: "published after the signed lock time" is the
+  // gate's check, against the operator-signed locked_at.
+  if (!check({ id: "drand", text: "drand beacon → ", waitLabel: "genuine, published after the signed lock time",
+               passLabel: "genuine, published after the signed lock time" },
              "FAILED — the drand beacon did not verify", "drand check error", () =>
     wasm.verify_drand_wasm(exec.drand_chain, BigInt(exec.drand_round), exec.drand_signature, exec.drand_randomness)
   )) return done()
 
   settle({ id: "gate", text: "verify published proof bundle (attestable) → ", waitLabel: "passed", passLabel: "passed" },
          result.gate === true,
-         "FAILED — the published proof bundle did not verify against the published keys")
+         GENERIC_RED)
   return done()
 }

@@ -65,10 +65,14 @@ defmodule WallopWeb.ProofLiveTest do
       refute html =~ "Mode: local self-check only"
 
       # The §4.2.4 caveat must be honestly disclosed: the browser-side
-      # check trusts the keys this site serves, so it does NOT defend
-      # against a tampered mirror, and the user is pointed at the CLI
-      # as the tier-1 path.
-      assert html =~ "tampered mirror"
+      # check trusts the keys this site serves, so a copied page with
+      # swapped proof and keys would pass it, and the user is pointed at
+      # the CLI as the tier-1 path.
+      assert String.replace(html, ~r/\s+/, " ") =~
+               "if someone copied this page and swapped in their own proof and keys"
+
+      assert html =~ "Nothing is sent to us."
+      refute html =~ "No server involved"
       assert html =~ "What does this verify?"
       assert html =~ "wallop-verify --mode attributable"
     end
