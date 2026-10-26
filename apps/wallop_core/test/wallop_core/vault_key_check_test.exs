@@ -3,10 +3,17 @@ defmodule WallopCore.VaultKeyCheckTest.OtherVault do
   use Cloak.Vault, otp_app: :wallop_core
 end
 
+defmodule WallopCore.VaultKeyCheckTest.RaisingVault do
+  @moduledoc "A vault whose decrypt raises with the ciphertext in the error, as Cloak can."
+  def decrypt(ciphertext), do: raise(MatchError, term: ciphertext)
+end
+
 defmodule WallopCore.VaultKeyCheckTest do
   use WallopCore.DataCase, async: false
 
   import WallopCore.TestHelpers
+
+  require Ash.Query
 
   alias Cloak.Ciphers.AES.GCM
   alias WallopCore.Resources.InfrastructureSigningKey
@@ -114,6 +121,124 @@ defmodule WallopCore.VaultKeyCheckTest do
 
       refute_received :later_child_started
     end
+  end
+
+  describe "when the database can't be read at boot" do
+    @describetag :capture_log
+
+    defp flaky_read(failures) do
+      counter = :counters.new(1, [])
+
+      read = fn resource, prefix ->
+        :counters.add(counter, 1, 1)
+
+        if :counters.get(counter, 1) <= failures,
+          do: {:error, %DBConnection.ConnectionError{message: "connection refused"}},
+          else: real_read(resource, prefix)
+      end
+
+      {read, counter}
+    end
+
+    defp real_read(resource, prefix) do
+      size = byte_size(prefix)
+
+      resource
+      |> Ash.Query.filter(fragment("substring(? from 1 for ?) = ?", private_key, ^size, ^prefix))
+      |> Ash.Query.limit(1)
+      |> Ash.read_one(authorize?: false)
+    end
+
+    defp recording_sleep do
+      test_pid = self()
+      fn ms -> send(test_pid, {:slept, ms}) end
+    end
+
+    test "waits and proceeds once the database answers" do
+      create_infrastructure_key()
+      {read, _} = flaky_read(2)
+
+      assert [{:default, "AES.GCM.V1", {:ok, "infrastructure_signing_keys", _}}] =
+               VaultKeyCheck.check!(read: read, sleep: recording_sleep(), db_wait_ms: 180_000)
+
+      assert_received {:slept, 500}
+      assert_received {:slept, 1000}
+      refute_received {:slept, _}
+    end
+
+    test "raises once the wait is used up, having waited no longer than the bound" do
+      {read, _} = flaky_read(1_000)
+
+      assert_raise RuntimeError,
+                   ~r/could not read infrastructure_signing_keys after waiting 180000 ms/,
+                   fn ->
+                     VaultKeyCheck.check!(
+                       read: read,
+                       sleep: recording_sleep(),
+                       db_wait_ms: 180_000
+                     )
+                   end
+
+      slept =
+        Stream.repeatedly(fn ->
+          receive do
+            {:slept, ms} -> ms
+          after
+            0 -> nil
+          end
+        end)
+        |> Enum.take_while(& &1)
+
+      assert Enum.sum(slept) == 180_000
+      assert Enum.max(slept) <= 15_000
+    end
+
+    test "a wrong key raises at once, without waiting or reading again" do
+      create_infrastructure_key()
+      {read, counter} = flaky_read(0)
+      ciphers = [default: cipher("AES.GCM.V1", @wrong_key)]
+      start_supervised!({OtherVault, ciphers: ciphers})
+
+      assert_raise RuntimeError, ~r/:decrypt_failed/, fn ->
+        VaultKeyCheck.check!(
+          vault: OtherVault,
+          ciphers: ciphers,
+          read: read,
+          sleep: recording_sleep(),
+          db_wait_ms: 180_000
+        )
+      end
+
+      refute_received {:slept, _}
+      assert :counters.get(counter, 1) == 1
+    end
+  end
+
+  test "a decrypt that raises is a failed decrypt, with no ciphertext in the message" do
+    {public_key, _seed} = :crypto.generate_key(:eddsa, :ed25519)
+    ciphertext = <<1, 10>> <> "AES.GCM.V1" <> <<0xDE, 0xAD, 0xBE, 0xEF, 0x42>>
+    insert_infra_key(public_key, ciphertext)
+
+    error =
+      assert_raise RuntimeError, ~r/:decrypt_failed/, fn ->
+        VaultKeyCheck.check!(vault: WallopCore.VaultKeyCheckTest.RaisingVault)
+      end
+
+    message = Exception.message(error)
+    refute String.contains?(message, <<0xDE, 0xAD, 0xBE, 0xEF>>)
+    refute message =~ ~r/222, 173, 190, 239|DEADBEEF|deadbeef|MatchError/
+  end
+
+  test "a truncated ciphertext under a known tag is a failed decrypt, with no ciphertext in the message" do
+    {public_key, _seed} = :crypto.generate_key(:eddsa, :ed25519)
+    truncated = <<1, 10>> <> "AES.GCM.V1" <> <<0xDE, 0xAD, 0xBE, 0xEF, 0x42>>
+    insert_infra_key(public_key, truncated)
+
+    error = assert_raise RuntimeError, ~r/:decrypt_failed/, fn -> VaultKeyCheck.check!() end
+    message = Exception.message(error)
+
+    refute String.contains?(message, <<0xDE, 0xAD, 0xBE, 0xEF>>)
+    refute message =~ ~r/222, 173, 190, 239|DEADBEEF|deadbeef/
   end
 
   test "in dual-key mode with both keys right, checks each cipher on its own row" do
