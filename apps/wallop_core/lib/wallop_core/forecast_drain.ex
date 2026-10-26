@@ -23,8 +23,10 @@ defmodule WallopCore.ForecastDrain do
 
   `drain/0` writes through the draw's actions, so it must run inside the
   running service (`bin/wallop rpc "WallopCore.Release.drain_retired_forecast()"`),
-  where Oban is up to take each failed draw's webhook. Both are wrapped in
-  `WallopCore.Release`.
+  where Oban is up to take each failed draw's webhook. Run it once, after
+  the last container on the old code has stopped. With secrets from
+  Infisical a plain shell has no `RELEASE_COOKIE`; `MIGRATING.md` says how
+  to run it. Both are wrapped in `WallopCore.Release`.
   """
 
   require Logger
@@ -92,11 +94,13 @@ defmodule WallopCore.ForecastDrain do
   end
 
   defp fail(id) do
+    # A read error fails this draw only; the drain carries on with the rest.
     result =
-      Draw
-      |> Ash.get!(id, authorize?: false)
-      |> Ash.Changeset.for_update(:mark_failed, %{failure_reason: @reason})
-      |> Ash.update(authorize?: false)
+      with {:ok, draw} <- Ash.get(Draw, id, authorize?: false) do
+        draw
+        |> Ash.Changeset.for_update(:mark_failed, %{failure_reason: @reason})
+        |> Ash.update(authorize?: false)
+      end
 
     case result do
       {:ok, _draw} ->

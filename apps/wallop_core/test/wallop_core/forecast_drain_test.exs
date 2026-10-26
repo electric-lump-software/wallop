@@ -72,4 +72,18 @@ defmodule WallopCore.ForecastDrainTest do
     assert ForecastDrain.report() == %{stranded_draws: 0, live_forecast_jobs: 0}
     assert ForecastDrain.drain() == %{failed: [], not_failed: [], jobs_cancelled: 0}
   end
+
+  test "a stranded draw in locked is returned under not_failed, untouched", %{key: key} do
+    locked = put_retired_forecast_draw!(key, :locked)
+
+    assert ForecastDrain.report().stranded_draws == 1
+
+    assert ForecastDrain.drain() == %{
+             failed: [],
+             not_failed: [{locked.id, "locked"}],
+             jobs_cancelled: 0
+           }
+
+    assert Ash.get!(Draw, locked.id, authorize?: false).status == :locked
+  end
 end
