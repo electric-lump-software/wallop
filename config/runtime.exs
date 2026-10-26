@@ -43,6 +43,14 @@ if config_env() in [:dev, :test] do
   end
 end
 
+# Daily cap on Land Observations calls: a whole number from 1 to 900,
+# default 800. Anything else stops the boot. Logger isn't configured yet, so
+# WallopCore.Application logs the warning for a cap below a full day of
+# polling. See WallopCore.Weather.LandObsBudget.
+config :wallop_core,
+       :land_obs_daily_cap,
+       WallopCore.Weather.LandObsBudget.parse_cap!(System.get_env("LAND_OBS_DAILY_CAP"))
+
 if honeycomb_api_key = System.get_env("HONEYCOMB_API_KEY") do
   config :opentelemetry,
     resource: [service: [name: "wallop-core"]]

@@ -6,10 +6,12 @@ defmodule WallopCore.Application do
 
   alias WallopCore.Drand.Bls
   alias WallopCore.Telemetry.EctoHandler
+  alias WallopCore.Weather.LandObsBudget
 
   @impl true
   def start(_type, _args) do
     warn_if_default_oban_prefix()
+    warn_if_low_land_obs_cap()
     assert_vault_key_present!()
     # No draw may run on a node that can't check drand signatures: a missing
     # or broken NIF stops the boot here rather than failing every check.
@@ -106,6 +108,14 @@ defmodule WallopCore.Application do
             queues: [entropy: 10, webhooks: 5, default: 5, weather: 5],
             plugins: []
       """)
+    end
+  end
+
+  # runtime.exs parses LAND_OBS_DAILY_CAP before Logger is configured, so
+  # the warning for a cap below a full day of polling is logged here.
+  defp warn_if_low_land_obs_cap do
+    if warning = LandObsBudget.boot_warning(LandObsBudget.cap()) do
+      Logger.warning(warning)
     end
   end
 
