@@ -139,6 +139,7 @@ await t("seedPlan throws on any receipt that isn't lock 6 / execution 5", () => 
   assert.throws(() => core.seedPlan(wasm, { ...exec, entropy_composition: "drand-quicknet+openmeteo-v1" }, "", lock),
     /unknown entropy tag/)
   assert.throws(() => core.seedPlan(wasm, null, null, null), /no signed execution receipt/)
+  assert.throws(() => core.seedPlan(wasm, exec, b.execution_receipt.payload_jcs, null), /lock receipt schema/)
 })
 
 // --- lock v6 / execution v5: the signed receipt picks the formula ---

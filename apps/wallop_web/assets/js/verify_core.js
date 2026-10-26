@@ -194,8 +194,8 @@ export function seedPlan(wasm, exec, execJcs, lock) {
   if (exec.schema_version !== V6_EXEC_SCHEMA) {
     throw new Error(`execution receipt schema ${exec.schema_version} isn't one this page checks`)
   }
-  if (lock && lock.schema_version !== V6_LOCK_SCHEMA) {
-    throw new Error(`lock receipt schema ${lock.schema_version} isn't one this page checks`)
+  if (!lock || lock.schema_version !== V6_LOCK_SCHEMA) {
+    throw new Error(`lock receipt schema ${lock && lock.schema_version} isn't one this page checks`)
   }
 
   const tag = exec.entropy_composition
