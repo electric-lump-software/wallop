@@ -7,7 +7,7 @@
  * is checked, and the verdict, live in verify_core.js.
  */
 import anime from "animejs/lib/anime.es.js"
-import { GENERIC_RED, computeChecks, fetchPublishedProof, hasReceipts } from "./verify_core.js"
+import { GENERIC_RED, REFUSED_RED, computeChecks, fetchPublishedProof, hasReceipts } from "./verify_core.js"
 
 const VERDICT_COLOURS = { green: "#4ade80", amber: "#fbbf24", red: "#f87171" }
 
@@ -170,7 +170,7 @@ class VerifyRunner {
         this.markFailed(line0)
         // A refused bundle (e.g. 500 proof_chain_incomplete) is a failed proof;
         // only a request that got no answer is "couldn't check".
-        this.showResult(e.kind === "network" ? "amber" : "red", e.kind === "network" ? COULDNT_CHECK : GENERIC_RED)
+        this.showResult(e.kind === "network" ? "amber" : "red", e.kind === "network" ? COULDNT_CHECK : REFUSED_RED)
         return
       }
     }

@@ -112,6 +112,36 @@ defmodule WallopWeb.ProofLiveTest do
       end
     end
 
+    test "a draw whose proof chain is incomplete: the bundle URL the page names is refused, " <>
+           "and the page carries no execution receipt to pass off as complete",
+         %{conn: conn} do
+      api_key = create_api_key()
+      draw = create_draw(api_key, %{})
+      draw = execute_draw(draw, test_seed(), api_key)
+
+      # Receipts are append-only; step round the trigger for this one row,
+      # inside the test's own transaction, as the sandbox migration does.
+      WallopCore.Repo.query!("SET LOCAL session_replication_role = 'replica'")
+
+      WallopCore.Repo.query!(
+        "DELETE FROM execution_receipts WHERE draw_id = $1",
+        [Ecto.UUID.dump!(draw.id)]
+      )
+
+      WallopCore.Repo.query!("SET LOCAL session_replication_role = 'origin'")
+
+      html = conn |> get("/proof/#{draw.id}") |> html_response(200)
+      [bundle_url] = attr_values(html, "data-bundle-url")
+
+      # The browser check shows its "couldn't produce a complete proof"
+      # red for this response, never green.
+      assert %{"error" => "proof_chain_incomplete"} =
+               build_conn() |> get(bundle_url) |> json_response(500)
+
+      assert attr_values(html, "data-execution-receipt-jcs") == []
+      assert attr_values(html, "data-lock-receipt-jcs") != []
+    end
+
     test "sets immutable cache headers", %{conn: conn} do
       api_key = create_api_key()
       draw = create_draw(api_key, %{})

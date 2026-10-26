@@ -17,6 +17,15 @@ export const GENERIC_RED =
   "FAILED — something in this draw's proof doesn't check out. The lines above show what. " +
   "Please tell the organiser, and don't rely on this result."
 
+/**
+ * The red verdict when the site would not produce a checkable proof (a
+ * non-2xx bundle such as 500 proof_chain_incomplete, or one that can't be
+ * read). No line ran, so it can't point at one.
+ */
+export const REFUSED_RED =
+  "FAILED — this site couldn't produce a complete proof for this draw, so it can't be verified. " +
+  "Please tell the organiser, and don't rely on this result."
+
 export const LANDOBS_TAG = "drand-quicknet+metoffice-landobs-v1"
 export const FREQ_TAG = "drand-quicknet+elexon-freq-v1"
 
@@ -248,7 +257,7 @@ export function computeChecks(wasm, d, published) {
   let exec = null
   let execJcs = null
   if (receipts) {
-    if (!published) return refuse(GENERIC_RED)
+    if (!published) return refuse(REFUSED_RED)
     let bundle
     try {
       bundle = JSON.parse(published.bundleJson)
@@ -256,7 +265,7 @@ export function computeChecks(wasm, d, published) {
       exec = JSON.parse(execJcs)
       result.bindingProblem = pageBindingProblem(d, bundle, published.keys)
     } catch (_e) {
-      return refuse(GENERIC_RED)
+      return refuse(REFUSED_RED)
     }
     // A page that differs from what was published is refused like a bad bundle.
     result.gate = result.bindingProblem === null && runGate(wasm, published.bundleJson, published.keys)
