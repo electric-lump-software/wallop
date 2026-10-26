@@ -130,7 +130,7 @@
                 "description": "Field included by default."
               },
               "freq_start": {
-                "description": "Grid-frequency draws only: the time of the first of the 8 GB grid frequency readings (Elexon FREQ, 15 seconds apart) that feed the seed. Null for other draws. Field included by default.",
+                "description": "The time of the first of the 8 GB grid frequency readings (Elexon FREQ, 15 seconds apart). They feed the seed of a grid-frequency draw, and of an observation-weather draw whose Middle Wallop reading was late. Null for forecast draws. Field included by default.",
                 "format": "date-time",
                 "nullable": true,
                 "type": "string"
@@ -154,7 +154,7 @@
                     "type": "null"
                   }
                 ],
-                "description": "64-character hex SHA-256 seed used to drive the draw algorithm. Derived from drand + weather entropy (seed_source: entropy) or supplied by the caller (seed_source: caller). Sandbox draws live in a separate resource — see `WallopCore.Resources.SandboxDraw`. Field included by default."
+                "description": "64-character hex SHA-256 seed used to drive the draw algorithm. Derived from drand plus the draw's second source, if it used one (seed_source: entropy), or supplied by the caller (seed_source: caller). Sandbox draws live in a separate resource — see `WallopCore.Resources.SandboxDraw`. Field included by default."
               },
               "freq_value": {
                 "anyOf": [
@@ -166,10 +166,10 @@
                     "type": "null"
                   }
                 ],
-                "description": "Grid-frequency draws only: the 8 readings in mHz, `;`-joined, in time order. Null when the draw fell back to drand alone, and for other draws. Field included by default."
+                "description": "The 8 grid frequency readings in mHz, `;`-joined, in time order, when they fed the seed: on a grid-frequency draw, or an observation-weather draw whose Middle Wallop reading was late. Null otherwise. Field included by default."
               },
               "expected_result_at": {
-                "description": "Observation-weather draws only: when the result is due (the publication time of the committed drand round). Not signed; derived from drand_round. Null for other draws. Field included by default.",
+                "description": "Observation-weather and grid-frequency draws: when the result is due (the publication time of the committed drand round). Not signed; derived from drand_round. Null for forecast draws. Field included by default.",
                 "format": "date-time",
                 "nullable": true,
                 "type": "string"
@@ -277,7 +277,7 @@
                     "type": "null"
                   }
                 ],
-                "description": "Temperature observation (°C) from the Middle Wallop, Hampshire Met Office station, taken at the declared observation time. Combined with drand_randomness to derive the draw seed. Field included by default."
+                "description": "The weather value that fed the seed, for Middle Wallop, Hampshire. Forecast draws: the Met Office forecast mean sea-level pressure in pascals. Observation-weather draws: the Met Office Land Observations reading as \"<t>;<mslp>;<rh>;<vis>\". Null when the draw used no weather. Field included by default."
               },
               "freq_fallback_reason": {
                 "anyOf": [
@@ -289,7 +289,7 @@
                     "type": "null"
                   }
                 ],
-                "description": "Grid-frequency draws only: why no readings were used (`no_frequency_by_deadline`). Null otherwise. Field included by default."
+                "description": "Why no grid frequency readings were used (`no_frequency_by_deadline`), on a grid-frequency or observation-weather draw that ended on drand alone. Null otherwise. Field included by default."
               },
               "results": {
                 "anyOf": [
@@ -419,7 +419,7 @@
                     "type": "null"
                   }
                 ],
-                "description": "The 64-character hex random value published by drand for the declared round. Combined with weather_value to derive the draw seed. Field included by default."
+                "description": "The 64-character hex random value published by drand for the declared round. Combined with the entry hash and weather_value or freq_value, if the draw used one, to derive the draw seed. Field included by default."
               }
             },
             "required": [
@@ -567,7 +567,7 @@
       },
       "draw-filter-seed": {
         "additionalProperties": false,
-        "description": "64-character hex SHA-256 seed used to drive the draw algorithm. Derived from drand + weather entropy (seed_source: entropy) or supplied by the caller (seed_source: caller). Sandbox draws live in a separate resource — see `WallopCore.Resources.SandboxDraw`.",
+        "description": "64-character hex SHA-256 seed used to drive the draw algorithm. Derived from drand plus the draw's second source, if it used one (seed_source: entropy), or supplied by the caller (seed_source: caller). Sandbox draws live in a separate resource — see `WallopCore.Resources.SandboxDraw`.",
         "properties": {
           "contains": {
             "type": "string"
@@ -848,7 +848,7 @@
       },
       "draw-filter-freq_start": {
         "additionalProperties": false,
-        "description": "Grid-frequency draws only: the time of the first of the 8 GB grid frequency readings (Elexon FREQ, 15 seconds apart) that feed the seed. Null for other draws.",
+        "description": "The time of the first of the 8 GB grid frequency readings (Elexon FREQ, 15 seconds apart). They feed the seed of a grid-frequency draw, and of an observation-weather draw whose Middle Wallop reading was late. Null for forecast draws.",
         "properties": {
           "eq": {},
           "greater_than": {},
@@ -1356,7 +1356,7 @@
       },
       "draw-filter-drand_randomness": {
         "additionalProperties": false,
-        "description": "The 64-character hex random value published by drand for the declared round. Combined with weather_value to derive the draw seed.",
+        "description": "The 64-character hex random value published by drand for the declared round. Combined with the entry hash and weather_value or freq_value, if the draw used one, to derive the draw seed.",
         "properties": {
           "contains": {
             "type": "string"
@@ -1514,7 +1514,7 @@
       },
       "draw-filter-weather_value": {
         "additionalProperties": false,
-        "description": "Temperature observation (°C) from the Middle Wallop, Hampshire Met Office station, taken at the declared observation time. Combined with drand_randomness to derive the draw seed.",
+        "description": "The weather value that fed the seed, for Middle Wallop, Hampshire. Forecast draws: the Met Office forecast mean sea-level pressure in pascals. Observation-weather draws: the Met Office Land Observations reading as \"<t>;<mslp>;<rh>;<vis>\". Null when the draw used no weather.",
         "properties": {
           "contains": {
             "type": "string"
@@ -1569,7 +1569,7 @@
       },
       "draw-filter-freq_fallback_reason": {
         "additionalProperties": false,
-        "description": "Grid-frequency draws only: why no readings were used (`no_frequency_by_deadline`). Null otherwise.",
+        "description": "Why no grid frequency readings were used (`no_frequency_by_deadline`), on a grid-frequency or observation-weather draw that ended on drand alone. Null otherwise.",
         "properties": {
           "contains": {
             "type": "string"
@@ -1994,7 +1994,7 @@
       },
       "draw-filter-freq_value": {
         "additionalProperties": false,
-        "description": "Grid-frequency draws only: the 8 readings in mHz, `;`-joined, in time order. Null when the draw fell back to drand alone, and for other draws.",
+        "description": "The 8 grid frequency readings in mHz, `;`-joined, in time order, when they fed the seed: on a grid-frequency draw, or an observation-weather draw whose Middle Wallop reading was late. Null otherwise.",
         "properties": {
           "contains": {
             "type": "string"
@@ -2855,7 +2855,7 @@
                                 "type": "null"
                               }
                             ],
-                            "description": "Optional explicit weather observation time (UTC). When supplied, the entropy worker will fire at this moment and the supplied value is signed verbatim into the lock receipt. If omitted, defaults to a jittered 3-5 minutes from lock-time. Must have second precision (sub-second values rejected — what you supply is what gets signed). Must be at least 60 seconds in the future and within ~7 days. The drand round derivation flows from this value; supplying a far-future weather_time correctly schedules the drand reveal to align."
+                            "description": "Forecast operators only: optional explicit weather time (UTC). When supplied, the entropy worker will fire at this moment and the supplied value is signed verbatim into the lock receipt. If omitted, defaults to a jittered 3-5 minutes from lock-time. Must have second precision (sub-second values rejected — what you supply is what gets signed). Must be at least 60 seconds in the future and within ~7 days. The drand round derivation flows from this value; supplying a far-future weather_time correctly schedules the drand reveal to align."
                           }
                         },
                         "type": "object"

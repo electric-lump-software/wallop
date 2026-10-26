@@ -153,7 +153,7 @@ Production sets the same variable via the hosting platform's env var mechanism.
 
 ## Status
 
-Active development. The algorithm, protocol layer, API, entropy layer (drand + Met Office weather), and public proof pages are all implemented.
+Active development. The algorithm, protocol layer, API, entropy layer (drand, Met Office weather and GB grid frequency), and public proof pages are all implemented.
 
 ## License
 

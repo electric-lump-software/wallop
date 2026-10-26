@@ -174,6 +174,7 @@ defmodule WallopWeb.Components.DrawTimeline do
     }
   end
 
+  defp pending_detail(nil), do: "waiting for drand round and weather forecast..."
   defp pending_detail(%{tag: :freq}), do: "waiting for drand round and grid frequency readings..."
   defp pending_detail(_weather), do: "waiting for drand round and weather observation..."
 
@@ -304,7 +305,7 @@ defmodule WallopWeb.Components.DrawTimeline do
       if(draw.drand_randomness, do: "drand: #{truncate_hash(draw.drand_randomness)}"),
       weather_part,
       if(draw.weather_observation_time,
-        do: "observed at #{Calendar.strftime(draw.weather_observation_time, "%H:%M UTC")}"
+        do: "forecast for #{Calendar.strftime(draw.weather_observation_time, "%H:%M UTC")}"
       )
     ]
     |> Enum.reject(&is_nil/1)

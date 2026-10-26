@@ -66,7 +66,7 @@ defmodule WallopWeb.Components.ProofChain do
                   (station: {@draw.weather_station})
                 </span>
                 <div :if={@draw.weather_observation_time} class="text-xs text-[#555] mt-0.5">
-                  Observation from {Calendar.strftime(@draw.weather_observation_time, "%H:%M UTC %d %b %Y")}
+                  Forecast for {Calendar.strftime(@draw.weather_observation_time, "%H:%M UTC %d %b %Y")}
                 </div>
               </div>
               <div :if={!@weather and !@draw.weather_value and @draw.weather_fallback_reason} class="mt-2">

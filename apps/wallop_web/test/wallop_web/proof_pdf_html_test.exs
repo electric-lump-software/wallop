@@ -1,7 +1,7 @@
 defmodule WallopWeb.ProofPdfHTMLTest do
   # The PDF's HTML, before Gotenberg: its entropy section follows the
   # signed execution receipt's state for lock schema 6 draws, and is
-  # unchanged for forecast draws.
+  # labelled a forecast, resting on wallop's word, for forecast draws.
   use WallopWeb.ConnCase, async: false
 
   import WallopCore.TestHelpers
@@ -11,13 +11,15 @@ defmodule WallopWeb.ProofPdfHTMLTest do
 
   defp squash(html), do: String.replace(html, ~r/\s+/, " ")
 
-  test "forecast draw: as before" do
+  test "forecast draw: labelled a forecast, resting on wallop's word" do
     api_key = create_api_key()
     draw = create_draw(api_key, %{}) |> execute_draw(test_seed(), api_key)
     html = draw |> pdf_html() |> squash()
 
-    assert html =~ "Value (°C)"
-    assert html =~ "Fetch the Met Office Middle Wallop observation for"
+    assert html =~ "Forecast value"
+    assert html =~ "A forecast can't be re-fetched later, so this value rests on wallop's word"
+    refute html =~ "Value (°C)"
+    refute html =~ "Fetch the Met Office Middle Wallop observation for"
     assert html =~ "Combine entry hash, drand randomness, and weather value into a"
     refute html =~ "The signed receipt says"
     refute html =~ "BMRS"
@@ -30,7 +32,7 @@ defmodule WallopWeb.ProofPdfHTMLTest do
     assert html =~ "Middle Wallop (WMO 03749)"
     assert html =~ "141;1025;85;2432"
     assert html =~ "temperature (°C × 10); pressure (hPa); humidity (%); visibility (m ÷ 10)"
-    refute html =~ "Value (°C)"
+    refute html =~ "Forecast value"
     assert html =~ "Within 48 hours: Met Office Land Observations (free DataHub key)."
 
     assert html =~
@@ -40,7 +42,7 @@ defmodule WallopWeb.ProofPdfHTMLTest do
     assert html =~ "wallop-verify weather-attest"
     assert html =~ "What you're trusting here:"
     assert html =~ "Fewer than drand&#39;s threshold of nodes collude."
-    refute html =~ "Confirm the temperature value matches"
+    refute html =~ "rests on wallop"
     refute html =~ "drand entropy alone"
   end
 
