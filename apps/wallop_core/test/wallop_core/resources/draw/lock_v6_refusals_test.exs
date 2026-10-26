@@ -175,46 +175,69 @@ defmodule WallopCore.Resources.Draw.LockV6RefusalsTest do
            } = SignAndStoreReceipt.v6_lock_time_error(~U[2026-10-14 18:14:00.000001Z], wt)
   end
 
-  describe "without a Land Observations key" do
-    setup do
+  describe "the fetching service's readiness" do
+    @message "observation-weather draws are paused here: no Land Observations key is configured"
+
+    defp assert_refused(draw, key, args) do
+      assert {:error, %Ash.Error.Invalid{errors: errors}} = lock(draw, key, args)
+      assert [%InvalidArgument{field: nil, message: @message}] = errors
+    end
+
+    test "no record: an observation lock is refused, with or without draw_at; nothing changes" do
+      {_op, key} = create_v6_operator()
+      put_observation_readiness!(nil)
+      draw = open_draw_with_entries(key)
+      draw_at = next_hour_draw_at(3)
+      {:ok, s} = Schedule.schedule(draw_at)
+
+      for args <- [%{draw_at: draw_at}, %{}], do: assert_refused(draw, key, args)
+
+      assert_untouched(draw)
+      refute_hour_enqueued(s.weather_time)
+    end
+
+    test "a record saying not ready refuses the lock" do
+      {_op, key} = create_v6_operator()
+      put_observation_readiness!(false)
+      draw = open_draw_with_entries(key)
+      assert_refused(draw, key, %{draw_at: next_hour_draw_at(3)})
+      assert_untouched(draw)
+    end
+
+    test "a record older than 30 minutes by the database clock refuses the lock" do
+      {_op, key} = create_v6_operator()
+      draw = open_draw_with_entries(key)
+
+      put_observation_readiness!(true, 30 * 60 + 5)
+      assert_refused(draw, key, %{draw_at: next_hour_draw_at(3)})
+      assert_untouched(draw)
+
+      put_observation_readiness!(true, 30 * 60 - 60)
+
+      assert {:ok, %{lock_schema_version: "6"}} =
+               lock(draw, key, %{draw_at: next_hour_draw_at(3)})
+    end
+
+    test "the lock reads the record, not its own environment: no local key, ready record, accepted" do
       previous = Application.get_env(:wallop_core, :met_office_obs_api_key)
       Application.delete_env(:wallop_core, :met_office_obs_api_key)
 
       on_exit(fn ->
         if previous, do: Application.put_env(:wallop_core, :met_office_obs_api_key, previous)
       end)
-    end
 
-    test "an observation lock is refused, with or without draw_at; nothing changes" do
       {_op, key} = create_v6_operator()
-      draw = open_draw_with_entries(key)
-      draw_at = next_hour_draw_at(3)
-      {:ok, s} = Schedule.schedule(draw_at)
+      put_observation_readiness!(true)
 
-      for args <- [%{draw_at: draw_at}, %{}] do
-        assert {:error, %Ash.Error.Invalid{errors: errors}} = lock(draw, key, args)
-        assert [%InvalidArgument{field: nil} = error] = errors
+      assert {:ok, locked} =
+               lock(open_draw_with_entries(key), key, %{draw_at: next_hour_draw_at(3)})
 
-        assert error.message ==
-                 "observation-weather draws are paused here: no Land Observations key is configured"
-      end
-
-      assert_untouched(draw)
-      refute_hour_enqueued(s.weather_time)
+      assert locked.lock_schema_version == "6"
+      assert locked.status == :awaiting_entropy
     end
 
-    test "an unusable key counts as no key" do
-      Application.put_env(:wallop_core, :met_office_obs_api_key, "not visible\n")
-      {_op, key} = create_v6_operator()
-      draw = open_draw_with_entries(key)
-
-      assert {:error, %Ash.Error.Invalid{errors: [%InvalidArgument{field: nil}]}} =
-               lock(draw, key, %{draw_at: next_hour_draw_at(3)})
-
-      assert_untouched(draw)
-    end
-
-    test "forecast and grid-frequency locks are unaffected" do
+    test "forecast and grid-frequency locks don't read it" do
+      put_observation_readiness!(nil)
       key = create_api_key()
       assert {:ok, forecast} = lock(open_draw_with_entries(key), key, %{})
       assert forecast.lock_schema_version == nil

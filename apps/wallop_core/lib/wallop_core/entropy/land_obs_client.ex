@@ -45,9 +45,10 @@ defmodule WallopCore.Entropy.LandObsClient do
 
   @doc """
   Whether a usable Land Observations key is configured: set, non-empty and
-  visible ASCII. It is the same check each request makes before it is sent,
-  so a lock that relies on this answer and the fetches that follow can't
-  disagree about it.
+  visible ASCII. It is the same check each request makes before it is sent.
+  The node that runs the fetches records it for locks to read
+  (`WallopCore.Weather.ObservationReadiness`), so what a lock is told and
+  what the fetches do can't disagree.
   """
   @spec key_configured?() :: boolean()
   def key_configured?, do: match?({:ok, _}, api_key())

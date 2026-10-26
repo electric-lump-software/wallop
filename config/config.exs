@@ -35,7 +35,9 @@ config :wallop_core, Oban,
      crontab: [
        {"0 * * * *", WallopCore.Entropy.ExpiryWorker},
        {"30 3 * * *", WallopCore.Transparency.AnchorWorker},
-       {"*/10 * * * *", WallopCore.Entropy.StuckDrawRedriver}
+       {"*/10 * * * *", WallopCore.Entropy.StuckDrawRedriver},
+       # Runs on the weather queue: only the node that fetches records it.
+       {"*/10 * * * *", WallopCore.Weather.ObservationReadinessWorker}
      ]},
     {Oban.Plugins.Lifeline, rescue_after: :timer.minutes(2)}
   ]

@@ -195,6 +195,7 @@ defmodule WallopCore.TestHelpers do
 
   @doc "An operator on the observation weather protocol, and an API key for it."
   def create_v6_operator do
+    put_observation_readiness!(true)
     operator = create_operator()
 
     {:ok, operator} =
@@ -203,6 +204,32 @@ defmodule WallopCore.TestHelpers do
       |> Ash.update(authorize?: false)
 
     {operator, create_api_key_for_operator(operator)}
+  end
+
+  @doc """
+  Writes the observation readiness record as the fetching service would:
+  `ready`, checked `age_seconds` ago on the database clock. `nil` deletes
+  it. `create_v6_operator/0` writes a fresh `true`, so observation locks in
+  tests behave as they do with a working fetcher.
+  """
+  def put_observation_readiness!(ready, age_seconds \\ 0)
+
+  def put_observation_readiness!(nil, _age_seconds) do
+    Repo.query!("DELETE FROM observation_readiness")
+    :ok
+  end
+
+  def put_observation_readiness!(ready, age_seconds) when is_boolean(ready) do
+    Repo.query!(
+      """
+      INSERT INTO observation_readiness (singleton, ready, checked_at)
+      VALUES (true, $1, (statement_timestamp() AT TIME ZONE 'UTC') - make_interval(secs => $2))
+      ON CONFLICT (singleton) DO UPDATE SET ready = EXCLUDED.ready, checked_at = EXCLUDED.checked_at
+      """,
+      [ready, age_seconds]
+    )
+
+    :ok
   end
 
   @doc "An operator on the grid-frequency protocol, and an API key for it."

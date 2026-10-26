@@ -31,6 +31,7 @@ defmodule WallopCore.Domain do
     resource(WallopCore.Resources.WeatherObservation)
     resource(WallopCore.Resources.FrequencyWindow)
     resource(WallopCore.Resources.LandObsCallCount)
+    resource(WallopCore.Resources.ObservationReadiness)
     resource(WallopCore.Resources.InfrastructureSigningKey)
     resource(WallopCore.Resources.TransparencyAnchor)
     resource(WallopCore.Resources.WaitlistSignup)

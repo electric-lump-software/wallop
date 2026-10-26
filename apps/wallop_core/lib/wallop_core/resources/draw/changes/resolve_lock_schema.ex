@@ -20,9 +20,11 @@ defmodule WallopCore.Resources.Draw.Changes.ResolveLockSchema do
   stays exactly as it was before schema 6 existed, and a forecast draw
   locked while the flag moves is a valid forecast draw.
 
-  An observation lock is refused when no usable Land Observations key is
-  configured (`WallopCore.Entropy.LandObsClient.key_configured?/0`): no
-  reading could be fetched, so every such draw would fall back by design.
+  An observation lock is refused unless the service that fetches Land
+  Observations readings has recently said it holds a usable key
+  (`WallopCore.Weather.ObservationReadiness.ready?/0`, read from the
+  database, since the lock may run in another service): otherwise no
+  reading could be fetched, and every such draw would fall back by design.
   The refusal is an action-level `Ash.Error.Changes.InvalidArgument` (a
   JSON:API `400` `invalid_argument` with no pointer), and the draw stays
   open. Forecast and grid-frequency locks don't depend on the key.
@@ -30,9 +32,9 @@ defmodule WallopCore.Resources.Draw.Changes.ResolveLockSchema do
   use Ash.Resource.Change
 
   alias Ash.Error.Changes.InvalidArgument
-  alias WallopCore.Entropy.LandObsClient
   alias WallopCore.Protocol
   alias WallopCore.Resources.Operator
+  alias WallopCore.Weather.ObservationReadiness
 
   require Ash.Query
 
@@ -66,15 +68,15 @@ defmodule WallopCore.Resources.Draw.Changes.ResolveLockSchema do
     |> Ash.Changeset.force_change_attribute(:lock_schema_version, "6")
     |> Ash.Changeset.force_change_attribute(:entropy_composition, tag(protocol))
     |> Ash.Changeset.before_action(&confirm(&1, operator_id, protocol))
-    |> require_key(protocol)
+    |> require_ready(protocol)
   end
 
   defp record(changeset, :forecast, _operator_id), do: changeset
 
   # The lock is still recorded as schema 6, so the rest of the action
   # follows the schema 6 path; the error stops it before anything is written.
-  defp require_key(changeset, :observation) do
-    if LandObsClient.key_configured?() do
+  defp require_ready(changeset, :observation) do
+    if ObservationReadiness.ready?() do
       changeset
     else
       Ash.Changeset.add_error(
@@ -88,7 +90,7 @@ defmodule WallopCore.Resources.Draw.Changes.ResolveLockSchema do
     end
   end
 
-  defp require_key(changeset, :frequency), do: changeset
+  defp require_ready(changeset, :frequency), do: changeset
 
   defp tag(:observation), do: Protocol.landobs_entropy_composition()
   defp tag(:frequency), do: Protocol.freq_entropy_composition()

@@ -72,7 +72,7 @@ defmodule MyApp.Repo.Migrations.AddObanAppJobs do
 end
 ```
 
-Your app also needs `MET_OFFICE_API_KEY` and `HONEYCOMB_API_KEY` environment variables set, since the EntropyWorker and OTel exporter run in your process. `MET_OFFICE_OBS_API_KEY` (a Met Office Weather DataHub Land Observations key) is optional: only observation-weather draws use it, and without it a new observation-weather lock is refused (`400` `invalid_argument`), since no reading could be fetched. A draw locked before the key went away falls back by rule, visibly in the receipt. Forecast draws don't need it. The grid-frequency source needs no key. Set a distinct OTel service name so traces are separated in Honeycomb:
+Your app also needs `MET_OFFICE_API_KEY` and `HONEYCOMB_API_KEY` environment variables set, since the EntropyWorker and OTel exporter run in your process. `MET_OFFICE_OBS_API_KEY` (a Met Office Weather DataHub Land Observations key) goes only on the service that runs the `weather` queue; an app with an insert-only Oban doesn't need it. That service records, every 10 minutes, whether it holds a usable key, and observation-weather locks in any service are refused (`400` `invalid_argument`) unless it recently said yes. A draw locked before the key went away falls back by rule, visibly in the receipt. Forecast draws don't need it. The grid-frequency source needs no key. Set a distinct OTel service name so traces are separated in Honeycomb:
 
 ```elixir
 # In your app's runtime.exs
@@ -147,7 +147,7 @@ Production sets the same variable via the hosting platform's env var mechanism.
 
 ### Other settings
 
-- `MET_OFFICE_OBS_API_KEY` (optional): the Met Office Land Observations key for observation-weather draws. Without it, observation-weather locks are refused.
+- `MET_OFFICE_OBS_API_KEY` (optional): the Met Office Land Observations key for observation-weather draws, on the service that runs the `weather` queue. That service reports whether it has a usable key at boot and every 10 minutes; without a recent yes, observation-weather locks are refused.
 - `LAND_OBS_DAILY_CAP` (optional): the most Land Observations calls in a UTC day, a whole number from 1 to 900; default 800. Anything else stops the boot. A full day of polling costs at most 624 calls (26 an hour), so the default only trips if something has gone wrong; below 624 the boot warns that weather draws may fall back. At the cap, wallop stops calling until midnight UTC, and the hour's draws fall back as they would for any late reading.
 - `POOL_SIZE` (production): the database pool size; default 20. The job queues add up to 36, which is fine because no job holds a connection across an HTTP call.
 

@@ -78,18 +78,10 @@ defmodule WallopWeb.Api.LockV6Test do
     end
   end
 
-  describe "without a Land Observations key" do
-    setup do
-      previous = Application.get_env(:wallop_core, :met_office_obs_api_key)
-      Application.delete_env(:wallop_core, :met_office_obs_api_key)
-
-      on_exit(fn ->
-        if previous, do: Application.put_env(:wallop_core, :met_office_obs_api_key, previous)
-      end)
-    end
-
+  describe "when the fetching service isn't ready" do
     test "an observation lock is a 400 invalid_argument with no pointer; the draw stays open" do
       {_op, key} = create_v6_operator()
+      put_observation_readiness!(nil)
       draw = open_draw_with_entries(key)
 
       for attrs <- [%{"draw_at" => DateTime.to_iso8601(top_of_hour(3))}, %{}] do
@@ -108,6 +100,7 @@ defmodule WallopWeb.Api.LockV6Test do
     end
 
     test "a forecast lock is unchanged" do
+      put_observation_readiness!(nil)
       key = create_api_key()
       attrs = lock(key, open_draw_with_entries(key), %{}, 200)["data"]["attributes"]
       assert attrs |> Map.keys() |> Enum.sort() == forecast_lock_keys()

@@ -6,7 +6,7 @@ defmodule WallopCore.Application do
 
   alias WallopCore.Drand.Bls
   alias WallopCore.Telemetry.EctoHandler
-  alias WallopCore.Weather.LandObsBudget
+  alias WallopCore.Weather.{LandObsBudget, ObservationReadiness}
 
   @impl true
   def start(_type, _args) do
@@ -25,7 +25,13 @@ defmodule WallopCore.Application do
         WallopCore.Repo,
         WallopCore.Vault,
         pubsub_child_spec(),
-        {Oban, Application.fetch_env!(:wallop_core, Oban)}
+        {Oban, Application.fetch_env!(:wallop_core, Oban)},
+        # Records whether this node can fetch Land Observations readings,
+        # only if it runs the weather queue. Runs once; a failure is left to
+        # the 10-minute cron (ObservationReadinessWorker).
+        Supervisor.child_spec({Task, &ObservationReadiness.publish_at_boot/0},
+          id: :observation_readiness_boot
+        )
       ] ++ prepared_transactions_check()
 
     opts = [strategy: :one_for_one, name: WallopCore.Supervisor]
