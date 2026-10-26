@@ -60,9 +60,9 @@ end
 
 # The draw that "view an example proof" links on the home page and the
 # verification explainer point at. Unset, those links are left out.
-case System.get_env("EXAMPLE_PROOF_URL") do
-  url when url in [nil, ""] -> :ok
-  url -> config :wallop_web, :example_proof_url, url
+# Set and not https://, the boot stops.
+if url = WallopWeb.ExampleProof.parse_env!(System.get_env("EXAMPLE_PROOF_URL")) do
+  config :wallop_web, :example_proof_url, url
 end
 
 if config_env() == :prod do

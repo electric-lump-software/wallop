@@ -76,6 +76,17 @@ defmodule WallopWeb.RetiredDrawTest do
     refute RetiredDraw.retired?(execute_draw(create_draw(key)))
   end
 
+  test "retired?/1 raises when the fields it reads aren't loaded" do
+    not_loaded = %Ash.NotLoaded{field: :lock_schema_version, type: :attribute}
+
+    assert_raise ArgumentError, ~r/needs lock_schema_version and status loaded/, fn ->
+      RetiredDraw.retired?(%{lock_schema_version: not_loaded, status: :completed})
+    end
+
+    assert_raise ArgumentError, fn -> RetiredDraw.retired?(%{status: :completed}) end
+    assert_raise ArgumentError, fn -> RetiredDraw.retired?(%{lock_schema_version: nil}) end
+  end
+
   test "every proof route answers a retired draw exactly as it answers an unknown id",
        %{retired: retired} do
     for draw <- retired do

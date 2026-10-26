@@ -19,12 +19,23 @@ defmodule WallopWeb.RetiredDraw do
 
   alias WallopCore.Resources.Draw
 
-  @doc "True when `draw` has no lock schema and is neither open nor expired."
-  @spec retired?(map()) :: boolean()
-  def retired?(%{lock_schema_version: nil, status: status}),
-    do: status not in [:open, :expired]
+  @doc """
+  True when `draw` has no lock schema and is neither open nor expired.
 
-  def retired?(_draw), do: false
+  Fails safe: a draw whose `lock_schema_version` or `status` isn't loaded
+  raises rather than passing as not retired.
+  """
+  @spec retired?(map()) :: boolean()
+  def retired?(%{lock_schema_version: schema, status: status})
+      when not is_struct(schema, Ash.NotLoaded) and not is_struct(status, Ash.NotLoaded) do
+    is_nil(schema) and status not in [:open, :expired]
+  end
+
+  def retired?(draw) do
+    raise ArgumentError,
+          "RetiredDraw.retired?/1 needs lock_schema_version and status loaded, got: " <>
+            inspect(Map.take(draw, [:id, :lock_schema_version, :status]))
+  end
 
   @doc """
   The draw a public proof route may show: `{:ok, draw}`, or

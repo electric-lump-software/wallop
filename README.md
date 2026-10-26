@@ -151,7 +151,8 @@ Production sets the same variable via the hosting platform's env var mechanism.
 
 - `MET_OFFICE_OBS_API_KEY` (optional): the Met Office Land Observations key for observation-weather draws, on the service that runs the `weather` queue. That service reports whether it has a usable key at boot and every 10 minutes; without a recent yes, observation-weather locks are refused.
 - `LAND_OBS_DAILY_CAP` (optional): the most Land Observations calls in a UTC day, a whole number from 1 to 900; default 800. Anything else stops the boot. A full day of polling costs at most 624 calls (26 an hour), so the default only trips if something has gone wrong; below 624 the boot warns that weather draws may fall back. At the cap, wallop stops calling until midnight UTC, and the hour's draws fall back as they would for any late reading.
-- `POOL_SIZE` (production): the database pool size; default 20. The job queues add up to 36, which is fine because no job holds a connection across an HTTP call.
+- `POOL_SIZE` (production): the database pool size; default 20. The job queues add up to 26, which is fine because no job holds a connection across an HTTP call.
+- `EXAMPLE_PROOF_URL` (optional): an `https://` URL of a completed observation-weather proof page, linked from the home page and the verification explainer as the example proof. Unset, the example links are hidden. Set to anything not starting with `https://`, the boot stops.
 
 ## Status
 

@@ -72,4 +72,23 @@ defmodule WallopWeb.ExampleProofTest do
     Application.put_env(:wallop_web, :example_proof_url, "")
     assert WallopWeb.ExampleProof.url() == nil
   end
+
+  describe "parse_env!/1 (EXAMPLE_PROOF_URL in runtime.exs)" do
+    test "unset or empty is nil" do
+      assert WallopWeb.ExampleProof.parse_env!(nil) == nil
+      assert WallopWeb.ExampleProof.parse_env!("") == nil
+    end
+
+    test "an https:// URL is kept" do
+      assert WallopWeb.ExampleProof.parse_env!(@url) == @url
+    end
+
+    test "anything else stops the boot" do
+      for bad <- ["http://wallop.run/proof/x", "wallop.run/proof/x", "/proof/x", "https://", " "] do
+        assert_raise ArgumentError, ~r/EXAMPLE_PROOF_URL must be an https:\/\/ URL/, fn ->
+          WallopWeb.ExampleProof.parse_env!(bad)
+        end
+      end
+    end
+  end
 end

@@ -64,6 +64,7 @@ Adds two draw protocols, observation weather and grid frequency (lock schema 6 /
 - **Caches.** Proof pages were served with long-lived `Cache-Control`. After the deploy, check Cloudflare's cache for `/proof/*` and purge it, so a cached forecast proof page, PDF or bundle isn't still served. Browser caches can't be purged; they expire on their own.
 - **Cached PDFs.** PDFs already generated for forecast draws stay in proof storage, unreachable: every route to them now answers as for an unknown draw. No cleanup job is needed.
 - **`MET_OFFICE_API_KEY` is no longer read.** Remove it once this release is live.
+- **`EXAMPLE_PROOF_URL`** (optional): an `https://` URL of a completed observation-weather proof page, linked from the home page and the verification explainer as the example proof. Unset, the example links are hidden. Set to anything not starting with `https://`, the boot stops.
 - **Never roll the service that runs core jobs back below 0.29.0; roll forward.** Older code can neither run nor verify lock schema 6 draws, and the database now refuses every forecast lock. Record this in your own runbook.
 
 ### Verifier surface
