@@ -103,12 +103,11 @@ Freezes entries and starts entropy collection.
 }
 ```
 
-What else you may send depends on your operator's draw protocol. The platform sets the protocol per operator; it is `forecast` unless the platform has moved your operator. A draw keeps the protocol it was locked with, even if the setting changes afterwards.
+The platform sets the draw protocol per operator; it is `observation` unless the platform has moved your operator to `frequency`. A draw keeps the protocol it was locked with, even if the setting changes afterwards. The one optional attribute is `draw_at`. Any other attribute, `weather_time` included, is refused with `400` `invalid_body`.
 
 | Protocol | Optional attribute | Rules |
 |---|---|---|
-| `forecast` (default) | `weather_time` | Whole seconds, at least 60 seconds ahead, within about 7 days. Without it, wallop picks a time 3–5 minutes after the lock. Sending `draw_at` is refused. |
-| `observation` (observation weather) | `draw_at` | When the result is due: whole seconds, on drand quicknet's 3-second grid (any whole minute is), within 7 days. Without it, wallop picks the earliest allowed time. Sending `weather_time` is refused. |
+| `observation` (observation weather, the default) | `draw_at` | When the result is due: whole seconds, on drand quicknet's 3-second grid (any whole minute is), within 7 days. Without it, wallop picks the earliest allowed time. |
 | `frequency` (grid frequency) | `draw_at` | As for `observation`. |
 
 **Preconditions:**
@@ -120,15 +119,13 @@ What else you may send depends on your operator's draw protocol. The platform se
 
 **What happens:**
 1. Entry hash computed (SHA-256 of canonical entry list)
-2. A drand round is declared:
-   - `forecast`: the round published about 30 seconds before `weather_time`, and the weather value is fetched at `weather_time`;
-   - `observation` and `frequency`: the round published at `draw_at`. The readings are fetched before that round exists, and the draw runs a few seconds after it.
+2. A drand round is declared: the round published at `draw_at`. The readings are fetched before that round exists, and the draw runs a few seconds after it.
 3. Status transitions to `awaiting_entropy`
 4. Draw executes automatically when its entropy is collected
 
 **Response:** Draw resource with `status: "awaiting_entropy"`, `entry_hash`, `drand_round`, `weather_time`, `freq_start` and `expected_result_at`.
 
-- `expected_result_at` — when the result is due: the publication time of the committed drand round, computed from `drand_round` and not signed. Equal to `draw_at` for `observation` and `frequency` draws; `null` for `forecast` draws.
+- `expected_result_at` — when the result is due: the publication time of the committed drand round, computed from `drand_round` and not signed. Equal to `draw_at`.
 
 **A lock that is too late** is refused with `400`, and the draw stays open. The error says when the draw had to be locked by, in `meta.latest_lock_at` (whole seconds, UTC). Other keys omitted:
 
@@ -148,7 +145,7 @@ What else you may send depends on your operator's draw protocol. The platform se
 
 Pick a later `draw_at` (or send none) and lock again. Without `draw_at` the error has no `source.pointer`. Match on `code` and `meta`, not on `detail`.
 
-**An observation-weather lock while wallop can't fetch Land Observations readings** is refused with `400` `invalid_argument`, with no `source.pointer` and an empty `meta`, and the draw stays open. That is when the service that fetches the readings hasn't said, in the last 30 minutes, that it holds a usable key. Such a draw would always fall back, so wallop says so now rather than at the result. Forecast and grid-frequency locks are unaffected. Other keys omitted:
+**An observation-weather lock while wallop can't fetch Land Observations readings** is refused with `400` `invalid_argument`, with no `source.pointer` and an empty `meta`, and the draw stays open. That is when the service that fetches the readings hasn't said, in the last 30 minutes, that it holds a usable key. Such a draw would always fall back, so wallop says so now rather than at the result. Grid-frequency locks are unaffected. Other keys omitted:
 
 ```json
 {
@@ -176,14 +173,16 @@ Returns the current state of a draw.
 
 Entropy fields by protocol:
 
-| Field | `forecast` | `observation` | `frequency` |
-|---|---|---|---|
-| `weather_station` | `middle-wallop` | `wmo-03749` | `null` |
-| `weather_time` | When the forecast value is fetched | The observation hour | `null` |
-| `weather_value`, `weather_observation_time`, `weather_fallback_reason` | Set by the draw | Set by the draw | `null` |
-| `freq_start` | `null` | Start of the grid-frequency window used if Middle Wallop's reading is late | Start of the grid-frequency window |
-| `freq_value`, `freq_fallback_reason` | `null` | Set only when Middle Wallop's reading was late | Set by the draw |
-| `expected_result_at` | `null` | When the result is due | When the result is due |
+| Field | `observation` | `frequency` |
+|---|---|---|
+| `weather_station` | `wmo-03749` | `null` |
+| `weather_time` | The observation hour | `null` |
+| `weather_value`, `weather_observation_time`, `weather_fallback_reason` | Set by the draw | `null` |
+| `freq_start` | Start of the grid-frequency window used if Middle Wallop's reading is late | Start of the grid-frequency window |
+| `freq_value`, `freq_fallback_reason` | Set only when Middle Wallop's reading was late | Set by the draw |
+| `expected_result_at` | When the result is due | When the result is due |
+
+All of these are `null` until the draw is locked.
 
 `weather_station` on an observation-weather draw is always `wmo-03749` (Middle Wallop), whether the draw used Middle Wallop's reading, the grid frequency or drand alone. The signed execution receipt is the authority on which source was used. A completed observation-weather draw is in exactly one of three states:
 
