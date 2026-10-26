@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Secrets can come from Infisical
+
+**ADDED.**
+
+- **Docker image: secrets from Infisical at start.** When `INFISICAL_UNIVERSAL_AUTH_CLIENT_ID`, `INFISICAL_UNIVERSAL_AUTH_CLIENT_SECRET`, `INFISICAL_PROJECT_ID` and `INFISICAL_ENV` are all set, the start script signs in and restarts itself under `infisical run`, whose values replace variables of the same name. Setting only some of them refuses to start. `INFISICAL_PATHS` (space-separated, default `/`) picks the folders to read; a folder that can't be read stops the start. Values are taken literally (no `${…}` expansion), and secrets are never watched for changes. The names, not values, of any `INFISICAL_CANARY_*` variables are logged at start. The Infisical CLI (v0.44.9) is pinned by checksum for amd64 and arm64. With none of the four set, nothing changes.
+
 ### Added: observation weather (lock schema 6 / execution schema 5), per operator
 
 **The forecast protocol is unchanged and stays the default.** Forecast draws (lock schema 5 / execution schema 4) lock, run and verify exactly as before, with the same signed bytes. Nothing about a forecast draw's lock, execution or proof changes until the platform moves its operator.
