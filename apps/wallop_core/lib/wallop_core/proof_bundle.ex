@@ -62,44 +62,72 @@ defmodule WallopCore.ProofBundle do
         {:error, :missing_infrastructure_key}
 
       true ->
-        bundle = %{
-          "version" => @bundle_version,
-          "draw_id" => draw.id,
-          "entries" => entries_for(draw),
-          "results" => results_for(draw),
-          "entropy" => entropy_for(draw),
-          "lock_receipt" =>
-            receipt_block(
-              lock_receipt,
-              if(lock_schema in @inline_lock_key_schemas,
-                do: {"operator_public_key_hex", operator_pk_hex},
-                else: nil
-              )
-            ),
-          "execution_receipt" =>
-            receipt_block(
-              execution_receipt,
-              if(exec_schema in @inline_exec_key_schemas,
-                do: {"infrastructure_public_key_hex", infra_pk_hex},
-                else: nil
-              )
-            )
-        }
-
-        {:ok, Jcs.encode(bundle)}
+        {:ok,
+         assemble(%{
+           draw_id: draw.id,
+           entries: entries_for(draw),
+           results: results_for(draw),
+           entropy: entropy_for(draw),
+           lock_receipt: {lock_receipt.payload_jcs, lock_receipt.signature},
+           execution_receipt: {execution_receipt.payload_jcs, execution_receipt.signature},
+           inline_keys: %{
+             lock: if(lock_schema in @inline_lock_key_schemas, do: operator_pk_hex),
+             exec: if(exec_schema in @inline_exec_key_schemas, do: infra_pk_hex)
+           }
+         })}
     end
   end
 
-  defp receipt_block(receipt, key_pair) do
+  @doc """
+  The bundle bytes (JCS) from its parts. Pure: no database, no clock.
+  `build/1` calls it for a stored draw; the vector generators call it with
+  fixed inputs, so both produce bundles the same way.
+
+    * `entries`: `[%{"uuid" => uuid, "weight" => weight}]`, sorted by uuid;
+    * `results`: `[%{"entry_id" => id, "position" => n}]`, in position order;
+    * `entropy`: the unsigned entropy block, exactly as it is to appear;
+    * `lock_receipt`, `execution_receipt`: `{payload_jcs, raw_signature}`;
+    * `inline_keys`: the hex key to put in each receipt's wrapper
+      (`operator_public_key_hex`, `infrastructure_public_key_hex`), or nil
+      for none.
+  """
+  @spec assemble(%{
+          draw_id: String.t(),
+          entries: [map()],
+          results: [map()],
+          entropy: map(),
+          lock_receipt: {binary(), binary()},
+          execution_receipt: {binary(), binary()},
+          inline_keys: %{lock: String.t() | nil, exec: String.t() | nil}
+        }) :: binary()
+  def assemble(%{
+        draw_id: draw_id,
+        entries: entries,
+        results: results,
+        entropy: entropy,
+        lock_receipt: lock_receipt,
+        execution_receipt: execution_receipt,
+        inline_keys: %{lock: lock_key, exec: exec_key}
+      }) do
+    Jcs.encode(%{
+      "version" => @bundle_version,
+      "draw_id" => draw_id,
+      "entries" => entries,
+      "results" => results,
+      "entropy" => entropy,
+      "lock_receipt" => receipt_block(lock_receipt, "operator_public_key_hex", lock_key),
+      "execution_receipt" =>
+        receipt_block(execution_receipt, "infrastructure_public_key_hex", exec_key)
+    })
+  end
+
+  defp receipt_block({payload_jcs, signature}, key_field, key_hex) do
     base = %{
-      "payload_jcs" => receipt.payload_jcs,
-      "signature_hex" => Base.encode16(receipt.signature, case: :lower)
+      "payload_jcs" => payload_jcs,
+      "signature_hex" => Base.encode16(signature, case: :lower)
     }
 
-    case key_pair do
-      nil -> base
-      {key, value} -> Map.put(base, key, value)
-    end
+    if is_nil(key_hex), do: base, else: Map.put(base, key_field, key_hex)
   end
 
   # Pulls schema_version off a JCS-encoded receipt payload without

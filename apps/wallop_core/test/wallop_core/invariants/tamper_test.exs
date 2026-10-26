@@ -1353,7 +1353,6 @@ defmodule WallopCore.Invariants.TamperTest do
       assert length(v["cases"]) == length(landobs.cases())
     end
 
-    @tag :pending_task_13
     test "INV-2 (tamper vectors) each base bundle is the bytes ProofBundle.assemble/1 produces" do
       for profile <- TamperVectors.profiles(), base <- vector(profile)["bases"] do
         {envelope, _, _} = receipts(base["bundle"])
