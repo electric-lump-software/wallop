@@ -1,5 +1,5 @@
 {
-  "description": "Lock receipt JCS payload (schema v3), 16 fields",
+  "description": "Lock receipt JCS payload (schema v4), 19 fields",
   "expected_field_count": 19,
   "expected_payload_sha256": "eb8053a6fa76395bd4f62815d7b2f0d13debd5983091b5911ca64249773e9ede",
   "expected_schema_version": "4",

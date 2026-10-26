@@ -7,7 +7,8 @@
 #
 # Each input is kept verbatim except `drand_round`, which is set to a real
 # quicknet round published after the input's `locked_at`. Only the
-# `expected_*` fields are recomputed. Description text is kept.
+# `expected_*` fields are recomputed. lock-receipt.json's description states its
+# schema and field count.
 #
 # There is no schema 4 lock builder (`Protocol.build_receipt_payload/1`
 # emits schema 5). The field sets are identical, so the schema 4 bytes are
@@ -93,6 +94,7 @@ lock_payload = schema_4_payload.(lock_input)
 lock_decoded = Jason.decode!(lock_payload)
 
 lock
+|> Map.put("description", "Lock receipt JCS payload (schema v4), 19 fields")
 |> Map.put("input", lock_input)
 |> Map.put("expected_payload_sha256", sha256_hex.(lock_payload))
 |> Map.put("expected_field_count", map_size(lock_decoded))

@@ -31,9 +31,7 @@ defmodule WallopCore.InvariantCase do
   # One tag per task that still owes the suite an invariant. A task removes
   # its tag from the tests it delivers; once no test uses a tag, it may be
   # removed here too.
-  @pending_tags [
-    :pending_task_13
-  ]
+  @pending_tags []
 
   @doc "Tags of invariants whose task has not landed. Excluded by default."
   def pending_tags, do: @pending_tags

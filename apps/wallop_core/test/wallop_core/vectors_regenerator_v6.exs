@@ -28,7 +28,8 @@
 # deterministic vector keys (`WallopCore.TamperVectors`).
 #
 # A negative case starts from a positive bundle, changes signed fields, and
-# signs again, so only the semantic checks can refuse it. A changed lock gets
+# signs again, so the signatures are valid over the bytes as written (cases
+# that change only a wrapper key or the unsigned entropy are not re-signed). A changed lock gets
 # a recomputed `lock_receipt_hash` in the execution receipt. The seed, the
 # results and the unsigned entropy block are rebuilt from the changed receipt
 # the way the verifier's own fixtures build them (see `seed_for/2`).
@@ -68,8 +69,8 @@ defmodule WallopCore.VectorsV6 do
   @winner_count 2
 
   # The weather value of state (a), from the synthetic 19:00 UTC row below
-  # (14.11 C, 1025 hPa, 85 %, 24320 m).
-  @weather_value "141;1025;85;2432"
+  # (12.34 C, 1012 hPa, 67 %, 34500 m).
+  @weather_value "123;1012;67;3450"
   # The Elexon FREQ window 19:54:00-19:55:45 UTC, in time order.
   @freq_value "50012;50018;50012;49983;49980;49953;49912;49883"
 
@@ -356,12 +357,15 @@ defmodule WallopCore.VectorsV6 do
   # ── Observation weather (drand-quicknet+metoffice-landobs-v1) ─────
 
   @state_text %{
-    a: "Middle Wallop's observation for the round's hour fed the seed",
+    a: "a Middle Wallop observation for the round's hour fed the seed",
     b:
       "no Middle Wallop observation by the deadline, so the round's grid-frequency window fed the seed",
     c:
       "no Middle Wallop observation by the deadline and no grid-frequency window, so drand alone fed the seed"
   }
+
+  defp bundle_note(:a), do: " The weather value is invented test data, not a real observation."
+  defp bundle_note(_state), do: ""
 
   defp state_prefix(state), do: "#{@landobs}, state (#{state}): "
 
@@ -406,7 +410,8 @@ defmodule WallopCore.VectorsV6 do
         bundle_file,
         bundle_vector(
           state_prefix(state) <>
-            "#{@state_text[state]}. A passing proof bundle: lock-receipt-v6.json and " <>
+            "#{@state_text[state]}.#{bundle_note(state)} A passing proof bundle: " <>
+            "lock-receipt-v6.json and " <>
             "#{receipt_file}, signed by the keys in keys, on quicknet round 33068212 " <>
             "with its real beacon. Every verifier step must pass.",
           bundle(lock_jcs, exec_jcs)
@@ -417,7 +422,7 @@ defmodule WallopCore.VectorsV6 do
 
   defp state_fields(:a),
     do:
-      "weather_value 141;1025;85;2432 (synthetic, not a real observation) with its " <>
+      "weather_value 123;1012;67;3450 (invented test data, not a real observation) with its " <>
         "observation time; both reasons and freq_value null. " <>
         "Seed: compute_seed(entry_hash, drand_randomness, weather_value)."
 
@@ -501,32 +506,32 @@ defmodule WallopCore.VectorsV6 do
   # ── weather-value-landobs-v1.json ─────────────────────────────────
 
   @valid_values [
-    {"196;1020;76;6023", [196, 1020, 76, 6023]},
+    {"173;1017;72;5237", [173, 1017, 72, 5237]},
     {"-900;850;0;0", [-900, 850, 0, 0]},
     {"600;1100;100;10000", [600, 1100, 100, 10_000]},
     {"0;1000;50;0", [0, 1000, 50, 0]},
-    {"141;1025;85;2432", [141, 1025, 85, 2432]},
+    {"123;1012;67;3450", [123, 1012, 67, 3450]},
     {"184;1021;51;4114", [184, 1021, 51, 4114]},
     {"-35;998;100;0", [-35, 998, 100, 0]}
   ]
 
   @invalid_values [
-    {"-0;1020;76;6023", "minus_zero"},
-    {"0196;1020;76;6023", "leading_zero"},
-    {"196;1020;76", "three_parts"},
-    {"196;-1020;76;6023", "negative_mslp"},
-    {"196;1020;76;6023;1", "five_parts"},
-    {" 196;1020;76;6023", "leading_space"},
-    {"196;1020;76;6023 ", "trailing_space"},
-    {"196;1020;76;6023\n", "trailing_newline"},
-    {"601;1020;76;6023", "t_above_bound"},
-    {"-901;1020;76;6023", "t_below_bound"},
-    {"196;849;76;6023", "mslp_below_bound"},
-    {"196;1101;76;6023", "mslp_above_bound"},
-    {"196;1020;101;6023", "rh_above_bound"},
-    {"196;1020;76;10001", "vis_above_bound"},
-    {"196;1020;-1;6023", "rh_below_bound: must not be negative (grammar)"},
-    {"196;1020;76;-1", "vis_below_bound: must not be negative (grammar)"},
+    {"-0;1017;72;5237", "minus_zero"},
+    {"0173;1017;72;5237", "leading_zero"},
+    {"173;1017;72", "three_parts"},
+    {"173;-1017;72;5237", "negative_mslp"},
+    {"173;1017;72;5237;1", "five_parts"},
+    {" 173;1017;72;5237", "leading_space"},
+    {"173;1017;72;5237 ", "trailing_space"},
+    {"173;1017;72;5237\n", "trailing_newline"},
+    {"601;1017;72;5237", "t_above_bound"},
+    {"-901;1017;72;5237", "t_below_bound"},
+    {"173;849;72;5237", "mslp_below_bound"},
+    {"173;1101;72;5237", "mslp_above_bound"},
+    {"173;1017;101;5237", "rh_above_bound"},
+    {"173;1017;72;10001", "vis_above_bound"},
+    {"173;1017;-1;5237", "rh_below_bound: must not be negative (grammar)"},
+    {"173;1017;72;-1", "vis_below_bound: must not be negative (grammar)"},
     {"", "empty"},
     {";;;", "empty_parts"},
     {"+184;1021;51;4114", "plus_sign"},
@@ -547,12 +552,12 @@ defmodule WallopCore.VectorsV6 do
   # documents for Land Observations (same field names, number formatting and
   # datetime format). None is a real observation. {key, JSON text} pairs.
   @row_1900 [
-    {"temperature", "14.08"},
-    {"visibility", "24318.0"},
+    {"temperature", "12.34"},
+    {"visibility", "34500.0"},
     {"weather_code", "7"},
     {"datetime", ~s("2026-10-14T19:00:00Z")},
-    {"humidity", "85"},
-    {"mslp", "1025"},
+    {"humidity", "67"},
+    {"mslp", "1012"},
     {"wind_gust", "7.4"},
     {"wind_speed", "3.6"},
     {"pressure_tendency", ~s("S")},
@@ -561,11 +566,11 @@ defmodule WallopCore.VectorsV6 do
 
   @row_1200 [
     {"datetime", ~s("2026-10-15T12:00:00Z")},
-    {"humidity", "76"},
-    {"mslp", "1020"},
+    {"humidity", "72"},
+    {"mslp", "1017"},
     {"pressure_tendency", ~s("F")},
-    {"temperature", "19.62"},
-    {"visibility", "60226.0"},
+    {"temperature", "17.26"},
+    {"visibility", "52370.0"},
     {"weather_code", "3"},
     {"wind_direction", ~s("W")},
     {"wind_gust", "10.8"},
@@ -587,7 +592,7 @@ defmodule WallopCore.VectorsV6 do
   ]
 
   # {field, JSON text, expected part or :error}; each changes one field of
-  # the 12:00 row (196;1020;76;6023).
+  # the 12:00 row (173;1017;72;5237).
   @single_field [
     {"temperature", "19.59", 196},
     {"temperature", "19.55", 196},
@@ -609,7 +614,7 @@ defmodule WallopCore.VectorsV6 do
     {"visibility", "0", 0},
     {"visibility", "100000", 10_000},
     {"visibility", "41140.5", :error},
-    {"visibility", "60230.5", :error},
+    {"visibility", "52370.5", :error},
     {"visibility", "100010", :error},
     {"visibility", "100004", 10_000},
     {"visibility", "100005", :error},
@@ -637,8 +642,8 @@ defmodule WallopCore.VectorsV6 do
   defp landobs_value_file do
     from_row =
       [
-        {@row_1900, {:ok, "141;1025;85;2432"}},
-        {@row_1200, {:ok, "196;1020;76;6023"}},
+        {@row_1900, {:ok, "123;1012;67;3450"}},
+        {@row_1200, {:ok, "173;1017;72;5237"}},
         {@row_0100, {:ok, "104;1003;79;1584"}}
       ] ++
         Enum.map(@single_field, fn {field, text, want} ->
@@ -707,10 +712,10 @@ defmodule WallopCore.VectorsV6 do
   end
 
   defp single_field_expectation(_field, :error), do: :error
-  defp single_field_expectation(_field, :unchanged), do: {:ok, "196;1020;76;6023"}
+  defp single_field_expectation(_field, :unchanged), do: {:ok, "173;1017;72;5237"}
 
   defp single_field_expectation(field, part) do
-    parts = String.split("196;1020;76;6023", ";")
+    parts = String.split("173;1017;72;5237", ";")
     {:ok, parts |> List.replace_at(@parts[field], Integer.to_string(part)) |> Enum.join(";")}
   end
 
@@ -1031,10 +1036,11 @@ defmodule WallopCore.VectorsV6 do
     %{
       "description" =>
         "Lock v6 / execution v5 proof bundles that must fail, for both tags " <>
-          "(#{@landobs} and #{@freq}). Each case changes signed fields of a passing " <>
-          "bundle (proof-bundle-v6*.json) and signs again with the keys in keys, so only " <>
-          "the semantic checks can refuse it; a changed lock also gets a recomputed, " <>
-          "re-signed lock_receipt_hash. The seed, results and unsigned entropy are rebuilt " <>
+          "(#{@landobs} and #{@freq}). Each case changes fields of a passing bundle " <>
+          "(proof-bundle-v6*.json) and signs again with the keys in keys, so the " <>
+          "signatures are valid over the bytes as written (cases that change only a " <>
+          "wrapper key or the unsigned entropy are not re-signed); a changed lock also gets " <>
+          "a recomputed, re-signed lock_receipt_hash. The seed, results and unsigned entropy are rebuilt " <>
           "from the changed execution receipt. expected_failing_steps is the exact set of " <>
           "verifier steps (snake_case) that fail; every other step passes or is skipped.",
       "keys" => keys(),
@@ -1134,13 +1140,13 @@ defmodule WallopCore.VectorsV6 do
       {"partial_fallback_reason_set_value_set", @oot,
        fn -> mutate(:a, exec: put("weather_fallback_reason", @no_observation)) end},
       {"value_grammar_minus_zero", ~w(bundle_shape),
-       fn -> mutate(:a, exec: put("weather_value", "-0;1025;85;2432")) end},
+       fn -> mutate(:a, exec: put("weather_value", "-0;1012;67;3450")) end},
       {"value_grammar_leading_zero", ~w(bundle_shape),
-       fn -> mutate(:a, exec: put("weather_value", "0141;1025;85;2432")) end},
+       fn -> mutate(:a, exec: put("weather_value", "0123;1012;67;3450")) end},
       {"value_grammar_three_parts", ~w(bundle_shape),
-       fn -> mutate(:a, exec: put("weather_value", "141;1025;85")) end},
+       fn -> mutate(:a, exec: put("weather_value", "123;1012;67")) end},
       {"value_out_of_bounds", ~w(bundle_shape),
-       fn -> mutate(:a, exec: put("weather_value", "601;1025;85;2432")) end},
+       fn -> mutate(:a, exec: put("weather_value", "601;1012;67;3450")) end},
       {"v5_reason_in_v6_exec",
        ~w(bundle_shape weather_observation_window receipt_field_consistency seed_recomputation),
        fn -> mutate(:c, exec: put("weather_fallback_reason", "unreachable")) end},

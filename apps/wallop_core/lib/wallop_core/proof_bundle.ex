@@ -4,10 +4,9 @@ defmodule WallopCore.ProofBundle do
 
   The bundle is the single machine-readable verification artifact for a
   draw — used by the wallop-verify CLI and any third-party verifier.
-  This module is the *only* producer of bundle bytes; both the frozen
-  test vector at `spec/vectors/proof-bundle.json` and the live HTTP
-  endpoint `GET /proof/:id.json` call this function. They cannot drift
-  because they share this producer.
+  `assemble/1` is the only producer of bundle bytes: `build/1` (the live
+  `GET /proof/:id.json`) and the vector generators that write
+  `spec/vectors/proof-bundle*.json` both call it, so they cannot drift.
 
   Output is JCS-canonical JSON (RFC 8785) so the bytes are deterministic
   regardless of map ordering.
