@@ -8,15 +8,15 @@ Provably fair random draw service. Commit-reveal protocol with public entropy.
 
 Wallop runs verifiably fair random draws where nobody controls the outcome — not the organiser, not the platform, not the service itself.
 
-Entries are locked before the draw. The seed is computed from two public, unpredictable entropy sources: a [drand](https://drand.love) beacon value and a live atmospheric pressure reading from Middle Wallop, Hampshire — three villages in the Test Valley, and the reason the service is called Wallop. Neither source is predictable or controllable. The algorithm is open source and deterministic. Anyone can re-run it and verify the result.
+Entries are locked before the draw. The seed is computed from a [drand](https://drand.love) beacon value and a second public source: Met Office weather for Middle Wallop, Hampshire — three villages in the Test Valley, and the reason the service is called Wallop — or, for operators who need a result within minutes, the frequency of the GB electricity grid. When the second source doesn't arrive in time, a draw falls back by its protocol's rules, at worst to drand on its own, and its proof says which. None of these sources is predictable or controllable. The algorithm is open source and deterministic. Anyone can re-run it and verify the result.
 
 You shouldn't trust us. [Verify it yourself](https://wallop.run/how-verification-works).
 
 ## How it works
 
 1. **Lock entries** — caller submits entry list, Wallop computes and publishes the entry hash
-2. **Commit** — Wallop declares which future entropy sources will be used (drand beacon round + weather observation time)
-3. **Fetch entropy** — after the declared time, Wallop fetches randomness from [drand](https://drand.love) and a Met Office weather reading
+2. **Commit** — Wallop declares which future entropy sources will be used (a drand beacon round, plus a weather time or a grid-frequency window)
+3. **Fetch entropy** — Wallop fetches randomness from [drand](https://drand.love) and the declared second source: a Met Office weather value, or GB grid-frequency readings from Elexon
 4. **Compute seed & run** — entropy sources are combined via JCS + SHA256 to produce a seed, which is fed into the deterministic [fair_pick](https://github.com/electric-lump-software/fair_pick) algorithm
 5. **Permanent proof** — the full proof record (entries, entropy, seed, results) is stored permanently with a public verification page
 
@@ -53,9 +53,11 @@ If your app includes `wallop_core` as a dependency and shares the same database,
 config :wallop_core, Oban,
   repo: WallopCore.Repo,
   prefix: "oban_app",
-  queues: [entropy: 10, webhooks: 5, default: 5, weather: 5],
+  queues: [entropy: 10, webhooks: 5, default: 5, weather: 5, frequency: 6, v6_execution: 5],
   plugins: []
 ```
+
+`weather`, `frequency` and `v6_execution` run observation-weather and grid-frequency draws (lock schema 6): the Met Office Land Observations fetch, the grid-frequency window fetch, and the draws themselves. You need them only if your app executes core jobs. Every running job can hold a database connection, so keep the sum of the queue limits well under your Repo pool size.
 
 The wallop service uses the default `public` prefix. Your app uses `oban_app` (or any other name). Both share the database but process their own jobs independently.
 
@@ -70,7 +72,7 @@ defmodule MyApp.Repo.Migrations.AddObanAppJobs do
 end
 ```
 
-Your app also needs `MET_OFFICE_API_KEY` and `HONEYCOMB_API_KEY` environment variables set, since the EntropyWorker and OTel exporter run in your process. Set a distinct OTel service name so traces are separated in Honeycomb:
+Your app also needs `MET_OFFICE_API_KEY` and `HONEYCOMB_API_KEY` environment variables set, since the EntropyWorker and OTel exporter run in your process. `MET_OFFICE_OBS_API_KEY` (a Met Office Weather DataHub Land Observations key) is optional: only observation-weather draws use it, and without it they fall back by rule, visibly in the receipt. Forecast draws don't need it. The grid-frequency source needs no key. Set a distinct OTel service name so traces are separated in Honeycomb:
 
 ```elixir
 # In your app's runtime.exs

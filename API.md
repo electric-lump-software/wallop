@@ -15,7 +15,7 @@ create (open) → add entries → lock → [automatic] → completed
 
 1. **Create** an open draw with `winner_count`
 2. **Add entries** in batches (as many calls as needed)
-3. **Lock** — freezes entries, declares entropy, starts ~10 min countdown
+3. **Lock** — freezes entries, declares entropy, and fixes when the result is due
 4. Draw executes automatically when entropy is collected
 5. **Webhook** fires to `callback_url` if provided
 
@@ -91,7 +91,7 @@ Adds entries to an open draw. Can be called multiple times.
 PATCH /draws/:id/lock
 ```
 
-Freezes entries and starts entropy collection. No request body needed beyond the JSON:API wrapper.
+Freezes entries and starts entropy collection.
 
 **Request:**
 ```json
@@ -103,19 +103,50 @@ Freezes entries and starts entropy collection. No request body needed beyond the
 }
 ```
 
+What else you may send depends on your operator's draw protocol. The platform sets the protocol per operator; it is `forecast` unless you've been moved. A draw keeps the protocol it was locked with, even if the setting changes afterwards.
+
+| Protocol | Optional attribute | Rules |
+|---|---|---|
+| `forecast` (default) | `weather_time` | Whole seconds, at least 60 seconds ahead, within about 7 days. Without it, wallop picks a time 3–5 minutes after the lock. Sending `draw_at` is refused. |
+| `observation` (observation weather) | `draw_at` | When the result is due: whole seconds, on drand quicknet's 3-second grid (any whole minute is), within 7 days. Without it, wallop picks the earliest allowed time. Sending `weather_time` is refused. |
+| `frequency` (grid frequency) | `draw_at` | As for `observation`. |
+
 **Preconditions:**
 - Draw must be in `open` status
 - At least 1 entry
 - Entry count >= `winner_count`
+- `observation`: the lock must happen by the observation hour of `draw_at` minus 46 minutes. For a 20:00 draw that is 18:14. From that latest lock time to the result is between 1h17m and 2h17m, depending on the draw minute.
+- `frequency`: the lock must happen by 60 seconds before the first of the 8 grid-frequency readings, about 7 minutes before `draw_at`. For a 20:00:00 draw that is 19:53:00.
 
 **What happens:**
 1. Entry hash computed (SHA-256 of canonical entry list)
-2. drand round declared (~30s in the future)
-3. Weather fetch scheduled (~10 min from now)
-4. Status transitions to `awaiting_entropy`
-5. Draw executes automatically when both entropy sources are collected
+2. A drand round is declared:
+   - `forecast`: the round published about 30 seconds before `weather_time`, and the weather value is fetched at `weather_time`;
+   - `observation` and `frequency`: the round published at `draw_at`. The readings are fetched before that round exists, and the draw runs a few seconds after it.
+3. Status transitions to `awaiting_entropy`
+4. Draw executes automatically when its entropy is collected
 
-**Response:** Draw resource with `status: "awaiting_entropy"`, `entry_hash`, `drand_round`, `weather_time`
+**Response:** Draw resource with `status: "awaiting_entropy"`, `entry_hash`, `drand_round`, `weather_time`, `freq_start` and `expected_result_at`.
+
+- `expected_result_at` — when the result is due: the publication time of the committed drand round, computed from `drand_round` and not signed. Equal to `draw_at` for `observation` and `frequency` draws; `null` for `forecast` draws.
+
+**A lock that is too late** is refused with `400`, and the draw stays open. The error says when the draw had to be locked by, in `meta.latest_lock_at` (whole seconds, UTC). Other keys omitted:
+
+```json
+{
+  "errors": [
+    {
+      "status": "400",
+      "code": "invalid_argument",
+      "detail": "is too late: this draw must be locked by 2026-10-14T18:14:00Z",
+      "source": {"pointer": "/data/attributes/draw_at"},
+      "meta": {"latest_lock_at": "2026-10-14T18:14:00Z"}
+    }
+  ]
+}
+```
+
+Pick a later `draw_at` (or send none) and lock again. Without `draw_at` the error has no `source.pointer`. Match on `code` and `meta`, not on `detail`.
 
 ---
 
@@ -128,6 +159,25 @@ GET /draws/:id
 Returns the current state of a draw.
 
 **Response:** Full draw resource including status, entries, results (if completed), entropy data, timestamps.
+
+Entropy fields by protocol:
+
+| Field | `forecast` | `observation` | `frequency` |
+|---|---|---|---|
+| `weather_station` | `middle-wallop` | `wmo-03749` | `null` |
+| `weather_time` | When the forecast value is fetched | The observation hour | `null` |
+| `weather_value`, `weather_observation_time`, `weather_fallback_reason` | Set by the draw | Set by the draw | `null` |
+| `freq_start` | `null` | Start of the grid-frequency window used if Middle Wallop's reading is late | Start of the grid-frequency window |
+| `freq_value`, `freq_fallback_reason` | `null` | Set only when Middle Wallop's reading was late | Set by the draw |
+| `expected_result_at` | `null` | When the result is due | When the result is due |
+
+`weather_station` on an observation-weather draw is always `wmo-03749` (Middle Wallop), whether the draw used Middle Wallop's reading, the grid frequency or drand alone. The signed execution receipt is the authority on which source was used. A completed observation-weather draw is in exactly one of three states:
+
+- **weather:** `weather_value` set; `weather_fallback_reason`, `freq_value` and `freq_fallback_reason` `null`;
+- **grid frequency:** `weather_fallback_reason` `no_observation_by_deadline`, `freq_value` set;
+- **drand only:** `weather_fallback_reason` `no_observation_by_deadline`, `freq_fallback_reason` `no_frequency_by_deadline`.
+
+Grid-frequency readings come from Elexon: Contains BMRS data © Elexon Limited copyright and database right [year], the year of the readings.
 
 ---
 
