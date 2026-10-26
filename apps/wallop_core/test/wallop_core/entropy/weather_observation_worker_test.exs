@@ -326,6 +326,31 @@ defmodule WallopCore.Entropy.WeatherObservationWorkerTest do
       assert calls_today() == 4
     end
 
+    test "a cap lowered during the day still logs its one error" do
+      set_cap(10)
+      for _ <- 1..3, do: {:ok, _} = LandObsBudget.reserve()
+      set_cap(1)
+      {wt, _} = v6_draws(-6 * 60, 1)
+
+      log = capture_log(fn -> for _ <- 1..2, do: assert({:snooze, _} = run(wt)) end)
+
+      refute_received {:fetched, _}
+      assert length(Regex.scan(~r/daily cap of 1 Land Observations calls reached/, log)) == 1
+    end
+
+    test "a bad configured cap means no call" do
+      set_cap("800")
+      {wt, _} = v6_draws(-6 * 60, 1)
+      stub_primary(row(wt, 12.34))
+      ref = attach([@poll_error])
+
+      capture_log(fn -> assert {:snooze, _} = run(wt) end)
+
+      refute_received {:fetched, _}
+      assert_received {@poll_error, ^ref, %{count: 1}, %{weather_time: ^wt, kind: :error}}
+      assert calls_today() == 0
+    end
+
     test "a counter that can't be written means no call" do
       {wt, _} = v6_draws(-6 * 60, 1)
       stub_primary(row(wt, 12.34))

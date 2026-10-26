@@ -113,6 +113,9 @@ defmodule WallopCore.Application do
 
   # runtime.exs parses LAND_OBS_DAILY_CAP before Logger is configured, so
   # the warning for a cap below a full day of polling is logged here.
+  # LandObsBudget.cap/0 also checks the value, however it was set (an app
+  # embedding wallop_core may set it in its own config), and raises on a bad
+  # one: the boot stops rather than running with no cap.
   defp warn_if_low_land_obs_cap do
     if warning = LandObsBudget.boot_warning(LandObsBudget.cap()) do
       Logger.warning(warning)

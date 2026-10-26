@@ -156,6 +156,57 @@ defmodule WallopCore.Weather.LandObsBudgetTest do
       assert results |> Enum.map(fn {:ok, n} -> n end) |> Enum.sort() == Enum.to_list(1..10)
     end
 
+    test "a bad configured cap fails closed: it raises, and nothing is counted" do
+      for bad <- ["800", :infinity, 0, 901, 800.0, [800]] do
+        Application.put_env(:wallop_core, :land_obs_daily_cap, bad)
+
+        assert_raise ArgumentError,
+                     ~r/land_obs_daily_cap must be a whole number from 1 to 900/,
+                     fn ->
+                       LandObsBudget.cap()
+                     end
+
+        assert_raise ArgumentError, fn -> LandObsBudget.reserve() end
+      end
+
+      assert count(today()) == 0
+    end
+
+    test "the first refusal of the day is claimed once, across callers" do
+      Application.put_env(:wallop_core, :land_obs_daily_cap, 1)
+      assert {:ok, 1} = LandObsBudget.reserve()
+      assert {:error, :daily_cap, 2} = LandObsBudget.reserve()
+
+      assert LandObsBudget.claim_cap_report()
+      refute LandObsBudget.claim_cap_report()
+      assert {:error, :daily_cap, 3} = LandObsBudget.reserve()
+      refute LandObsBudget.claim_cap_report()
+    end
+
+    test "a cap lowered during the day is still reported once" do
+      Application.put_env(:wallop_core, :land_obs_daily_cap, 20)
+      for n <- 1..10, do: assert({:ok, ^n} = LandObsBudget.reserve())
+
+      Application.put_env(:wallop_core, :land_obs_daily_cap, 5)
+      assert {:error, :daily_cap, 11} = LandObsBudget.reserve()
+      assert LandObsBudget.claim_cap_report()
+      refute LandObsBudget.claim_cap_report()
+    end
+
+    test "another day's report doesn't count for today" do
+      yesterday = Date.add(today(), -1)
+
+      Repo.query!(
+        "INSERT INTO land_obs_call_counts (utc_day, calls, cap_reported) VALUES ($1, 900, true)",
+        [yesterday]
+      )
+
+      Application.put_env(:wallop_core, :land_obs_daily_cap, 1)
+      assert {:ok, 1} = LandObsBudget.reserve()
+      assert {:error, :daily_cap, 2} = LandObsBudget.reserve()
+      assert LandObsBudget.claim_cap_report()
+    end
+
     test "unset, the cap is the default" do
       Application.delete_env(:wallop_core, :land_obs_daily_cap)
       assert LandObsBudget.cap() == 800
@@ -164,7 +215,7 @@ defmodule WallopCore.Weather.LandObsBudgetTest do
     test "actors can't read or write the counter" do
       assert {:error, %Ash.Error.Forbidden{}} =
                LandObsCallCount
-               |> Ash.Changeset.for_create(:reserve, %{utc_day: today()})
+               |> Ash.Changeset.for_create(:reserve, %{})
                |> Ash.create(actor: %{id: "someone"})
 
       assert {:error, %Ash.Error.Forbidden{}} =

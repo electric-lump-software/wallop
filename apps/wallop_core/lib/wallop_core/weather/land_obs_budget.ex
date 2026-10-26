@@ -9,11 +9,13 @@ defmodule WallopCore.Weather.LandObsBudget do
 
   Each call is reserved first (`reserve/0`), on the counter for the
   database clock's UTC day (`WallopCore.Resources.LandObsCallCount`). A
-  reservation above the cap is refused, and no call is made.
+  reservation above the cap is refused, and no call is made. The first
+  refusal of a day is reported once (`claim_cap_report/0`).
   """
 
-  alias WallopCore.DbClock
   alias WallopCore.Resources.LandObsCallCount
+
+  require Ash.Query
 
   # The Met Office's daily allowance per key.
   @max_cap 900
@@ -64,9 +66,27 @@ defmodule WallopCore.Weather.LandObsBudget do
 
   def boot_warning(_cap), do: nil
 
-  @doc "The configured cap."
+  @doc """
+  The configured cap (`config :wallop_core, :land_obs_daily_cap`), checked:
+  unset is the default, and anything but a whole number from 1 to
+  #{@max_cap} raises. `WallopCore.Application` calls it at start, so a bad
+  value, however it was set, stops the boot rather than leaving the cap
+  open; `reserve/0` calls it before counting, so a bad value set later
+  means no call.
+  """
   @spec cap() :: pos_integer()
-  def cap, do: Application.get_env(:wallop_core, :land_obs_daily_cap, @default_cap)
+  def cap, do: validate_cap!(Application.get_env(:wallop_core, :land_obs_daily_cap))
+
+  @doc false
+  @spec validate_cap!(term()) :: pos_integer()
+  def validate_cap!(nil), do: @default_cap
+  def validate_cap!(cap) when is_integer(cap) and cap in 1..@max_cap//1, do: cap
+
+  def validate_cap!(other) do
+    raise ArgumentError,
+          "config :wallop_core, :land_obs_daily_cap must be a whole number from 1 to " <>
+            "#{@max_cap}, got #{inspect(other)}"
+  end
 
   @doc """
   Reserves one call on today's counter (the database clock's UTC day).
@@ -77,13 +97,36 @@ defmodule WallopCore.Weather.LandObsBudget do
   """
   @spec reserve() :: {:ok, pos_integer()} | {:error, :daily_cap, pos_integer()}
   def reserve do
-    day = DateTime.to_date(DbClock.now())
+    cap = cap()
 
     %{calls: calls} =
       LandObsCallCount
-      |> Ash.Changeset.for_create(:reserve, %{utc_day: day})
+      |> Ash.Changeset.for_create(:reserve, %{})
       |> Ash.create!(authorize?: false)
 
-    if calls <= cap(), do: {:ok, calls}, else: {:error, :daily_cap, calls}
+    if calls <= cap, do: {:ok, calls}, else: {:error, :daily_cap, calls}
+  end
+
+  @doc """
+  Claims today's cap report: true for exactly one caller per UTC day (the
+  database clock's), false for every other. One atomic `UPDATE ... WHERE
+  NOT cap_reported`, so it holds across nodes, and holds even if the cap
+  was lowered during the day.
+  """
+  @spec claim_cap_report() :: boolean()
+  def claim_cap_report do
+    %Ash.BulkResult{status: :success, records: records} =
+      LandObsCallCount
+      |> Ash.Query.filter(
+        utc_day == fragment("(statement_timestamp() AT TIME ZONE 'UTC')::date") and
+          cap_reported == false
+      )
+      |> Ash.bulk_update(:mark_cap_reported, %{},
+        strategy: :atomic,
+        return_records?: true,
+        authorize?: false
+      )
+
+    records != []
   end
 end

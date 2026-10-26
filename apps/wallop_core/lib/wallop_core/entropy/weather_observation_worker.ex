@@ -255,10 +255,10 @@ defmodule WallopCore.Entropy.WeatherObservationWorker do
 
   # One error log per UTC day, on the first refused reservation; telemetry
   # on every one.
-  defp cap_reached(wt, calls) do
+  defp cap_reached(wt, _calls) do
     cap = LandObsBudget.cap()
 
-    if calls == cap + 1 do
+    if LandObsBudget.claim_cap_report() do
       Logger.error(
         "WeatherObservationWorker: daily cap of #{cap} Land Observations calls reached; " <>
           "no more calls until 00:00 UTC"
