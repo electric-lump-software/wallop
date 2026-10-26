@@ -140,11 +140,13 @@ await t("forecast fallback label, only when the receipt names a reason", () => {
 const V6 = {
   "proof-bundle-v6.json": { formula: "weather", label: null, bmrs: false },
   "proof-bundle-v6-freq-window.json": {
-    formula: "frequency", label: "grid frequency (weather fallback: no_observation_by_deadline)", bmrs: true
+    formula: "frequency",
+    label: "Middle Wallop's reading was running late, so this draw listened to the hum of the National Grid instead.",
+    bmrs: true
   },
   "proof-bundle-v6-fallback.json": {
     formula: "drand_only",
-    label: "drand only (weather fallback: no_observation_by_deadline; grid frequency fallback: no_frequency_by_deadline)",
+    label: "Middle Wallop was late and the Grid went quiet, so drand did this one on its own.",
     bmrs: false
   },
   "proof-bundle-v6-freq.json": { formula: "frequency", label: null, bmrs: true },
@@ -176,6 +178,85 @@ await t("v6 frequency draw with a stale weather value on the page still uses the
 })
 
 const NEG = read("proof-bundle-v6-negative.json")
+
+// --- observation weather: what each state shows ---
+const LANDOBS_LINES = ["entry_hash", "seed", "draw", "winners", "lock_signature", "lock_binding",
+                       "exec_signature", "chain", "results_binding", "drand", "observation_hour", "gate"]
+const landobs = f => {
+  const v = read(f)
+  const d = pageFor(v.bundle, v.keys)
+  const exec = JSON.parse(JSON.parse(v.bundle).execution_receipt.payload_jcs)
+  d.weatherValue = exec.weather_value || ""
+  return { v, d, r: core.computeChecks(wasm, d, published(v.bundle, v.keys)) }
+}
+await t("observationHour: round 33068212 (published 20:00Z) observes 19:00Z, as the lock receipt writes it", () => {
+  assert.equal(core.observationHour(33068212), "2026-10-14T19:00:00.000000Z")
+  // One round earlier publishes 19:59:57, past 19:00 + W + 60s: still 19:00.
+  assert.equal(core.observationHour(33068211), "2026-10-14T19:00:00.000000Z")
+  // pub 19:31:00 is exactly 19:00 + W + 60s; one round earlier is 18:00.
+  assert.equal(core.observationHour(33068212 - 580), "2026-10-14T19:00:00.000000Z")
+  assert.equal(core.observationHour(33068212 - 581), "2026-10-14T18:00:00.000000Z")
+})
+await t("state (a): weather, no fallback label, no BMRS, hour line passes with 19:00 UTC", () => {
+  const { r } = landobs("proof-bundle-v6.json")
+  assert.equal(r.verdict, "green")
+  assert.deepEqual(r.lines.map(l => l.id), LANDOBS_LINES)
+  allPass(r)
+  assert.equal(r.formula, "weather")
+  assert.equal(r.fallbackLabel, null)
+  assert.equal(r.bmrsYear, null)
+  assert.equal(r.lines.find(l => l.id === "observation_hour").passLabel, "19:00 UTC")
+  assert.match(r.lines.find(l => l.id === "seed").text, /wx\[123;1012;67;3450\]/)
+})
+await t("state (b): grid frequency, the approved label naming the Grid, BMRS for the readings' year", () => {
+  const { r } = landobs("proof-bundle-v6-freq-window.json")
+  assert.equal(r.verdict, "green")
+  assert.deepEqual(r.lines.map(l => l.id), LANDOBS_LINES)
+  assert.equal(r.formula, "frequency")
+  assert.equal(r.fallbackLabel, core.LANDOBS_FREQUENCY_LABEL)
+  assert.equal(r.bmrsYear, "2026")
+  assert.match(r.lines.find(l => l.id === "seed").text, /grid\[8 readings\]/)
+})
+await t("state (c): drand alone, the approved label naming drand, no BMRS", () => {
+  const { r } = landobs("proof-bundle-v6-fallback.json")
+  assert.equal(r.verdict, "green")
+  assert.deepEqual(r.lines.map(l => l.id), LANDOBS_LINES)
+  assert.equal(r.formula, "drand_only")
+  assert.equal(r.fallbackLabel, core.LANDOBS_DRAND_ONLY_LABEL)
+  assert.equal(r.bmrsYear, null)
+  assert.equal(r.lines.find(l => l.id === "seed").text, "seed = SHA256(hash, drand[33068212]) → ")
+})
+await t("observation states shown only behind the gate: a gate refusal leaves no tick and no label", () => {
+  for (const f of ["proof-bundle-v6.json", "proof-bundle-v6-freq-window.json", "proof-bundle-v6-fallback.json"]) {
+    const v = read(f)
+    const b = JSON.parse(v.bundle)
+    b.lock_receipt.signature_hex = flipFirst(b.lock_receipt.signature_hex)
+    const d = pageFor(v.bundle, v.keys)
+    const r = core.computeChecks(wasm, d, published(JSON.stringify(b), v.keys))
+    assert.equal(r.verdict, "red", f)
+    noPass(r)
+    const hour = r.lines.find(l => l.id === "observation_hour")
+    assert.ok(hour && hour.status === "unconfirmed", statuses(r))
+  }
+})
+await t("a signed hour the round doesn't imply fails the hour line itself, not only the gate", () => {
+  const c = NEG.cases.find(x => x.name === "weather_time_not_derived_from_round")
+  assert.ok(c, "case present")
+  const r = core.computeChecks(wasm, pageFor(c.bundle, NEG.keys), published(c.bundle, NEG.keys))
+  assert.equal(r.verdict, "red")
+  const hour = r.lines.find(l => l.id === "observation_hour")
+  assert.ok(hour && hour.status === "fail", statuses(r))
+  noPass(r)
+})
+await t("forecast and grid-frequency-tag draws have no observation hour line", () => {
+  for (const bj of [FORECAST[0][1], read("proof-bundle-v6-freq.json").bundle]) {
+    const keys = bj === FORECAST[0][1] ? V6KEYS : read("proof-bundle-v6-freq.json").keys
+    const r = core.computeChecks(wasm, pageFor(bj, keys), published(bj, keys))
+    assert.equal(r.verdict, "green")
+    assert.ok(!r.lines.some(l => l.id === "observation_hour"), statuses(r))
+  }
+})
+
 await t(`v6 negative: all ${NEG.cases.length} cases red, no line passes`, () => {
   for (const c of NEG.cases) {
     const r = core.computeChecks(wasm, pageFor(c.bundle, NEG.keys), published(c.bundle, NEG.keys))
@@ -190,6 +271,12 @@ await t("v6 out of the three-state table (weather value plus freq_value): seed l
   assert.equal(r.verdict, "red")
   const seed = r.lines.find(l => l.id === "seed")
   assert.ok(seed && seed.status === "fail", statuses(r))
+  // No source is named and no seed formula is claimed.
+  assert.equal(r.fallbackLabel, null)
+  assert.equal(r.formula, null)
+  assert.equal(r.bmrsYear, null)
+  assert.equal(seed.text, "seed = SHA256(hash, drand[33068212], ?) → ")
+  noPass(r)
 })
 for (const f of ["proof-bundle-v6-tamper.json", "proof-bundle-v6-tamper-freq.json"]) {
   const tv = read(f)

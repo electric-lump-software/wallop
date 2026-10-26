@@ -27,6 +27,31 @@ export const REFUSED_RED =
   "Please tell the organiser, and don't rely on this result."
 
 export const LANDOBS_TAG = "drand-quicknet+metoffice-landobs-v1"
+
+/** What an observation-weather draw says when it fell back, by the signed state. */
+export const LANDOBS_FREQUENCY_LABEL =
+  "Middle Wallop's reading was running late, so this draw listened to the hum of the National Grid instead."
+export const LANDOBS_DRAND_ONLY_LABEL =
+  "Middle Wallop was late and the Grid went quiet, so drand did this one on its own."
+
+// drand quicknet's genesis and period, and the observation tag's fetch
+// window W and slack, all frozen by the tag. Used only to show the
+// observation hour; the gate does the real check.
+const QUICKNET_GENESIS = 1692803367
+const QUICKNET_PERIOD = 3
+const LANDOBS_WINDOW_SECONDS = 30 * 60
+const LANDOBS_SLACK_SECONDS = 60
+
+/**
+ * The observation hour of drand round `round`, as the lock receipt writes
+ * it: the latest whole UTC hour h with h + W + 60s <= pub(round).
+ */
+export function observationHour(round) {
+  const pub = QUICKNET_GENESIS + (Number(round) - 1) * QUICKNET_PERIOD
+  const latest = pub - LANDOBS_WINDOW_SECONDS - LANDOBS_SLACK_SECONDS
+  const hour = latest - (((latest % 3600) + 3600) % 3600)
+  return new Date(hour * 1000).toISOString().replace(".000Z", ".000000Z")
+}
 export const FREQ_TAG = "drand-quicknet+elexon-freq-v1"
 
 // Execution receipt schema that carries the two lock-v6 tags. Any other
@@ -175,15 +200,8 @@ export function seedPlan(wasm, exec, execJcs, d) {
   if (tag === LANDOBS_TAG) {
     const state = wasm.landobs_exec_state_wasm(execJcs)
     if (state === "weather") return signed("weather", exec.weather_value)
-    if (state === "frequency") {
-      return signed("frequency", exec.freq_value,
-        `grid frequency (weather fallback: ${exec.weather_fallback_reason})`)
-    }
-    if (state === "drand_only") {
-      return signed("drand_only", null,
-        `drand only (weather fallback: ${exec.weather_fallback_reason}; ` +
-        `grid frequency fallback: ${exec.freq_fallback_reason})`)
-    }
+    if (state === "frequency") return signed("frequency", exec.freq_value, LANDOBS_FREQUENCY_LABEL)
+    if (state === "drand_only") return signed("drand_only", null, LANDOBS_DRAND_ONLY_LABEL)
     throw new Error(`unknown observation state: ${state}`)
   }
 
@@ -408,6 +426,18 @@ export function computeChecks(wasm, d, published) {
              "FAILED — the drand beacon did not verify", "drand check error", () =>
     wasm.verify_drand_wasm(exec.drand_chain, BigInt(exec.drand_round), exec.drand_signature, exec.drand_randomness)
   )) return done()
+
+  // Observation weather: the signed hour is the one the round implies.
+  // Informational; the gate checks it for real.
+  if (exec.entropy_composition === LANDOBS_TAG) {
+    const hourLine = { id: "observation_hour", text: "observation hour follows from the drand round → " }
+    if (!check(hourLine, "MISMATCH — the signed observation hour doesn't follow from the drand round",
+               "Observation hour error", () => {
+      const signedHour = JSON.parse(d.lockReceiptJcs).weather_time
+      hourLine.passLabel = hourLine.waitLabel = `${signedHour.substring(11, 16)} UTC`
+      return signedHour === observationHour(exec.drand_round)
+    })) return done()
+  }
 
   gateLine()
   return done()

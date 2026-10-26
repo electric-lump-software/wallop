@@ -96,7 +96,7 @@
 
   <div class="bg-white border border-cream-border rounded-xl">
     <div class="p-5">
-      <.draw_timeline draw={@draw} />
+      <.draw_timeline draw={@draw} weather={WallopWeb.ProofWeather.summary(@draw, @execution_receipt, @receipt)} />
     </div>
   </div>
 
@@ -115,7 +115,7 @@
 
   <div class="bg-white border border-cream-border rounded-xl">
     <div class="p-5">
-      <.proof_chain draw={@draw} />
+      <.proof_chain draw={@draw} weather={WallopWeb.ProofWeather.summary(@draw, @execution_receipt, @receipt)} />
     </div>
   </div>
 
@@ -177,7 +177,7 @@
 
   <div class="bg-white border border-cream-border rounded-xl">
     <div class="p-5">
-      <.draw_timeline draw={@draw} />
+      <.draw_timeline draw={@draw} weather={WallopWeb.ProofWeather.summary(@draw, @execution_receipt, @receipt)} />
     </div>
   </div>
 </div>

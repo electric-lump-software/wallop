@@ -5,6 +5,11 @@ defmodule WallopWeb.ProofLiveTest do
   import WallopCore.TestHelpers
   import WallopWeb.RateLimitHelpers
 
+  alias WallopCore.Drand.Quicknet
+  alias WallopCore.InvariantCase
+  alias WallopCore.Protocol
+  alias WallopCore.Repo
+  alias WallopCore.Weather.Schedule
   alias WallopWeb.Components.EntryCheck
   alias WallopWeb.Components.VerifyBlock
   alias WallopWeb.Plugs.SelfCheckRateLimit
@@ -170,6 +175,111 @@ defmodule WallopWeb.ProofLiveTest do
       assert html =~ draw.entry_hash
       assert html =~ draw.seed
       assert html =~ "fair_pick"
+    end
+  end
+
+  describe "observation-weather draws" do
+    test "a draw awaiting entropy shows when the result is due, and counts down to it", %{
+      conn: conn
+    } do
+      {_operator, api_key} = create_v6_operator()
+      round = Quicknet.round_at_or_after(DateTime.add(DateTime.utc_now(), 3 * 3600))
+      wt = Schedule.weather_time_for_round(round)
+      # The row's weather_time is another hour: the page follows the round.
+      draw = put_v6_awaiting!(open_draw_with_entries(api_key), DateTime.add(wt, -3600), round)
+      due = Quicknet.pub_time(round)
+
+      {:ok, _view, html} = live(conn, "/live/proof/#{draw.id}")
+
+      assert html =~ "Result due at #{Calendar.strftime(due, "%H:%M:%S UTC on %d %b %Y")}"
+      assert attr_values(html, "data-target") == [DateTime.to_iso8601(due)]
+      refute html =~ "Entropy available in"
+      assert html =~ "Result due in"
+
+      assert html =~
+               "drand round ##{round}, Middle Wallop&#39;s #{Calendar.strftime(wt, "%H:%M UTC")} " <>
+                 "weather reading, result due at #{Calendar.strftime(due, "%H:%M:%S UTC")}"
+    end
+
+    test "a forecast draw awaiting entropy is as before", %{conn: conn} do
+      draw = create_draw(create_api_key(), %{})
+
+      {:ok, _view, html} = live(conn, "/live/proof/#{draw.id}")
+
+      assert html =~ "weather at #{Calendar.strftime(draw.weather_time, "%H:%M UTC")}"
+      assert html =~ "Entropy available in"
+      assert attr_values(html, "data-target") == [DateTime.to_iso8601(draw.weather_time)]
+      refute html =~ "Result due"
+      refute html =~ "Middle Wallop"
+    end
+
+    test "state (a): Middle Wallop's reading, from the signed receipt", %{conn: conn} do
+      draw = completed_v6!(:observed)
+      html = conn |> get("/proof/#{draw.id}") |> html_response(200) |> squash()
+
+      assert html =~ "Observed at Middle Wallop (WMO 03749), "
+      assert html =~ "141;1025;85;2432"
+      assert html =~ "seed = SHA-256(JCS(entry_hash, drand_randomness, weather_value))"
+      refute html =~ "National Grid"
+      refute html =~ "BMRS"
+      refute html =~ "drand did this one on its own"
+    end
+
+    test "state (b): the grid frequency, with the attribution and what it rests on", %{
+      conn: conn
+    } do
+      draw = completed_v6!(:frequency)
+      html = conn |> get("/proof/#{draw.id}") |> html_response(200) |> squash()
+      year = DateTime.utc_now().year
+
+      assert html =~
+               "Middle Wallop&#39;s reading was running late, so this draw listened to the hum " <>
+                 "of the National Grid instead."
+
+      assert html =~ "50012;50018;50012;49983;49980;49953;49912;49883"
+      assert html =~ "seed = SHA-256(JCS(entry_hash, drand_randomness, freq_value))"
+      assert html =~ "Contains BMRS data © Elexon Limited copyright and database right #{year}"
+
+      assert html =~
+               "on a fallback to the grid frequency, Elexon published what the grid actually " <>
+                 "did, and does not revise readings"
+
+      assert html =~ "matches Elexon's readings for T…T+105s"
+      refute html =~ "Observed at"
+      refute html =~ "weather_value))"
+    end
+
+    test "state (c): drand alone", %{conn: conn} do
+      draw = completed_v6!(:fallback)
+      html = conn |> get("/proof/#{draw.id}") |> html_response(200) |> squash()
+
+      assert html =~
+               "Middle Wallop was late and the Grid went quiet, so drand did this one on its own."
+
+      assert html =~ "seed = SHA-256(JCS(entry_hash, drand_randomness))"
+      refute html =~ "BMRS"
+      refute html =~ "Observed at"
+    end
+
+    test "a receipt outside the three states gets no source and says it can't be checked", %{
+      conn: conn
+    } do
+      # State (a) plus a freq_value: the row still holds a weather value.
+      draw =
+        completed_v6!(:observed, fn signed ->
+          Map.put(signed, "freq_value", "50012;50018;50012;49983;49980;49953;49912;49883")
+        end)
+
+      html = conn |> get("/proof/#{draw.id}") |> html_response(200) |> squash()
+
+      assert html =~ "doesn't fit any of the three ways an observation-weather draw can go"
+      refute html =~ "Observed at"
+      refute html =~ "National Grid"
+      refute html =~ "drand did this one on its own"
+      refute html =~ "seed = SHA-256"
+      refute html =~ "BMRS"
+      # The page still hands the browser check the receipt it must refuse.
+      assert html =~ "data-execution-receipt-jcs"
     end
   end
 
@@ -626,6 +736,41 @@ defmodule WallopWeb.ProofLiveTest do
       assert html =~ "Entries Locked"
     end
   end
+
+  # A completed observation-weather draw in `kind`'s state, with its
+  # execution receipt stored as the signer builds it, then passed through
+  # `edit` (signed JSON in, signed JSON out). An edited receipt is stored
+  # with triggers off, since the database refuses one outside the table.
+  defp completed_v6!(kind, edit \\ nil) do
+    %{draw: draw, input: input, cols: cols} = InvariantCase.completed_v6_receipt_input(kind)
+    jcs = Protocol.build_v6_execution_payload(input)
+    jcs = if edit, do: jcs |> Jason.decode!() |> edit.() |> Jcs.encode(), else: jcs
+
+    insert = fn ->
+      Repo.query!(
+        """
+        INSERT INTO execution_receipts (id, draw_id, operator_id, sequence, lock_receipt_hash,
+          payload_jcs, signature, signing_key_id)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+        """,
+        [
+          Ecto.UUID.dump!(Ecto.UUID.generate()),
+          Ecto.UUID.dump!(cols.draw_id),
+          Ecto.UUID.dump!(cols.operator_id),
+          cols.sequence,
+          cols.lock_receipt_hash,
+          jcs,
+          :binary.copy(<<0>>, 64),
+          cols.signing_key_id
+        ]
+      )
+    end
+
+    if edit, do: InvariantCase.with_triggers_off(insert), else: insert.()
+    draw
+  end
+
+  defp squash(html), do: String.replace(html, ~r/\s+/, " ")
 
   defp operator_slug(draw) do
     Ash.get!(WallopCore.Resources.Operator, draw.operator_id, authorize?: false).slug

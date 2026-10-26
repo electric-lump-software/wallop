@@ -28,7 +28,7 @@
 
   <div class="bg-white border border-cream-border rounded-xl">
     <div class="p-5">
-      <.draw_timeline draw={@draw} />
+      <.draw_timeline draw={@draw} weather={WallopWeb.ProofWeather.summary(@draw, @execution_receipt, @receipt)} />
     </div>
   </div>
 </div>
@@ -102,7 +102,7 @@
 
   <div class="bg-white border border-cream-border rounded-xl">
     <div class="p-5">
-      <.draw_timeline draw={@draw} />
+      <.draw_timeline draw={@draw} weather={WallopWeb.ProofWeather.summary(@draw, @execution_receipt, @receipt)} />
     </div>
   </div>
 
@@ -127,7 +127,7 @@
 
   <div class="bg-white border border-cream-border rounded-xl">
     <div class="p-5">
-      <.proof_chain draw={@draw} />
+      <.proof_chain draw={@draw} weather={WallopWeb.ProofWeather.summary(@draw, @execution_receipt, @receipt)} />
     </div>
   </div>
 
@@ -199,7 +199,7 @@
 
   <div class="bg-white border border-cream-border rounded-xl">
     <div class="p-5">
-      <.draw_timeline draw={@draw} />
+      <.draw_timeline draw={@draw} weather={WallopWeb.ProofWeather.summary(@draw, @execution_receipt, @receipt)} />
     </div>
   </div>
 </div>
@@ -215,6 +215,9 @@
   <div class="text-sm text-[#555]">
     <div>Draw ID: <span class="font-mono">{@draw.id}</span></div>
     <.operator_link operator={@operator} draw={@draw} />
+    <div :if={weather = WallopWeb.ProofWeather.summary(@draw, @execution_receipt, @receipt)}>
+      Result due at {Calendar.strftime(weather.expected_result_at, "%H:%M:%S UTC on %d %b %Y")}
+    </div>
   </div>
 
   <div :if={@entropy_status} class="text-xs text-[#555]">
@@ -237,7 +240,7 @@
 
   <div class="bg-white border border-cream-border rounded-xl">
     <div class="p-5">
-      <.draw_timeline draw={@draw} />
+      <.draw_timeline draw={@draw} weather={WallopWeb.ProofWeather.summary(@draw, @execution_receipt, @receipt)} />
     </div>
   </div>
 </div>

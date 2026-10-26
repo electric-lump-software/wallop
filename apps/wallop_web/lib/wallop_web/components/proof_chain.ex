@@ -9,6 +9,11 @@ defmodule WallopWeb.Components.ProofChain do
 
   attr(:draw, :map, required: true)
 
+  attr(:weather, :map,
+    default: nil,
+    doc: "`WallopWeb.ProofWeather.summary/3` for observation-weather draws; nil otherwise"
+  )
+
   def proof_chain(assigns) do
     ~H"""
     <div class="space-y-4">
@@ -53,7 +58,8 @@ defmodule WallopWeb.Components.ProofChain do
                   {@draw.drand_randomness}
                 </div>
               </div>
-              <div :if={@draw.weather_value} class="mt-2">
+              <.observation_weather :if={@weather} weather={@weather} />
+              <div :if={!@weather and @draw.weather_value} class="mt-2">
                 <span class="text-xs text-[#555]">Weather value: </span>
                 <span class="text-xs font-mono">{@draw.weather_value}</span>
                 <span :if={@draw.weather_station} class="text-xs text-[#555]">
@@ -63,7 +69,7 @@ defmodule WallopWeb.Components.ProofChain do
                   Observation from {Calendar.strftime(@draw.weather_observation_time, "%H:%M UTC %d %b %Y")}
                 </div>
               </div>
-              <div :if={!@draw.weather_value and @draw.weather_fallback_reason} class="mt-2">
+              <div :if={!@weather and !@draw.weather_value and @draw.weather_fallback_reason} class="mt-2">
                 <span class="text-xs text-amber-600">
                   Weather entropy was unavailable: {@draw.weather_fallback_reason}
                 </span>
@@ -80,7 +86,10 @@ defmodule WallopWeb.Components.ProofChain do
             <span class="inline-flex items-center justify-center w-6 h-6 min-w-6 min-h-6 shrink-0 bg-[#1a1a1a] text-white text-xs font-mono rounded-full">3</span>
             <div>
               <div class="font-semibold text-sm">Seed Computation</div>
-              <div class="text-xs text-[#555] mt-1">
+              <div :if={@weather} class="text-xs text-[#555] mt-1">
+                {seed_formula(@weather.source)}
+              </div>
+              <div :if={!@weather} class="text-xs text-[#555] mt-1">
                 <span :if={@draw.weather_value}>
                   seed = SHA-256(JCS(entry_hash, drand_randomness, weather_value))
                 </span>
@@ -129,6 +138,74 @@ defmodule WallopWeb.Components.ProofChain do
     </div>
     """
   end
+
+  attr(:weather, :map, required: true)
+
+  # What the signed execution receipt says the draw used. Display only:
+  # the browser check's verifier gate is what shows a match.
+  defp observation_weather(assigns) do
+    ~H"""
+    <div class="mt-2 text-xs text-[#555] space-y-1" data-observation-weather={@weather.source || "none"}>
+      <div>
+        Weather hour: {Calendar.strftime(@weather.observation_hour, "%H:%M UTC %d %b %Y")}
+        (it follows from the drand round)
+      </div>
+
+      <div :if={@weather.source == :weather}>
+        <div>
+          Observed at {@weather.station_label}, {Calendar.strftime(@weather.observed_at, "%H:%M UTC %d %b %Y")}
+        </div>
+        <div>
+          Weather value: <span class="font-mono">{@weather.weather_value}</span>
+        </div>
+      </div>
+
+      <div :if={@weather.fallback_label} class="text-[#1a1a1a]">
+        {@weather.fallback_label}
+      </div>
+
+      <div :if={@weather.source == :frequency} class="space-y-1">
+        <div>
+          Grid frequency readings (mHz): <span class="font-mono break-all">{@weather.freq_value}</span>
+        </div>
+        <div :if={@weather.freq_start}>
+          Eight readings, 15 seconds apart, from T =
+          {Calendar.strftime(@weather.freq_start, "%H:%M:%S UTC %d %b %Y")}
+        </div>
+        <div class="pt-1">
+          What this part rests on:
+          <ul class="list-disc ml-4">
+            <li>
+              Trusted: on a fallback to the grid frequency, Elexon published what the grid
+              actually did, and does not revise readings.
+            </li>
+            <li>
+              Proven with <code class="font-mono">weather-attest</code>: for a draw that used
+              the grid frequency, <code class="font-mono">freq_value</code>
+              matches Elexon's readings for T…T+105s.
+            </li>
+          </ul>
+        </div>
+        <div class="text-[#777]">{@weather.bmrs_line}</div>
+      </div>
+
+      <div :if={@weather.out_of_table} class="text-red-700">
+        This draw's signed execution receipt doesn't fit any of the three ways an
+        observation-weather draw can go, so there's no weather source to show, and the
+        draw can't be verified.
+      </div>
+    </div>
+    """
+  end
+
+  defp seed_formula(:weather),
+    do: "seed = SHA-256(JCS(entry_hash, drand_randomness, weather_value))"
+
+  defp seed_formula(:frequency),
+    do: "seed = SHA-256(JCS(entry_hash, drand_randomness, freq_value))"
+
+  defp seed_formula(:drand_only), do: "seed = SHA-256(JCS(entry_hash, drand_randomness))"
+  defp seed_formula(nil), do: nil
 
   defp drand_url(chain, round) do
     chain = chain || "dbd506d6ef76e5f386f41c651dcb808c5bcbd75471cc4eafa3f4df7ad4e4c493"
