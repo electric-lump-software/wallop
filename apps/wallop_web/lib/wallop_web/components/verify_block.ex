@@ -32,7 +32,7 @@ defmodule WallopWeb.Components.VerifyBlock do
     <div class="bg-white border border-cream-border rounded-xl">
       <div class="p-5 space-y-4">
         <p :if={@key_unpublished?} data-verify-unavailable class="text-[12px] text-[#444]">
-          Cannot verify: signing key not published.
+          Cannot verify: signing key not published (key revoked).
         </p>
         <div
           :if={!@key_unpublished?}

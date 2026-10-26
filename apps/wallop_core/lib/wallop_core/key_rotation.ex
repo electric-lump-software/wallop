@@ -108,7 +108,7 @@ defmodule WallopCore.KeyRotation do
     end)
   end
 
-  @doc "The infrastructure key that signs now: the largest `valid_from <= now`."
+  @doc false
   @spec current_infrastructure_key() :: {:ok, struct()} | {:error, :no_infrastructure_key}
   def current_infrastructure_key do
     now = DateTime.utc_now()

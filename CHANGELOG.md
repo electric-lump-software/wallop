@@ -21,7 +21,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **`WallopCore.KeyRotation`**, callable with `bin/wallop rpc`: `rotate_infrastructure_key/0`, `rotate_operator_key/1` (by slug; core had no way to rotate an existing operator's key before) and `revoke_superseded_keys/0`. Rotation adds a key with `valid_from` now, which signs from the next receipt. Revocation withdraws every key that isn't the current key of its class or operator, and never the current one. `mix wallop.rotate_infrastructure_key` now calls the same function.
 - **Revoked keys are not served or used.** A new append-only table, `signing_key_revocations`, records each revocation; UPDATE, DELETE and TRUNCATE are refused, as on the key tables. Every read of a signing key leaves revoked keys out: `/infrastructure/key(s)`, `/operator/:slug/key(s)`, `keyring-pin.json`, the proof page, transparency anchors and signing. The keys endpoints keep `schema_version "1"` and their shape; a revoked key simply isn't listed, so proofs signed under it no longer verify.
-- **The proof page** shows "Cannot verify: signing key not published" for a draw whose key has been revoked, and looks up an operator key by operator as well as `key_id`.
+- **The proof page** shows "Cannot verify: signing key not published (key revoked)" for a draw whose key has been revoked, and looks up an operator key by operator as well as `key_id`.
+- **Revocation is permanent and breaks old proofs.** A revocation can't be undone: the table refuses DELETE. Every proof signed with a revoked key stops verifying, for good. Revocation is for a key that is compromised, not for routine rotation: after a routine rotation, leave the old key published so its proofs keep verifying.
 - **Database.** Run `mix ecto.migrate`. The migration only adds the table.
 
 ### Added: observation weather (lock schema 6 / execution schema 5), per operator

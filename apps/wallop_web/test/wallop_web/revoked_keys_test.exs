@@ -123,7 +123,7 @@ defmodule WallopWeb.RevokedKeysTest do
 
       html = conn |> get("/proof/#{draw.id}") |> html_response(200)
 
-      assert html =~ "Cannot verify: signing key not published."
+      assert html =~ "Cannot verify: signing key not published (key revoked)."
       refute html =~ "data-verify-btn"
       refute html =~ "Verified by Wallop"
     end
@@ -181,7 +181,7 @@ defmodule WallopWeb.RevokedKeysTest do
       |> revoke_key!()
 
       html = render_live.()
-      assert html =~ "Cannot verify: signing key not published."
+      assert html =~ "Cannot verify: signing key not published (key revoked)."
       refute html =~ "Verified by Wallop"
     end
   end
