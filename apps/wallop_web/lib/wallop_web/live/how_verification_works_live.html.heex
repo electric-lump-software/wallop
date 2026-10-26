@@ -329,7 +329,8 @@
         Every completed draw has a public proof page. Pick one and try the verify button yourself.
       </p>
       <a
-        href="https://wallop.run/proof/286838f2-c6d7-49a8-acdb-7b60bce69f35"
+        :if={@example_proof_url}
+        href={@example_proof_url}
         target="_blank"
         rel="noopener"
         class="inline-flex items-center gap-2 bg-[#1a1a1a] text-white px-6 py-3 rounded-lg text-sm font-bold hover:bg-[#333] transition-colors"

@@ -134,7 +134,7 @@
             <li class="text-sm text-[#444] flex gap-2 items-start border-b border-[#f0ebe4] pb-2">
               <span class="text-[#666] shrink-0">→</span>
               <span>
-                <a href="https://wallop.run/proof/286838f2-c6d7-49a8-acdb-7b60bce69f35" target="_blank" rel="noopener" class="underline decoration-[#ccc] hover:decoration-[#1a1a1a]">Public proof page</a>
+                <a :if={@example_proof_url} href={@example_proof_url} target="_blank" rel="noopener" class="underline decoration-[#ccc] hover:decoration-[#1a1a1a]">Public proof page</a><span :if={!@example_proof_url}>Public proof page</span>
                 for every draw
               </span>
             </li>
@@ -244,7 +244,7 @@
           <div class="w-9 h-9 rounded-full bg-[#1a1a1a] text-white flex items-center justify-center text-sm font-bold shrink-0">5</div>
           <div>
             <h4 class="text-[15px] font-bold mb-1.5">Publish the permanent proof</h4>
-            <p class="text-sm text-[#555] leading-relaxed">Every draw gets a <a href="https://wallop.run/proof/286838f2-c6d7-49a8-acdb-7b60bce69f35" target="_blank" rel="noopener" class="underline decoration-[#ccc] hover:decoration-[#1a1a1a]">public proof page</a> showing every input, every step, and every winner. Share it with your entrants. Anyone who doubts the result can replay it themselves and see it&#39;s correct.</p>
+            <p class="text-sm text-[#555] leading-relaxed">Every draw gets a <a :if={@example_proof_url} href={@example_proof_url} target="_blank" rel="noopener" class="underline decoration-[#ccc] hover:decoration-[#1a1a1a]">public proof page</a><span :if={!@example_proof_url}>public proof page</span> showing every input, every step, and every winner. Share it with your entrants. Anyone who doubts the result can replay it themselves and see it&#39;s correct.</p>
           </div>
         </div>
       </div>
@@ -287,7 +287,7 @@
           <div class="w-9 h-9 rounded-full bg-[#1a1a1a] text-white flex items-center justify-center text-sm font-bold shrink-0">5</div>
           <div>
             <h4 class="text-[15px] font-bold mb-1.5">Dual-signed proof chain</h4>
-            <p class="text-sm text-[#555] leading-relaxed">Two Ed25519-signed receipts form a cryptographic chain. The <strong>lock receipt</strong> (signed by the operator's key at lock time) commits to the entry hash. The <strong>execution receipt</strong> (signed by the infrastructure key after execution) commits to the entropy, seed, and results — and embeds a SHA-256 hash of the lock receipt, linking them cryptographically. Each signing key is also temporally bound: the verifier checks that the key existed in the operator&#39;s keyring before the receipt that uses it, so a key minted after the fact cannot retroactively sign an earlier draw. The <a href="https://wallop.run/proof/286838f2-c6d7-49a8-acdb-7b60bce69f35" target="_blank" rel="noopener" class="underline decoration-[#ccc] hover:decoration-[#1a1a1a]">full proof record</a> is stored permanently. No UPDATE or DELETE.</p>
+            <p class="text-sm text-[#555] leading-relaxed">Two Ed25519-signed receipts form a cryptographic chain. The <strong>lock receipt</strong> (signed by the operator's key at lock time) commits to the entry hash. The <strong>execution receipt</strong> (signed by the infrastructure key after execution) commits to the entropy, seed, and results — and embeds a SHA-256 hash of the lock receipt, linking them cryptographically. Each signing key is also temporally bound: the verifier checks that the key existed in the operator&#39;s keyring before the receipt that uses it, so a key minted after the fact cannot retroactively sign an earlier draw. The <a :if={@example_proof_url} href={@example_proof_url} target="_blank" rel="noopener" class="underline decoration-[#ccc] hover:decoration-[#1a1a1a]">full proof record</a><span :if={!@example_proof_url}>full proof record</span> is stored permanently. No UPDATE or DELETE.</p>
             <code class="mt-2 inline-block font-mono text-[11px] text-[#666] bg-cream-dark px-2.5 py-1.5 rounded">lock_receipt → SHA256 → execution_receipt.lock_receipt_hash · key.inserted_at ≤ receipt.binding_timestamp · chain verified</code>
           </div>
         </div>

@@ -58,6 +58,13 @@ if honeycomb_api_key = System.get_env("HONEYCOMB_API_KEY") do
     otlp_protocol: :http_protobuf
 end
 
+# The draw that "view an example proof" links on the home page and the
+# verification explainer point at. Unset, those links are left out.
+case System.get_env("EXAMPLE_PROOF_URL") do
+  url when url in [nil, ""] -> :ok
+  url -> config :wallop_web, :example_proof_url, url
+end
+
 if config_env() == :prod do
   edge_shared_secret = System.get_env("EDGE_SHARED_SECRET")
 

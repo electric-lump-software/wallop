@@ -15,6 +15,7 @@ defmodule WallopWeb.HomeLive do
      |> assign(menu_open: false)
      |> assign(waitlist_signed_up: false)
      |> assign(waitlist_error: nil)
+     |> assign(example_proof_url: WallopWeb.ExampleProof.url())
      |> assign(page_title: "Provably fair random draws"), layout: false}
   end
 
