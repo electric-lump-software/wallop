@@ -67,7 +67,7 @@ defmodule WallopWeb.Components.EntryCheck do
           class="bg-cream-50 border border-cream-border text-[#555] rounded-lg px-4 py-3 text-sm"
         >
           <p>
-            Not a winner this time. The organiser can tell you more about your ticket.
+            That code isn&#39;t in the winner list. Check you typed it correctly, or ask the organiser about your entry.
           </p>
           <p :if={@check_url} class="mt-2">
             The operator provides a ticket-check page at:
