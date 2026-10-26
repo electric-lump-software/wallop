@@ -32,8 +32,8 @@ defmodule WallopWeb.ProofWeather do
                               "one on its own."
   @freq_drand_only_label "The Grid went quiet, so drand did this one on its own."
 
-  # The whole trusted set for each tag, kept close to the ADRs' public
-  # wording (ADR-0017 Amendment A for observation weather, ADR-0018 for
+  # The whole trusted set for each tag, kept close to the protocol's public
+  # wording (the weather design for observation weather, the frequency design for
   # the grid frequency). Shown in full under "What you're trusting here".
   @landobs_trust_lines [
     "Fewer than drand's threshold of nodes collude.",
@@ -70,7 +70,7 @@ defmodule WallopWeb.ProofWeather do
   # What anyone can check afterwards, by state.
   @landobs_weather_check "Checkable with wallop-verify weather-attest: the value matches the " <>
                            "public record for that station and hour."
-  # ADR-0017 Amendment A: a fallback can't be told apart from a withheld reading.
+  # A fallback can't be told apart from a withheld reading.
   @late_reading_caveat "A reading can arrive after the deadline, so a fallback can happen for " <>
                          "an hour whose reading the archive does hold; weather-attest can show " <>
                          "the reading exists, but can't tell a late reading from a withheld one."
