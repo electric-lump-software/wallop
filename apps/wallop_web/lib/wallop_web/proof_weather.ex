@@ -112,8 +112,8 @@ defmodule WallopWeb.ProofWeather do
         }
 
   @doc """
-  The entropy summary for a lock schema 6 draw, or nil for every other
-  draw (forecast draws keep their own markup).
+  The entropy summary for a lock schema 6 draw, or nil for any other
+  draw (one with an unknown pair, which the database refuses).
 
   * `observation_hour` (observation weather only) and `freq_start` (T)
     are the signed lock receipt's `weather_time` and `freq_start`; nil

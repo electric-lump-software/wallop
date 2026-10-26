@@ -59,21 +59,6 @@ defmodule WallopWeb.Components.ProofChain do
                 </div>
               </div>
               <.observation_weather :if={@weather} weather={@weather} />
-              <div :if={!@weather and @draw.weather_value} class="mt-2">
-                <span class="text-xs text-[#555]">Weather value: </span>
-                <span class="text-xs font-mono">{@draw.weather_value}</span>
-                <span :if={@draw.weather_station} class="text-xs text-[#555]">
-                  (station: {@draw.weather_station})
-                </span>
-                <div :if={@draw.weather_observation_time} class="text-xs text-[#555] mt-0.5">
-                  Forecast for {Calendar.strftime(@draw.weather_observation_time, "%H:%M UTC %d %b %Y")}
-                </div>
-              </div>
-              <div :if={!@weather and !@draw.weather_value and @draw.weather_fallback_reason} class="mt-2">
-                <span class="text-xs text-amber-600">
-                  Weather entropy was unavailable: {@draw.weather_fallback_reason}
-                </span>
-              </div>
             </div>
           </div>
         </div>
@@ -88,14 +73,6 @@ defmodule WallopWeb.Components.ProofChain do
               <div class="font-semibold text-sm">Seed Computation</div>
               <div :if={@weather} class="text-xs text-[#555] mt-1">
                 {seed_formula(@weather.source)}
-              </div>
-              <div :if={!@weather} class="text-xs text-[#555] mt-1">
-                <span :if={@draw.weather_value}>
-                  seed = SHA-256(JCS(entry_hash, drand_randomness, weather_value))
-                </span>
-                <span :if={!@draw.weather_value}>
-                  seed = SHA-256(JCS(entry_hash, drand_randomness))
-                </span>
               </div>
               <code class="text-xs font-mono mt-1 block break-all">
                 {@draw.seed}

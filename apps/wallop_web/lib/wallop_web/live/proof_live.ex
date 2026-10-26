@@ -68,7 +68,6 @@ defmodule WallopWeb.ProofLive do
            revealing: false,
            reveal_from: nil,
            reveal_to: nil,
-           entropy_status: nil,
            entries_json: nil,
            results_json: nil,
            operator: operator,
@@ -91,15 +90,7 @@ defmodule WallopWeb.ProofLive do
   def handle_info({:draw_updated, draw}, socket) do
     if draw.id == socket.assigns.draw_id do
       schedule_poll_if_live(draw)
-      maybe_reveal(%{socket | assigns: Map.put(socket.assigns, :entropy_status, nil)}, draw)
-    else
-      {:noreply, socket}
-    end
-  end
-
-  def handle_info({:entropy_status, status}, socket) do
-    if socket.assigns.draw.status in [:awaiting_entropy, :pending_entropy] do
-      {:noreply, assign(socket, entropy_status: status)}
+      maybe_reveal(socket, draw)
     else
       {:noreply, socket}
     end
@@ -242,13 +233,6 @@ defmodule WallopWeb.ProofLive do
     {Jason.encode!(entries), VerifyBlock.results_json(draw.results)}
   end
 
-  defp load_draw(id) do
-    case Ash.get(WallopCore.Resources.Draw, id,
-           domain: WallopCore.Domain,
-           authorize?: false
-         ) do
-      {:ok, draw} -> {:ok, draw}
-      _ -> {:error, :not_found}
-    end
-  end
+  # A retired forecast draw is not found, exactly like an unknown id.
+  defp load_draw(id), do: WallopWeb.RetiredDraw.fetch(id)
 end

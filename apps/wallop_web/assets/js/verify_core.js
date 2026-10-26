@@ -58,8 +58,9 @@ export function observationHour(round) {
 }
 export const FREQ_TAG = "drand-quicknet+elexon-freq-v1"
 
-// Execution receipt schema that carries the two lock-v6 tags. Any other
-// tag on it is unknown to this page.
+// The only receipt schemas this page checks: lock 6 and execution 5, under
+// the two tags above. Anything else throws in seedPlan.
+const V6_LOCK_SCHEMA = "6"
 const V6_EXEC_SCHEMA = "5"
 
 // serde_wasm_bindgen may return a Map instead of a plain object.
@@ -183,19 +184,19 @@ export function finalVerdict({ gate, linesPassed, hasReceipts }) {
  *
  * - Observation weather tag: `landobs_exec_state_wasm` names the state.
  * - Grid-frequency tag: the frequency value, or drand alone when null.
- * - Forecast and older receipts: the page's existing path.
  *
- * Throws when the receipt fits none of these.
+ * Only lock schema 6 / execution schema 5 receipts are checked. Anything
+ * else (no receipt, an older schema, an unknown tag) throws, so the seed
+ * line fails.
  */
-export function seedPlan(wasm, exec, execJcs, d) {
-  const page = formula => ({
-    formula,
-    value: formula === "weather" ? d.weatherValue : null,
-    randomness: d.drandRandomness,
-    fallbackLabel: null
-  })
-
-  if (!exec) return page(d.weatherValue ? "weather" : "drand_only")
+export function seedPlan(wasm, exec, execJcs, lock) {
+  if (!exec) throw new Error("no signed execution receipt")
+  if (exec.schema_version !== V6_EXEC_SCHEMA) {
+    throw new Error(`execution receipt schema ${exec.schema_version} isn't one this page checks`)
+  }
+  if (lock && lock.schema_version !== V6_LOCK_SCHEMA) {
+    throw new Error(`lock receipt schema ${lock.schema_version} isn't one this page checks`)
+  }
 
   const tag = exec.entropy_composition
   const signed = (formula, value, fallbackLabel = null) =>
@@ -224,15 +225,7 @@ export function seedPlan(wasm, exec, execJcs, d) {
     throw new Error("grid-frequency receipt is in neither state (readings, or drand only after no_frequency_by_deadline)")
   }
 
-  if (exec.schema_version === V6_EXEC_SCHEMA) throw new Error(`unknown entropy tag: ${tag}`)
-
-  // Forecast and older receipts keep the existing path.
-  const plan = page(d.weatherValue ? "weather" : "drand_only")
-  if (plan.formula === "drand_only" && exec.weather_fallback_reason) {
-    plan.fallbackLabel = "Weather data wasn't available for this draw, so the seed came from " +
-      `drand's public randomness beacon alone (reason: ${exec.weather_fallback_reason})`
-  }
-  return plan
+  throw new Error(`unknown entropy tag: ${tag}`)
 }
 
 function seedText(plan, round) {
@@ -354,7 +347,7 @@ export function computeChecks(wasm, d, published) {
   const seedLine = { id: "seed", text: null, waitLabel: "match", passLabel: "match", mono: null,
                      scrambleMs: 1200, typeSpeed: 20 }
   const seedOk = check(seedLine, "MISMATCH — computed seed does not match stored value", "Seed computation error", () => {
-    plan = seedPlan(wasm, exec, execJcs, d)
+    plan = seedPlan(wasm, exec, execJcs, lockSigned)
     seedLine.text = seedText(plan, d.drandRound)
     const seed = computeSeed(wasm, plan, computedEntryHash)
     seedLine.mono = seed.substring(0, 8)
