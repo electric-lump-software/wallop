@@ -1,0 +1,47 @@
+{
+  "cases": [
+    {
+      "drand_round": 33067632,
+      "freq_start": "2026-10-14T19:25:00.000000Z",
+      "latest_lock_at": "2026-10-14T18:14:00.000000Z",
+      "published_at": "2026-10-14T19:31:00.000000Z",
+      "weather_time": "2026-10-14T19:00:00.000000Z"
+    },
+    {
+      "drand_round": 33067631,
+      "freq_start": "2026-10-14T19:24:45.000000Z",
+      "latest_lock_at": "2026-10-14T17:14:00.000000Z",
+      "published_at": "2026-10-14T19:30:57.000000Z",
+      "weather_time": "2026-10-14T18:00:00.000000Z"
+    },
+    {
+      "drand_round": 33068212,
+      "freq_start": "2026-10-14T19:54:00.000000Z",
+      "latest_lock_at": "2026-10-14T18:14:00.000000Z",
+      "published_at": "2026-10-14T20:00:00.000000Z",
+      "weather_time": "2026-10-14T19:00:00.000000Z"
+    },
+    {
+      "drand_round": 33068352,
+      "freq_start": "2026-10-14T20:01:00.000000Z",
+      "latest_lock_at": "2026-10-14T18:14:00.000000Z",
+      "published_at": "2026-10-14T20:07:00.000000Z",
+      "weather_time": "2026-10-14T19:00:00.000000Z"
+    },
+    {
+      "drand_round": 33068912,
+      "freq_start": "2026-10-14T20:29:00.000000Z",
+      "latest_lock_at": "2026-10-14T19:14:00.000000Z",
+      "published_at": "2026-10-14T20:35:00.000000Z",
+      "weather_time": "2026-10-14T20:00:00.000000Z"
+    }
+  ],
+  "description": "drand-quicknet+metoffice-landobs-v1: the draw schedule. For a quicknet round, weather_time is the latest whole UTC hour h with h + w_secs + publish_margin_secs <= published_at; latest_lock_at is weather_time - lock_offset_secs; freq_start is the round's grid-frequency window start (the window state (b) uses). Cases: the round exactly at the bound (33067632), the round before it, mid-hour rounds, and 33068912, whose weather_time is 20:00 under W = 30 min but would be 19:00 under W = 40 min.",
+  "entropy_composition": "drand-quicknet+metoffice-landobs-v1",
+  "lock_offset_secs": 2760,
+  "publish_margin_secs": 60,
+  "stations": [
+    "wmo-03749"
+  ],
+  "w_secs": 1800
+}

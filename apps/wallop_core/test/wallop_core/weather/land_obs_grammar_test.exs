@@ -1,0 +1,327 @@
+defmodule WallopCore.Weather.LandObsGrammarTest do
+  use ExUnit.Case, async: true
+  use ExUnitProperties
+
+  alias WallopCore.Weather.LandObsGrammar, as: G
+
+  # Synthetic rows in the format the Met Office Weather DataHub documents for
+  # Land Observations (same field names, number formatting and datetime
+  # format). Neither is a real observation.
+  @row_1900 ~s({"temperature": 12.34, "visibility": 34500.0, "weather_code": 7, "datetime": "2026-10-14T19:00:00Z", "humidity": 67, "mslp": 1012, "wind_gust": 7.4, "wind_speed": 3.6, "pressure_tendency": "S", "wind_direction": "SSW"})
+  @row_1200 ~s({"datetime": "2026-10-15T12:00:00Z", "humidity": 72, "mslp": 1017, "pressure_tendency": "F", "temperature": 17.25, "visibility": 52370.0, "weather_code": 3, "wind_direction": "W", "wind_gust": 10.8, "wind_speed": 6.1})
+
+  defp row(json) do
+    {:ok, r} = G.decode(json)
+    r
+  end
+
+  defp value_of(fields) do
+    base = %{
+      "temperature" => "1.0",
+      "mslp" => "1000",
+      "humidity" => "50",
+      "visibility" => "1000"
+    }
+
+    json =
+      base |> Map.merge(fields) |> Enum.map_join(", ", fn {k, v} -> ~s("#{k}": #{v}) end)
+
+    G.canonical_value(row("{" <> json <> "}"))
+  end
+
+  test "numbers keep their JSON text" do
+    assert %{
+             "temperature" => {:number, "17.25"},
+             "visibility" => {:number, "52370.0"},
+             "wind_direction" => "W"
+           } = row(@row_1200)
+  end
+
+  test "canonicalises rows in the documented format" do
+    assert {:ok, "123;1012;67;3450"} = G.canonical_value(row(@row_1900))
+    # 17.25 rounds half away from zero to 173.
+    assert {:ok, "173;1017;72;5237"} = G.canonical_value(row(@row_1200))
+  end
+
+  test "temperature rounds half away from zero from the decimal text" do
+    for {t, want} <- [
+          {"19.55", "196"},
+          {"19.549", "195"},
+          {"-0.05", "-1"},
+          {"-0.04", "0"},
+          {"-0.0", "0"},
+          {"0.0", "0"},
+          {"-12.35", "-124"},
+          {"7", "70"}
+        ] do
+      assert {:ok, ^want <> ";1000;50;100"} = value_of(%{"temperature" => t})
+    end
+  end
+
+  test "visibility must be whole metres, then rounds to decametres" do
+    assert {:ok, "10;1000;50;3"} = value_of(%{"visibility" => "25"})
+    assert {:ok, "10;1000;50;2"} = value_of(%{"visibility" => "24"})
+    assert {:ok, "10;1000;50;4114"} = value_of(%{"visibility" => "41140.0"})
+    assert {:ok, "10;1000;50;4115"} = value_of(%{"visibility" => "41145"})
+    assert {:error, {:not_integral, "visibility"}} = value_of(%{"visibility" => "41140.5"})
+    assert {:error, {:not_integral, "visibility"}} = value_of(%{"visibility" => "41140.04"})
+    assert {:error, {:invalid, "visibility"}} = value_of(%{"visibility" => "4.114e4"})
+  end
+
+  test "mslp and humidity must be whole numbers; trailing zero decimals are fine" do
+    assert {:ok, "10;1021;50;100"} = value_of(%{"mslp" => "1021.0"})
+    assert {:error, {:not_integral, "mslp"}} = value_of(%{"mslp" => "1020.4"})
+    assert {:error, {:not_integral, "humidity"}} = value_of(%{"humidity" => "76.5"})
+  end
+
+  test "any missing, null or non-numeric required field makes the row invalid" do
+    for key <- ~w(temperature mslp humidity visibility) do
+      assert {:error, {:missing, ^key}} = G.canonical_value(Map.delete(row(@row_1200), key))
+      assert {:error, {:missing, ^key}} = value_of(%{key => "null"})
+      assert {:error, {:invalid, ^key}} = value_of(%{key => ~s("20")})
+      assert {:error, {:invalid, ^key}} = value_of(%{key => "true"})
+      assert {:error, {:invalid, ^key}} = value_of(%{key => "[1]"})
+      assert {:error, {:invalid, ^key}} = value_of(%{key => ~s({"v": 1})})
+    end
+  end
+
+  test "only temperature may be negative, and a minus sign on zero counts" do
+    assert {:error, {:invalid, "visibility"}} = value_of(%{"visibility" => "-4"})
+    assert {:error, {:invalid, "visibility"}} = value_of(%{"visibility" => "-0"})
+    assert {:error, {:invalid, "humidity"}} = value_of(%{"humidity" => "-0"})
+    assert {:error, {:invalid, "mslp"}} = value_of(%{"mslp" => "-0.0"})
+    assert {:ok, "0;1000;50;100"} = value_of(%{"temperature" => "-0.04"})
+    assert {:ok, "0;1000;50;100"} = value_of(%{"temperature" => "-0"})
+  end
+
+  test "a row that is not an object is not an observation" do
+    assert {:error, :not_an_object} = G.canonical_value([1, 2])
+    assert {:error, :not_an_object} = G.canonical_value(nil)
+  end
+
+  test "an exponent is rejected per field: in a required field it invalidates the row, elsewhere it is ignored" do
+    assert {:error, {:invalid, "temperature"}} = value_of(%{"temperature" => "1.959e1"})
+    assert {:error, {:invalid, "mslp"}} = value_of(%{"mslp" => "1.02E3"})
+    assert {:ok, "10;1000;50;100"} = value_of(%{"wind_speed" => "4e0"})
+    assert {:ok, "10;1000;50;100"} = value_of(%{"wind_speed" => "1e400"})
+  end
+
+  test "bounds, after scaling: t [-900, 600], mslp [850, 1100], rh [0, 100], vis [0, 10000]" do
+    assert {:ok, "600;1000;50;100"} = value_of(%{"temperature" => "60.0"})
+    assert {:ok, "600;1000;50;100"} = value_of(%{"temperature" => "60.04"})
+    assert {:ok, "-900;1000;50;100"} = value_of(%{"temperature" => "-90.0"})
+    assert {:ok, "-900;1000;50;100"} = value_of(%{"temperature" => "-90.04"})
+    assert {:error, {:out_of_bounds, "temperature"}} = value_of(%{"temperature" => "60.05"})
+    assert {:error, {:out_of_bounds, "temperature"}} = value_of(%{"temperature" => "60.1"})
+    assert {:error, {:out_of_bounds, "temperature"}} = value_of(%{"temperature" => "-90.05"})
+    assert {:error, {:out_of_bounds, "temperature"}} = value_of(%{"temperature" => "-90.1"})
+    assert {:ok, _} = value_of(%{"mslp" => "850"})
+    assert {:ok, _} = value_of(%{"mslp" => "1100"})
+    assert {:error, {:out_of_bounds, "mslp"}} = value_of(%{"mslp" => "849"})
+    assert {:error, {:out_of_bounds, "mslp"}} = value_of(%{"mslp" => "1101"})
+    assert {:ok, "10;1000;0;100"} = value_of(%{"humidity" => "0"})
+    assert {:error, {:out_of_bounds, "humidity"}} = value_of(%{"humidity" => "101"})
+    assert {:error, {:invalid, "humidity"}} = value_of(%{"humidity" => "-1"})
+    assert {:ok, "10;1000;50;0"} = value_of(%{"visibility" => "0"})
+    assert {:ok, "10;1000;50;10000"} = value_of(%{"visibility" => "100000"})
+    assert {:ok, "10;1000;50;10000"} = value_of(%{"visibility" => "100004"})
+    assert {:error, {:out_of_bounds, "visibility"}} = value_of(%{"visibility" => "100005"})
+    assert {:error, {:out_of_bounds, "visibility"}} = value_of(%{"visibility" => "100010"})
+    assert {:error, {:invalid, "visibility"}} = value_of(%{"visibility" => "-10"})
+  end
+
+  test "scale_decimal mirrors the verifier" do
+    assert {:ok, 196} = G.scale_decimal("19.59", 1, false)
+    assert {:ok, 196} = G.scale_decimal("19.55", 1, false)
+    assert {:ok, 195} = G.scale_decimal("19.549", 1, false)
+    assert {:ok, 184} = G.scale_decimal("18.38", 1, false)
+    assert {:ok, 70} = G.scale_decimal("7", 1, false)
+    assert {:ok, -1} = G.scale_decimal("-0.05", 1, false)
+    assert {:ok, 0} = G.scale_decimal("-0.04", 1, false)
+    assert {:ok, 0} = G.scale_decimal("-0.0", 1, false)
+    assert {:ok, -35} = G.scale_decimal("-3.45", 1, false)
+    assert {:ok, -124} = G.scale_decimal("-12.35", 1, false)
+    assert {:ok, 4114} = G.scale_decimal("41140.0", -1, false)
+    assert {:ok, 1021} = G.scale_decimal("1021", 0, true)
+    assert {:ok, 1021} = G.scale_decimal("1021.0", 0, true)
+
+    for bad <-
+          ["1e2", "1.0E2", "NaN", "", "-", ".5", "5.", ~s("18.3"), "null", "+1"] ++
+            ["--1", "1.2.3", " 1", "1 ", "1\n", "١"] do
+      assert {:error, :not_plain_decimal} = G.scale_decimal(bad, 0, true), inspect(bad)
+    end
+
+    assert {:error, :not_whole} = G.scale_decimal("1021.5", 0, true)
+    assert {:error, :too_many_digits} = G.scale_decimal("1234567890123456", 0, true)
+    assert {:error, :too_many_digits} = G.scale_decimal("12345678.90123456", 0, false)
+    assert {:ok, 123_456_789_012_345} = G.scale_decimal("123456789012345", 0, true)
+  end
+
+  property "scale_decimal rounds like Decimal half_up (away from zero)" do
+    check all(
+            neg <- boolean(),
+            int <- integer(0..99_999),
+            frac <- string(?0..?9, min_length: 0, max_length: 6),
+            shift <- integer(-2..2)
+          ) do
+      text = if(neg, do: "-", else: "") <> Integer.to_string(int)
+      text = if frac == "", do: text, else: text <> "." <> frac
+
+      want =
+        text
+        |> Decimal.new()
+        |> Decimal.mult(Decimal.new(1, 1, shift))
+        |> Decimal.round(0, :half_up)
+        |> Decimal.to_integer()
+
+      assert {:ok, ^want} = G.scale_decimal(text, shift, false)
+    end
+  end
+
+  property "canonical_value rounds temperature half away from zero and always yields a valid value" do
+    check all(
+            negative_fraction? <- boolean(),
+            t <- integer(-1000..700),
+            t_frac <- string(?0..?9, min_length: 1, max_length: 3),
+            mslp <- integer(800..1150),
+            rh <- integer(-5..110),
+            vis <- integer(0..110_000)
+          ) do
+      # With negative_fraction?, temperature is -0.x: between -1 and 0.
+      t_text = if negative_fraction?, do: "-0.#{t_frac}", else: "#{t}.#{t_frac}"
+
+      json =
+        ~s({"temperature": #{t_text}, "mslp": #{mslp}, "humidity": #{rh}, "visibility": #{vis}})
+
+      want_t =
+        t_text
+        |> Decimal.new()
+        |> Decimal.mult(10)
+        |> Decimal.round(0, :half_up)
+        |> Decimal.to_integer()
+
+      case G.canonical_value(row(json)) do
+        {:ok, value} ->
+          assert G.valid_value?(value), value
+          [t_part | _] = String.split(value, ";")
+          assert t_part == Integer.to_string(want_t)
+          refute t_part == "-0"
+
+        {:error, {:out_of_bounds, _}} ->
+          :ok
+
+        {:error, {:invalid, "humidity"}} ->
+          assert rh < 0
+      end
+    end
+  end
+
+  test "temperature just below zero rounds to 0 or -1, never -0" do
+    for {t, want} <- [
+          {"-0.0", "0"},
+          {"-0.049", "0"},
+          {"-0.04", "0"},
+          {"-0.05", "-1"},
+          {"-0.95", "-10"}
+        ] do
+      assert {:ok, ^want <> ";1000;50;100"} = value_of(%{"temperature" => t})
+    end
+  end
+
+  test "decode refuses nesting deeper than 8, ignoring brackets inside strings" do
+    deep = fn n -> String.duplicate("[", n) <> String.duplicate("]", n) end
+    assert {:ok, _} = G.decode(deep.(8))
+    assert {:error, :too_deep} = G.decode(deep.(9))
+    assert {:error, :too_deep} = G.decode(String.duplicate("[", 100_000))
+
+    in_string = ~s([{"note": "#{String.duplicate("[{", 50)} \\" ]]}"}])
+    assert {:ok, [%{"note" => _}]} = G.decode(in_string)
+    assert {:error, :too_deep} = G.decode(~s([[[[[[[[{"a": 1}]]]]]]]]))
+  end
+
+  test "NaN and Infinity are not JSON" do
+    assert {:error, _} = G.decode(~s({"temperature": NaN}))
+    assert {:error, _} = G.decode(~s({"temperature": Infinity}))
+    assert {:error, _} = G.decode(~s({"temperature": 1.}))
+  end
+
+  test "decode keeps structure, escapes and whitespace" do
+    body =
+      ~s(\n [ {"a" : -0.0 , "b\\"c": "x,\\u00e9]:", "d": [1, {"e": null}, true, false]},\t{} ] )
+
+    assert {:ok,
+            [
+              %{
+                "a" => {:number, "-0.0"},
+                "b\"c" => "x,é]:",
+                "d" => [{:number, "1"}, %{"e" => nil}, true, false]
+              },
+              %{}
+            ]} = G.decode(body)
+
+    assert {:ok, {:number, "5"}} = G.decode("5")
+  end
+
+  test "a key twice in one object, at any depth, is refused" do
+    for body <- [
+          ~s({"t": 1, "t": 2}),
+          ~s({"t": 1, "t": 1}),
+          ~s([{"a": 1}, {"t": {"x": 1, "x": null}}]),
+          ~s({"data": [], "data": [{"t": 1}]}),
+          # Compared after unescaping: \u0074 is "t".
+          ~s({"t": 1, "\\u0074": 2})
+        ],
+        do: assert(G.decode(body) == {:error, :duplicate_key}, body)
+
+    # The same key in sibling objects, or as a string value, is fine.
+    assert {:ok, [%{"t" => _}, %{"t" => _}]} = G.decode(~s([{"t": 1}, {"t": 2}]))
+    assert {:ok, %{"t" => "t", "u" => %{"t" => _}}} = G.decode(~s({"t": "t", "u": {"t": 1}}))
+  end
+
+  test "valid_value?/1 is the published grammar with the bounds" do
+    for ok <- [
+          "173;1017;72;5237",
+          "-900;850;0;0",
+          "600;1100;100;10000",
+          "0;1000;50;0",
+          "184;1021;51;4114",
+          "-35;998;100;0"
+        ],
+        do: assert(G.valid_value?(ok), ok)
+
+    for bad <- [
+          "-0;1017;72;5237",
+          "0173;1017;72;5237",
+          "173;1017;72",
+          "173;-1017;72;5237",
+          "173;1017;72;5237;1",
+          " 173;1017;72;5237",
+          "173;1017;72;5237 ",
+          "173;1017;72;5237\n",
+          "601;1017;72;5237",
+          "-901;1017;72;5237",
+          "173;849;72;5237",
+          "173;1101;72;5237",
+          "173;1017;101;5237",
+          "173;1017;72;10001",
+          "",
+          ";;;",
+          "+184;1021;51;4114",
+          "18.4;1021;51;4114",
+          "1e2;1021;51;4114",
+          "184,1021,51,4114",
+          "１８４;1021;51;4114",
+          "--1;1021;51;4114",
+          "-;1021;51;4114",
+          "184;1021;051;4114",
+          "00;1021;51;4114",
+          "-00;1021;51;4114",
+          "184;1021;51;-0",
+          "184;;51;4114",
+          nil,
+          173
+        ] do
+      refute G.valid_value?(bad), inspect(bad)
+    end
+  end
+end

@@ -1,5 +1,6 @@
 defmodule WallopCore.Entropy.WeatherClientTest do
-  use ExUnit.Case, async: true
+  # Serial: the client's config and the API key are global application env.
+  use ExUnit.Case, async: false
 
   alias WallopCore.Entropy.WeatherClient
 
@@ -9,12 +10,22 @@ defmodule WallopCore.Entropy.WeatherClientTest do
   setup do
     Req.Test.stub(WeatherClient, &handle_request/1)
 
+    previous =
+      for key <- [WeatherClient, :met_office_api_key],
+          do: {key, Application.fetch_env(:wallop_core, key)}
+
     Application.put_env(:wallop_core, WeatherClient, plug: {Req.Test, WeatherClient})
     Application.put_env(:wallop_core, :met_office_api_key, "test-api-key")
 
+    # Put back what was there (the test config sets a placeholder key),
+    # rather than leave it unset for every later test.
     on_exit(fn ->
-      Application.delete_env(:wallop_core, WeatherClient)
-      Application.delete_env(:wallop_core, :met_office_api_key)
+      for {key, value} <- previous do
+        case value do
+          {:ok, v} -> Application.put_env(:wallop_core, key, v)
+          :error -> Application.delete_env(:wallop_core, key)
+        end
+      end
     end)
 
     :ok

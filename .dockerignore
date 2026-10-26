@@ -7,3 +7,5 @@ deps/
 docs/
 priv/plts/
 apps/wallop_web/assets/node_modules/
+apps/wallop_core/native/drand_bls/target/
+apps/wallop_core/priv/native/

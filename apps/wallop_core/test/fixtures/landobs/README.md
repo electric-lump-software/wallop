@@ -1,0 +1,1 @@
+Synthetic samples of Met Office Land Observations responses, used to test parsing. The rows are made up in the format the Met Office Weather DataHub documents (same field names, number formatting and datetime format); none is a real observation. Real sample data: https://datahub.metoffice.gov.uk/docs/o/category/observations/type/land-observations/sample-data

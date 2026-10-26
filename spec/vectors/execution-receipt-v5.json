@@ -1,0 +1,35 @@
+{
+  "description": "drand-quicknet+metoffice-landobs-v1, state (a): a Middle Wallop observation for the round's hour fed the seed. Execution receipt, schema 5, 28 fields, weather_station wmo-03749. weather_value 123;1012;67;3450 (invented test data, not a real observation) with its observation time; both reasons and freq_value null. Seed: compute_seed(entry_hash, drand_randomness, weather_value).",
+  "expected_field_count": 28,
+  "expected_payload_sha256": "0bb1d6d12a8c4e31ffefb2f0daa1c7661a6346fb4bf0bafa216d6e2cea59bc5c",
+  "expected_schema_version": "5",
+  "input": {
+    "drand_chain": "52db9ba70e0cc0f6eaf7803dd07447a1f5477735fd3f661792ba94600c84e971",
+    "drand_randomness": "140117383b03a0c0c7a899a32b8cbd2ffff9e2569504037c358ee8c7c2efe2fd",
+    "drand_round": 33068212,
+    "drand_signature": "b6541e41bb68ff318e8bd74b9f6e168ae6424476c432241420c38427df58c6ef33fe009ce202a7101120ab481702fddf",
+    "draw_id": "66666666-6666-4666-8666-666666666666",
+    "entropy_composition": "drand-quicknet+metoffice-landobs-v1",
+    "entry_hash": "3846ff0a9b8051cc82a91c47ab2181329130bc51df0939be4652f4dbfa27d3c5",
+    "executed_at": "2026-10-14T20:00:05.000000Z",
+    "fair_pick_version": "0.2.0",
+    "freq_fallback_reason": null,
+    "freq_value": null,
+    "lock_receipt_hash": "076d08cd17a2546738ab25bc83f8052606277831bdf998c802ebbacb3c5e921f",
+    "operator_id": "11111111-1111-4111-8111-111111111111",
+    "operator_slug": "acme-prizes",
+    "results": [
+      "00000000-0000-4000-8000-000000000001",
+      "00000000-0000-4000-8000-000000000002"
+    ],
+    "seed": "b1b7b241aad88a0058e5077b456a9eb5b39a117e387830f419155df5f3fff0e6",
+    "sequence": 1,
+    "signing_key_id": "0ade9f0a",
+    "wallop_core_version": "0.29.0",
+    "weather_fallback_reason": null,
+    "weather_observation_time": "2026-10-14T19:00:00.000000Z",
+    "weather_station": "wmo-03749",
+    "weather_value": "123;1012;67;3450"
+  },
+  "payload_jcs": "{\"drand_chain\":\"52db9ba70e0cc0f6eaf7803dd07447a1f5477735fd3f661792ba94600c84e971\",\"drand_randomness\":\"140117383b03a0c0c7a899a32b8cbd2ffff9e2569504037c358ee8c7c2efe2fd\",\"drand_round\":33068212,\"drand_signature\":\"b6541e41bb68ff318e8bd74b9f6e168ae6424476c432241420c38427df58c6ef33fe009ce202a7101120ab481702fddf\",\"drand_signature_algorithm\":\"bls12_381_g2\",\"draw_id\":\"66666666-6666-4666-8666-666666666666\",\"entropy_composition\":\"drand-quicknet+metoffice-landobs-v1\",\"entry_hash\":\"3846ff0a9b8051cc82a91c47ab2181329130bc51df0939be4652f4dbfa27d3c5\",\"executed_at\":\"2026-10-14T20:00:05.000000Z\",\"fair_pick_version\":\"0.2.0\",\"freq_fallback_reason\":null,\"freq_value\":null,\"jcs_version\":\"sha256-jcs-v1\",\"lock_receipt_hash\":\"076d08cd17a2546738ab25bc83f8052606277831bdf998c802ebbacb3c5e921f\",\"merkle_algorithm\":\"sha256-pairwise-v1\",\"operator_id\":\"11111111-1111-4111-8111-111111111111\",\"operator_slug\":\"acme-prizes\",\"results\":[\"00000000-0000-4000-8000-000000000001\",\"00000000-0000-4000-8000-000000000002\"],\"schema_version\":\"5\",\"seed\":\"b1b7b241aad88a0058e5077b456a9eb5b39a117e387830f419155df5f3fff0e6\",\"sequence\":1,\"signature_algorithm\":\"ed25519\",\"signing_key_id\":\"0ade9f0a\",\"wallop_core_version\":\"0.29.0\",\"weather_fallback_reason\":null,\"weather_observation_time\":\"2026-10-14T19:00:00.000000Z\",\"weather_station\":\"wmo-03749\",\"weather_value\":\"123;1012;67;3450\"}"
+}

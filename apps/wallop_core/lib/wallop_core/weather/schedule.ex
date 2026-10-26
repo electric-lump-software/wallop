@@ -1,0 +1,132 @@
+defmodule WallopCore.Weather.Schedule do
+  @moduledoc """
+  Timing for draws on the observation weather protocol (lock schema 6,
+  execution schema 5). Pure: no IO and no clock; callers pass the times.
+
+  The operator picks `draw_at` on drand quicknet's 3-second grid (every
+  whole minute is on it, because genesis 1692803367 is divisible by 3).
+  Everything else follows:
+
+    * round R is the round with pub(R) == draw_at;
+    * weather_time is the latest whole UTC hour h with h + W + 60s <= pub(R);
+    * the fetch deadline F is weather_time + W;
+    * a lock is allowed only while now <= weather_time - 46 min.
+
+  When the hour's reading isn't stored by F, the draw uses the grid-frequency
+  window of the same round, starting at `freq_start`
+  (`WallopCore.Frequency.Schedule`); its constants are frozen by this tag too.
+
+  W, the 46-minute offset and the grid-frequency fallback's constants are
+  frozen by the `drand-quicknet+metoffice-landobs-v1` tag. Changing any of
+  them needs a new tag.
+  """
+
+  alias WallopCore.Drand.Quicknet
+  alias WallopCore.Frequency.Schedule, as: FreqSchedule
+
+  # W, the observation fetch window. W is 30 minutes, final.
+  # Mirrored by the SQL function wallop_landobs_fetch_window().
+  @fetch_window_seconds 30 * 60
+  @lock_offset_seconds 46 * 60
+  @observation_slack_seconds 60
+  @first_poll_after_weather_time_seconds 5 * 60
+  @poll_interval_seconds 60
+  @execution_delay_seconds 5
+  @default_margin_seconds 30
+
+  @typedoc """
+  A draw's schedule. For this entropy tag `expected_result_at` is pub(R),
+  which is `draw_at` itself, so the two are always equal. They are kept as
+  separate fields because other tags may produce the result later than the
+  draw time.
+  """
+  @type schedule :: %{
+          draw_at: DateTime.t(),
+          round: pos_integer(),
+          weather_time: DateTime.t(),
+          fetch_deadline: DateTime.t(),
+          latest_lock_at: DateTime.t(),
+          expected_result_at: DateTime.t(),
+          freq_start: DateTime.t()
+        }
+
+  @spec fetch_window_seconds() :: pos_integer()
+  def fetch_window_seconds, do: @fetch_window_seconds
+  @spec lock_offset_seconds() :: pos_integer()
+  def lock_offset_seconds, do: @lock_offset_seconds
+  @spec poll_interval_seconds() :: pos_integer()
+  def poll_interval_seconds, do: @poll_interval_seconds
+  @spec first_poll_after_weather_time_seconds() :: pos_integer()
+  def first_poll_after_weather_time_seconds, do: @first_poll_after_weather_time_seconds
+  @spec execution_delay_seconds() :: pos_integer()
+  def execution_delay_seconds, do: @execution_delay_seconds
+
+  @doc "The full schedule for a draw time. See the moduledoc for the rules."
+  @spec schedule(DateTime.t()) ::
+          {:ok, schedule()} | {:error, :sub_second | :not_on_grid | :before_genesis}
+  def schedule(%DateTime{} = draw_at) do
+    with {:ok, round} <- Quicknet.round_at(draw_at), do: {:ok, schedule_for_round(round)}
+  end
+
+  defp schedule_for_round(round) do
+    wt = weather_time_for_round(round)
+    pub = pub_time(round)
+
+    %{
+      draw_at: pub,
+      round: round,
+      weather_time: wt,
+      fetch_deadline: fetch_deadline(wt),
+      latest_lock_at: latest_lock_at(wt),
+      expected_result_at: pub,
+      freq_start: FreqSchedule.freq_start_for_round(round)
+    }
+  end
+
+  @doc "The publication time of `round`. See `WallopCore.Drand.Quicknet.pub_time/1`."
+  @spec pub_time(pos_integer()) :: DateTime.t()
+  defdelegate pub_time(round), to: Quicknet
+
+  @doc "The latest whole UTC hour h with h + W + 60s <= pub(round)."
+  @spec weather_time_for_round(pos_integer()) :: DateTime.t()
+  def weather_time_for_round(round) when is_integer(round) and round >= 1 do
+    latest =
+      DateTime.to_unix(Quicknet.pub_time(round)) - @fetch_window_seconds -
+        @observation_slack_seconds
+
+    from_unix(latest - Integer.mod(latest, 3600))
+  end
+
+  @spec fetch_deadline(DateTime.t()) :: DateTime.t()
+  def fetch_deadline(wt), do: DateTime.add(wt, @fetch_window_seconds)
+
+  @spec latest_lock_at(DateTime.t()) :: DateTime.t()
+  def latest_lock_at(wt), do: DateTime.add(wt, -@lock_offset_seconds)
+
+  @spec lock_allowed?(DateTime.t(), DateTime.t()) :: boolean()
+  def lock_allowed?(locked_at, wt), do: DateTime.compare(locked_at, latest_lock_at(wt)) != :gt
+
+  @spec within_cap?(DateTime.t(), DateTime.t()) :: boolean()
+  def within_cap?(now, expected_result_at),
+    do: DateTime.diff(expected_result_at, now) <= Quicknet.max_round_delta() * Quicknet.period()
+
+  @doc """
+  The draw time used when the operator sends none: the earliest grid point
+  whose weather_time is at least 46 minutes (plus a 30-second margin for the
+  lock's own work) after `now`.
+  """
+  @spec default_draw_at(DateTime.t()) :: DateTime.t()
+  def default_draw_at(%DateTime{} = now) do
+    # The 30-second margin is load-bearing, not slack. DateTime.to_unix/1
+    # drops the microseconds of `now`, and the lock itself happens a little
+    # after `now` (request latency, the lock's own work). Without the margin
+    # the default could already be past its latest lock time when the lock
+    # runs. Do not remove it.
+    earliest = DateTime.to_unix(now) + @lock_offset_seconds + @default_margin_seconds
+    hour = earliest + Integer.mod(-earliest, 3600)
+    target = from_unix(hour + @fetch_window_seconds + @observation_slack_seconds)
+    Quicknet.pub_time(Quicknet.round_at_or_after(target))
+  end
+
+  defp from_unix(seconds), do: DateTime.from_unix!(seconds * 1_000_000, :microsecond)
+end

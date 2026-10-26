@@ -4,25 +4,45 @@ defmodule WallopCore.Application do
 
   require Logger
 
+  alias WallopCore.Drand.Bls
   alias WallopCore.Telemetry.EctoHandler
+  alias WallopCore.Weather.{LandObsBudget, ObservationReadiness}
 
   @impl true
   def start(_type, _args) do
     warn_if_default_oban_prefix()
+    warn_if_low_land_obs_cap()
     assert_vault_key_present!()
+    # No draw may run on a node that can't check drand signatures: a missing
+    # or broken NIF stops the boot here rather than failing every check.
+    Bls.self_test!()
 
     OpentelemetryOban.setup(plugin: :disabled)
     EctoHandler.setup([:wallop_core, :repo])
 
-    children = [
-      WallopCore.Repo,
-      WallopCore.Vault,
-      pubsub_child_spec(),
-      {Oban, Application.fetch_env!(:wallop_core, Oban)}
-    ]
+    children =
+      [
+        WallopCore.Repo,
+        WallopCore.Vault,
+        pubsub_child_spec(),
+        {Oban, Application.fetch_env!(:wallop_core, Oban)},
+        # Records whether this node can fetch Land Observations readings,
+        # only if it runs the weather queue. Runs once; a failure is left to
+        # the 10-minute cron (ObservationReadinessWorker).
+        Supervisor.child_spec({Task, &ObservationReadiness.publish_at_boot/0},
+          id: :observation_readiness_boot
+        )
+      ] ++ prepared_transactions_check()
 
     opts = [strategy: :one_for_one, name: WallopCore.Supervisor]
     Supervisor.start_link(children, opts)
+  end
+
+  # Off in the test config; on everywhere else.
+  defp prepared_transactions_check do
+    if Application.get_env(:wallop_core, :prepared_transactions_check, true),
+      do: [WallopCore.PreparedTransactionsCheck],
+      else: []
   end
 
   # `runtime.exs` raises if `VAULT_KEY` is unset, but only on a release-
@@ -91,9 +111,20 @@ defmodule WallopCore.Application do
           config :wallop_core, Oban,
             repo: WallopCore.Repo,
             prefix: "oban_app",
-            queues: [entropy: 10, webhooks: 5, default: 5],
+            queues: [entropy: 10, webhooks: 5, default: 5, weather: 5],
             plugins: []
       """)
+    end
+  end
+
+  # runtime.exs parses LAND_OBS_DAILY_CAP before Logger is configured, so
+  # the warning for a cap below a full day of polling is logged here.
+  # LandObsBudget.cap/0 also checks the value, however it was set (an app
+  # embedding wallop_core may set it in its own config), and raises on a bad
+  # one: the boot stops rather than running with no cap.
+  defp warn_if_low_land_obs_cap do
+    if warning = LandObsBudget.boot_warning(LandObsBudget.cap()) do
+      Logger.warning(warning)
     end
   end
 

@@ -22,7 +22,7 @@ defmodule WallopCore.Entropy.EntropyWorker do
   require Logger
   require OpenTelemetry.Tracer, as: Tracer
 
-  alias WallopCore.Entropy.{DrandClient, WeatherClient}
+  alias WallopCore.Entropy.{DrandClient, V6Execution, WeatherClient}
   alias WallopCore.Log
 
   # After this many attempts, fall back to drand-only if weather is unavailable
@@ -65,6 +65,12 @@ defmodule WallopCore.Entropy.EntropyWorker do
   defp process_draw(%{status: status}, _attempt, _max_attempts)
        when status in [:completed, :failed],
        do: :ok
+
+  # Observation-weather draws run under their own rules, whichever worker
+  # picks them up. Dispatch is on the draw's stored lock schema version,
+  # never on the operator's current flag; forecast draws (nil) never match.
+  defp process_draw(%{lock_schema_version: "6"} = draw, attempt, max_attempts),
+    do: V6Execution.run(draw, attempt, max_attempts)
 
   defp process_draw(draw, attempt, max_attempts) do
     attempt_execution(draw, attempt, max_attempts)
@@ -227,6 +233,9 @@ defmodule WallopCore.Entropy.EntropyWorker do
 
   defp permanent_error?({:unexpected_status, status}) when status in [401, 403], do: true
   defp permanent_error?(:invalid_response), do: true
+  # A body that isn't a JSON object, or is over the cap: a relay or CDN
+  # glitch, retried like a network error.
+  defp permanent_error?(:malformed_body), do: false
   defp permanent_error?(_), do: false
 
   defp format_permanent({:unexpected_status, status}), do: "HTTP #{status} — check credentials"

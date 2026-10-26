@@ -1,0 +1,251 @@
+{
+  "bounds": {
+    "mslp": [
+      850,
+      1100
+    ],
+    "rh": [
+      0,
+      100
+    ],
+    "t": [
+      -900,
+      600
+    ],
+    "vis": [
+      0,
+      10000
+    ]
+  },
+  "description": "drand-quicknet+metoffice-landobs-v1: the weather_value grammar \"<t>;<mslp>;<rh>;<vis>\" (tenths of a degree C, whole hPa, whole percent, decametres) and how a Land Observations row becomes one. bounds apply to each part after rounding. valid values carry their parts; every invalid value must be refused. from_row: each row is raw JSON text; read it with a parser that keeps each number's text (60.0 and 60 differ, exponents are refused, 1e400 in a field nobody reads is fine). A float-based JSON reader does not test the grammar. Every row is synthetic, made in the format the Met Office Weather DataHub documents for Land Observations; none is a real observation. The single-field cases change one field of the 2026-10-15T12:00Z row.",
+  "from_row": [
+    {"row": {"temperature": 12.34, "visibility": 34500.0, "weather_code": 7, "datetime": "2026-10-14T19:00:00Z", "humidity": 67, "mslp": 1012, "wind_gust": 7.4, "wind_speed": 3.6, "pressure_tendency": "S", "wind_direction": "SSW"}, "expected_value": "123;1012;67;3450"},
+    {"row": {"datetime": "2026-10-15T12:00:00Z", "humidity": 72, "mslp": 1017, "pressure_tendency": "F", "temperature": 17.26, "visibility": 52370.0, "weather_code": 3, "wind_direction": "W", "wind_gust": 10.8, "wind_speed": 6.1}, "expected_value": "173;1017;72;5237"},
+    {"row": {"mslp": 1003, "weather_code": 7, "wind_direction": "WSW", "datetime": "2026-10-25T01:00:00Z", "humidity": 79, "wind_gust": 11.3, "wind_speed": 5.9, "visibility": 15840.0, "temperature": 10.38, "pressure_tendency": "R"}, "expected_value": "104;1003;79;1584"},
+    {"row": {"datetime": "2026-10-15T12:00:00Z", "humidity": 72, "mslp": 1017, "pressure_tendency": "F", "temperature": 19.59, "visibility": 52370.0, "weather_code": 3, "wind_direction": "W", "wind_gust": 10.8, "wind_speed": 6.1}, "expected_value": "196;1017;72;5237"},
+    {"row": {"datetime": "2026-10-15T12:00:00Z", "humidity": 72, "mslp": 1017, "pressure_tendency": "F", "temperature": 19.55, "visibility": 52370.0, "weather_code": 3, "wind_direction": "W", "wind_gust": 10.8, "wind_speed": 6.1}, "expected_value": "196;1017;72;5237"},
+    {"row": {"datetime": "2026-10-15T12:00:00Z", "humidity": 72, "mslp": 1017, "pressure_tendency": "F", "temperature": 19.549, "visibility": 52370.0, "weather_code": 3, "wind_direction": "W", "wind_gust": 10.8, "wind_speed": 6.1}, "expected_value": "195;1017;72;5237"},
+    {"row": {"datetime": "2026-10-15T12:00:00Z", "humidity": 72, "mslp": 1017, "pressure_tendency": "F", "temperature": -0.05, "visibility": 52370.0, "weather_code": 3, "wind_direction": "W", "wind_gust": 10.8, "wind_speed": 6.1}, "expected_value": "-1;1017;72;5237"},
+    {"row": {"datetime": "2026-10-15T12:00:00Z", "humidity": 72, "mslp": 1017, "pressure_tendency": "F", "temperature": -0.04, "visibility": 52370.0, "weather_code": 3, "wind_direction": "W", "wind_gust": 10.8, "wind_speed": 6.1}, "expected_value": "0;1017;72;5237"},
+    {"row": {"datetime": "2026-10-15T12:00:00Z", "humidity": 72, "mslp": 1017, "pressure_tendency": "F", "temperature": -12.35, "visibility": 52370.0, "weather_code": 3, "wind_direction": "W", "wind_gust": 10.8, "wind_speed": 6.1}, "expected_value": "-124;1017;72;5237"},
+    {"row": {"datetime": "2026-10-15T12:00:00Z", "humidity": 72, "mslp": 1017, "pressure_tendency": "F", "temperature": 7, "visibility": 52370.0, "weather_code": 3, "wind_direction": "W", "wind_gust": 10.8, "wind_speed": 6.1}, "expected_value": "70;1017;72;5237"},
+    {"row": {"datetime": "2026-10-15T12:00:00Z", "humidity": 72, "mslp": 1017, "pressure_tendency": "F", "temperature": 60.0, "visibility": 52370.0, "weather_code": 3, "wind_direction": "W", "wind_gust": 10.8, "wind_speed": 6.1}, "expected_value": "600;1017;72;5237"},
+    {"row": {"datetime": "2026-10-15T12:00:00Z", "humidity": 72, "mslp": 1017, "pressure_tendency": "F", "temperature": -90.0, "visibility": 52370.0, "weather_code": 3, "wind_direction": "W", "wind_gust": 10.8, "wind_speed": 6.1}, "expected_value": "-900;1017;72;5237"},
+    {"row": {"datetime": "2026-10-15T12:00:00Z", "humidity": 72, "mslp": 1017, "pressure_tendency": "F", "temperature": 60.1, "visibility": 52370.0, "weather_code": 3, "wind_direction": "W", "wind_gust": 10.8, "wind_speed": 6.1}, "expected_error": true},
+    {"row": {"datetime": "2026-10-15T12:00:00Z", "humidity": 72, "mslp": 1017, "pressure_tendency": "F", "temperature": -90.1, "visibility": 52370.0, "weather_code": 3, "wind_direction": "W", "wind_gust": 10.8, "wind_speed": 6.1}, "expected_error": true},
+    {"row": {"datetime": "2026-10-15T12:00:00Z", "humidity": 72, "mslp": 1017, "pressure_tendency": "F", "temperature": 60.04, "visibility": 52370.0, "weather_code": 3, "wind_direction": "W", "wind_gust": 10.8, "wind_speed": 6.1}, "expected_value": "600;1017;72;5237"},
+    {"row": {"datetime": "2026-10-15T12:00:00Z", "humidity": 72, "mslp": 1017, "pressure_tendency": "F", "temperature": 60.05, "visibility": 52370.0, "weather_code": 3, "wind_direction": "W", "wind_gust": 10.8, "wind_speed": 6.1}, "expected_error": true},
+    {"row": {"datetime": "2026-10-15T12:00:00Z", "humidity": 72, "mslp": 1017, "pressure_tendency": "F", "temperature": 1.959e1, "visibility": 52370.0, "weather_code": 3, "wind_direction": "W", "wind_gust": 10.8, "wind_speed": 6.1}, "expected_error": true},
+    {"row": {"datetime": "2026-10-15T12:00:00Z", "humidity": 72, "mslp": 1017, "pressure_tendency": "F", "temperature": 17.26, "visibility": 41140.0, "weather_code": 3, "wind_direction": "W", "wind_gust": 10.8, "wind_speed": 6.1}, "expected_value": "173;1017;72;4114"},
+    {"row": {"datetime": "2026-10-15T12:00:00Z", "humidity": 72, "mslp": 1017, "pressure_tendency": "F", "temperature": 17.26, "visibility": 41145, "weather_code": 3, "wind_direction": "W", "wind_gust": 10.8, "wind_speed": 6.1}, "expected_value": "173;1017;72;4115"},
+    {"row": {"datetime": "2026-10-15T12:00:00Z", "humidity": 72, "mslp": 1017, "pressure_tendency": "F", "temperature": 17.26, "visibility": 25, "weather_code": 3, "wind_direction": "W", "wind_gust": 10.8, "wind_speed": 6.1}, "expected_value": "173;1017;72;3"},
+    {"row": {"datetime": "2026-10-15T12:00:00Z", "humidity": 72, "mslp": 1017, "pressure_tendency": "F", "temperature": 17.26, "visibility": 0, "weather_code": 3, "wind_direction": "W", "wind_gust": 10.8, "wind_speed": 6.1}, "expected_value": "173;1017;72;0"},
+    {"row": {"datetime": "2026-10-15T12:00:00Z", "humidity": 72, "mslp": 1017, "pressure_tendency": "F", "temperature": 17.26, "visibility": 100000, "weather_code": 3, "wind_direction": "W", "wind_gust": 10.8, "wind_speed": 6.1}, "expected_value": "173;1017;72;10000"},
+    {"row": {"datetime": "2026-10-15T12:00:00Z", "humidity": 72, "mslp": 1017, "pressure_tendency": "F", "temperature": 17.26, "visibility": 41140.5, "weather_code": 3, "wind_direction": "W", "wind_gust": 10.8, "wind_speed": 6.1}, "expected_error": true},
+    {"row": {"datetime": "2026-10-15T12:00:00Z", "humidity": 72, "mslp": 1017, "pressure_tendency": "F", "temperature": 17.26, "visibility": 52370.5, "weather_code": 3, "wind_direction": "W", "wind_gust": 10.8, "wind_speed": 6.1}, "expected_error": true},
+    {"row": {"datetime": "2026-10-15T12:00:00Z", "humidity": 72, "mslp": 1017, "pressure_tendency": "F", "temperature": 17.26, "visibility": 100010, "weather_code": 3, "wind_direction": "W", "wind_gust": 10.8, "wind_speed": 6.1}, "expected_error": true},
+    {"row": {"datetime": "2026-10-15T12:00:00Z", "humidity": 72, "mslp": 1017, "pressure_tendency": "F", "temperature": 17.26, "visibility": 100004, "weather_code": 3, "wind_direction": "W", "wind_gust": 10.8, "wind_speed": 6.1}, "expected_value": "173;1017;72;10000"},
+    {"row": {"datetime": "2026-10-15T12:00:00Z", "humidity": 72, "mslp": 1017, "pressure_tendency": "F", "temperature": 17.26, "visibility": 100005, "weather_code": 3, "wind_direction": "W", "wind_gust": 10.8, "wind_speed": 6.1}, "expected_error": true},
+    {"row": {"datetime": "2026-10-15T12:00:00Z", "humidity": 72, "mslp": 1017, "pressure_tendency": "F", "temperature": 17.26, "visibility": -4, "weather_code": 3, "wind_direction": "W", "wind_gust": 10.8, "wind_speed": 6.1}, "expected_error": true},
+    {"row": {"datetime": "2026-10-15T12:00:00Z", "humidity": 72, "mslp": 1021.0, "pressure_tendency": "F", "temperature": 17.26, "visibility": 52370.0, "weather_code": 3, "wind_direction": "W", "wind_gust": 10.8, "wind_speed": 6.1}, "expected_value": "173;1021;72;5237"},
+    {"row": {"datetime": "2026-10-15T12:00:00Z", "humidity": 72, "mslp": 850, "pressure_tendency": "F", "temperature": 17.26, "visibility": 52370.0, "weather_code": 3, "wind_direction": "W", "wind_gust": 10.8, "wind_speed": 6.1}, "expected_value": "173;850;72;5237"},
+    {"row": {"datetime": "2026-10-15T12:00:00Z", "humidity": 72, "mslp": 1100, "pressure_tendency": "F", "temperature": 17.26, "visibility": 52370.0, "weather_code": 3, "wind_direction": "W", "wind_gust": 10.8, "wind_speed": 6.1}, "expected_value": "173;1100;72;5237"},
+    {"row": {"datetime": "2026-10-15T12:00:00Z", "humidity": 72, "mslp": 1020.4, "pressure_tendency": "F", "temperature": 17.26, "visibility": 52370.0, "weather_code": 3, "wind_direction": "W", "wind_gust": 10.8, "wind_speed": 6.1}, "expected_error": true},
+    {"row": {"datetime": "2026-10-15T12:00:00Z", "humidity": 72, "mslp": 849, "pressure_tendency": "F", "temperature": 17.26, "visibility": 52370.0, "weather_code": 3, "wind_direction": "W", "wind_gust": 10.8, "wind_speed": 6.1}, "expected_error": true},
+    {"row": {"datetime": "2026-10-15T12:00:00Z", "humidity": 72, "mslp": 1101, "pressure_tendency": "F", "temperature": 17.26, "visibility": 52370.0, "weather_code": 3, "wind_direction": "W", "wind_gust": 10.8, "wind_speed": 6.1}, "expected_error": true},
+    {"row": {"datetime": "2026-10-15T12:00:00Z", "humidity": 72, "mslp": 1.02E3, "pressure_tendency": "F", "temperature": 17.26, "visibility": 52370.0, "weather_code": 3, "wind_direction": "W", "wind_gust": 10.8, "wind_speed": 6.1}, "expected_error": true},
+    {"row": {"datetime": "2026-10-15T12:00:00Z", "humidity": 72, "mslp": -0.0, "pressure_tendency": "F", "temperature": 17.26, "visibility": 52370.0, "weather_code": 3, "wind_direction": "W", "wind_gust": 10.8, "wind_speed": 6.1}, "expected_error": true},
+    {"row": {"datetime": "2026-10-15T12:00:00Z", "humidity": 0, "mslp": 1017, "pressure_tendency": "F", "temperature": 17.26, "visibility": 52370.0, "weather_code": 3, "wind_direction": "W", "wind_gust": 10.8, "wind_speed": 6.1}, "expected_value": "173;1017;0;5237"},
+    {"row": {"datetime": "2026-10-15T12:00:00Z", "humidity": 100, "mslp": 1017, "pressure_tendency": "F", "temperature": 17.26, "visibility": 52370.0, "weather_code": 3, "wind_direction": "W", "wind_gust": 10.8, "wind_speed": 6.1}, "expected_value": "173;1017;100;5237"},
+    {"row": {"datetime": "2026-10-15T12:00:00Z", "humidity": 76.5, "mslp": 1017, "pressure_tendency": "F", "temperature": 17.26, "visibility": 52370.0, "weather_code": 3, "wind_direction": "W", "wind_gust": 10.8, "wind_speed": 6.1}, "expected_error": true},
+    {"row": {"datetime": "2026-10-15T12:00:00Z", "humidity": 101, "mslp": 1017, "pressure_tendency": "F", "temperature": 17.26, "visibility": 52370.0, "weather_code": 3, "wind_direction": "W", "wind_gust": 10.8, "wind_speed": 6.1}, "expected_error": true},
+    {"row": {"datetime": "2026-10-15T12:00:00Z", "humidity": -0, "mslp": 1017, "pressure_tendency": "F", "temperature": 17.26, "visibility": 52370.0, "weather_code": 3, "wind_direction": "W", "wind_gust": 10.8, "wind_speed": 6.1}, "expected_error": true},
+    {"row": {"datetime": "2026-10-15T12:00:00Z", "humidity": 72, "mslp": 1017, "pressure_tendency": "F", "temperature": 17.26, "visibility": 52370.0, "weather_code": 3, "wind_direction": "W", "wind_gust": 10.8, "wind_speed": 4e0}, "expected_value": "173;1017;72;5237"},
+    {"row": {"datetime": "2026-10-15T12:00:00Z", "humidity": 72, "mslp": 1017, "pressure_tendency": "F", "temperature": 17.26, "visibility": 52370.0, "weather_code": 3, "wind_direction": "W", "wind_gust": 1e400, "wind_speed": 6.1}, "expected_value": "173;1017;72;5237"},
+    {"row": {"datetime": "2026-10-15T12:00:00Z", "humidity": 72, "mslp": 1017, "pressure_tendency": "F", "visibility": 52370.0, "weather_code": 3, "wind_direction": "W", "wind_gust": 10.8, "wind_speed": 6.1}, "expected_error": true},
+    {"row": {"datetime": "2026-10-15T12:00:00Z", "humidity": 72, "mslp": 1017, "pressure_tendency": "F", "temperature": null, "visibility": 52370.0, "weather_code": 3, "wind_direction": "W", "wind_gust": 10.8, "wind_speed": 6.1}, "expected_error": true},
+    {"row": {"datetime": "2026-10-15T12:00:00Z", "humidity": 72, "mslp": 1017, "pressure_tendency": "F", "temperature": "20", "visibility": 52370.0, "weather_code": 3, "wind_direction": "W", "wind_gust": 10.8, "wind_speed": 6.1}, "expected_error": true},
+    {"row": {"datetime": "2026-10-15T12:00:00Z", "humidity": 72, "pressure_tendency": "F", "temperature": 17.26, "visibility": 52370.0, "weather_code": 3, "wind_direction": "W", "wind_gust": 10.8, "wind_speed": 6.1}, "expected_error": true},
+    {"row": {"datetime": "2026-10-15T12:00:00Z", "humidity": 72, "mslp": null, "pressure_tendency": "F", "temperature": 17.26, "visibility": 52370.0, "weather_code": 3, "wind_direction": "W", "wind_gust": 10.8, "wind_speed": 6.1}, "expected_error": true},
+    {"row": {"datetime": "2026-10-15T12:00:00Z", "humidity": 72, "mslp": "20", "pressure_tendency": "F", "temperature": 17.26, "visibility": 52370.0, "weather_code": 3, "wind_direction": "W", "wind_gust": 10.8, "wind_speed": 6.1}, "expected_error": true},
+    {"row": {"datetime": "2026-10-15T12:00:00Z", "mslp": 1017, "pressure_tendency": "F", "temperature": 17.26, "visibility": 52370.0, "weather_code": 3, "wind_direction": "W", "wind_gust": 10.8, "wind_speed": 6.1}, "expected_error": true},
+    {"row": {"datetime": "2026-10-15T12:00:00Z", "humidity": null, "mslp": 1017, "pressure_tendency": "F", "temperature": 17.26, "visibility": 52370.0, "weather_code": 3, "wind_direction": "W", "wind_gust": 10.8, "wind_speed": 6.1}, "expected_error": true},
+    {"row": {"datetime": "2026-10-15T12:00:00Z", "humidity": "20", "mslp": 1017, "pressure_tendency": "F", "temperature": 17.26, "visibility": 52370.0, "weather_code": 3, "wind_direction": "W", "wind_gust": 10.8, "wind_speed": 6.1}, "expected_error": true},
+    {"row": {"datetime": "2026-10-15T12:00:00Z", "humidity": 72, "mslp": 1017, "pressure_tendency": "F", "temperature": 17.26, "weather_code": 3, "wind_direction": "W", "wind_gust": 10.8, "wind_speed": 6.1}, "expected_error": true},
+    {"row": {"datetime": "2026-10-15T12:00:00Z", "humidity": 72, "mslp": 1017, "pressure_tendency": "F", "temperature": 17.26, "visibility": null, "weather_code": 3, "wind_direction": "W", "wind_gust": 10.8, "wind_speed": 6.1}, "expected_error": true},
+    {"row": {"datetime": "2026-10-15T12:00:00Z", "humidity": 72, "mslp": 1017, "pressure_tendency": "F", "temperature": 17.26, "visibility": "20", "weather_code": 3, "wind_direction": "W", "wind_gust": 10.8, "wind_speed": 6.1}, "expected_error": true}
+  ],
+  "invalid": [
+    {
+      "reason": "minus_zero",
+      "value": "-0;1017;72;5237"
+    },
+    {
+      "reason": "leading_zero",
+      "value": "0173;1017;72;5237"
+    },
+    {
+      "reason": "three_parts",
+      "value": "173;1017;72"
+    },
+    {
+      "reason": "negative_mslp",
+      "value": "173;-1017;72;5237"
+    },
+    {
+      "reason": "five_parts",
+      "value": "173;1017;72;5237;1"
+    },
+    {
+      "reason": "leading_space",
+      "value": " 173;1017;72;5237"
+    },
+    {
+      "reason": "trailing_space",
+      "value": "173;1017;72;5237 "
+    },
+    {
+      "reason": "trailing_newline",
+      "value": "173;1017;72;5237\n"
+    },
+    {
+      "reason": "t_above_bound",
+      "value": "601;1017;72;5237"
+    },
+    {
+      "reason": "t_below_bound",
+      "value": "-901;1017;72;5237"
+    },
+    {
+      "reason": "mslp_below_bound",
+      "value": "173;849;72;5237"
+    },
+    {
+      "reason": "mslp_above_bound",
+      "value": "173;1101;72;5237"
+    },
+    {
+      "reason": "rh_above_bound",
+      "value": "173;1017;101;5237"
+    },
+    {
+      "reason": "vis_above_bound",
+      "value": "173;1017;72;10001"
+    },
+    {
+      "reason": "rh_below_bound: must not be negative (grammar)",
+      "value": "173;1017;-1;5237"
+    },
+    {
+      "reason": "vis_below_bound: must not be negative (grammar)",
+      "value": "173;1017;72;-1"
+    },
+    {
+      "reason": "empty",
+      "value": ""
+    },
+    {
+      "reason": "empty_parts",
+      "value": ";;;"
+    },
+    {
+      "reason": "plus_sign",
+      "value": "+184;1021;51;4114"
+    },
+    {
+      "reason": "decimal_point",
+      "value": "18.4;1021;51;4114"
+    },
+    {
+      "reason": "exponent",
+      "value": "1e2;1021;51;4114"
+    },
+    {
+      "reason": "comma_separator",
+      "value": "184,1021,51,4114"
+    },
+    {
+      "reason": "non_ascii_digits",
+      "value": "１８４;1021;51;4114"
+    },
+    {
+      "reason": "double_minus",
+      "value": "--1;1021;51;4114"
+    },
+    {
+      "reason": "bare_minus",
+      "value": "-;1021;51;4114"
+    },
+    {
+      "reason": "leading_zero_rh",
+      "value": "184;1021;051;4114"
+    },
+    {
+      "reason": "double_zero",
+      "value": "00;1021;51;4114"
+    },
+    {
+      "reason": "minus_double_zero",
+      "value": "-00;1021;51;4114"
+    },
+    {
+      "reason": "vis_minus_zero",
+      "value": "184;1021;51;-0"
+    },
+    {
+      "reason": "empty_part",
+      "value": "184;;51;4114"
+    }
+  ],
+  "valid": [
+    {
+      "mslp": 1017,
+      "rh": 72,
+      "t": 173,
+      "value": "173;1017;72;5237",
+      "vis": 5237
+    },
+    {
+      "mslp": 850,
+      "rh": 0,
+      "t": -900,
+      "value": "-900;850;0;0",
+      "vis": 0
+    },
+    {
+      "mslp": 1100,
+      "rh": 100,
+      "t": 600,
+      "value": "600;1100;100;10000",
+      "vis": 10000
+    },
+    {
+      "mslp": 1000,
+      "rh": 50,
+      "t": 0,
+      "value": "0;1000;50;0",
+      "vis": 0
+    },
+    {
+      "mslp": 1012,
+      "rh": 67,
+      "t": 123,
+      "value": "123;1012;67;3450",
+      "vis": 3450
+    },
+    {
+      "mslp": 1021,
+      "rh": 51,
+      "t": 184,
+      "value": "184;1021;51;4114",
+      "vis": 4114
+    },
+    {
+      "mslp": 998,
+      "rh": 100,
+      "t": -35,
+      "value": "-35;998;100;0",
+      "vis": 0
+    }
+  ]
+}

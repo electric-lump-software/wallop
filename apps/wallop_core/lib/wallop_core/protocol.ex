@@ -6,6 +6,9 @@ defmodule WallopCore.Protocol do
   `spec/protocol.md`.
   """
 
+  alias WallopCore.Drand.Quicknet
+  alias WallopCore.Protocol.Tags.{Freq, LandObs}
+
   @doc """
   Compute the entry hash for a draw.
 
@@ -135,6 +138,25 @@ defmodule WallopCore.Protocol do
     {seed_bytes, jcs_string}
   end
 
+  @doc """
+  The seed for a grid-frequency draw: SHA-256 over
+  JCS{drand_randomness, entry_hash, freq_value}. The `freq_value` key keeps
+  it apart from the weather seed and the drand-only seed, even for the same
+  string. A grid-frequency fallback uses the drand-only seed,
+  `compute_seed/2`.
+  """
+  @spec compute_freq_seed(String.t(), String.t(), String.t()) :: {<<_::256>>, String.t()}
+  def compute_freq_seed(entry_hash, drand_randomness, freq_value) do
+    jcs_string =
+      Jcs.encode(%{
+        "drand_randomness" => drand_randomness,
+        "entry_hash" => entry_hash,
+        "freq_value" => freq_value
+      })
+
+    {:crypto.hash(:sha256, jcs_string), jcs_string}
+  end
+
   @receipt_schema_version "5"
 
   # Algorithm identity tags. Embedded verbatim into every signed receipt
@@ -194,41 +216,57 @@ defmodule WallopCore.Protocol do
     (verifiers resolve operator keys via `KeyResolver` against
     `/operator/:slug/keys` or an operator-published `.well-known` pin).
     See spec §4.2.4.
+  - **v6** — same field set as v5, built by `build_v6_lock_payload/1`
+    under an entropy tag that sets the weather rules.
 
   `locked_at` must be a `DateTime` with microsecond precision; the caller is
   responsible for capturing it once at lock time and not re-stamping.
   """
   @spec build_receipt_payload(map()) :: binary()
-  def build_receipt_payload(%{
-        operator_id: operator_id,
-        operator_slug: operator_slug,
-        sequence: sequence,
-        draw_id: draw_id,
-        commitment_hash: commitment_hash,
-        entry_hash: entry_hash,
-        locked_at: %DateTime{} = locked_at,
-        signing_key_id: signing_key_id,
-        winner_count: winner_count,
-        drand_chain: drand_chain,
-        drand_round: drand_round,
-        weather_station: weather_station,
-        weather_time: weather_time,
-        wallop_core_version: wallop_core_version,
-        fair_pick_version: fair_pick_version
-      }) do
+  def build_receipt_payload(input) do
+    refuse_foreign_tag!(input)
+
+    input
+    |> lock_fields(@receipt_schema_version, @entropy_composition)
+    |> Jcs.encode()
+  end
+
+  # The lock receipt's base field map (the lock 5 field set). Shared by
+  # every lock schema; a tag's extra fields are merged on top, never in here.
+  defp lock_fields(
+         %{
+           operator_id: operator_id,
+           operator_slug: operator_slug,
+           sequence: sequence,
+           draw_id: draw_id,
+           commitment_hash: commitment_hash,
+           entry_hash: entry_hash,
+           locked_at: %DateTime{} = locked_at,
+           signing_key_id: signing_key_id,
+           winner_count: winner_count,
+           drand_chain: drand_chain,
+           drand_round: drand_round,
+           weather_station: weather_station,
+           weather_time: weather_time,
+           wallop_core_version: wallop_core_version,
+           fair_pick_version: fair_pick_version
+         },
+         schema_version,
+         entropy_composition
+       ) do
     payload = %{
       "commitment_hash" => commitment_hash,
       "draw_id" => draw_id,
       "drand_chain" => drand_chain,
       "drand_round" => drand_round,
-      "entropy_composition" => @entropy_composition,
+      "entropy_composition" => entropy_composition,
       "entry_hash" => entry_hash,
       "fair_pick_version" => fair_pick_version,
       "jcs_version" => @jcs_version,
       "locked_at" => WallopCore.Time.to_rfc3339_usec(locked_at),
       "operator_id" => operator_id,
       "operator_slug" => to_string(operator_slug),
-      "schema_version" => @receipt_schema_version,
+      "schema_version" => schema_version,
       "sequence" => sequence,
       "signature_algorithm" => @signature_algorithm,
       "signing_key_id" => signing_key_id,
@@ -239,8 +277,22 @@ defmodule WallopCore.Protocol do
     }
 
     assert_canonical_timestamps!(payload, ["locked_at", "weather_time"])
-    Jcs.encode(payload)
+    payload
   end
+
+  # The lock 5 / execution 4 builders sign only their own tag. An input
+  # that names another tag (a v6 input sent here by mistake) is refused
+  # rather than silently signed under the wrong rules. No key keeps the
+  # long-standing behaviour.
+  defp refuse_foreign_tag!(%{entropy_composition: @entropy_composition}), do: :ok
+
+  defp refuse_foreign_tag!(%{entropy_composition: other}) do
+    raise ArgumentError,
+          "lock v5 / execution v4 receipts carry entropy_composition " <>
+            "#{inspect(@entropy_composition)}, got: #{inspect(other)}"
+  end
+
+  defp refuse_foreign_tag!(_input), do: :ok
 
   # Frozen enum for the execution receipt's `weather_fallback_reason`
   # field. Anything outside this set raises — the classifier in
@@ -279,32 +331,49 @@ defmodule WallopCore.Protocol do
     verifier behaviour. Producers MUST omit
     `infrastructure_public_key_hex` from the bundle's execution_receipt
     wrapper. See spec §4.2.4.
+  - **v5** — same field set as v4, built by `build_v6_execution_payload/1`
+    under an entropy tag that sets the weather rules. Pairs only with
+    lock v6.
   """
   @spec build_execution_receipt_payload(map()) :: binary()
-  def build_execution_receipt_payload(%{
-        draw_id: draw_id,
-        operator_id: operator_id,
-        operator_slug: operator_slug,
-        sequence: sequence,
-        lock_receipt_hash: lock_receipt_hash,
-        entry_hash: entry_hash,
-        drand_chain: drand_chain,
-        drand_round: drand_round,
-        drand_randomness: drand_randomness,
-        drand_signature: drand_signature,
-        weather_station: weather_station,
-        weather_observation_time: weather_observation_time,
-        weather_value: weather_value,
-        weather_fallback_reason: weather_fallback_reason,
-        wallop_core_version: wallop_core_version,
-        fair_pick_version: fair_pick_version,
-        seed: seed,
-        results: results,
-        executed_at: %DateTime{} = executed_at,
-        signing_key_id: signing_key_id
-      }) do
-    validate_weather_fallback_reason!(weather_fallback_reason)
+  def build_execution_receipt_payload(%{weather_fallback_reason: reason} = input) do
+    refuse_foreign_tag!(input)
+    validate_weather_fallback_reason!(reason)
 
+    input
+    |> execution_fields(@execution_receipt_schema_version, @entropy_composition)
+    |> Jcs.encode()
+  end
+
+  # The execution receipt's base field map (the execution 4 field set).
+  # Shared by every execution schema; a tag's extra fields are merged on
+  # top, never in here.
+  defp execution_fields(
+         %{
+           draw_id: draw_id,
+           operator_id: operator_id,
+           operator_slug: operator_slug,
+           sequence: sequence,
+           lock_receipt_hash: lock_receipt_hash,
+           entry_hash: entry_hash,
+           drand_chain: drand_chain,
+           drand_round: drand_round,
+           drand_randomness: drand_randomness,
+           drand_signature: drand_signature,
+           weather_station: weather_station,
+           weather_observation_time: weather_observation_time,
+           weather_value: weather_value,
+           weather_fallback_reason: weather_fallback_reason,
+           wallop_core_version: wallop_core_version,
+           fair_pick_version: fair_pick_version,
+           seed: seed,
+           results: results,
+           executed_at: %DateTime{} = executed_at,
+           signing_key_id: signing_key_id
+         },
+         schema_version,
+         entropy_composition
+       ) do
     payload = %{
       "draw_id" => draw_id,
       "drand_chain" => drand_chain,
@@ -312,7 +381,7 @@ defmodule WallopCore.Protocol do
       "drand_round" => drand_round,
       "drand_signature" => drand_signature,
       "drand_signature_algorithm" => @drand_signature_algorithm,
-      "entropy_composition" => @entropy_composition,
+      "entropy_composition" => entropy_composition,
       "entry_hash" => entry_hash,
       "executed_at" => WallopCore.Time.to_rfc3339_usec(executed_at),
       "fair_pick_version" => fair_pick_version,
@@ -322,7 +391,7 @@ defmodule WallopCore.Protocol do
       "operator_id" => operator_id,
       "operator_slug" => to_string(operator_slug),
       "results" => results,
-      "schema_version" => @execution_receipt_schema_version,
+      "schema_version" => schema_version,
       "seed" => seed,
       "sequence" => sequence,
       "signature_algorithm" => @signature_algorithm,
@@ -336,7 +405,205 @@ defmodule WallopCore.Protocol do
     }
 
     assert_canonical_timestamps!(payload, ["executed_at", "weather_observation_time"])
-    Jcs.encode(payload)
+    payload
+  end
+
+  # ── Lock schema 6 / execution schema 5 ─────────────────────────────
+  #
+  # The base field maps are the lock 5 / execution 4 field sets. The
+  # input's `entropy_composition` picks a tag module from `@v6_tag_modules`;
+  # the module validates the input and returns the fields its tag adds,
+  # which are merged on top of the base map. A new tag is a new
+  # `WallopCore.Protocol.Tags.*` module plus one entry in the list.
+
+  @v6_lock_schema_version "6"
+  @v6_execution_schema_version "5"
+  @v6_tag_modules [LandObs, Freq]
+
+  # Inputs every lock v6 / execution v5 receipt needs, whatever the tag.
+  # The weather inputs must be present but may be nil here: each tag
+  # decides whether its weather fields are set.
+  @v6_lock_non_nil [
+    :operator_id,
+    :operator_slug,
+    :sequence,
+    :draw_id,
+    :commitment_hash,
+    :entry_hash,
+    :locked_at,
+    :signing_key_id,
+    :winner_count,
+    :drand_chain,
+    :drand_round,
+    :wallop_core_version,
+    :fair_pick_version
+  ]
+  @v6_lock_nullable [:weather_station, :weather_time]
+  @v6_exec_non_nil [
+    :draw_id,
+    :operator_id,
+    :operator_slug,
+    :sequence,
+    :lock_receipt_hash,
+    :entry_hash,
+    :drand_chain,
+    :drand_round,
+    :drand_randomness,
+    :drand_signature,
+    :wallop_core_version,
+    :fair_pick_version,
+    :seed,
+    :results,
+    :executed_at,
+    :signing_key_id
+  ]
+  @v6_exec_nullable [
+    :weather_station,
+    :weather_observation_time,
+    :weather_value,
+    :weather_fallback_reason
+  ]
+
+  @doc "The Met Office Land Observations entropy tag, for lock v6 / execution v5."
+  @spec landobs_entropy_composition() :: String.t()
+  def landobs_entropy_composition, do: LandObs.tag()
+
+  @doc "The only `weather_fallback_reason` allowed under the Land Observations tag."
+  @spec landobs_fallback_reason() :: String.t()
+  def landobs_fallback_reason, do: LandObs.fallback_reason()
+
+  @doc "The GB grid frequency entropy tag, for lock v6 / execution v5."
+  @spec freq_entropy_composition() :: String.t()
+  def freq_entropy_composition, do: Freq.tag()
+
+  @doc "The only `freq_fallback_reason` allowed under the grid-frequency tag."
+  @spec freq_fallback_reason() :: String.t()
+  def freq_fallback_reason, do: Freq.fallback_reason()
+
+  @doc "The entropy tags accepted by lock v6 / execution v5."
+  @spec v6_entropy_compositions() :: [String.t()]
+  def v6_entropy_compositions, do: Enum.map(@v6_tag_modules, & &1.tag())
+
+  @doc """
+  Build the canonical JCS payload bytes for a lock receipt, schema 6.
+
+  Takes the same keys as `build_receipt_payload/1`, plus
+  `entropy_composition`, which picks the tag's rules and is signed
+  verbatim. A tag not in `v6_entropy_compositions/0`, or none, raises
+  `ArgumentError`. See the tag modules (`WallopCore.Protocol.Tags.LandObs`,
+  `WallopCore.Protocol.Tags.Freq`)
+  for each tag's rules.
+  """
+  @spec build_v6_lock_payload(map()) :: binary()
+  def build_v6_lock_payload(input) do
+    {tag, module} = v6_tag!(input)
+    require_inputs!(input, "lock v6", @v6_lock_non_nil, @v6_lock_nullable, [:locked_at])
+    require_quicknet_chain!(input)
+    module.validate_lock!(input)
+
+    input
+    |> lock_fields(@v6_lock_schema_version, tag)
+    |> merge_tag_fields!(module.lock_fields(input))
+    |> assert_tag_timestamps!()
+    |> Jcs.encode()
+  end
+
+  @doc """
+  Build the canonical JCS payload bytes for an execution receipt, schema 5.
+
+  Takes the same keys as `build_execution_receipt_payload/1`, plus
+  `entropy_composition`, chosen and checked as in `build_v6_lock_payload/1`.
+  """
+  @spec build_v6_execution_payload(map()) :: binary()
+  def build_v6_execution_payload(input) do
+    {tag, module} = v6_tag!(input)
+    require_inputs!(input, "exec v5", @v6_exec_non_nil, @v6_exec_nullable, [:executed_at])
+    require_quicknet_chain!(input)
+    module.validate_exec!(input)
+
+    input
+    |> execution_fields(@v6_execution_schema_version, tag)
+    |> merge_tag_fields!(module.exec_fields(input))
+    |> assert_tag_timestamps!()
+    |> Jcs.encode()
+  end
+
+  defp v6_tag!(%{entropy_composition: tag}) do
+    case Enum.find(@v6_tag_modules, &(&1.tag() == tag)) do
+      nil ->
+        raise ArgumentError,
+              "unknown entropy_composition for lock v6 / execution v5: #{inspect(tag)}; " <>
+                "accepted: #{inspect(v6_entropy_compositions())}"
+
+      module ->
+        {tag, module}
+    end
+  end
+
+  defp v6_tag!(_input) do
+    raise ArgumentError, "lock v6 / execution v5 input must carry :entropy_composition"
+  end
+
+  # Missing or nil inputs raise ArgumentError naming the input, rather than
+  # a FunctionClauseError from deeper in the builder.
+  defp require_inputs!(input, receipt, non_nil, nullable, datetimes) do
+    Enum.each(non_nil ++ nullable, fn key ->
+      unless Map.has_key?(input, key),
+        do: raise(ArgumentError, "#{receipt} input must carry #{inspect(key)}")
+    end)
+
+    Enum.each(non_nil, fn key ->
+      if is_nil(Map.fetch!(input, key)),
+        do: raise(ArgumentError, "#{receipt} #{key} must not be nil")
+    end)
+
+    Enum.each(datetimes, fn key ->
+      unless match?(%DateTime{}, Map.fetch!(input, key)),
+        do: raise(ArgumentError, "#{receipt} #{key} must be a DateTime")
+    end)
+  end
+
+  # Every lock v6 / execution v5 tag is a drand quicknet tag.
+  defp require_quicknet_chain!(%{drand_chain: chain}) do
+    unless chain == Quicknet.chain_hash() do
+      raise ArgumentError,
+            "lock v6 / execution v5 drand_chain must be the quicknet chain " <>
+              "#{Quicknet.chain_hash()}, got: #{inspect(chain)}"
+    end
+
+    :ok
+  end
+
+  defp require_quicknet_chain!(_input) do
+    raise ArgumentError, "lock v6 / execution v5 input must carry :drand_chain"
+  end
+
+  # Signed timestamps a tag may add. Each one present goes through the same
+  # canonical-form tripwire as the base timestamps.
+  @v6_tag_timestamp_keys ["freq_start"]
+
+  defp assert_tag_timestamps!(payload) do
+    assert_canonical_timestamps!(
+      payload,
+      Enum.filter(@v6_tag_timestamp_keys, &Map.has_key?(payload, &1))
+    )
+
+    payload
+  end
+
+  # A tag may add fields, never replace a base field. Keys must be strings,
+  # like the base keys, so an atom key can't slip past the clash check and
+  # then encode as a duplicate.
+  defp merge_tag_fields!(base, extra) do
+    case Enum.reject(Map.keys(extra), &is_binary/1) do
+      [] -> :ok
+      bad -> raise ArgumentError, "tag field keys must be strings, got: #{inspect(bad)}"
+    end
+
+    case Enum.filter(Map.keys(extra), &Map.has_key?(base, &1)) do
+      [] -> Map.merge(base, extra)
+      clash -> raise ArgumentError, "tag fields would replace base fields: #{inspect(clash)}"
+    end
   end
 
   # Defence-in-depth: assert that every timestamp field in a signed payload

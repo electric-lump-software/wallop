@@ -1,5 +1,5 @@
 defmodule WallopCore.Entropy.DrandClientTest do
-  use ExUnit.Case, async: true
+  use ExUnit.Case, async: false
 
   alias WallopCore.Entropy.DrandClient
 
@@ -104,7 +104,7 @@ defmodule WallopCore.Entropy.DrandClientTest do
     end
   end
 
-  describe "fetch_with_failover/2" do
+  describe "fetch_with_failover/3" do
     test "succeeds on first relay" do
       assert {:ok, result} = DrandClient.fetch_with_failover(@chain_hash, 1000)
       assert result.randomness == "a" <> String.duplicate("0", 63)
@@ -146,6 +146,146 @@ defmodule WallopCore.Entropy.DrandClientTest do
       end)
 
       assert {:error, :not_found} = DrandClient.fetch_with_failover(@chain_hash, 999)
+    end
+
+    test "by default an invalid response ends the fetch at that relay" do
+      calls = :counters.new(1, [:atomics])
+
+      Req.Test.stub(DrandClient, fn conn ->
+        :counters.add(calls, 1, 1)
+        Req.Test.json(conn, %{"round" => 1, "randomness" => "nope", "signature" => "ab"})
+      end)
+
+      assert {:error, :invalid_response} = DrandClient.fetch_with_failover(@chain_hash, 1000)
+      assert :counters.get(calls, 1) == 1
+    end
+
+    test "with on_invalid: :next, a relay's invalid response moves on to the next relay" do
+      calls = :counters.new(1, [:atomics])
+
+      Req.Test.stub(DrandClient, fn conn ->
+        :counters.add(calls, 1, 1)
+
+        if :counters.get(calls, 1) == 1,
+          do: Req.Test.json(conn, %{"round" => 999, "randomness" => "nope", "signature" => "ab"}),
+          else: handle_request(conn)
+      end)
+
+      assert {:ok, %{round: 1000}} =
+               DrandClient.fetch_with_failover(@chain_hash, 1000, on_invalid: :next)
+
+      assert :counters.get(calls, 1) == 2
+    end
+
+    test "with on_invalid: :next, every relay invalid is all_relays_failed" do
+      Req.Test.stub(DrandClient, fn conn ->
+        Req.Test.json(conn, %{"round" => 999, "randomness" => "nope", "signature" => "ab"})
+      end)
+
+      assert {:error, {:all_relays_failed, errors}} =
+               DrandClient.fetch_with_failover(@chain_hash, 1000, on_invalid: :next)
+
+      assert errors != []
+      assert Enum.all?(errors, &match?({_relay, :invalid_response}, &1))
+    end
+
+    test "by default a 401 or 403 ends the fetch at that relay" do
+      for status <- [401, 403] do
+        calls = :counters.new(1, [:atomics])
+
+        Req.Test.stub(DrandClient, fn conn ->
+          :counters.add(calls, 1, 1)
+          Plug.Conn.send_resp(conn, status, "")
+        end)
+
+        assert {:error, {:unexpected_status, ^status}} =
+                 DrandClient.fetch_with_failover(@chain_hash, 1000)
+
+        assert :counters.get(calls, 1) == 1
+      end
+    end
+
+    test "with on_invalid: :next, a 404, 401 or 403 moves on to the next relay" do
+      for status <- [404, 401, 403] do
+        calls = :counters.new(1, [:atomics])
+
+        Req.Test.stub(DrandClient, fn conn ->
+          :counters.add(calls, 1, 1)
+
+          if :counters.get(calls, 1) == 1,
+            do: Plug.Conn.send_resp(conn, status, ""),
+            else: handle_request(conn)
+        end)
+
+        assert {:ok, %{round: 1000}} =
+                 DrandClient.fetch_with_failover(@chain_hash, 1000, on_invalid: :next)
+
+        assert :counters.get(calls, 1) == 2
+      end
+    end
+
+    test "with on_invalid: :next, not_found only when every relay says so" do
+      Req.Test.stub(DrandClient, fn conn -> Plug.Conn.send_resp(conn, 404, "") end)
+
+      assert {:error, :not_found} =
+               DrandClient.fetch_with_failover(@chain_hash, 1000, on_invalid: :next)
+
+      calls = :counters.new(1, [:atomics])
+
+      Req.Test.stub(DrandClient, fn conn ->
+        :counters.add(calls, 1, 1)
+
+        if :counters.get(calls, 1) == 1,
+          do: Plug.Conn.send_resp(conn, 500, ""),
+          else: Plug.Conn.send_resp(conn, 404, "")
+      end)
+
+      assert {:error, {:all_relays_failed, errors}} =
+               DrandClient.fetch_with_failover(@chain_hash, 1000, on_invalid: :next)
+
+      assert {_, {:unexpected_status, 500}} = List.last(errors)
+    end
+
+    test "a body that isn't a JSON object is malformed, never a crash" do
+      for respond <- [
+            &Req.Test.json(&1, []),
+            &Req.Test.json(&1, nil),
+            &Req.Test.json(&1, "a string"),
+            &(&1
+              |> Plug.Conn.put_resp_content_type("text/html")
+              |> Plug.Conn.send_resp(200, "<html>captive portal</html>"))
+          ] do
+        Req.Test.stub(DrandClient, respond)
+        assert {:error, :malformed_body} = DrandClient.fetch(@chain_hash, 1000)
+      end
+    end
+
+    test "a malformed body moves on to the next relay, by default too" do
+      for opts <- [[], [on_invalid: :next]] do
+        calls = :counters.new(1, [:atomics])
+
+        Req.Test.stub(DrandClient, fn conn ->
+          :counters.add(calls, 1, 1)
+
+          if :counters.get(calls, 1) == 1,
+            do: Req.Test.json(conn, []),
+            else: handle_request(conn)
+        end)
+
+        assert {:ok, %{round: 1000}} = DrandClient.fetch_with_failover(@chain_hash, 1000, opts)
+        assert :counters.get(calls, 1) == 2
+      end
+    end
+
+    test "every relay malformed is all_relays_failed, by default too" do
+      Req.Test.stub(DrandClient, &Req.Test.json(&1, nil))
+
+      for opts <- [[], [on_invalid: :next]] do
+        assert {:error, {:all_relays_failed, errors}} =
+                 DrandClient.fetch_with_failover(@chain_hash, 1000, opts)
+
+        assert Enum.all?(errors, &match?({_relay, :malformed_body}, &1))
+      end
     end
 
     test "returns error when all relays fail" do

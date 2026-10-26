@@ -1,0 +1,137 @@
+{
+  "attributes": [
+    {
+      "allow_nil?": false,
+      "default": "fragment(\"gen_random_uuid()\")",
+      "generated?": false,
+      "precision": null,
+      "primary_key?": true,
+      "references": null,
+      "scale": null,
+      "size": null,
+      "source": "id",
+      "type": "uuid"
+    },
+    {
+      "allow_nil?": false,
+      "default": "nil",
+      "generated?": false,
+      "precision": null,
+      "primary_key?": false,
+      "references": null,
+      "scale": null,
+      "size": null,
+      "source": "freq_start",
+      "type": "utc_datetime_usec"
+    },
+    {
+      "allow_nil?": false,
+      "default": "nil",
+      "generated?": false,
+      "precision": null,
+      "primary_key?": false,
+      "references": null,
+      "scale": null,
+      "size": null,
+      "source": "value",
+      "type": "text"
+    },
+    {
+      "allow_nil?": false,
+      "default": "nil",
+      "generated?": false,
+      "precision": null,
+      "primary_key?": false,
+      "references": null,
+      "scale": null,
+      "size": null,
+      "source": "raw",
+      "type": "text"
+    },
+    {
+      "allow_nil?": true,
+      "default": "nil",
+      "generated?": false,
+      "precision": null,
+      "primary_key?": false,
+      "references": null,
+      "scale": null,
+      "size": null,
+      "source": "stored_at",
+      "type": "utc_datetime_usec"
+    }
+  ],
+  "base_filter": null,
+  "check_constraints": [
+    {
+      "attribute": [
+        "value"
+      ],
+      "base_filter": null,
+      "check": "wallop_freq_valid_value(value) IS TRUE",
+      "name": "frequency_windows_value_grammar"
+    },
+    {
+      "attribute": [
+        "freq_start"
+      ],
+      "base_filter": null,
+      "check": "freq_start = date_trunc('second', freq_start) AND mod(EXTRACT(EPOCH FROM freq_start)::bigint, 15) = 0",
+      "name": "frequency_windows_on_grid"
+    }
+  ],
+  "create_table_options": null,
+  "custom_indexes": [],
+  "custom_statements": [
+    {
+      "code?": false,
+      "down": "DROP FUNCTION IF EXISTS wallop_freq_store_allowed(timestamp, timestamp)",
+      "name": "wallop_freq_store_allowed",
+      "up": "CREATE OR REPLACE FUNCTION wallop_freq_store_allowed(freq_start timestamp, now_utc timestamp)\nRETURNS boolean\nLANGUAGE sql IMMUTABLE STRICT AS $$\n  SELECT now_utc >= freq_start + wallop_freq_span()\n     AND now_utc <= wallop_freq_fetch_deadline(freq_start)\n$$\n"
+    },
+    {
+      "code?": false,
+      "down": "DO $do$\nBEGIN\n  DROP TRIGGER IF EXISTS frequency_windows_guard ON frequency_windows;\n  DROP FUNCTION IF EXISTS guard_frequency_window_insert();\nEND\n$do$\n",
+      "name": "guard_frequency_window_insert",
+      "up": "DO $do$\nBEGIN\n  CREATE OR REPLACE FUNCTION guard_frequency_window_insert() RETURNS trigger AS $fn$\n  DECLARE\n    now_utc timestamp := statement_timestamp() AT TIME ZONE 'UTC';\n  BEGIN\n    -- The draws read below, and every completion's read of this\n    -- store, must see what has committed: no REPEATABLE READ or\n    -- SERIALIZABLE snapshot.\n    IF current_setting('transaction_isolation') IS DISTINCT FROM 'read committed' THEN\n      RAISE EXCEPTION 'a v6 write must run under READ COMMITTED isolation';\n    END IF;\n\n    -- Every draw that may complete with T's window: grid-frequency\n    -- draws, and observation-weather draws whose reading may miss F.\n    -- Whether the weather falls back can't be known when the window\n    -- is stored, and a stored window is harmless when it doesn't.\n    PERFORM 1 FROM draws\n      WHERE freq_start = NEW.freq_start\n        AND lock_schema_version = '6'\n        AND entropy_composition IN (wallop_freq_tag(), wallop_landobs_tag())\n        AND status IN ('awaiting_entropy', 'pending_entropy')\n      ORDER BY id\n      FOR SHARE;\n\n    IF NOT FOUND THEN\n      RAISE EXCEPTION 'no draw is waiting for this window';\n    END IF;\n    IF wallop_freq_store_allowed(NEW.freq_start, now_utc) IS NOT TRUE THEN\n      RAISE EXCEPTION 'frequency window outside its fetch window';\n    END IF;\n\n    NEW.stored_at := now_utc;\n    RETURN NEW;\n  END;\n  $fn$ LANGUAGE plpgsql;\n  DROP TRIGGER IF EXISTS frequency_windows_guard ON frequency_windows;\n  CREATE TRIGGER frequency_windows_guard BEFORE INSERT ON frequency_windows\n    FOR EACH ROW EXECUTE FUNCTION guard_frequency_window_insert();\nEND\n$do$\n"
+    },
+    {
+      "code?": false,
+      "down": "DO $do$\nBEGIN\n  DROP TRIGGER IF EXISTS frequency_windows_commit_deadline ON frequency_windows;\n  DROP FUNCTION IF EXISTS check_frequency_window_commit();\nEND\n$do$\n",
+      "name": "check_frequency_window_commit",
+      "up": "DO $do$\nBEGIN\n  CREATE OR REPLACE FUNCTION check_frequency_window_commit() RETURNS trigger AS $fn$\n  BEGIN\n    IF (clock_timestamp() AT TIME ZONE 'UTC' <= wallop_freq_fetch_deadline(NEW.freq_start))\n       IS NOT TRUE THEN\n      RAISE EXCEPTION 'a frequency window must commit by its fetch deadline';\n    END IF;\n\n    RETURN NULL;\n  END;\n  $fn$ LANGUAGE plpgsql;\n  DROP TRIGGER IF EXISTS frequency_windows_commit_deadline ON frequency_windows;\n  CREATE CONSTRAINT TRIGGER frequency_windows_commit_deadline\n    AFTER INSERT ON frequency_windows\n    DEFERRABLE INITIALLY DEFERRED\n    FOR EACH ROW EXECUTE FUNCTION check_frequency_window_commit();\nEND\n$do$\n"
+    },
+    {
+      "code?": false,
+      "down": "DO $do$\nBEGIN\n  DROP TRIGGER IF EXISTS frequency_windows_immutable ON frequency_windows;\n  DROP TRIGGER IF EXISTS frequency_windows_no_truncate ON frequency_windows;\n  DROP FUNCTION IF EXISTS prevent_frequency_window_mutation();\nEND\n$do$\n",
+      "name": "prevent_frequency_window_mutation",
+      "up": "DO $do$\nBEGIN\n  CREATE OR REPLACE FUNCTION prevent_frequency_window_mutation() RETURNS trigger AS $fn$\n  BEGIN\n    RAISE EXCEPTION 'frequency windows are write-once';\n  END;\n  $fn$ LANGUAGE plpgsql;\n  DROP TRIGGER IF EXISTS frequency_windows_immutable ON frequency_windows;\n  CREATE TRIGGER frequency_windows_immutable BEFORE UPDATE OR DELETE ON frequency_windows\n    FOR EACH ROW EXECUTE FUNCTION prevent_frequency_window_mutation();\n  DROP TRIGGER IF EXISTS frequency_windows_no_truncate ON frequency_windows;\n  CREATE TRIGGER frequency_windows_no_truncate BEFORE TRUNCATE ON frequency_windows\n    EXECUTE FUNCTION prevent_frequency_window_mutation();\nEND\n$do$\n"
+    }
+  ],
+  "has_create_action": true,
+  "hash": "9266CFDFB7CAFE392EA1129FCCD1BDD68091386BF51A124BA1557BDA77ED0184",
+  "identities": [
+    {
+      "all_tenants?": false,
+      "base_filter": null,
+      "index_name": "frequency_windows_one_per_start_index",
+      "keys": [
+        {
+          "type": "atom",
+          "value": "freq_start"
+        }
+      ],
+      "name": "one_per_start",
+      "nils_distinct?": true,
+      "where": null
+    }
+  ],
+  "multitenancy": {
+    "attribute": null,
+    "global": null,
+    "strategy": null
+  },
+  "repo": "Elixir.WallopCore.Repo",
+  "schema": null,
+  "table": "frequency_windows"
+}

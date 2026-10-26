@@ -7,6 +7,14 @@ if config_env() in [:dev, :test] do
     config :wallop_core, :met_office_api_key, met_key
   end
 
+  # Optional: only observation-weather draws use it. When it's missing (or
+  # unusable), new observation-weather locks are refused, and draws already
+  # locked fall back by rule (visible in the receipt). Forecast and
+  # grid-frequency draws are unaffected.
+  if obs_key = env["MET_OFFICE_OBS_API_KEY"] do
+    config :wallop_core, :met_office_obs_api_key, obs_key
+  end
+
   if config_env() == :dev do
     vault_key =
       env["VAULT_KEY"] ||
@@ -35,6 +43,14 @@ if config_env() in [:dev, :test] do
       ciphers: WallopCore.Vault.Config.build_ciphers(vault_key, vault_key_old)
   end
 end
+
+# Daily cap on Land Observations calls: a whole number from 1 to 900,
+# default 800. Anything else stops the boot. Logger isn't configured yet, so
+# WallopCore.Application logs the warning for a cap below a full day of
+# polling. See WallopCore.Weather.LandObsBudget.
+config :wallop_core,
+       :land_obs_daily_cap,
+       WallopCore.Weather.LandObsBudget.parse_cap!(System.get_env("LAND_OBS_DAILY_CAP"))
 
 if honeycomb_api_key = System.get_env("HONEYCOMB_API_KEY") do
   config :opentelemetry,
@@ -79,6 +95,14 @@ if config_env() == :prod do
 
   config :wallop_core, :met_office_api_key, met_office_api_key
 
+  # Optional: only observation-weather draws use it. When it's missing (or
+  # unusable), new observation-weather locks are refused, and draws already
+  # locked fall back by rule (visible in the receipt). Forecast and
+  # grid-frequency draws are unaffected.
+  if obs_key = System.get_env("MET_OFFICE_OBS_API_KEY") do
+    config :wallop_core, :met_office_obs_api_key, obs_key
+  end
+
   if redis_url = System.get_env("REDIS_URL") do
     config :wallop_core, :redis_url, redis_url
   end
@@ -100,7 +124,7 @@ if config_env() == :prod do
 
   config :wallop_core, WallopCore.Repo,
     url: database_url,
-    pool_size: String.to_integer(System.get_env("POOL_SIZE") || "10")
+    pool_size: String.to_integer(System.get_env("POOL_SIZE") || "20")
 
   secret_key_base =
     System.get_env("SECRET_KEY_BASE") ||

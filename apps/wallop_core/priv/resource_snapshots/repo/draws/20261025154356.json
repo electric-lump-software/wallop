@@ -1,0 +1,772 @@
+{
+  "attributes": [
+    {
+      "allow_nil?": false,
+      "default": "fragment(\"gen_random_uuid()\")",
+      "generated?": false,
+      "precision": null,
+      "primary_key?": true,
+      "references": null,
+      "scale": null,
+      "size": null,
+      "source": "id",
+      "type": "uuid"
+    },
+    {
+      "allow_nil?": false,
+      "default": "\"open\"",
+      "generated?": false,
+      "precision": null,
+      "primary_key?": false,
+      "references": null,
+      "scale": null,
+      "size": null,
+      "source": "status",
+      "type": "text"
+    },
+    {
+      "allow_nil?": true,
+      "default": "nil",
+      "generated?": false,
+      "precision": null,
+      "primary_key?": false,
+      "references": null,
+      "scale": null,
+      "size": null,
+      "source": "name",
+      "type": "text"
+    },
+    {
+      "allow_nil?": false,
+      "default": "0",
+      "generated?": false,
+      "precision": null,
+      "primary_key?": false,
+      "references": null,
+      "scale": null,
+      "size": null,
+      "source": "entry_count",
+      "type": "bigint"
+    },
+    {
+      "allow_nil?": true,
+      "default": "nil",
+      "generated?": false,
+      "precision": null,
+      "primary_key?": false,
+      "references": null,
+      "scale": null,
+      "size": null,
+      "source": "entry_hash",
+      "type": "text"
+    },
+    {
+      "allow_nil?": true,
+      "default": "nil",
+      "generated?": false,
+      "precision": null,
+      "primary_key?": false,
+      "references": null,
+      "scale": null,
+      "size": null,
+      "source": "entry_canonical",
+      "type": "text"
+    },
+    {
+      "allow_nil?": false,
+      "default": "nil",
+      "generated?": false,
+      "precision": null,
+      "primary_key?": false,
+      "references": null,
+      "scale": null,
+      "size": null,
+      "source": "winner_count",
+      "type": "bigint"
+    },
+    {
+      "allow_nil?": true,
+      "default": "nil",
+      "generated?": false,
+      "precision": null,
+      "primary_key?": false,
+      "references": null,
+      "scale": null,
+      "size": null,
+      "source": "seed",
+      "type": "text"
+    },
+    {
+      "allow_nil?": true,
+      "default": "nil",
+      "generated?": false,
+      "precision": null,
+      "primary_key?": false,
+      "references": null,
+      "scale": null,
+      "size": null,
+      "source": "seed_source",
+      "type": "text"
+    },
+    {
+      "allow_nil?": true,
+      "default": "nil",
+      "generated?": false,
+      "precision": null,
+      "primary_key?": false,
+      "references": null,
+      "scale": null,
+      "size": null,
+      "source": "seed_json",
+      "type": "text"
+    },
+    {
+      "allow_nil?": true,
+      "default": "nil",
+      "generated?": false,
+      "precision": null,
+      "primary_key?": false,
+      "references": null,
+      "scale": null,
+      "size": null,
+      "source": "results",
+      "type": [
+        "array",
+        "map"
+      ]
+    },
+    {
+      "allow_nil?": true,
+      "default": "nil",
+      "generated?": false,
+      "precision": null,
+      "primary_key?": false,
+      "references": null,
+      "scale": null,
+      "size": null,
+      "source": "drand_chain",
+      "type": "text"
+    },
+    {
+      "allow_nil?": true,
+      "default": "nil",
+      "generated?": false,
+      "precision": null,
+      "primary_key?": false,
+      "references": null,
+      "scale": null,
+      "size": null,
+      "source": "drand_round",
+      "type": "bigint"
+    },
+    {
+      "allow_nil?": true,
+      "default": "nil",
+      "generated?": false,
+      "precision": null,
+      "primary_key?": false,
+      "references": null,
+      "scale": null,
+      "size": null,
+      "source": "drand_randomness",
+      "type": "text"
+    },
+    {
+      "allow_nil?": true,
+      "default": "nil",
+      "generated?": false,
+      "precision": null,
+      "primary_key?": false,
+      "references": null,
+      "scale": null,
+      "size": null,
+      "source": "drand_signature",
+      "type": "text"
+    },
+    {
+      "allow_nil?": true,
+      "default": "nil",
+      "generated?": false,
+      "precision": null,
+      "primary_key?": false,
+      "references": null,
+      "scale": null,
+      "size": null,
+      "source": "drand_response",
+      "type": "text"
+    },
+    {
+      "allow_nil?": true,
+      "default": "nil",
+      "generated?": false,
+      "precision": null,
+      "primary_key?": false,
+      "references": null,
+      "scale": null,
+      "size": null,
+      "source": "weather_station",
+      "type": "text"
+    },
+    {
+      "allow_nil?": true,
+      "default": "nil",
+      "generated?": false,
+      "precision": null,
+      "primary_key?": false,
+      "references": null,
+      "scale": null,
+      "size": null,
+      "source": "weather_time",
+      "type": "utc_datetime_usec"
+    },
+    {
+      "allow_nil?": true,
+      "default": "nil",
+      "generated?": false,
+      "precision": null,
+      "primary_key?": false,
+      "references": null,
+      "scale": null,
+      "size": null,
+      "source": "weather_value",
+      "type": "text"
+    },
+    {
+      "allow_nil?": true,
+      "default": "nil",
+      "generated?": false,
+      "precision": null,
+      "primary_key?": false,
+      "references": null,
+      "scale": null,
+      "size": null,
+      "source": "weather_raw",
+      "type": "text"
+    },
+    {
+      "allow_nil?": true,
+      "default": "nil",
+      "generated?": false,
+      "precision": null,
+      "primary_key?": false,
+      "references": null,
+      "scale": null,
+      "size": null,
+      "source": "weather_observation_time",
+      "type": "utc_datetime_usec"
+    },
+    {
+      "allow_nil?": true,
+      "default": "nil",
+      "generated?": false,
+      "precision": null,
+      "primary_key?": false,
+      "references": null,
+      "scale": null,
+      "size": null,
+      "source": "weather_fallback_reason",
+      "type": "text"
+    },
+    {
+      "allow_nil?": true,
+      "default": "nil",
+      "generated?": false,
+      "precision": null,
+      "primary_key?": false,
+      "references": null,
+      "scale": null,
+      "size": null,
+      "source": "freq_start",
+      "type": "utc_datetime_usec"
+    },
+    {
+      "allow_nil?": true,
+      "default": "nil",
+      "generated?": false,
+      "precision": null,
+      "primary_key?": false,
+      "references": null,
+      "scale": null,
+      "size": null,
+      "source": "freq_value",
+      "type": "text"
+    },
+    {
+      "allow_nil?": true,
+      "default": "nil",
+      "generated?": false,
+      "precision": null,
+      "primary_key?": false,
+      "references": null,
+      "scale": null,
+      "size": null,
+      "source": "freq_fallback_reason",
+      "type": "text"
+    },
+    {
+      "allow_nil?": true,
+      "default": "nil",
+      "generated?": false,
+      "precision": null,
+      "primary_key?": false,
+      "references": null,
+      "scale": null,
+      "size": null,
+      "source": "lock_schema_version",
+      "type": "text"
+    },
+    {
+      "allow_nil?": true,
+      "default": "nil",
+      "generated?": false,
+      "precision": null,
+      "primary_key?": false,
+      "references": null,
+      "scale": null,
+      "size": null,
+      "source": "entropy_composition",
+      "type": "text"
+    },
+    {
+      "allow_nil?": true,
+      "default": "nil",
+      "generated?": false,
+      "precision": null,
+      "primary_key?": false,
+      "references": null,
+      "scale": null,
+      "size": null,
+      "source": "callback_url",
+      "type": "text"
+    },
+    {
+      "allow_nil?": true,
+      "default": "nil",
+      "generated?": false,
+      "precision": null,
+      "primary_key?": false,
+      "references": null,
+      "scale": null,
+      "size": null,
+      "source": "metadata",
+      "type": "map"
+    },
+    {
+      "allow_nil?": true,
+      "default": "nil",
+      "generated?": false,
+      "precision": null,
+      "primary_key?": false,
+      "references": null,
+      "scale": null,
+      "size": null,
+      "source": "check_url",
+      "type": "text"
+    },
+    {
+      "allow_nil?": true,
+      "default": "nil",
+      "generated?": false,
+      "precision": null,
+      "primary_key?": false,
+      "references": null,
+      "scale": null,
+      "size": null,
+      "source": "executed_at",
+      "type": "utc_datetime_usec"
+    },
+    {
+      "allow_nil?": true,
+      "default": "nil",
+      "generated?": false,
+      "precision": null,
+      "primary_key?": false,
+      "references": null,
+      "scale": null,
+      "size": null,
+      "source": "failed_at",
+      "type": "utc_datetime_usec"
+    },
+    {
+      "allow_nil?": true,
+      "default": "nil",
+      "generated?": false,
+      "precision": null,
+      "primary_key?": false,
+      "references": null,
+      "scale": null,
+      "size": null,
+      "source": "failure_reason",
+      "type": "text"
+    },
+    {
+      "allow_nil?": true,
+      "default": "%{}",
+      "generated?": false,
+      "precision": null,
+      "primary_key?": false,
+      "references": null,
+      "scale": null,
+      "size": null,
+      "source": "stage_timestamps",
+      "type": "map"
+    },
+    {
+      "allow_nil?": false,
+      "default": "nil",
+      "generated?": false,
+      "precision": null,
+      "primary_key?": false,
+      "references": null,
+      "scale": null,
+      "size": null,
+      "source": "operator_sequence",
+      "type": "bigint"
+    },
+    {
+      "allow_nil?": false,
+      "default": "fragment(\"(now() AT TIME ZONE 'utc')\")",
+      "generated?": false,
+      "precision": null,
+      "primary_key?": false,
+      "references": null,
+      "scale": null,
+      "size": null,
+      "source": "inserted_at",
+      "type": "utc_datetime_usec"
+    },
+    {
+      "allow_nil?": false,
+      "default": "fragment(\"(now() AT TIME ZONE 'utc')\")",
+      "generated?": false,
+      "precision": null,
+      "primary_key?": false,
+      "references": null,
+      "scale": null,
+      "size": null,
+      "source": "updated_at",
+      "type": "utc_datetime_usec"
+    },
+    {
+      "allow_nil?": false,
+      "default": "nil",
+      "generated?": false,
+      "precision": null,
+      "primary_key?": false,
+      "references": {
+        "deferrable": false,
+        "destination_attribute": "id",
+        "destination_attribute_default": null,
+        "destination_attribute_generated": null,
+        "index?": false,
+        "match_type": null,
+        "match_with": null,
+        "multitenancy": {
+          "attribute": null,
+          "global": null,
+          "strategy": null
+        },
+        "name": "draws_api_key_id_fkey",
+        "on_delete": null,
+        "on_update": null,
+        "primary_key?": true,
+        "schema": "public",
+        "table": "api_keys"
+      },
+      "scale": null,
+      "size": null,
+      "source": "api_key_id",
+      "type": "uuid"
+    },
+    {
+      "allow_nil?": false,
+      "default": "nil",
+      "generated?": false,
+      "precision": null,
+      "primary_key?": false,
+      "references": {
+        "deferrable": false,
+        "destination_attribute": "id",
+        "destination_attribute_default": null,
+        "destination_attribute_generated": null,
+        "index?": false,
+        "match_type": null,
+        "match_with": null,
+        "multitenancy": {
+          "attribute": null,
+          "global": null,
+          "strategy": null
+        },
+        "name": "draws_operator_id_fkey",
+        "on_delete": null,
+        "on_update": null,
+        "primary_key?": true,
+        "schema": "public",
+        "table": "operators"
+      },
+      "scale": null,
+      "size": null,
+      "source": "operator_id",
+      "type": "uuid"
+    }
+  ],
+  "base_filter": null,
+  "check_constraints": [],
+  "create_table_options": null,
+  "custom_indexes": [
+    {
+      "all_tenants?": false,
+      "concurrently": false,
+      "error_fields": [
+        "api_key_id",
+        "status",
+        "inserted_at",
+        "id"
+      ],
+      "fields": [
+        {
+          "type": "atom",
+          "value": "api_key_id"
+        },
+        {
+          "type": "atom",
+          "value": "status"
+        },
+        {
+          "type": "atom",
+          "value": "inserted_at"
+        },
+        {
+          "type": "atom",
+          "value": "id"
+        }
+      ],
+      "include": null,
+      "message": null,
+      "name": "draws_api_key_id_status_inserted_at_id_index",
+      "nulls_distinct": true,
+      "prefix": null,
+      "table": null,
+      "unique": false,
+      "using": null,
+      "where": null
+    }
+  ],
+  "custom_statements": [
+    {
+      "code?": false,
+      "down": "DROP FUNCTION IF EXISTS wallop_quicknet_chain_hash()",
+      "name": "wallop_quicknet_chain_hash",
+      "up": "CREATE OR REPLACE FUNCTION wallop_quicknet_chain_hash() RETURNS text\nLANGUAGE sql IMMUTABLE AS $$\n  SELECT text '52db9ba70e0cc0f6eaf7803dd07447a1f5477735fd3f661792ba94600c84e971'\n$$\n"
+    },
+    {
+      "code?": false,
+      "down": "DROP FUNCTION IF EXISTS wallop_quicknet_pub_time(bigint)",
+      "name": "wallop_quicknet_pub_time",
+      "up": "CREATE OR REPLACE FUNCTION wallop_quicknet_pub_time(drand_round bigint) RETURNS timestamp\nLANGUAGE sql IMMUTABLE STRICT AS $$\n  SELECT timestamp '1970-01-01 00:00:00' + interval '1 second' * (1692803367 + (drand_round - 1) * 3)\n$$\n"
+    },
+    {
+      "code?": false,
+      "down": "DROP FUNCTION IF EXISTS wallop_landobs_tag()",
+      "name": "wallop_landobs_tag",
+      "up": "CREATE OR REPLACE FUNCTION wallop_landobs_tag() RETURNS text\nLANGUAGE sql IMMUTABLE AS $$ SELECT text 'drand-quicknet+metoffice-landobs-v1' $$\n"
+    },
+    {
+      "code?": false,
+      "down": "DROP FUNCTION IF EXISTS wallop_landobs_fetch_window()",
+      "name": "wallop_landobs_fetch_window",
+      "up": "CREATE OR REPLACE FUNCTION wallop_landobs_fetch_window() RETURNS interval\nLANGUAGE sql IMMUTABLE AS $$ SELECT interval '30 minutes' $$\n"
+    },
+    {
+      "code?": false,
+      "down": "DROP FUNCTION IF EXISTS wallop_landobs_lock_offset()",
+      "name": "wallop_landobs_lock_offset",
+      "up": "CREATE OR REPLACE FUNCTION wallop_landobs_lock_offset() RETURNS interval\nLANGUAGE sql IMMUTABLE AS $$ SELECT interval '46 minutes' $$\n"
+    },
+    {
+      "code?": false,
+      "down": "DROP FUNCTION IF EXISTS wallop_landobs_primary_station()",
+      "name": "wallop_landobs_primary_station",
+      "up": "CREATE OR REPLACE FUNCTION wallop_landobs_primary_station() RETURNS text\nLANGUAGE sql IMMUTABLE AS $$ SELECT text 'wmo-03749' $$\n"
+    },
+    {
+      "code?": false,
+      "down": "DROP FUNCTION IF EXISTS wallop_landobs_valid_value(text)",
+      "name": "wallop_landobs_valid_value",
+      "up": "CREATE OR REPLACE FUNCTION wallop_landobs_valid_value(value text) RETURNS boolean\nLANGUAGE sql IMMUTABLE STRICT AS $$\n  SELECT CASE\n    WHEN value ~ '^(0|-?[1-9][0-9]{0,2});(0|[1-9][0-9]{0,3});(0|[1-9][0-9]{0,2});(0|[1-9][0-9]{0,4})$'\n    THEN split_part(value, ';', 1)::int BETWEEN -900 AND 600\n     AND split_part(value, ';', 2)::int BETWEEN 850 AND 1100\n     AND split_part(value, ';', 3)::int BETWEEN 0 AND 100\n     AND split_part(value, ';', 4)::int BETWEEN 0 AND 10000\n    ELSE false\n  END\n$$\n"
+    },
+    {
+      "code?": false,
+      "down": "DROP FUNCTION IF EXISTS wallop_landobs_fallback_reason()",
+      "name": "wallop_landobs_fallback_reason",
+      "up": "CREATE OR REPLACE FUNCTION wallop_landobs_fallback_reason() RETURNS text\nLANGUAGE sql IMMUTABLE AS $$ SELECT text 'no_observation_by_deadline' $$\n"
+    },
+    {
+      "code?": false,
+      "down": "DROP FUNCTION IF EXISTS wallop_landobs_weather_time(bigint)",
+      "name": "wallop_landobs_weather_time",
+      "up": "CREATE OR REPLACE FUNCTION wallop_landobs_weather_time(drand_round bigint) RETURNS timestamp\nLANGUAGE sql IMMUTABLE STRICT AS $$\n  SELECT date_trunc('hour',\n    wallop_quicknet_pub_time(drand_round) - wallop_landobs_fetch_window() - interval '60 seconds')\n$$\n"
+    },
+    {
+      "code?": false,
+      "down": "DROP FUNCTION IF EXISTS wallop_landobs_lock_allowed(timestamp, timestamp)",
+      "name": "wallop_landobs_lock_allowed",
+      "up": "CREATE OR REPLACE FUNCTION wallop_landobs_lock_allowed(locked_at timestamp, weather_time timestamp)\nRETURNS boolean\nLANGUAGE sql IMMUTABLE STRICT AS $$\n  SELECT locked_at <= weather_time - wallop_landobs_lock_offset()\n$$\n"
+    },
+    {
+      "code?": false,
+      "down": "DROP FUNCTION IF EXISTS wallop_parse_rfc3339_usec(text)",
+      "name": "wallop_parse_rfc3339_usec",
+      "up": "CREATE OR REPLACE FUNCTION wallop_parse_rfc3339_usec(value text) RETURNS timestamp\nLANGUAGE plpgsql STABLE STRICT AS $$\nDECLARE\n  parsed timestamp;\nBEGIN\n  IF value !~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[.][0-9]{6}Z$' THEN\n    RAISE EXCEPTION 'not a canonical UTC timestamp: %', value;\n  END IF;\n\n  BEGIN\n    -- A timestamp literal ignores the trailing Z.\n    parsed := value::timestamp;\n  EXCEPTION WHEN others THEN\n    RAISE EXCEPTION 'not a canonical UTC timestamp: %', value;\n  END;\n\n  IF to_char(parsed, 'YYYY-MM-DD\"T\"HH24:MI:SS.US\"Z\"') IS DISTINCT FROM value THEN\n    RAISE EXCEPTION 'not a canonical UTC timestamp: %', value;\n  END IF;\n\n  RETURN parsed;\nEND;\n$$\n"
+    },
+    {
+      "code?": false,
+      "down": "DROP FUNCTION IF EXISTS wallop_receipt_integer(text, jsonb, text)",
+      "name": "wallop_receipt_integer",
+      "up": "CREATE OR REPLACE FUNCTION wallop_receipt_integer(raw text, p jsonb, key text) RETURNS boolean\nLANGUAGE sql IMMUTABLE AS $$\n  SELECT jsonb_typeof(p -> key) = 'number'\n     AND (p ->> key) ~ '^[1-9][0-9]*$'\n     AND (strpos(raw, '\"' || key || '\":' || (p ->> key) || ',') > 0\n          OR strpos(raw, '\"' || key || '\":' || (p ->> key) || '}') > 0)\n$$\n"
+    },
+    {
+      "code?": false,
+      "down": "DROP FUNCTION IF EXISTS wallop_freq_tag()",
+      "name": "wallop_freq_tag",
+      "up": "CREATE OR REPLACE FUNCTION wallop_freq_tag() RETURNS text\nLANGUAGE sql IMMUTABLE AS $$ SELECT text 'drand-quicknet+elexon-freq-v1' $$\n"
+    },
+    {
+      "code?": false,
+      "down": "DROP FUNCTION IF EXISTS wallop_freq_fetch_window()",
+      "name": "wallop_freq_fetch_window",
+      "up": "CREATE OR REPLACE FUNCTION wallop_freq_fetch_window() RETURNS interval\nLANGUAGE sql IMMUTABLE AS $$ SELECT interval '240 seconds' $$\n"
+    },
+    {
+      "code?": false,
+      "down": "DROP FUNCTION IF EXISTS wallop_freq_span()",
+      "name": "wallop_freq_span",
+      "up": "CREATE OR REPLACE FUNCTION wallop_freq_span() RETURNS interval\nLANGUAGE sql IMMUTABLE AS $$ SELECT interval '105 seconds' $$\n"
+    },
+    {
+      "code?": false,
+      "down": "DROP FUNCTION IF EXISTS wallop_freq_margin()",
+      "name": "wallop_freq_margin",
+      "up": "CREATE OR REPLACE FUNCTION wallop_freq_margin() RETURNS interval\nLANGUAGE sql IMMUTABLE AS $$ SELECT interval '15 seconds' $$\n"
+    },
+    {
+      "code?": false,
+      "down": "DROP FUNCTION IF EXISTS wallop_freq_lock_gap()",
+      "name": "wallop_freq_lock_gap",
+      "up": "CREATE OR REPLACE FUNCTION wallop_freq_lock_gap() RETURNS interval\nLANGUAGE sql IMMUTABLE AS $$ SELECT interval '60 seconds' $$\n"
+    },
+    {
+      "code?": false,
+      "down": "DROP FUNCTION IF EXISTS wallop_freq_stuck_run()",
+      "name": "wallop_freq_stuck_run",
+      "up": "CREATE OR REPLACE FUNCTION wallop_freq_stuck_run() RETURNS integer\nLANGUAGE sql IMMUTABLE AS $$ SELECT 6 $$\n"
+    },
+    {
+      "code?": false,
+      "down": "DROP FUNCTION IF EXISTS wallop_freq_fallback_reason()",
+      "name": "wallop_freq_fallback_reason",
+      "up": "CREATE OR REPLACE FUNCTION wallop_freq_fallback_reason() RETURNS text\nLANGUAGE sql IMMUTABLE AS $$ SELECT text 'no_frequency_by_deadline' $$\n"
+    },
+    {
+      "code?": false,
+      "down": "DROP FUNCTION IF EXISTS wallop_freq_start(bigint)",
+      "name": "wallop_freq_start",
+      "up": "CREATE OR REPLACE FUNCTION wallop_freq_start(drand_round bigint) RETURNS timestamp\nLANGUAGE sql IMMUTABLE STRICT AS $$\n  SELECT timestamp '1970-01-01 00:00:00' + interval '1 second' * (x - mod(x, 15))\n  FROM (SELECT 1692803367 + (drand_round - 1) * 3\n               - EXTRACT(EPOCH FROM wallop_freq_span() + wallop_freq_fetch_window()\n                                    + wallop_freq_margin())::bigint AS x) s\n$$\n"
+    },
+    {
+      "code?": false,
+      "down": "DROP FUNCTION IF EXISTS wallop_freq_fetch_deadline(timestamp)",
+      "name": "wallop_freq_fetch_deadline",
+      "up": "CREATE OR REPLACE FUNCTION wallop_freq_fetch_deadline(freq_start timestamp) RETURNS timestamp\nLANGUAGE sql IMMUTABLE STRICT AS $$\n  SELECT freq_start + wallop_freq_span() + wallop_freq_fetch_window()\n$$\n"
+    },
+    {
+      "code?": false,
+      "down": "DROP FUNCTION IF EXISTS wallop_freq_lock_allowed(timestamp, timestamp)",
+      "name": "wallop_freq_lock_allowed",
+      "up": "CREATE OR REPLACE FUNCTION wallop_freq_lock_allowed(locked_at timestamp, freq_start timestamp)\nRETURNS boolean\nLANGUAGE sql IMMUTABLE STRICT AS $$\n  SELECT locked_at <= freq_start - wallop_freq_lock_gap()\n$$\n"
+    },
+    {
+      "code?": false,
+      "down": "DROP FUNCTION IF EXISTS wallop_freq_valid_value(text)",
+      "name": "wallop_freq_valid_value",
+      "up": "CREATE OR REPLACE FUNCTION wallop_freq_valid_value(v text) RETURNS boolean\nLANGUAGE plpgsql IMMUTABLE AS $$\nDECLARE\n  parts text[];\n  run integer := 1;\n  n integer;\nBEGIN\n  IF v IS NULL OR v !~ '^[0-9]{5}(;[0-9]{5}){7}$' THEN\n    RETURN false;\n  END IF;\n  parts := string_to_array(v, ';');\n  FOR i IN 1..8 LOOP\n    n := parts[i]::integer;\n    IF n < 47000 OR n > 52999 THEN\n      RETURN false;\n    END IF;\n    IF i > 1 AND parts[i] = parts[i - 1] THEN\n      run := run + 1;\n    ELSE\n      run := 1;\n    END IF;\n    IF run >= 6 THEN\n      RETURN false;\n    END IF;\n  END LOOP;\n  RETURN true;\nEND;\n$$\n"
+    },
+    {
+      "code?": false,
+      "down": "DROP FUNCTION IF EXISTS wallop_v6_lock_keys()",
+      "name": "wallop_v6_lock_keys",
+      "up": "CREATE OR REPLACE FUNCTION wallop_v6_lock_keys() RETURNS text[]\nLANGUAGE sql IMMUTABLE AS $$\n  SELECT ARRAY[\n    'commitment_hash', 'drand_chain', 'drand_round', 'draw_id',\n    'entropy_composition', 'entry_hash', 'fair_pick_version', 'freq_start',\n    'jcs_version', 'locked_at', 'operator_id', 'operator_slug', 'schema_version',\n    'sequence', 'signature_algorithm', 'signing_key_id', 'wallop_core_version',\n    'weather_station', 'weather_time', 'winner_count'\n  ]::text[]\n$$\n"
+    },
+    {
+      "code?": false,
+      "down": "DROP FUNCTION IF EXISTS wallop_v6_exec_keys()",
+      "name": "wallop_v6_exec_keys",
+      "up": "CREATE OR REPLACE FUNCTION wallop_v6_exec_keys() RETURNS text[]\nLANGUAGE sql IMMUTABLE AS $$\n  SELECT ARRAY[\n    'drand_chain', 'drand_randomness', 'drand_round', 'drand_signature',\n    'drand_signature_algorithm', 'draw_id', 'entropy_composition', 'entry_hash',\n    'executed_at', 'fair_pick_version', 'freq_fallback_reason', 'freq_value',\n    'jcs_version', 'lock_receipt_hash', 'merkle_algorithm', 'operator_id',\n    'operator_slug', 'results', 'schema_version', 'seed', 'sequence',\n    'signature_algorithm', 'signing_key_id', 'wallop_core_version',\n    'weather_fallback_reason', 'weather_observation_time', 'weather_station',\n    'weather_value'\n  ]::text[]\n$$\n"
+    },
+    {
+      "code?": false,
+      "down": "DROP FUNCTION IF EXISTS wallop_v6_fetch_deadline(text, timestamp, timestamp)",
+      "name": "wallop_v6_fetch_deadline",
+      "up": "CREATE OR REPLACE FUNCTION wallop_v6_fetch_deadline(\n  entropy_composition text, weather_time timestamp, freq_start timestamp)\nRETURNS timestamp\nLANGUAGE sql IMMUTABLE AS $$\n  SELECT CASE\n    WHEN entropy_composition = wallop_landobs_tag()\n      THEN weather_time + wallop_landobs_fetch_window()\n    WHEN entropy_composition = wallop_freq_tag()\n      THEN wallop_freq_fetch_deadline(freq_start)\n  END\n$$\n"
+    },
+    {
+      "code?": false,
+      "down": "DROP FUNCTION IF EXISTS wallop_check_v6_lock_receipt(draws, operator_receipts)",
+      "name": "wallop_check_v6_lock_receipt",
+      "up": "CREATE OR REPLACE FUNCTION wallop_check_v6_lock_receipt(d draws, r operator_receipts)\nRETURNS void\nLANGUAGE plpgsql STABLE AS $$\nDECLARE\n  raw text := convert_from(r.payload_jcs, 'UTF8');\n  p jsonb := raw::jsonb;\n  field text;\n  keys text[];\nBEGIN\n  IF p->>'schema_version' IS DISTINCT FROM d.lock_schema_version\n     OR p->>'entropy_composition' IS DISTINCT FROM d.entropy_composition THEN\n    RAISE EXCEPTION 'a v6 lock receipt must carry its draw''s schema and entropy_composition';\n  END IF;\n\n  -- Exactly the tag's keys, so no extra or look-alike field rides\n  -- along. A duplicate key is not seen here (jsonb keeps the last\n  -- value); the verifier refuses it.\n  IF d.entropy_composition IS DISTINCT FROM wallop_landobs_tag()\n     AND d.entropy_composition IS DISTINCT FROM wallop_freq_tag() THEN\n    RAISE EXCEPTION 'no lock receipt rules for entropy_composition %', d.entropy_composition;\n  END IF;\n  keys := wallop_v6_lock_keys();\n  IF jsonb_typeof(p) IS DISTINCT FROM 'object'\n     OR (SELECT array_agg(k ORDER BY k COLLATE \"C\") FROM jsonb_object_keys(p) k)\n        IS DISTINCT FROM keys THEN\n    RAISE EXCEPTION 'v6 lock receipt keys are not the tag''s key set';\n  END IF;\n\n  IF wallop_parse_rfc3339_usec(p->>'locked_at') IS DISTINCT FROM r.locked_at THEN\n    RAISE EXCEPTION 'receipt locked_at must equal the signed locked_at';\n  END IF;\n\n  IF p->>'draw_id' IS DISTINCT FROM d.id::text OR r.draw_id IS DISTINCT FROM d.id THEN\n    RAISE EXCEPTION 'v6 lock receipt field % does not match the draw', 'draw_id';\n  END IF;\n  IF p->>'operator_id' IS DISTINCT FROM d.operator_id::text\n     OR r.operator_id IS DISTINCT FROM d.operator_id THEN\n    RAISE EXCEPTION 'v6 lock receipt field % does not match the draw', 'operator_id';\n  END IF;\n  IF p->>'operator_slug' IS DISTINCT FROM (SELECT slug::text FROM operators WHERE id = d.operator_id) THEN\n    RAISE EXCEPTION 'v6 lock receipt field % does not match the draw', 'operator_slug';\n  END IF;\n  IF p->'sequence' IS DISTINCT FROM to_jsonb(d.operator_sequence)\n     OR r.sequence IS DISTINCT FROM d.operator_sequence THEN\n    RAISE EXCEPTION 'v6 lock receipt field % does not match the draw', 'sequence';\n  END IF;\n  IF p->>'entry_hash' IS DISTINCT FROM d.entry_hash OR r.entry_hash IS DISTINCT FROM d.entry_hash THEN\n    RAISE EXCEPTION 'v6 lock receipt field % does not match the draw', 'entry_hash';\n  END IF;\n  IF p->>'commitment_hash' IS DISTINCT FROM d.entry_hash\n     OR r.commitment_hash IS DISTINCT FROM d.entry_hash THEN\n    RAISE EXCEPTION 'v6 lock receipt field % does not match the draw', 'commitment_hash';\n  END IF;\n  IF p->'winner_count' IS DISTINCT FROM to_jsonb(d.winner_count) THEN\n    RAISE EXCEPTION 'v6 lock receipt field % does not match the draw', 'winner_count';\n  END IF;\n  IF p->>'drand_chain' IS DISTINCT FROM d.drand_chain THEN\n    RAISE EXCEPTION 'v6 lock receipt field % does not match the draw', 'drand_chain';\n  END IF;\n  IF p->'drand_round' IS DISTINCT FROM to_jsonb(d.drand_round) THEN\n    RAISE EXCEPTION 'v6 lock receipt field % does not match the draw', 'drand_round';\n  END IF;\n  IF p->>'weather_station' IS DISTINCT FROM d.weather_station THEN\n    RAISE EXCEPTION 'v6 lock receipt field % does not match the draw', 'weather_station';\n  END IF;\n  IF wallop_parse_rfc3339_usec(p->>'weather_time') IS DISTINCT FROM d.weather_time THEN\n    RAISE EXCEPTION 'v6 lock receipt field % does not match the draw', 'weather_time';\n  END IF;\n  -- Both tags sign freq_start: the window start the drand round\n  -- implies, never NULL (a JSON null or a NULL column refuses).\n  IF wallop_parse_rfc3339_usec(p->>'freq_start') IS DISTINCT FROM d.freq_start\n     OR d.freq_start IS DISTINCT FROM wallop_freq_start(d.drand_round) THEN\n    RAISE EXCEPTION 'v6 lock receipt field % does not match the draw', 'freq_start';\n  END IF;\n  IF p->>'signing_key_id' IS DISTINCT FROM r.signing_key_id\n     OR NOT EXISTS (SELECT 1 FROM operator_signing_keys k\n                    WHERE k.operator_id = d.operator_id AND k.key_id = r.signing_key_id) THEN\n    RAISE EXCEPTION 'v6 lock receipt field % does not match the draw', 'signing_key_id';\n  END IF;\n\n  -- jsonb compares 7.0 equal to 7, so the integers are typed here:\n  -- the verifier refuses anything but a canonical integer.\n  FOREACH field IN ARRAY ARRAY['sequence', 'drand_round', 'winner_count'] LOOP\n    IF wallop_receipt_integer(raw, p, field) IS NOT TRUE THEN\n      RAISE EXCEPTION 'v6 lock receipt field % must be a canonical positive integer', field;\n    END IF;\n  END LOOP;\n\n  -- The key must have been valid at the signed locked_at: in the\n  -- keyring by then (the verifier's rule, inserted_at <= locked_at,\n  -- no skew), and eligible to sign by then (the lock path's rule,\n  -- valid_from <= locked_at). Operator keys have no revocation.\n  IF NOT EXISTS (SELECT 1 FROM operator_signing_keys k\n                 WHERE k.operator_id = d.operator_id AND k.key_id = r.signing_key_id\n                   AND k.inserted_at <= r.locked_at AND k.valid_from <= r.locked_at) THEN\n    RAISE EXCEPTION 'v6 lock receipt signing key was not valid at locked_at';\n  END IF;\n\n  IF d.entropy_composition IS NOT DISTINCT FROM wallop_landobs_tag() THEN\n    IF wallop_landobs_lock_allowed(r.locked_at, wallop_landobs_weather_time(d.drand_round))\n       IS NOT TRUE THEN\n      RAISE EXCEPTION 'v6 signed locked_at is too late for this draw time';\n    END IF;\n  ELSIF d.entropy_composition IS NOT DISTINCT FROM wallop_freq_tag() THEN\n    IF wallop_freq_lock_allowed(r.locked_at, wallop_freq_start(d.drand_round)) IS NOT TRUE THEN\n      RAISE EXCEPTION 'v6 signed locked_at is too late for this draw time';\n    END IF;\n  ELSE\n    RAISE EXCEPTION 'no lock receipt rules for entropy_composition %', d.entropy_composition;\n  END IF;\nEND;\n$$\n"
+    },
+    {
+      "code?": false,
+      "down": "DO $do$\nBEGIN\n  DROP TRIGGER IF EXISTS draws_v6_guard ON draws;\n  DROP FUNCTION IF EXISTS guard_v6_draw();\nEND\n$do$\n",
+      "name": "guard_v6_draw",
+      "up": "DO $do$\nBEGIN\n  CREATE OR REPLACE FUNCTION guard_v6_draw() RETURNS trigger AS $fn$\n  DECLARE\n    now_utc timestamp := statement_timestamp() AT TIME ZONE 'UTC';\n    obs RECORD;\n    win RECORD;\n    r operator_receipts%ROWTYPE;\n  BEGIN\n    -- Every comparison that could meet a NULL is written so that NULL\n    -- refuses (IS DISTINCT FROM, IS NOT TRUE), never passes.\n    IF TG_OP = 'DELETE' THEN\n      IF OLD.status IS DISTINCT FROM 'open'\n         AND (OLD.lock_schema_version IS NOT NULL OR OLD.entropy_composition IS NOT NULL) THEN\n        RAISE EXCEPTION 'a v6 draw can''t be deleted once it has left open';\n      END IF;\n      RETURN OLD;\n    END IF;\n\n    -- A draw with no lock schema before or after (every forecast and\n    -- historic draw) meets no tag rule: it returns here. It may never\n    -- carry the grid-frequency columns.\n    IF OLD.lock_schema_version IS NULL AND OLD.entropy_composition IS NULL\n       AND NEW.lock_schema_version IS NULL AND NEW.entropy_composition IS NULL THEN\n      IF NEW.freq_start IS NOT NULL OR NEW.freq_value IS NOT NULL\n         OR NEW.freq_fallback_reason IS NOT NULL THEN\n        RAISE EXCEPTION 'frequency fields are set only on lock schema 6 draws';\n      END IF;\n      RETURN NEW;\n    END IF;\n\n    -- Every read of stored state below (the window or observation a\n    -- completion must use, the lock receipt) must see what has\n    -- committed, not a snapshot taken earlier in a REPEATABLE READ\n    -- or SERIALIZABLE transaction. Forecast draws returned above.\n    IF current_setting('transaction_isolation') IS DISTINCT FROM 'read committed' THEN\n      RAISE EXCEPTION 'a v6 write must run under READ COMMITTED isolation';\n    END IF;\n\n    IF OLD.status <> 'open'\n       AND (NEW.lock_schema_version IS DISTINCT FROM OLD.lock_schema_version\n            OR NEW.entropy_composition IS DISTINCT FROM OLD.entropy_composition) THEN\n      RAISE EXCEPTION 'lock_schema_version and entropy_composition are frozen once a draw has left open';\n    END IF;\n\n    IF NEW.status = 'open'\n       AND (NEW.lock_schema_version IS NOT NULL OR NEW.entropy_composition IS NOT NULL) THEN\n      RAISE EXCEPTION 'lock_schema_version and entropy_composition are set only when a draw leaves open';\n    END IF;\n\n    IF NOT ((NEW.lock_schema_version IS NULL AND NEW.entropy_composition IS NULL)\n            OR (NEW.lock_schema_version IS NOT DISTINCT FROM '6'\n                AND (NEW.entropy_composition IS NOT DISTINCT FROM wallop_landobs_tag()\n                     OR NEW.entropy_composition IS NOT DISTINCT FROM wallop_freq_tag()))) THEN\n      RAISE EXCEPTION 'unknown lock_schema_version and entropy_composition pair: (%, %)',\n        NEW.lock_schema_version, NEW.entropy_composition;\n    END IF;\n\n    -- A grid-frequency draw never carries a weather column, at any\n    -- status: its seed has no weather input.\n    IF NEW.entropy_composition IS NOT DISTINCT FROM wallop_freq_tag()\n       AND (NEW.weather_station IS NOT NULL OR NEW.weather_time IS NOT NULL\n            OR NEW.weather_value IS NOT NULL OR NEW.weather_observation_time IS NOT NULL\n            OR NEW.weather_fallback_reason IS NOT NULL) THEN\n      RAISE EXCEPTION 'a grid-frequency draw carries no weather fields';\n    END IF;\n    IF OLD.status <> 'open' AND NEW.freq_start IS DISTINCT FROM OLD.freq_start THEN\n      RAISE EXCEPTION 'freq_start is frozen once a draw has left open';\n    END IF;\n    IF NEW.status <> 'completed'\n       AND (NEW.freq_value IS NOT NULL OR NEW.freq_fallback_reason IS NOT NULL) THEN\n      RAISE EXCEPTION 'frequency results are set only when a draw completes';\n    END IF;\n\n    -- Whenever a v6 draw leaves open, by any path.\n    IF OLD.status = 'open' AND NEW.status <> 'open' AND NEW.lock_schema_version = '6' THEN\n      IF NEW.status <> 'awaiting_entropy' THEN\n        RAISE EXCEPTION 'a v6 draw leaves open only by locking';\n      END IF;\n\n      -- Every lock schema 6 tag is a drand quicknet tag.\n      IF NEW.drand_chain IS DISTINCT FROM wallop_quicknet_chain_hash() THEN\n        RAISE EXCEPTION 'v6 drand_chain must be the quicknet chain';\n      END IF;\n\n      IF NEW.entropy_composition = wallop_landobs_tag() THEN\n        IF NEW.drand_round IS NULL OR NEW.drand_round < 1\n           OR NEW.weather_time IS DISTINCT FROM wallop_landobs_weather_time(NEW.drand_round) THEN\n          RAISE EXCEPTION 'v6 weather_time must follow from drand_round';\n        END IF;\n        IF NEW.weather_station IS DISTINCT FROM wallop_landobs_primary_station() THEN\n          RAISE EXCEPTION 'v6 lock weather_station must be %', wallop_landobs_primary_station();\n        END IF;\n        IF NEW.freq_start IS DISTINCT FROM wallop_freq_start(NEW.drand_round) THEN\n          RAISE EXCEPTION 'freq_start must follow from drand_round';\n        END IF;\n        IF wallop_landobs_lock_allowed(clock_timestamp() AT TIME ZONE 'UTC', NEW.weather_time)\n           IS NOT TRUE THEN\n          RAISE EXCEPTION 'v6 lock is too late for this draw time';\n        END IF;\n      ELSIF NEW.entropy_composition = wallop_freq_tag() THEN\n        IF NEW.drand_round IS NULL OR NEW.drand_round < 1\n           OR NEW.freq_start IS DISTINCT FROM wallop_freq_start(NEW.drand_round) THEN\n          RAISE EXCEPTION 'freq_start must follow from drand_round';\n        END IF;\n        -- Its weather columns are refused above, at every status.\n        IF wallop_freq_lock_allowed(clock_timestamp() AT TIME ZONE 'UTC', NEW.freq_start)\n           IS NOT TRUE THEN\n          RAISE EXCEPTION 'v6 lock is too late for this draw time';\n        END IF;\n      ELSE\n        RAISE EXCEPTION 'no lock rules for entropy_composition %', NEW.entropy_composition;\n      END IF;\n\n      -- A receipt inserted before this UPDATE gets the same checks it\n      -- would get if inserted after. If that receipt's transaction is\n      -- still open, its FOR SHARE lock on this row made this UPDATE wait\n      -- before the trigger ran; this function is VOLATILE, so the\n      -- SELECT below takes a fresh snapshot and sees it once committed.\n      SELECT * INTO r FROM operator_receipts WHERE draw_id = NEW.id;\n      IF FOUND THEN\n        PERFORM wallop_check_v6_lock_receipt(NEW, r);\n      END IF;\n\n      IF EXISTS (SELECT 1 FROM execution_receipts WHERE draw_id = NEW.id) THEN\n        RAISE EXCEPTION 'a v6 draw can''t lock with an execution receipt already stored';\n      END IF;\n    END IF;\n\n    -- From pub(R) on the outcome is knowable: failing the draw then would\n    -- be a selective abort. Refused from F (chosen by tag), a minute or\n    -- more earlier for Land Obs and at least M = 15 s earlier for grid\n    -- frequency, so a database clock behind drand's leaves no window.\n    -- An unknown tag gives a NULL F, which refuses. Checked here on the\n    -- statement's clock and again at commit (check_v6_draw_failed_commit).\n    IF (OLD.lock_schema_version IS NOT NULL OR OLD.entropy_composition IS NOT NULL)\n       AND NEW.status = 'failed' AND OLD.status IS DISTINCT FROM 'failed'\n       AND (now_utc < wallop_v6_fetch_deadline(OLD.entropy_composition, OLD.weather_time,\n                                               OLD.freq_start)) IS NOT TRUE THEN\n      RAISE EXCEPTION 'a v6 draw can''t fail once its fetch deadline has passed';\n    END IF;\n\n    IF OLD.lock_schema_version = '6' AND OLD.status <> 'completed' AND NEW.status = 'completed' THEN\n      IF (NEW.executed_at >= wallop_quicknet_pub_time(OLD.drand_round)) IS NOT TRUE THEN\n        RAISE EXCEPTION 'v6 draw cannot complete before its drand round publishes';\n      END IF;\n\n      IF OLD.entropy_composition = wallop_landobs_tag() THEN\n        -- Exactly one of three states. VOLATILE reads, after this\n        -- row's lock, so a store that held it is seen once it ends.\n        SELECT station, value, observation_time INTO obs FROM weather_observations\n          WHERE observation_time = OLD.weather_time;\n        IF FOUND THEN\n          -- (a) The hour's reading. The window is not consulted,\n          -- even if one is stored.\n          IF NEW.weather_value IS DISTINCT FROM obs.value\n             OR NEW.weather_observation_time IS DISTINCT FROM obs.observation_time\n             OR NEW.weather_fallback_reason IS NOT NULL\n             OR NEW.freq_value IS NOT NULL OR NEW.freq_fallback_reason IS NOT NULL THEN\n            RAISE EXCEPTION 'v6 draw must complete with its stored observation';\n          END IF;\n        ELSE\n          -- No reading: the weather falls back, a minute past F, so a\n          -- store that commits at F is visible to every draw first.\n          IF NEW.weather_value IS NOT NULL OR NEW.weather_observation_time IS NOT NULL\n             OR NEW.weather_fallback_reason IS DISTINCT FROM wallop_landobs_fallback_reason()\n             OR (now_utc > OLD.weather_time + wallop_landobs_fetch_window() + interval '1 minute')\n                IS NOT TRUE THEN\n            RAISE EXCEPTION 'v6 draw may fall back only after the fetch deadline with nothing stored';\n          END IF;\n          SELECT value INTO win FROM frequency_windows WHERE freq_start = OLD.freq_start;\n          IF FOUND THEN\n            -- (b) T's window.\n            IF NEW.freq_value IS DISTINCT FROM win.value OR NEW.freq_fallback_reason IS NOT NULL THEN\n              RAISE EXCEPTION 'v6 draw must complete with its stored frequency window';\n            END IF;\n          -- (c) Neither, and M past T's fetch deadline too.\n          ELSIF NEW.freq_value IS NOT NULL\n                OR NEW.freq_fallback_reason IS DISTINCT FROM wallop_freq_fallback_reason()\n                OR (now_utc > wallop_freq_fetch_deadline(OLD.freq_start) + wallop_freq_margin())\n                   IS NOT TRUE THEN\n            RAISE EXCEPTION 'v6 draw may fall back only after the fetch deadline with nothing stored';\n          END IF;\n        END IF;\n      ELSIF OLD.entropy_composition = wallop_freq_tag() THEN\n        -- Its weather columns are refused above, at every status.\n        -- One row per T: every draw of T completes with it. VOLATILE,\n        -- so this read takes a fresh snapshot once a store holding\n        -- this row's lock has ended.\n        SELECT value INTO win FROM frequency_windows WHERE freq_start = OLD.freq_start;\n        IF FOUND THEN\n          IF NEW.freq_value IS DISTINCT FROM win.value OR NEW.freq_fallback_reason IS NOT NULL THEN\n            RAISE EXCEPTION 'v6 draw must complete with its stored frequency window';\n          END IF;\n        -- The fallback waits M past F, so a store that commits at F\n        -- is visible to every draw of T. Execution is at or after\n        -- pub(R) >= F + M anyway.\n        ELSIF NEW.freq_value IS NOT NULL\n              OR NEW.freq_fallback_reason IS DISTINCT FROM wallop_freq_fallback_reason()\n              OR (now_utc > wallop_freq_fetch_deadline(OLD.freq_start) + wallop_freq_margin())\n                 IS NOT TRUE THEN\n          RAISE EXCEPTION 'v6 draw may fall back only after the fetch deadline with nothing stored';\n        END IF;\n      ELSE\n        RAISE EXCEPTION 'no completion rules for entropy_composition %', OLD.entropy_composition;\n      END IF;\n    END IF;\n\n    RETURN NEW;\n  END;\n  $fn$ LANGUAGE plpgsql;\n  DROP TRIGGER IF EXISTS draws_v6_guard ON draws;\n  CREATE TRIGGER draws_v6_guard BEFORE UPDATE OR DELETE ON draws\n    FOR EACH ROW EXECUTE FUNCTION guard_v6_draw();\nEND\n$do$\n"
+    },
+    {
+      "code?": false,
+      "down": "DO $do$\nBEGIN\n  DROP TRIGGER IF EXISTS draws_v6_failed_commit ON draws;\n  DROP FUNCTION IF EXISTS check_v6_draw_failed_commit();\nEND\n$do$\n",
+      "name": "check_v6_draw_failed_commit",
+      "up": "DO $do$\nBEGIN\n  CREATE OR REPLACE FUNCTION check_v6_draw_failed_commit() RETURNS trigger AS $fn$\n  BEGIN\n    IF (clock_timestamp() AT TIME ZONE 'UTC'\n        < wallop_v6_fetch_deadline(NEW.entropy_composition, NEW.weather_time, NEW.freq_start))\n       IS NOT TRUE THEN\n      RAISE EXCEPTION 'a v6 draw can''t fail once its fetch deadline has passed';\n    END IF;\n\n    RETURN NULL;\n  END;\n  $fn$ LANGUAGE plpgsql;\n  DROP TRIGGER IF EXISTS draws_v6_failed_commit ON draws;\n  CREATE CONSTRAINT TRIGGER draws_v6_failed_commit\n    AFTER UPDATE ON draws\n    DEFERRABLE INITIALLY DEFERRED\n    FOR EACH ROW\n    WHEN (NEW.status = 'failed' AND OLD.status IS DISTINCT FROM 'failed'\n          AND (NEW.lock_schema_version IS NOT NULL OR NEW.entropy_composition IS NOT NULL))\n    EXECUTE FUNCTION check_v6_draw_failed_commit();\nEND\n$do$\n"
+    },
+    {
+      "code?": false,
+      "down": "DO $do$\nBEGIN\n  DROP TRIGGER IF EXISTS draws_v6_completed_commit ON draws;\n  DROP FUNCTION IF EXISTS check_v6_draw_completed_commit();\nEND\n$do$\n",
+      "name": "check_v6_draw_completed_commit",
+      "up": "DO $do$\nBEGIN\n  CREATE OR REPLACE FUNCTION check_v6_draw_completed_commit() RETURNS trigger AS $fn$\n  BEGIN\n    IF NOT EXISTS (SELECT 1 FROM execution_receipts WHERE draw_id = NEW.id) THEN\n      RAISE EXCEPTION 'a v6 draw must commit its execution receipt with its completion';\n    END IF;\n\n    RETURN NULL;\n  END;\n  $fn$ LANGUAGE plpgsql;\n  DROP TRIGGER IF EXISTS draws_v6_completed_commit ON draws;\n  CREATE CONSTRAINT TRIGGER draws_v6_completed_commit\n    AFTER UPDATE ON draws\n    DEFERRABLE INITIALLY DEFERRED\n    FOR EACH ROW\n    WHEN (NEW.status = 'completed' AND OLD.status IS DISTINCT FROM 'completed'\n          AND (NEW.lock_schema_version IS NOT NULL OR NEW.entropy_composition IS NOT NULL))\n    EXECUTE FUNCTION check_v6_draw_completed_commit();\nEND\n$do$\n"
+    },
+    {
+      "code?": false,
+      "down": "DO $do$\nBEGIN\n  DROP TRIGGER IF EXISTS draws_v6_lock_commit ON draws;\n  DROP FUNCTION IF EXISTS check_v6_draw_lock_commit();\nEND\n$do$\n",
+      "name": "check_v6_draw_lock_commit",
+      "up": "DO $do$\nBEGIN\n  CREATE OR REPLACE FUNCTION check_v6_draw_lock_commit() RETURNS trigger AS $fn$\n  BEGIN\n    IF NEW.entropy_composition IS NOT DISTINCT FROM wallop_landobs_tag() THEN\n      IF wallop_landobs_lock_allowed(clock_timestamp() AT TIME ZONE 'UTC', NEW.weather_time)\n         IS NOT TRUE THEN\n        RAISE EXCEPTION 'v6 lock is too late for this draw time';\n      END IF;\n    ELSIF NEW.entropy_composition IS NOT DISTINCT FROM wallop_freq_tag() THEN\n      IF wallop_freq_lock_allowed(clock_timestamp() AT TIME ZONE 'UTC', NEW.freq_start)\n         IS NOT TRUE THEN\n        RAISE EXCEPTION 'v6 lock is too late for this draw time';\n      END IF;\n    ELSE\n      RAISE EXCEPTION 'no lock rules for entropy_composition %', NEW.entropy_composition;\n    END IF;\n\n    RETURN NULL;\n  END;\n  $fn$ LANGUAGE plpgsql;\n  DROP TRIGGER IF EXISTS draws_v6_lock_commit ON draws;\n  CREATE CONSTRAINT TRIGGER draws_v6_lock_commit\n    AFTER UPDATE ON draws\n    DEFERRABLE INITIALLY DEFERRED\n    FOR EACH ROW\n    WHEN (OLD.status = 'open' AND NEW.status IS DISTINCT FROM 'open'\n          AND (NEW.lock_schema_version IS NOT NULL OR NEW.entropy_composition IS NOT NULL))\n    EXECUTE FUNCTION check_v6_draw_lock_commit();\nEND\n$do$\n"
+    },
+    {
+      "code?": false,
+      "down": "DO $do$\nBEGIN\n  DROP TRIGGER IF EXISTS operator_receipts_v6_guard ON operator_receipts;\n  DROP FUNCTION IF EXISTS guard_v6_lock_receipt();\nEND\n$do$\n",
+      "name": "guard_v6_lock_receipt",
+      "up": "DO $do$\nBEGIN\n  CREATE OR REPLACE FUNCTION guard_v6_lock_receipt() RETURNS trigger AS $fn$\n  DECLARE\n    d draws%ROWTYPE;\n  BEGIN\n    -- FOR SHARE waits for an in-flight UPDATE of the draw (a lock) to\n    -- finish and then reads the committed row, so a receipt can't slip\n    -- in beside a concurrent lock. It also holds off a later lock\n    -- UPDATE until this transaction ends, so the draws guard then sees\n    -- this receipt.\n    SELECT * INTO d FROM draws WHERE id = NEW.draw_id FOR SHARE;\n\n    IF d.lock_schema_version IS NULL AND d.entropy_composition IS NULL THEN\n      IF convert_from(NEW.payload_jcs, 'UTF8')::jsonb->>'schema_version' IS NOT DISTINCT FROM '6' THEN\n        RAISE EXCEPTION 'a schema 6 lock receipt needs a draw locked under schema 6';\n      END IF;\n      RETURN NEW;\n    END IF;\n\n    PERFORM wallop_check_v6_lock_receipt(d, NEW);\n    RETURN NEW;\n  END;\n  $fn$ LANGUAGE plpgsql;\n  DROP TRIGGER IF EXISTS operator_receipts_v6_guard ON operator_receipts;\n  CREATE TRIGGER operator_receipts_v6_guard BEFORE INSERT ON operator_receipts\n    FOR EACH ROW EXECUTE FUNCTION guard_v6_lock_receipt();\nEND\n$do$\n"
+    },
+    {
+      "code?": false,
+      "down": "DO $do$\nBEGIN\n  DROP TRIGGER IF EXISTS draws_v6_insert_guard ON draws;\n  DROP FUNCTION IF EXISTS guard_v6_draw_insert();\nEND\n$do$\n",
+      "name": "guard_v6_draw_insert",
+      "up": "DO $do$\nBEGIN\n  CREATE OR REPLACE FUNCTION guard_v6_draw_insert() RETURNS trigger AS $fn$\n  BEGIN\n    IF NEW.lock_schema_version IS NOT NULL OR NEW.entropy_composition IS NOT NULL THEN\n      RAISE EXCEPTION 'lock_schema_version and entropy_composition are set only when a draw leaves open';\n    END IF;\n    IF NEW.freq_start IS NOT NULL OR NEW.freq_value IS NOT NULL\n       OR NEW.freq_fallback_reason IS NOT NULL THEN\n      RAISE EXCEPTION 'frequency fields are set only on lock schema 6 draws';\n    END IF;\n    RETURN NEW;\n  END;\n  $fn$ LANGUAGE plpgsql;\n  DROP TRIGGER IF EXISTS draws_v6_insert_guard ON draws;\n  CREATE TRIGGER draws_v6_insert_guard BEFORE INSERT ON draws\n    FOR EACH ROW EXECUTE FUNCTION guard_v6_draw_insert();\nEND\n$do$\n"
+    },
+    {
+      "code?": false,
+      "down": "DO $do$\nBEGIN\n  DROP TRIGGER IF EXISTS execution_receipts_v6_guard ON execution_receipts;\n  DROP FUNCTION IF EXISTS guard_v6_execution_receipt();\nEND\n$do$\n",
+      "name": "guard_v6_execution_receipt",
+      "up": "DO $do$\nBEGIN\n  CREATE OR REPLACE FUNCTION guard_v6_execution_receipt() RETURNS trigger AS $fn$\n  DECLARE\n    now_utc timestamp := statement_timestamp() AT TIME ZONE 'UTC';\n    d draws%ROWTYPE;\n    pair_schema text;\n    pair_tag text;\n    l operator_receipts%ROWTYPE;\n    raw text;\n    p jsonb;\n    lp jsonb;\n    obs RECORD;\n    win RECORD;\n    win_value text;\n    win_stored boolean;\n    keys text[];\n    stored boolean;\n    field text;\n    bad text;\n  BEGIN\n    -- The draw row FOR SHARE, on every path, the forecast one\n    -- included. It waits for an in-flight UPDATE of the draw (a lock\n    -- or a completion) and then reads the committed row, and it holds\n    -- off a later lock until this transaction ends, so the lock's\n    -- check for a stored execution receipt sees this one. Under\n    -- REPEATABLE READ, a draw changed since the snapshot (a lock\n    -- committed after it) makes this a serialization failure, never\n    -- a stale NULL pair. A forecast completion inserts its receipt in\n    -- the transaction that already holds the row's lock, so this\n    -- takes nothing new there.\n    SELECT * INTO d FROM draws WHERE id = NEW.draw_id FOR SHARE;\n    pair_schema := d.lock_schema_version;\n    pair_tag := d.entropy_composition;\n\n    IF pair_schema IS NULL AND pair_tag IS NULL THEN\n      BEGIN\n        p := convert_from(NEW.payload_jcs, 'UTF8')::jsonb;\n      EXCEPTION WHEN others THEN\n        RETURN NEW;\n      END;\n      IF jsonb_typeof(p) = 'object' AND p->>'schema_version' IS NOT DISTINCT FROM '5' THEN\n        RAISE EXCEPTION 'a schema 5 execution receipt needs a draw locked under schema 6';\n      END IF;\n      RETURN NEW;\n    END IF;\n\n    -- The stored window or observation (or its absence) is read\n    -- below: under REPEATABLE READ or SERIALIZABLE that read could\n    -- see a snapshot from before the store committed.\n    IF current_setting('transaction_isolation') IS DISTINCT FROM 'read committed' THEN\n      RAISE EXCEPTION 'a v6 write must run under READ COMMITTED isolation';\n    END IF;\n\n    -- d was read FOR SHARE above. A completed draw can't change after.\n\n    -- The tag's rules, or a refusal: nothing falls through to\n    -- another tag.\n    IF d.lock_schema_version IS DISTINCT FROM '6'\n       OR (d.entropy_composition IS DISTINCT FROM wallop_landobs_tag()\n           AND d.entropy_composition IS DISTINCT FROM wallop_freq_tag()) THEN\n      -- The second test is belt and braces: the draws guard lets a\n      -- schema 6 draw carry only these two tags. Kept so a tag added\n      -- there without rules here is refused, not passed.\n      RAISE EXCEPTION 'no execution receipt rules for (%, %)',\n        d.lock_schema_version, d.entropy_composition;\n    END IF;\n    keys := wallop_v6_exec_keys();\n\n    raw := convert_from(NEW.payload_jcs, 'UTF8');\n    p := raw::jsonb;\n\n    IF p->>'schema_version' IS DISTINCT FROM '5'\n       OR p->>'entropy_composition' IS DISTINCT FROM d.entropy_composition THEN\n      RAISE EXCEPTION 'a v6 execution receipt must be schema 5 and carry its draw''s entropy_composition';\n    END IF;\n\n    -- Exactly the tag's keys, so no extra or look-alike field rides\n    -- along. A duplicate key is not seen here (jsonb keeps the last\n    -- value); the verifier refuses it.\n    IF jsonb_typeof(p) IS DISTINCT FROM 'object'\n       OR (SELECT array_agg(k ORDER BY k COLLATE \"C\") FROM jsonb_object_keys(p) k)\n          IS DISTINCT FROM keys THEN\n      RAISE EXCEPTION 'v6 execution receipt keys are not the tag''s key set';\n    END IF;\n\n    IF d.status IS DISTINCT FROM 'completed' THEN\n      RAISE EXCEPTION 'a v6 execution receipt needs its draw completed first';\n    END IF;\n\n    SELECT * INTO l FROM operator_receipts WHERE draw_id = d.id;\n    IF NOT FOUND THEN\n      RAISE EXCEPTION 'a v6 execution receipt needs its draw''s lock receipt';\n    END IF;\n    lp := convert_from(l.payload_jcs, 'UTF8')::jsonb;\n\n    bad := CASE\n      WHEN p->>'draw_id' IS DISTINCT FROM d.id::text OR NEW.draw_id IS DISTINCT FROM d.id\n        THEN 'draw_id'\n      WHEN p->>'operator_id' IS DISTINCT FROM d.operator_id::text\n           OR NEW.operator_id IS DISTINCT FROM d.operator_id\n        THEN 'operator_id'\n      WHEN p->>'operator_slug' IS DISTINCT FROM (SELECT slug::text FROM operators WHERE id = d.operator_id)\n           OR p->'operator_slug' IS DISTINCT FROM lp->'operator_slug'\n        THEN 'operator_slug'\n      WHEN p->'sequence' IS DISTINCT FROM to_jsonb(d.operator_sequence)\n           OR NEW.sequence IS DISTINCT FROM d.operator_sequence\n        THEN 'sequence'\n      WHEN p->>'entry_hash' IS DISTINCT FROM d.entry_hash THEN 'entry_hash'\n      WHEN p->>'lock_receipt_hash' IS DISTINCT FROM encode(sha256(l.payload_jcs), 'hex')\n           OR NEW.lock_receipt_hash IS DISTINCT FROM encode(sha256(l.payload_jcs), 'hex')\n        THEN 'lock_receipt_hash'\n      WHEN jsonb_typeof(p->'fair_pick_version') IS DISTINCT FROM 'string'\n           OR p->'fair_pick_version' IS DISTINCT FROM lp->'fair_pick_version'\n        THEN 'fair_pick_version'\n      WHEN p->>'drand_chain' IS DISTINCT FROM d.drand_chain\n           OR d.drand_chain IS DISTINCT FROM wallop_quicknet_chain_hash()\n        THEN 'drand_chain'\n      WHEN p->'drand_round' IS DISTINCT FROM to_jsonb(d.drand_round) THEN 'drand_round'\n      WHEN p->>'drand_randomness' IS DISTINCT FROM d.drand_randomness THEN 'drand_randomness'\n      WHEN p->>'drand_signature' IS DISTINCT FROM d.drand_signature THEN 'drand_signature'\n      WHEN p->>'seed' IS DISTINCT FROM d.seed THEN 'seed'\n      WHEN p->'results' IS DISTINCT FROM\n           (SELECT jsonb_agg(x->'entry_id' ORDER BY (x->>'position')::bigint) FROM unnest(d.results) x)\n        THEN 'results'\n      WHEN wallop_parse_rfc3339_usec(p->>'executed_at') IS DISTINCT FROM d.executed_at\n        THEN 'executed_at'\n      WHEN p->>'signing_key_id' IS DISTINCT FROM NEW.signing_key_id THEN 'signing_key_id'\n    END;\n    IF bad IS NOT NULL THEN\n      RAISE EXCEPTION 'v6 execution receipt field % does not match the draw', bad;\n    END IF;\n\n    -- drand's randomness is sha256 of its BLS signature (both hex,\n    -- lower case, as the receipt carries them).\n    IF (CASE WHEN p->>'drand_signature' ~ '^([0-9a-f][0-9a-f])+$'\n             THEN encode(sha256(decode(p->>'drand_signature', 'hex')), 'hex') END)\n       IS DISTINCT FROM p->>'drand_randomness' THEN\n      RAISE EXCEPTION 'v6 execution receipt drand_randomness is not sha256 of drand_signature';\n    END IF;\n\n    -- jsonb compares 7.0 equal to 7: the verifier refuses anything but\n    -- a canonical integer.\n    FOREACH field IN ARRAY ARRAY['sequence', 'drand_round'] LOOP\n      IF wallop_receipt_integer(raw, p, field) IS NOT TRUE THEN\n        RAISE EXCEPTION 'v6 execution receipt field % must be a canonical positive integer', field;\n      END IF;\n    END LOOP;\n\n    -- The key must have been in the keyring at executed_at (the\n    -- verifier's rule) and eligible to sign by then (the signer's).\n    IF NOT EXISTS (SELECT 1 FROM infrastructure_signing_keys k\n                   WHERE k.key_id = NEW.signing_key_id\n                     AND k.inserted_at <= d.executed_at AND k.valid_from <= d.executed_at) THEN\n      RAISE EXCEPTION 'v6 execution receipt signing key was not valid at executed_at';\n    END IF;\n\n    IF d.entropy_composition IS NOT DISTINCT FROM wallop_landobs_tag() THEN\n      -- Mirrors the completion guard field by field: one of three states.\n      SELECT station, value, observation_time INTO obs FROM weather_observations\n        WHERE observation_time = d.weather_time;\n      stored := FOUND;\n      win_stored := false;\n      IF stored THEN\n        bad := CASE\n          WHEN p->>'weather_station' IS DISTINCT FROM obs.station THEN 'weather_station'\n          WHEN jsonb_typeof(p->'weather_value') IS DISTINCT FROM 'string'\n               OR p->>'weather_value' IS DISTINCT FROM obs.value\n            THEN 'weather_value'\n          WHEN wallop_parse_rfc3339_usec(p->>'weather_observation_time')\n               IS DISTINCT FROM obs.observation_time\n            THEN 'weather_observation_time'\n          WHEN p->'weather_fallback_reason' IS DISTINCT FROM 'null'::jsonb\n            THEN 'weather_fallback_reason'\n          WHEN p->'freq_value' IS DISTINCT FROM 'null'::jsonb THEN 'freq_value'\n          WHEN p->'freq_fallback_reason' IS DISTINCT FROM 'null'::jsonb\n            THEN 'freq_fallback_reason'\n        END;\n      ELSE\n        SELECT value INTO win_value FROM frequency_windows WHERE freq_start = d.freq_start;\n        win_stored := FOUND;\n        bad := CASE\n          WHEN p->>'weather_station' IS DISTINCT FROM wallop_landobs_primary_station()\n            THEN 'weather_station'\n          WHEN p->'weather_value' IS DISTINCT FROM 'null'::jsonb THEN 'weather_value'\n          WHEN p->'weather_observation_time' IS DISTINCT FROM 'null'::jsonb\n            THEN 'weather_observation_time'\n          WHEN jsonb_typeof(p->'weather_fallback_reason') IS DISTINCT FROM 'string'\n               OR p->>'weather_fallback_reason' IS DISTINCT FROM wallop_landobs_fallback_reason()\n            THEN 'weather_fallback_reason'\n          WHEN win_stored AND (jsonb_typeof(p->'freq_value') IS DISTINCT FROM 'string'\n                               OR p->>'freq_value' IS DISTINCT FROM win_value)\n            THEN 'freq_value'\n          WHEN win_stored AND p->'freq_fallback_reason' IS DISTINCT FROM 'null'::jsonb\n            THEN 'freq_fallback_reason'\n          WHEN NOT win_stored AND p->'freq_value' IS DISTINCT FROM 'null'::jsonb\n            THEN 'freq_value'\n          WHEN NOT win_stored\n               AND (jsonb_typeof(p->'freq_fallback_reason') IS DISTINCT FROM 'string'\n                    OR p->>'freq_fallback_reason' IS DISTINCT FROM wallop_freq_fallback_reason())\n            THEN 'freq_fallback_reason'\n        END;\n      END IF;\n      IF bad IS NOT NULL THEN\n        RAISE EXCEPTION 'v6 execution receipt field % does not match the stored observation', bad;\n      END IF;\n\n      -- Both clocks, as in the completion guard.\n      IF NOT stored\n         AND (now_utc > d.weather_time + wallop_landobs_fetch_window() + interval '1 minute')\n             IS NOT TRUE THEN\n        RAISE EXCEPTION 'a v6 execution receipt may fall back only after the fetch deadline with nothing stored';\n      END IF;\n      IF NOT stored AND NOT win_stored\n         AND (now_utc > wallop_freq_fetch_deadline(d.freq_start) + wallop_freq_margin())\n             IS NOT TRUE THEN\n        RAISE EXCEPTION 'a v6 execution receipt may fall back only after the fetch deadline with nothing stored';\n      END IF;\n    ELSIF d.entropy_composition IS NOT DISTINCT FROM wallop_freq_tag() THEN\n      -- T's one stored window, or else the fallback rule. No weather\n      -- field is set under this tag.\n      SELECT value INTO win FROM frequency_windows WHERE freq_start = d.freq_start;\n      stored := FOUND;\n      IF stored THEN\n        bad := CASE\n          WHEN p->'weather_station' IS DISTINCT FROM 'null'::jsonb THEN 'weather_station'\n          WHEN p->'weather_value' IS DISTINCT FROM 'null'::jsonb THEN 'weather_value'\n          WHEN p->'weather_observation_time' IS DISTINCT FROM 'null'::jsonb\n            THEN 'weather_observation_time'\n          WHEN p->'weather_fallback_reason' IS DISTINCT FROM 'null'::jsonb\n            THEN 'weather_fallback_reason'\n          WHEN jsonb_typeof(p->'freq_value') IS DISTINCT FROM 'string'\n               OR p->>'freq_value' IS DISTINCT FROM win.value\n            THEN 'freq_value'\n          WHEN p->'freq_fallback_reason' IS DISTINCT FROM 'null'::jsonb\n            THEN 'freq_fallback_reason'\n        END;\n      ELSE\n        bad := CASE\n          WHEN p->'weather_station' IS DISTINCT FROM 'null'::jsonb THEN 'weather_station'\n          WHEN p->'weather_value' IS DISTINCT FROM 'null'::jsonb THEN 'weather_value'\n          WHEN p->'weather_observation_time' IS DISTINCT FROM 'null'::jsonb\n            THEN 'weather_observation_time'\n          WHEN p->'weather_fallback_reason' IS DISTINCT FROM 'null'::jsonb\n            THEN 'weather_fallback_reason'\n          WHEN p->'freq_value' IS DISTINCT FROM 'null'::jsonb THEN 'freq_value'\n          WHEN jsonb_typeof(p->'freq_fallback_reason') IS DISTINCT FROM 'string'\n               OR p->>'freq_fallback_reason' IS DISTINCT FROM wallop_freq_fallback_reason()\n            THEN 'freq_fallback_reason'\n        END;\n      END IF;\n      IF bad IS NOT NULL THEN\n        RAISE EXCEPTION 'v6 execution receipt field % does not match the stored frequency window', bad;\n      END IF;\n\n      -- Mirrors the completion guard: nothing stored, and M past F.\n      IF NOT stored\n         AND (now_utc > wallop_freq_fetch_deadline(d.freq_start) + wallop_freq_margin())\n             IS NOT TRUE THEN\n        RAISE EXCEPTION 'a v6 execution receipt may fall back only after the fetch deadline with nothing stored';\n      END IF;\n    ELSE\n      RAISE EXCEPTION 'no execution receipt rules for (%, %)',\n        d.lock_schema_version, d.entropy_composition;\n    END IF;\n\n    RETURN NEW;\n  END;\n  $fn$ LANGUAGE plpgsql;\n  DROP TRIGGER IF EXISTS execution_receipts_v6_guard ON execution_receipts;\n  CREATE TRIGGER execution_receipts_v6_guard BEFORE INSERT ON execution_receipts\n    FOR EACH ROW EXECUTE FUNCTION guard_v6_execution_receipt();\nEND\n$do$\n"
+    }
+  ],
+  "has_create_action": true,
+  "hash": "E1AD45FCA89473BD7F1FB07699039B2DF74A80EA6955BBA59C0C9D3A83F608A7",
+  "identities": [],
+  "multitenancy": {
+    "attribute": null,
+    "global": null,
+    "strategy": null
+  },
+  "repo": "Elixir.WallopCore.Repo",
+  "schema": null,
+  "table": "draws"
+}

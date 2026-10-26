@@ -18,15 +18,34 @@ config :wallop_core,
 # Consuming apps MUST override this with a different prefix — see README.
 config :wallop_core, Oban,
   repo: WallopCore.Repo,
-  queues: [entropy: 10, webhooks: 5, default: 5],
+  # Each entropy source has its own queue, so one source being slow (a
+  # trickled Elexon response, a hostile drand relay) never holds another's
+  # slots. :entropy is the forecast EntropyWorker; :weather the Land Obs
+  # fetch; :frequency the grid-frequency window polls; :v6_execution the
+  # schema 6 executions (ObservationDrawWorker, both tags).
+  # The queue limits add up to 36, more than the Repo pool (POOL_SIZE,
+  # default 20). That is safe because jobs check a connection out per query,
+  # and no job wraps an HTTP call in a transaction or a checkout: the
+  # fetching workers refuse to fetch inside a transaction, and a test
+  # rejects checkouts in lib. Size the pool for queries running at the same
+  # time, not for jobs.
+  queues: [entropy: 10, webhooks: 5, default: 5, weather: 5, frequency: 6, v6_execution: 5],
   plugins: [
     {Oban.Plugins.Cron,
      crontab: [
        {"0 * * * *", WallopCore.Entropy.ExpiryWorker},
-       {"30 3 * * *", WallopCore.Transparency.AnchorWorker}
+       {"30 3 * * *", WallopCore.Transparency.AnchorWorker},
+       {"*/10 * * * *", WallopCore.Entropy.StuckDrawRedriver},
+       # Runs on the weather queue: only the node that fetches records it.
+       {"*/10 * * * *", WallopCore.Weather.ObservationReadinessWorker}
      ]},
     {Oban.Plugins.Lifeline, rescue_after: :timer.minutes(2)}
   ]
+
+# Forecast draws whose execution job is gone are re-driven only when this is
+# true. Off by default: turn it on only after checking for stuck forecast
+# draws, which would otherwise run on the next deploy, late.
+config :wallop_core, :redrive_forecast_draws, false
 
 config :wallop_web, WallopWeb.Endpoint,
   url: [host: "localhost"],

@@ -7,6 +7,62 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added: observation weather (lock schema 6 / execution schema 5), per operator
+
+**The forecast protocol is unchanged and stays the default.** Forecast draws (lock schema 5 / execution schema 4) lock, run and verify exactly as before, with the same signed bytes. Nothing about a forecast draw's lock, execution or proof changes until the platform moves its operator.
+
+**ADDED.**
+
+- **The operator setting.** `Operator.draw_protocol` is `forecast` by default, or `observation` (or `frequency`, below). It is set only by the platform, through the admin-only `set_draw_protocol` action; it isn't part of the API. Draws keep the protocol they were locked with, so flipping it never touches a draw in flight.
+- **Observation weather.** An `observation` operator's draws lock under lock schema 6 with entropy tag `drand-quicknet+metoffice-landobs-v1`. The second source is Middle Wallop's Met Office Land Observations reading for a whole hour, stored once per hour before the drand round exists, as `"<t>;<mslp>;<rh>;<vis>"`. If that reading isn't stored by the deadline, the draw uses the GB grid frequency for the same drand round, and if that is missing too, drand alone. The signed execution receipt says which, and `weather_station` is `wmo-03749` throughout. Spec §2.2.3.
+- **`draw_at`** on `PATCH /draws/:id/lock`, for `observation` (and `frequency`) operators only: when the result is due, in whole seconds on drand quicknet's 3-second grid (any whole minute is). Without it, wallop picks the earliest allowed time. A forecast operator sending `draw_at` is refused, and so is an observation operator sending `weather_time`.
+- **`expected_result_at`** on the draw: when the result is due, computed from the committed drand round and not signed. `null` for forecast draws.
+- **A lock that is too late is refused** with `400` `invalid_argument` and `meta.latest_lock_at` (whole seconds, UTC), and the draw stays open. For observation weather the lock must happen by the observation hour minus 46 minutes: for a 20:00 draw, 18:14.
+- **`MET_OFFICE_OBS_API_KEY`** (optional): a Met Office Weather DataHub Land Observations key, needed only on the service that runs the `weather` queue. That service records whether it holds a usable key, at boot and every 10 minutes, in a new one-row table, `observation_readiness` (a yes or no and the database time; never the key). A new observation-weather lock, in whichever service runs it, is refused with `400` `invalid_argument` and no `source.pointer` unless that record says yes and is under 30 minutes old; the draw stays open. Without the key no reading could ever be fetched, so every such draw would fall back. A draw already locked when the key goes away falls back by rule, visibly in its receipt. Forecast and grid-frequency locks don't read it.
+- **`LAND_OBS_DAILY_CAP`** (optional): the most Land Observations calls wallop makes in a UTC day, a whole number from 1 to 900; default 800. Any other value stops the boot, whether it came from the environment or from an embedding app's own config. It is a fuse, not a dial: a full day of polling costs at most 624 calls (26 an hour), so at the default it trips only if something polls more than it should. Below 624, boot logs a warning, because weather draws may then fall back. At the cap no call is made until 00:00 UTC; the hour's draws carry on to their deadline and fall back as for any late reading, and `[:wallop_core, :weather, :cap_reached]` is emitted with one error log a day. Calls are counted in a new table, `land_obs_call_counts`, one row per UTC day on the database clock.
+- **Failed polls are logged** at warning, for both Land Observations and grid frequency. The log line carries only the error's name (`:missing_hour`, `{:unexpected_status, 503}`, `{:transport, :timeout}` and so on), never the key or a response body.
+- **Queues and cron.** New Oban queues `weather` (the hourly Land Observations fetch), `frequency` (the grid-frequency window fetch) and `v6_execution` (the lock schema 6 draws themselves). A cron, `StuckDrawRedriver`, runs every 10 minutes on the `default` queue: it puts back the execution job of a lock schema 6 draw that has lost it, re-inserts a lost hourly fetch job while the hour is still open, and emits `[:wallop_core, :v6, :overdue]` for draws past due. Re-driving forecast draws is off unless `config :wallop_core, :redrive_forecast_draws, true`.
+- **`POOL_SIZE` now defaults to 20** (was 10). The Oban queue limits add up to 36, more than the pool, which is fine because no job holds a connection across an HTTP call: the fetching workers refuse to fetch inside a transaction. Set `POOL_SIZE` explicitly if your Postgres has few connections to spare.
+- **Database.** New table `weather_observations` (one write-once reading per hour). New columns `operators.draw_protocol`, and `draws.lock_schema_version`, `draws.entropy_composition`, `draws.freq_start`, `draws.freq_value` and `draws.freq_fallback_reason`. Triggers and SQL functions enforce the timing, the three states and the receipts on the database's own clock. Run `mix ecto.migrate`.
+- **Vectors.** The shared vectors for both lock schema 6 tags were regenerated with this release (see the vectors entry below).
+
+**CHANGED (spec).** `spec/protocol.md` now describes the forecast protocol as it actually runs: a Site-Specific Forecast value in pascals, a `weather_time` 3–5 minutes after lock unless the operator sends one, and a drand-only fallback decided at execution. Its trust note no longer claims more than a forecast can give.
+
+### Added: grid-frequency draws (lock schema 6 / execution schema 5), per operator
+
+For operators who sell right up to the draw. Weather stays the default; forecast draws are unchanged.
+
+**ADDED.**
+
+- **`frequency`** on `Operator.draw_protocol`, set only by the platform. Draws lock under lock schema 6 with entropy tag `drand-quicknet+elexon-freq-v1`. The second source is 8 readings of the GB grid frequency from Elexon, 15 seconds apart, starting at `freq_start`. The National Grid hums at 50 Hz, give or take a kettle. Spec §2.2.4.
+- **About 7 minutes** (7m00s to 7m12s) from entries closing to the result. `draw_at` and `expected_result_at` work as for observation weather. The lock must happen by 60 seconds before the first reading (19:53:00 for a 20:00:00 draw); a later lock gets the same `400` with `meta.latest_lock_at`.
+- **Three draw fields:** `freq_start`, `freq_value` and `freq_fallback_reason`. If no valid window is stored by its deadline, the draw uses drand alone, with `freq_fallback_reason` `no_frequency_by_deadline`.
+- **Database.** New table `frequency_windows` (one write-once window per start time), in the same migrations. No new key: Elexon's data needs none. It uses the `frequency` and `v6_execution` queues above.
+- Pages and proofs that show grid-frequency readings carry 'Contains BMRS data © Elexon Limited copyright and database right [year]', with the readings' year.
+
+**Operator note.** No forecast draw's bytes change. Never roll the service that runs core jobs back below this release once a lock schema 6 draw has been locked; see MIGRATING.
+
+### Shared vectors for lock v6 / execution v5; older receipt vectors and bundles regenerated on real drand rounds
+
+**ADDED.** `spec/vectors` now freezes both lock v6 / execution v5 entropy tags: the observation-weather tag in all three of its execution states (observation, grid-frequency window, drand only) and the grid-frequency tag. Each tag gets its schedule, its value grammar, its receipts and passing proof bundles, and `proof-bundle-v6-negative.json` holds the bundles that must fail, each with the exact set of verifier steps that fail. The vectors README gains a "Third-party data" section: Elexon BMRS attribution, a note that the Met Office rows are synthetic (with a link to the real sample data), and a note on the drand beacons.
+
+**CHANGED (corrective).** `lock-receipt.json`, `lock-receipt-v5.json`, `cross-receipt-linkage.json` and `cross-receipt-linkage-v5.json` now commit to real quicknet rounds published after their `locked_at`; only `drand_round` and the expected hashes changed. `proof-bundle.json` and `proof-bundle-drand-only.json` are rebuilt as lock 5 / execution 4 bundles on a real quicknet beacon, signed by the deterministic vector keys and carrying no inline keys. Consumers of `spec/vectors` must bump their pin.
+
+**Operator note.** No protocol change and no change to signed bytes for live draws. `ProofBundle.assemble/1` is the pure half of `ProofBundle.build/1`; the live `/proof/:id.json` bytes are unchanged.
+
+### drand signatures are checked on observation-weather draws; building wallop_core needs Rust
+
+**CHANGED.** For observation-weather draws, core now checks each drand beacon's BLS signature against quicknet's public key before using it. It also checks that the chain is quicknet, that the round is the one asked for, and that the randomness is sha256 of the signature. A relay that serves a forged or malformed beacon is treated like any other bad relay: the next relay is asked. If every relay fails, it is a transient failure that retries, and the draw is never marked failed. Forecast draws are unchanged in this release.
+
+**BUILD.** The check is a Rust NIF (`apps/wallop_core/native/drand_bls`) that wraps the `drand-verify` crate. It is built from source when wallop_core compiles, so:
+
+- **Building wallop_core needs a Rust toolchain, 1.91 or later.** 1.94.1 is pinned in the crate's `rust-toolchain.toml`, in the Dockerfile and in CI. Without `cargo` on the `PATH`, compilation stops and says so.
+- **cargo needs network access** the first time it builds, to fetch crates. The crates come only from the committed `Cargo.lock`; if the lock is out of date, compilation stops.
+- **The app refuses to boot without a working NIF.** At start-up it checks that a known quicknet round verifies and that a forged one doesn't. A node that can't check signatures doesn't run draws.
+- An unused `drand_verify.so` also ships in `priv/native`, next to `drand_bls.so`. The `drand-verify` crate builds a library of its own, and Rustler copies every library it builds. It is never loaded.
+
+**Operator note.** No migration, no protocol change and no change to signed bytes. If you build your own image, add a Rust toolchain to the build stage; the runtime image needs nothing new.
+
 ### The monthly quota is gone
 
 **BREAKING.** The monthly draw quota is removed:

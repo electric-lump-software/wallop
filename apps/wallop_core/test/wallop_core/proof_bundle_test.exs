@@ -128,4 +128,41 @@ defmodule WallopCore.ProofBundleTest do
       assert decoded["entropy"]["drand_randomness"] == test_drand_randomness()
     end
   end
+
+  describe "assemble/1" do
+    @parts %{
+      draw_id: "dddddddd-0000-4000-8000-000000000001",
+      entries: [%{"uuid" => "00000000-0000-4000-8000-000000000001", "weight" => 1}],
+      results: [%{"entry_id" => "00000000-0000-4000-8000-000000000001", "position" => 1}],
+      entropy: %{"drand_round" => 1, "drand_randomness" => "aa"},
+      lock_receipt: {~s({"schema_version":"4"}), <<1, 2>>},
+      execution_receipt: {~s({"schema_version":"3"}), <<3, 4>>}
+    }
+
+    test "inline keys go in each wrapper, in JCS key order (lock 4 / exec 2-3 shape)" do
+      json = ProofBundle.assemble(Map.put(@parts, :inline_keys, %{lock: "0a0b", exec: "0c0d"}))
+
+      assert json ==
+               ~s({"draw_id":"dddddddd-0000-4000-8000-000000000001",) <>
+                 ~s("entries":[{"uuid":"00000000-0000-4000-8000-000000000001","weight":1}],) <>
+                 ~s("entropy":{"drand_randomness":"aa","drand_round":1},) <>
+                 ~s("execution_receipt":{"infrastructure_public_key_hex":"0c0d",) <>
+                 ~s("payload_jcs":"{\\"schema_version\\":\\"3\\"}","signature_hex":"0304"},) <>
+                 ~s("lock_receipt":{"operator_public_key_hex":"0a0b",) <>
+                 ~s("payload_jcs":"{\\"schema_version\\":\\"4\\"}","signature_hex":"0102"},) <>
+                 ~s("results":[{"entry_id":"00000000-0000-4000-8000-000000000001","position":1}],) <>
+                 ~s("version":1})
+    end
+
+    test "nil inline keys leave the wrappers with payload and signature only" do
+      decoded =
+        @parts
+        |> Map.put(:inline_keys, %{lock: nil, exec: nil})
+        |> ProofBundle.assemble()
+        |> Jason.decode!()
+
+      assert Map.keys(decoded["lock_receipt"]) == ["payload_jcs", "signature_hex"]
+      assert Map.keys(decoded["execution_receipt"]) == ["payload_jcs", "signature_hex"]
+    end
+  end
 end

@@ -84,6 +84,11 @@ defmodule WallopWeb.Api.DrawsTest do
       assert data["id"] == draw.id
       assert data["type"] == "draw"
       assert data["attributes"]["status"] == "awaiting_entropy"
+
+      # Additive for forecast draws: present, and null.
+      assert Map.fetch(data["attributes"], "expected_result_at") == {:ok, nil}
+      refute Map.has_key?(data["attributes"], "lock_schema_version")
+      refute Map.has_key?(data["attributes"], "entropy_composition")
     end
   end
 

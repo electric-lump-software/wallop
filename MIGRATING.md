@@ -18,7 +18,7 @@ Within each version section, look for `### HTTP API surface`, `### Hex package s
 
 ## Unreleased (next release after 0.28.3)
 
-Removes the monthly draw quota. Replaces the rate limiters with one `WallopWeb.RateLimiter`, adds per-key limits, and signals limit pressure as telemetry and PubSub. `GET /api/v1/draws` is now paged and filterable by status, and API error pointers and messages on the update routes are fixed. **No protocol or signed-byte changes.** Requires a database migration.
+Adds two opt-in draw protocols, observation weather and grid frequency (lock schema 6 / execution schema 5), set per operator by the platform. **The forecast protocol is unchanged and stays the default: forecast draws' signed bytes don't change.** Also removes the monthly draw quota, replaces the rate limiters with one `WallopWeb.RateLimiter`, adds per-key limits, and signals limit pressure as telemetry and PubSub. `GET /api/v1/draws` is now paged and filterable by status, and API error pointers and messages on the update routes are fixed. Requires a database migration.
 
 ### HTTP API surface
 
@@ -28,6 +28,7 @@ Removes the monthly draw quota. Replaces the rate limiters with one `WallopWeb.R
 - Every `429` carries a `Retry-After` header in whole seconds. Per-key and per-IP values are at most 60.
 - The monthly quota is gone, along with its `429` `tier_limit_exceeded`. Nothing in wallop limits draws per month any more.
 - Per-key limits: `api_keys.rate_limit_per_minute` (`nil` means 60, otherwise 1 to 6000). Set it with `set_rate_limit` (or `create`). Going over returns `429` `rate_limit_exceeded` with `meta.limit`.
+- Observation weather and grid frequency: `PATCH /draws/:id/lock` takes `draw_at` for `observation` and `frequency` operators, and refuses it for `forecast` ones. A late lock is a `400` `invalid_argument` with `meta.latest_lock_at`. Draws gain `expected_result_at`, `freq_start`, `freq_value` and `freq_fallback_reason` (all `null` on forecast draws). See `API.md`.
 
 ### Hex package surface
 
@@ -39,6 +40,20 @@ Removes the monthly draw quota. Replaces the rate limiters with one `WallopWeb.R
 - Pressure is now a telemetry event and a PubSub message (`[:wallop_web, :rate_limit, :near_limit | :limited]`; topic `"rate_limit_pressure"` on `WallopCore.PubSub`; `kind` is only `:near_limit` or `:limited`). Nothing is stored; attach a handler if you want to keep it.
 - Optional: share counters across nodes with `RATE_LIMIT_BACKEND=redis` and `REDIS_URL` (Redis 7 or later). Redis without `REDIS_URL` refuses to boot. If the store errors, requests are let through and `[:wallop_web, :rate_limiter, :backend_error]` is emitted; alert on it before enabling Redis.
 - Optional: `config :wallop_web, WallopWeb.IpAuthLimit, max_failures_per_minute:` changes the per-IP failure limit.
+
+### Deployment configuration (observation weather and grid frequency)
+
+- **Run `mix ecto.migrate`.** It adds the `weather_observations` and `frequency_windows` tables, `operators.draw_protocol` (default `forecast`), and `draws.lock_schema_version`, `entropy_composition`, `freq_start`, `freq_value` and `freq_fallback_reason`, with their triggers and SQL functions.
+- **Set `MET_OFFICE_OBS_API_KEY`** (a Met Office Weather DataHub Land Observations key) on the service that runs the `weather` queue, and nowhere else. It's optional, but observation-weather locks depend on it: that service records whether it holds a usable key, at boot and every 10 minutes (`WallopCore.Weather.ObservationReadinessWorker`, in core's cron), and a lock in any service is refused with `400` `invalid_argument` unless that record says yes and is under 30 minutes old. An app that embeds `wallop_core` with an insert-only Oban needs no key and writes nothing. If your Oban config overrides core's, add the readiness worker to the cron of the service that runs the `weather` queue. A draw locked before the key went away falls back by rule, visibly. Forecast and grid-frequency locks don't read the record.
+- **`LAND_OBS_DAILY_CAP`** (optional, 1 to 900, default 800) caps Land Observations calls per UTC day; any other value stops the boot. If several environments share one Met Office key, keep the sum of their caps, plus anything else using the key, within the key's 900 a day. Below 624 (a full day of polling) boot warns that weather draws may fall back. The cap only matters on the service that runs the `weather` queue; an app that embeds `wallop_core` with an insert-only Oban needs nothing. A service that runs the queue without core's `runtime.exs` can set `config :wallop_core, :land_obs_daily_cap, n`; it is checked at start the same way, and a bad value stops the boot.
+- **`POOL_SIZE` defaults to 20** (was 10). Check that your Postgres `max_connections` covers it, plus every other pool on the same database.
+- **Oban queues and cron.** If your Oban config overrides core's, add the `weather`, `frequency` and `v6_execution` queues only if your app executes core jobs. An insert-only Oban instance needs nothing. `WallopCore.Entropy.StuckDrawRedriver` reads Oban's `public` job table only. Run it only in a service whose core Oban uses the `public` prefix; an app with its own prefix must not add it. Without it, a lost execution job is never put back.
+- **Older embedded cores.** An app that embeds a `wallop_core` older than 0.29.0 always locks on the forecast protocol, whatever the operator's setting.
+- **Once any observation-weather or grid-frequency draw has been locked, never roll the service that runs core jobs back below 0.29.0; roll forward.** Older code can neither run nor verify those draws. Record this in your own runbook.
+
+### Verifier surface
+
+- Lock schema 6 / execution schema 5 bundles need `wallop_verifier` 0.17.0 or later. Forecast bundles verify as before.
 
 ### Draw outcomes
 
