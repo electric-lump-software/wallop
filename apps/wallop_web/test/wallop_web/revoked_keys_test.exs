@@ -5,7 +5,7 @@ defmodule WallopWeb.RevokedKeysTest do
 
   alias WallopCore.Protocol
   alias WallopCore.Protocol.Pin
-  alias WallopCore.Resources.{InfrastructureSigningKey, OperatorSigningKey}
+  alias WallopCore.Resources.{InfrastructureSigningKey, OperatorReceipt, OperatorSigningKey}
 
   defp add_infra_key!(offset_seconds) do
     {public_key, private_key} = :crypto.generate_key(:eddsa, :ed25519)
@@ -100,6 +100,42 @@ defmodule WallopWeb.RevokedKeysTest do
       preimage = response |> Map.delete("infrastructure_signature") |> Jcs.encode()
       signature = Base.decode16!(response["infrastructure_signature"], case: :lower)
       assert Pin.verify(preimage, signature, kept_infra.public_key)
+    end
+  end
+
+  describe "the proof page" do
+    test "a draw whose signing key is revoked says it cannot be verified", %{conn: conn} do
+      ensure_infrastructure_key()
+      api_key = create_api_key()
+      draw = api_key |> create_draw() |> execute_draw(test_seed(), api_key)
+
+      receipt =
+        OperatorReceipt
+        |> Ash.Query.filter(draw_id == ^draw.id)
+        |> Ash.read_one!(authorize?: false)
+
+      OperatorSigningKey
+      |> Ash.Query.filter(
+        operator_id == ^receipt.operator_id and key_id == ^receipt.signing_key_id
+      )
+      |> Ash.read_one!(authorize?: false)
+      |> revoke_key!()
+
+      html = conn |> get("/proof/#{draw.id}") |> html_response(200)
+
+      assert html =~ "Cannot verify: signing key not published."
+      refute html =~ "data-verify-btn"
+    end
+
+    test "a draw whose signing keys are published offers verification", %{conn: conn} do
+      ensure_infrastructure_key()
+      api_key = create_api_key()
+      draw = api_key |> create_draw() |> execute_draw(test_seed(), api_key)
+
+      html = conn |> get("/proof/#{draw.id}") |> html_response(200)
+
+      refute html =~ "Cannot verify"
+      assert html =~ "data-verify-btn"
     end
   end
 end

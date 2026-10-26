@@ -111,6 +111,14 @@ for (const [name, bj] of FORECAST) {
     assert.equal(r.verdict, "red")
     noPass(r)
   })
+  await t(`forecast ${name}: revoked keys, absent from the page and the endpoints -> red`, () => {
+    const d = pageFor(bj, V6KEYS)
+    delete d.operatorPublicKeyHex
+    delete d.infraPublicKeyHex
+    const r = core.computeChecks(wasm, d, published(bj, []))
+    assert.equal(r.verdict, "red")
+    noPass(r)
+  })
   await t(`forecast ${name}: page without receipts -> amber, every line "unsigned"`, () => {
     const r = core.computeChecks(wasm, pageFor(bj, V6KEYS, { receipts: false }), null)
     assert.equal(r.verdict, "amber")

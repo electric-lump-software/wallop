@@ -381,6 +381,7 @@ defmodule WallopWeb.ProofLiveTest do
           entries_json: "[]",
           results_json: "[]",
           receipt: %{payload_jcs: "{}", signature: <<1>>},
+          operator_public_key_hex: String.duplicate("ab", 32),
           operator_slug: "acme"
         )
 
