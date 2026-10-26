@@ -176,7 +176,7 @@ defmodule WallopCore.Resources.Draw.LockV6RefusalsTest do
   end
 
   describe "the fetching service's readiness" do
-    @message "observation-weather draws are paused here: no Land Observations key is configured"
+    @message "observation-weather draws are paused here: Land Observations readings can't be fetched right now"
 
     defp assert_refused(draw, key, args) do
       assert {:error, %Ash.Error.Invalid{errors: errors}} = lock(draw, key, args)

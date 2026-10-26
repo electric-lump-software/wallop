@@ -93,7 +93,7 @@ defmodule WallopWeb.Api.LockV6Test do
         assert error["meta"] in [nil, %{}]
 
         assert error["detail"] ==
-                 "observation-weather draws are paused here: no Land Observations key is configured"
+                 "observation-weather draws are paused here: Land Observations readings can't be fetched right now"
       end
 
       assert Ash.get!(WallopCore.Resources.Draw, draw.id, authorize?: false).status == :open

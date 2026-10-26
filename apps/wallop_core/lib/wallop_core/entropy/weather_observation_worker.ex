@@ -247,15 +247,15 @@ defmodule WallopCore.Entropy.WeatherObservationWorker do
       {:ok, _calls} ->
         :ok
 
-      {:error, :daily_cap, calls} ->
-        cap_reached(wt, calls)
+      {:error, :daily_cap, _calls} ->
+        cap_reached(wt)
         {:error, :daily_cap}
     end
   end
 
   # One error log per UTC day, on the first refused reservation; telemetry
   # on every one.
-  defp cap_reached(wt, _calls) do
+  defp cap_reached(wt) do
     cap = LandObsBudget.cap()
 
     if LandObsBudget.claim_cap_report() do

@@ -84,7 +84,7 @@ defmodule WallopCore.Resources.Draw.Changes.ResolveLockSchema do
         InvalidArgument.exception(
           field: nil,
           message:
-            "observation-weather draws are paused here: no Land Observations key is configured"
+            "observation-weather draws are paused here: Land Observations readings can't be fetched right now"
         )
       )
     end

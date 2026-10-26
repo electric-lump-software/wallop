@@ -156,7 +156,7 @@ Pick a later `draw_at` (or send none) and lock again. Without `draw_at` the erro
     {
       "status": "400",
       "code": "invalid_argument",
-      "detail": "observation-weather draws are paused here: no Land Observations key is configured"
+      "detail": "observation-weather draws are paused here: Land Observations readings can't be fetched right now"
     }
   ]
 }
