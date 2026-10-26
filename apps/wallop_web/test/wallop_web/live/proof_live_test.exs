@@ -6,6 +6,7 @@ defmodule WallopWeb.ProofLiveTest do
   import WallopWeb.RateLimitHelpers
 
   alias WallopWeb.Components.EntryCheck
+  alias WallopWeb.Components.VerifyBlock
   alias WallopWeb.Plugs.SelfCheckRateLimit
   alias WallopWeb.RateLimiter
 
@@ -57,18 +58,54 @@ defmodule WallopWeb.ProofLiveTest do
       conn = get(conn, "/proof/#{draw.id}")
       html = html_response(conn, 200)
 
-      # The WASM verifier has no out-of-band key resolution yet, so
-      # every browser-side check is in self-consistency mode. The
-      # disclosure must say so plainly.
-      assert html =~ "Mode: local self-check only"
+      # The browser gate runs in attestable mode: keys come from the
+      # site's own key endpoints, not the bundle, and are not pinned.
+      # The disclosure must say so plainly.
+      assert html =~ "Mode: checked against published keys"
+      refute html =~ "Mode: local self-check only"
 
       # The §4.2.4 caveat must be honestly disclosed: the browser-side
-      # check is internally consistent but does NOT defend against a
-      # tampered mirror, and the user is pointed at the CLI as the
-      # tier-1 path.
+      # check trusts the keys this site serves, so it does NOT defend
+      # against a tampered mirror, and the user is pointed at the CLI
+      # as the tier-1 path.
       assert html =~ "tampered mirror"
       assert html =~ "What does this verify?"
       assert html =~ "wallop-verify --mode attributable"
+    end
+
+    test "points the verify block at the published bundle and key endpoints", %{conn: conn} do
+      api_key = create_api_key()
+      draw = create_draw(api_key, %{})
+      draw = execute_draw(draw, test_seed(), api_key)
+      slug = operator_slug(draw)
+
+      html = conn |> get("/proof/#{draw.id}") |> html_response(200)
+
+      assert_verify_urls(html, draw, slug)
+    end
+
+    test "the published URLs the verify block names actually serve the bundle and keys",
+         %{conn: conn} do
+      api_key = create_api_key()
+      draw = create_draw(api_key, %{})
+      draw = execute_draw(draw, test_seed(), api_key)
+
+      html = conn |> get("/proof/#{draw.id}") |> html_response(200)
+      [bundle_url] = attr_values(html, "data-bundle-url")
+      [op_url] = attr_values(html, "data-operator-keys-url")
+      [infra_url] = attr_values(html, "data-infra-keys-url")
+
+      bundle = build_conn() |> get(bundle_url) |> response(200)
+      assert {:ok, %{"lock_receipt" => _, "execution_receipt" => _}} = Jason.decode(bundle)
+
+      for url <- [op_url, infra_url] do
+        assert %{"keys" => [_ | _] = keys} = build_conn() |> get(url) |> json_response(200)
+
+        for key <- keys do
+          assert Map.keys(key) |> Enum.sort() ==
+                   ~w(inserted_at key_class key_id public_key_hex)
+        end
+      end
     end
 
     test "sets immutable cache headers", %{conn: conn} do
@@ -94,6 +131,38 @@ defmodule WallopWeb.ProofLiveTest do
       assert html =~ draw.entry_hash
       assert html =~ draw.seed
       assert html =~ "fair_pick"
+    end
+  end
+
+  describe "verify block component" do
+    test "names the published bundle and key endpoints when the draw has receipts" do
+      draw = component_draw("d1d1d1d1-0000-4000-8000-000000000001")
+
+      html =
+        render_component(&VerifyBlock.verify_block/1,
+          draw: draw,
+          entries_json: "[]",
+          results_json: "[]",
+          receipt: %{payload_jcs: "{}", signature: <<1>>},
+          operator_slug: "acme"
+        )
+
+      assert_verify_urls(html, draw, "acme")
+    end
+
+    test "names no operator keys endpoint for a draw without a lock receipt" do
+      draw = component_draw("d1d1d1d1-0000-4000-8000-000000000002")
+
+      html =
+        render_component(&VerifyBlock.verify_block/1,
+          draw: draw,
+          entries_json: "[]",
+          results_json: "[]",
+          operator_slug: "acme"
+        )
+
+      assert attr_values(html, "data-operator-keys-url") == []
+      assert attr_values(html, "data-bundle-url") == ["/proof/#{draw.id}/json"]
     end
   end
 
@@ -504,5 +573,32 @@ defmodule WallopWeb.ProofLiveTest do
       html = render(view)
       assert html =~ "Entries Locked"
     end
+  end
+
+  defp operator_slug(draw) do
+    Ash.get!(WallopCore.Resources.Operator, draw.operator_id, authorize?: false).slug
+  end
+
+  defp attr_values(html, attr) do
+    Regex.scan(~r/#{attr}="([^"]*)"/, html, capture: :all_but_first) |> List.flatten()
+  end
+
+  defp assert_verify_urls(html, draw, slug) do
+    assert attr_values(html, "data-bundle-url") == ["/proof/#{draw.id}/json"]
+    assert attr_values(html, "data-operator-keys-url") == ["/operator/#{slug}/keys"]
+    assert attr_values(html, "data-infra-keys-url") == ["/infrastructure/keys"]
+  end
+
+  defp component_draw(id) do
+    %{
+      id: id,
+      entry_count: 0,
+      entry_hash: nil,
+      seed: nil,
+      drand_round: nil,
+      drand_randomness: nil,
+      weather_value: nil,
+      results: []
+    }
   end
 end

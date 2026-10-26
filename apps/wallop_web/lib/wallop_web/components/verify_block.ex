@@ -12,6 +12,7 @@ defmodule WallopWeb.Components.VerifyBlock do
   attr(:execution_receipt, :map, default: nil)
   attr(:operator_public_key_hex, :string, default: nil)
   attr(:infra_public_key_hex, :string, default: nil)
+  attr(:operator_slug, :string, default: nil)
   attr(:verify_command, :map, default: nil)
 
   def verify_block(assigns) do
@@ -39,9 +40,13 @@ defmodule WallopWeb.Components.VerifyBlock do
           data-execution-receipt-jcs={@execution_receipt && @execution_receipt.payload_jcs}
           data-execution-signature-hex={@execution_receipt && Base.encode16(@execution_receipt.signature, case: :lower)}
           data-infra-public-key-hex={@infra_public_key_hex}
+          data-bundle-url={~p"/proof/#{@draw.id}/json"}
+          data-operator-keys-url={@receipt && @operator_slug && ~p"/operator/#{@operator_slug}/keys"}
+          data-infra-keys-url={~p"/infrastructure/keys"}
         >
           <p data-verify-hint class="text-[10px] text-[#999] mb-1.5">
-            Runs locally in your browser via WebAssembly. No server involved.
+            Runs locally in your browser via WebAssembly, over the proof bundle
+            and keys this site publishes.
           </p>
           <button data-verify-btn class="btn btn-neutral btn-sm rounded-lg">
             Verify independently
@@ -57,17 +62,18 @@ defmodule WallopWeb.Components.VerifyBlock do
         <details class="text-[11px] text-[#666] border-t border-cream-border pt-3">
           <summary class="cursor-pointer font-medium text-[#444]">
             <span data-verify-mode-badge class="inline-flex items-center gap-1.5 bg-blue-50 text-blue-800 text-[10px] font-semibold px-2 py-0.5 rounded">
-              Mode: local self-check only
+              Mode: checked against published keys
             </span>
             <span class="ml-2">What does this verify?</span>
           </summary>
           <p class="mt-2 leading-relaxed">
-            The browser-side check confirms the bundle's signatures and maths
-            agree with each other and with the keys embedded in the bundle
-            itself. It catches accidents and casual tampering, but it does
+            The browser-side check fetches the published proof bundle and
+            checks its signatures and maths against the keys this site
+            publishes. It catches accidents and tampering with the bundle,
+            but the keys come from the same place as the bundle, so it does
             <em>not</em> defend against a tampered mirror or a compromised
-            CDN — an attacker serving a forged bundle with their own keys
-            would also pass every step.
+            CDN — an attacker serving a forged bundle alongside their own
+            keys would also pass every step.
           </p>
           <div :if={@verify_command}>
             <p :if={@verify_command.mode == :bundled} class="mt-2 leading-relaxed">
