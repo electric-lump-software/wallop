@@ -224,7 +224,13 @@ defmodule WallopWeb.ProofLiveTest do
       assert html =~ "Middle Wallop (WMO 03749) reported this at "
       assert html =~ "141;1025;85;2432"
       assert html =~ "seed = SHA-256(JCS(entry_hash, drand_randomness, weather_value))"
-      assert html =~ "weather reading declared"
+      assert html =~ "drand round ##{draw.drand_round}. Declared: Middle Wallop&#39;s "
+      assert html =~ "Fewer than drand&#39;s threshold of nodes collude."
+      assert html =~ "The lock time (locked_at) is wallop&#39;s clock."
+
+      assert html =~
+               "Checkable with wallop-verify weather-attest: the value matches the public record"
+
       refute html =~ "result due"
       assert html =~ "a random number from drand: "
       assert html =~ "Middle Wallop reported 141;1025;85;2432 at "
@@ -252,7 +258,7 @@ defmodule WallopWeb.ProofLiveTest do
       assert html =~ "What you're trusting here:"
 
       assert html =~
-               "on a fallback to the grid frequency, Elexon published what the grid actually " <>
+               "On a fallback to the grid frequency, Elexon published what the grid actually " <>
                  "did, and does not revise readings"
 
       assert html =~ "matches Elexon&#39;s readings for T…T+105s"
@@ -313,6 +319,8 @@ defmodule WallopWeb.ProofLiveTest do
                "Elexon published what the grid actually did, and doesn&#39;t revise readings."
 
       assert html =~ "the National Grid&#39;s hum"
+      assert html =~ "wallop&#39;s clock recorded the close time honestly."
+      assert html =~ "Declared: the National Grid&#39;s frequency from "
       refute html =~ "Middle Wallop"
     end
 
@@ -334,7 +342,9 @@ defmodule WallopWeb.ProofLiveTest do
 
       html = conn |> get("/proof/#{draw.id}") |> html_response(200) |> squash()
 
-      assert html =~ "doesn&#39;t match either way a grid-frequency draw can go"
+      assert html =~
+               "doesn&#39;t match either of the two ways a grid-frequency draw can go (the Grid, or drand alone)"
+
       refute html =~ "seed = SHA-256"
       refute html =~ "BMRS"
       refute html =~ "drand did this one on its own"

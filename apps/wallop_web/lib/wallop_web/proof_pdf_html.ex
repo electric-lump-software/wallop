@@ -197,12 +197,14 @@ defmodule WallopWeb.ProofPdfHTML do
     <section class="page">
       <h2>Entropy source</h2>
 
+      <p :if={@weather.source || @weather.observation_hour} class="hint">
+        <strong>The signed receipt says:</strong>
+      </p>
+
       <p :if={@weather.observation_hour} class="hint">
         Weather hour: {Calendar.strftime(@weather.observation_hour, "%Y-%m-%d %H:%M UTC")}.
         Set by the draw's drand round, so nobody gets to pick it.
       </p>
-
-      <p :if={@weather.source} class="hint"><strong>The signed receipt says:</strong></p>
 
       <h3 :if={@weather.source == :weather}>Weather entropy</h3>
       <dl :if={@weather.source == :weather}>
@@ -227,12 +229,15 @@ defmodule WallopWeb.ProofPdfHTML do
           {Calendar.strftime(@weather.freq_start, "%Y-%m-%d %H:%M:%S UTC")}, eight readings 15 seconds apart
         </dd>
       </dl>
-      <div :if={@weather.source == :frequency}>
+      <p :if={@weather.bmrs_line} class="hint">{@weather.bmrs_line}</p>
+
+      <p :if={@weather.check_line} class="hint">{@weather.check_line}</p>
+
+      <div :if={@weather.trust_lines != []} class="trust">
         <p class="hint">What you're trusting here:</p>
         <ul>
           <li :for={line <- @weather.trust_lines}>{line}</li>
         </ul>
-        <p class="hint">{@weather.bmrs_line}</p>
       </div>
 
       <div :if={@weather.out_of_table} class="note">{@weather.out_of_table_text}</div>
@@ -293,10 +298,14 @@ defmodule WallopWeb.ProofPdfHTML do
           Confirm the randomness matches the value on the verification chain page.
         </li>
         <li :if={@weather && @weather.source == :weather}>
-          Fetch the Met Office Land Observations reading for {@weather.station_label} at
-          {Calendar.strftime(@weather.observed_at, "%Y-%m-%d %H:%M UTC")}, and confirm its
-          temperature, pressure, humidity and visibility give the value on the verification
-          chain page.
+          Check that Middle Wallop's reading for
+          {Calendar.strftime(@weather.observed_at, "%Y-%m-%d %H:%M UTC")} gives the value on
+          the entropy source page (temperature, pressure, humidity and visibility). Within 48
+          hours: Met Office Land Observations (free DataHub key). After that: temperature and
+          pressure from a SYNOP mirror such as Ogimet, and every part from the Met Office MIDAS
+          hourly archive on CEDA, released each July for the year before. Or run
+          <span class="mono">wallop-verify weather-attest</span>
+          on the proof bundle, which does this for you.
         </li>
         <li :if={@weather && @weather.source == :frequency}>
           Fetch Elexon's grid frequency readings (BMRS dataset FREQ) for T to T + 105 seconds,
@@ -560,6 +569,12 @@ defmodule WallopWeb.ProofPdfHTML do
       font-size: 10pt;
       margin: 2mm 0;
       max-width: 100%;
+    }
+
+    .trust li {
+      font-size: 9.5pt;
+      line-height: 1.45;
+      margin-bottom: 1.5mm;
     }
 
     .note {

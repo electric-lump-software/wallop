@@ -175,13 +175,16 @@ defmodule WallopWeb.Components.ProofChain do
             Eight readings, 15 seconds apart, from T =
             {Calendar.strftime(@weather.freq_start, "%H:%M:%S UTC %d %b %Y")}
           </div>
-          <div class="pt-1">
-            What you're trusting here:
-            <ul class="list-disc ml-4">
-              <li :for={line <- @weather.trust_lines}>{line}</li>
-            </ul>
-          </div>
           <div class="text-[#777]">{@weather.bmrs_line}</div>
+        </div>
+
+        <div :if={@weather.check_line}>{@weather.check_line}</div>
+
+        <div class="pt-1">
+          What you're trusting here:
+          <ul class="list-disc ml-4">
+            <li :for={line <- @weather.trust_lines}>{line}</li>
+          </ul>
         </div>
       </div>
 

@@ -29,6 +29,23 @@ defmodule WallopWeb.ProofWeatherTest do
   defp edit(%{payload_jcs: jcs}, fun),
     do: %{payload_jcs: jcs |> Jason.decode!() |> fun.() |> Jason.encode!()}
 
+  # The whole trusted set for each tag, in order.
+  @landobs_trust [
+    "Fewer than drand's threshold of nodes collude.",
+    "The public weather record is honest and stays available.",
+    "The weather adds a little, not a lot: it only matters if drand's threshold is broken and the colluders work with the operator.",
+    "The lock time (locked_at) is wallop's clock.",
+    "wallop settled whether it had the observation and the grid readings before the drand round existed. Its database refuses either recorded at the wrong time, which guards against bugs and break-ins but not against wallop itself: a dishonest wallop that saw the drand round early could choose among at most three outcomes. Seeing it early would take drand's network colluding, or wallop deliberately getting round its own database.",
+    "wallop can abort a draw, but only visibly, and only before the fetch deadline, which is before the drand round publishes.",
+    "A compromised wallop could withhold a real reading, but it must decide before drand publishes, so it chooses blind. A wallop colluding with drand could withhold Middle Wallop's reading, the grid readings, or both, to choose among at most three candidate seeds, so a favoured entry's odds rise at most 3×.",
+    "On a fallback to the grid frequency, Elexon published what the grid actually did, and does not revise readings."
+  ]
+  @freq_trust [
+    "Elexon published what the grid actually did, and doesn't revise readings.",
+    "wallop's clock recorded the close time honestly.",
+    "wallop settled whether it had the grid readings before the drand round existed. Its database refuses readings or a fallback recorded at the wrong time, which guards against bugs and break-ins but not against wallop itself: a dishonest wallop that saw the drand round early could choose between two outcomes. Seeing it early would take drand's network colluding, or wallop deliberately getting round its own database."
+  ]
+
   defp freq_draw(round), do: %{@draw | entropy_composition: @freq, drand_round: round}
 
   test "nil for forecast draws and for unknown tags" do
@@ -78,7 +95,9 @@ defmodule WallopWeb.ProofWeatherTest do
              weather_value: "123;1012;67;3450",
              observed_at: ~U[2026-10-14 19:00:00.000000Z],
              fallback_label: nil,
-             trust_lines: [],
+             trust_lines: @landobs_trust,
+             check_line:
+               "Checkable with wallop-verify weather-attest: the value matches the public record for that station and hour.",
              bmrs_line: nil,
              out_of_table: false
            } = ProofWeather.summary(@draw, exec, lock)
@@ -93,10 +112,9 @@ defmodule WallopWeb.ProofWeatherTest do
              freq_start: ~U[2026-10-14 19:54:00.000000Z],
              fallback_label:
                "Middle Wallop's reading was running late, so this draw listened to the hum of the National Grid instead.",
-             trust_lines: [
-               "Trusted: on a fallback to the grid frequency, Elexon published what the grid actually did, and does not revise readings.",
-               "Proven with weather-attest: for a draw that used the grid frequency, freq_value matches Elexon's readings for T…T+105s."
-             ],
+             trust_lines: @landobs_trust,
+             check_line:
+               "Checkable with wallop-verify weather-attest: for a draw that used the grid frequency, freq_value matches Elexon's readings for T…T+105s.",
              bmrs_line: "Contains BMRS data © Elexon Limited copyright and database right 2026",
              out_of_table: false
            } = ProofWeather.summary(@draw, exec, lock)
@@ -118,7 +136,8 @@ defmodule WallopWeb.ProofWeatherTest do
              source: :drand_only,
              fallback_label:
                "Middle Wallop was late and the Grid went quiet, so drand did this one on its own.",
-             trust_lines: [],
+             trust_lines: @landobs_trust,
+             check_line: nil,
              bmrs_line: nil,
              out_of_table: false
            } = ProofWeather.summary(@draw, exec, lock)
@@ -168,10 +187,9 @@ defmodule WallopWeb.ProofWeatherTest do
                freq_value: value,
                freq_start: %DateTime{} = t,
                fallback_label: nil,
-               trust_lines: [
-                 "Trusted: Elexon published what the grid actually did, and doesn't revise readings.",
-                 "Anyone can re-fetch Elexon's readings to check that wallop stored what was published."
-               ],
+               trust_lines: @freq_trust,
+               check_line:
+                 "Anyone can re-fetch Elexon's readings to check that wallop stored what was published.",
                bmrs_line: bmrs,
                out_of_table: false
              } = ProofWeather.summary(freq_draw(round), exec, lock)
@@ -187,7 +205,8 @@ defmodule WallopWeb.ProofWeatherTest do
                source: :drand_only,
                fallback_label: "The Grid went quiet, so drand did this one on its own.",
                bmrs_line: nil,
-               trust_lines: []
+               check_line: nil,
+               trust_lines: @freq_trust
              } = ProofWeather.summary(freq_draw(round), exec, lock)
     end
 
@@ -210,7 +229,8 @@ defmodule WallopWeb.ProofWeatherTest do
                  out_of_table_text: text
                } = ProofWeather.summary(freq_draw(round), bad, lock)
 
-        assert text =~ "doesn't match either way a grid-frequency draw can go"
+        assert text =~
+                 "doesn't match either of the two ways a grid-frequency draw can go (the Grid, or drand alone)"
       end
     end
   end

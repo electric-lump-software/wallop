@@ -106,21 +106,7 @@ defmodule WallopWeb.Components.DrawTimeline do
     if status in [:open, :locked] do
       %{label: "Entropy Declared", detail: nil, state: :pending}
     else
-      round_text = if draw.drand_round, do: "drand round ##{draw.drand_round}", else: nil
-
-      weather_text =
-        cond do
-          weather ->
-            declared_text(weather, status)
-
-          draw.weather_time ->
-            "weather at #{Calendar.strftime(draw.weather_time, "%H:%M UTC")}"
-
-          true ->
-            nil
-        end
-
-      detail = [round_text, weather_text] |> Enum.reject(&is_nil/1) |> Enum.join(", ")
+      detail = declared_detail(draw, status, weather)
 
       %{
         label: "Entropy Declared",
@@ -131,6 +117,23 @@ defmodule WallopWeb.Components.DrawTimeline do
     end
   end
 
+  defp declared_detail(draw, status, weather) do
+    round_text = if draw.drand_round, do: "drand round ##{draw.drand_round}", else: nil
+
+    weather_text =
+      cond do
+        weather -> declared_text(weather, status)
+        draw.weather_time -> "weather at #{Calendar.strftime(draw.weather_time, "%H:%M UTC")}"
+        true -> nil
+      end
+
+    # "Declared: …" starts a sentence of its own.
+    separator =
+      if weather_text && String.starts_with?(weather_text, "Declared"), do: ". ", else: ", "
+
+    [round_text, weather_text] |> Enum.reject(&is_nil/1) |> Enum.join(separator)
+  end
+
   # Lock schema 6: what was declared, from the signed lock receipt. Before
   # the result, it may or may not turn up; after, it was only declared
   # (the fetching stage names what was used).
@@ -139,7 +142,7 @@ defmodule WallopWeb.Components.DrawTimeline do
       Calendar.strftime(weather.expected_result_at, "%H:%M:%S UTC")
   end
 
-  defp declared_text(weather, _status), do: "#{declared_source(weather)} declared"
+  defp declared_text(weather, _status), do: "Declared: #{declared_source(weather)}"
 
   defp declared_source(%{tag: :landobs, observation_hour: %DateTime{} = hour}),
     do: "Middle Wallop's #{Calendar.strftime(hour, "%H:%M UTC")} weather reading"
