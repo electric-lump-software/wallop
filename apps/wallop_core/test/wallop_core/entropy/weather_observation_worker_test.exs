@@ -476,9 +476,9 @@ defmodule WallopCore.Entropy.WeatherObservationWorkerTest do
         assert log =~ logged
       end
 
-      Req.Test.stub(LandObsClient, &Req.Test.transport_error(&1, :econnrefused))
+      Req.Test.stub(LandObsClient, &Req.Test.transport_error(&1, :timeout))
       log = capture_log(fn -> assert {:snooze, _} = run(wt) end)
-      assert log =~ "failed (:transport)"
+      assert log =~ "failed ({:transport, :timeout})"
     end
 
     test "a sentinel key and body never reach the log, whatever the error" do

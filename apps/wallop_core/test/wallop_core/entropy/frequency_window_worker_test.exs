@@ -339,7 +339,9 @@ defmodule WallopCore.Entropy.FrequencyWindowWorkerTest do
       end
 
       Req.Test.stub(ElexonFreqClient, &Req.Test.transport_error(&1, :econnrefused))
-      assert capture_log(fn -> assert {:snooze, _} = run(t) end) =~ "failed (:transport)"
+
+      assert capture_log(fn -> assert {:snooze, _} = run(t) end) =~
+               "failed ({:transport, :econnrefused})"
     end
 
     test "logs and telemetry carry no body" do
