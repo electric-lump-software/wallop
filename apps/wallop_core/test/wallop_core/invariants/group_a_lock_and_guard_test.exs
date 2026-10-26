@@ -389,7 +389,8 @@ defmodule WallopCore.Invariants.LockAndGuardTest do
       draw = put_retired_forecast_draw!(key, :awaiting_entropy)
       [late | _] = missed_schedules()
 
-      # Insert: a copy already out of open, with a NULL pair.
+      # Insert: a copy already out of open, with a NULL pair, is refused:
+      # it would be a lock with no lock schema.
       assert try_sql(
                """
                INSERT INTO draws (id, status, winner_count, entry_count, api_key_id, operator_id,
@@ -399,7 +400,7 @@ defmodule WallopCore.Invariants.LockAndGuardTest do
                FROM draws WHERE id = $1
                """,
                [dump(draw.id), dump(Ecto.UUID.generate())]
-             ) == nil
+             ) == "a draw is created open"
 
       # Completion: any executed_at, no observation, no pub(R) rule.
       Repo.query!("UPDATE draws SET status = 'pending_entropy' WHERE id = $1", [dump(draw.id)])
@@ -430,16 +431,18 @@ defmodule WallopCore.Invariants.LockAndGuardTest do
       # Delete of a draw out of open, with no receipt.
       copy = Ecto.UUID.generate()
 
-      Repo.query!(
-        """
-        INSERT INTO draws (id, status, winner_count, entry_count, api_key_id, operator_id,
-          operator_sequence, stage_timestamps, inserted_at, updated_at)
-        SELECT $2, 'pending_entropy', winner_count, entry_count, api_key_id, operator_id,
-          operator_sequence + 200000, stage_timestamps, inserted_at, updated_at
-        FROM draws WHERE id = $1
-        """,
-        [dump(draw.id), dump(copy)]
-      )
+      with_triggers_off(fn ->
+        Repo.query!(
+          """
+          INSERT INTO draws (id, status, winner_count, entry_count, api_key_id, operator_id,
+            operator_sequence, stage_timestamps, inserted_at, updated_at)
+          SELECT $2, 'pending_entropy', winner_count, entry_count, api_key_id, operator_id,
+            operator_sequence + 200000, stage_timestamps, inserted_at, updated_at
+          FROM draws WHERE id = $1
+          """,
+          [dump(draw.id), dump(copy)]
+        )
+      end)
 
       assert try_sql("DELETE FROM draws WHERE id = $1", [dump(copy)]) == nil
     end

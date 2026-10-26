@@ -1055,7 +1055,8 @@ defmodule WallopCore.Resources.Draw do
 
       statement :guard_v6_draw_insert do
         # A draw is created open, so it never starts with a lock schema, nor
-        # with any grid-frequency column.
+        # with any grid-frequency column, nor in any other status: a row
+        # inserted already out of open would be a lock with no lock schema.
         up("""
         DO $do$
         BEGIN
@@ -1063,6 +1064,9 @@ defmodule WallopCore.Resources.Draw do
           BEGIN
             IF NEW.lock_schema_version IS NOT NULL OR NEW.entropy_composition IS NOT NULL THEN
               RAISE EXCEPTION 'lock_schema_version and entropy_composition are set only when a draw leaves open';
+            END IF;
+            IF NEW.status IS DISTINCT FROM 'open' THEN
+              RAISE EXCEPTION 'a draw is created open';
             END IF;
             IF NEW.freq_start IS NOT NULL OR NEW.freq_value IS NOT NULL
                OR NEW.freq_fallback_reason IS NOT NULL THEN

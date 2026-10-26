@@ -111,9 +111,18 @@ defmodule WallopCore.RaceConditionTest do
 
       Postgrex.query!(
         setup_conn,
-        "INSERT INTO draws (id, status, winner_count, entry_count, api_key_id, operator_id, operator_sequence, inserted_at, updated_at) VALUES ($1, 'pending_entropy', 1, 1, $2, $3, 1, NOW(), NOW())",
+        "INSERT INTO draws (id, status, winner_count, entry_count, api_key_id, operator_id, operator_sequence, inserted_at, updated_at) VALUES ($1, 'open', 1, 1, $2, $3, 1, NOW(), NOW())",
         [draw_id_bin, api_key_id_bin, operator_id_bin]
       )
+
+      # A draw is created open; it is placed in pending_entropy directly.
+      Postgrex.query!(setup_conn, "SET session_replication_role = 'replica'", [])
+
+      Postgrex.query!(setup_conn, "UPDATE draws SET status = 'pending_entropy' WHERE id = $1", [
+        draw_id_bin
+      ])
+
+      Postgrex.query!(setup_conn, "SET session_replication_role = 'origin'", [])
 
       task_complete =
         Task.async(fn ->
