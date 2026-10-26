@@ -157,6 +157,9 @@ jobs:
       - name: Check formatting
         run: mix format --check-formatted
 
+      - name: Start script
+        run: sh test/rel/load_infisical_secrets_test.sh
+
       - name: Credo
         run: mix credo --strict
 

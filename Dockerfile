@@ -79,6 +79,28 @@ RUN mix compile
 RUN mix phx.digest
 RUN mix release wallop
 
+# Infisical CLI, pinned by version and checked against the published sha256
+# for each architecture, so a replaced release asset fails the build.
+FROM ${RUNNER_IMAGE} AS infisical
+
+ARG INFISICAL_VERSION=0.44.9
+RUN set -eux; \
+    apt-get update -y; \
+    apt-get install -y --no-install-recommends curl ca-certificates; \
+    case "$(dpkg --print-architecture)" in \
+      amd64) arch=amd64; \
+             sha=4005a430258df60401ae5288ab0412371f2e56f224ed461758dd2ec83887d556 ;; \
+      arm64) arch=arm64; \
+             sha=51d48b2cff6a14dce44090db8a7b16804e9ecea4b6252716009c44495021ca52 ;; \
+      *) echo "unsupported architecture" >&2; exit 1 ;; \
+    esac; \
+    curl --proto '=https' --tlsv1.2 -sSfL -o /tmp/infisical.tar.gz \
+      "https://github.com/Infisical/cli/releases/download/v${INFISICAL_VERSION}/cli_${INFISICAL_VERSION}_linux_${arch}.tar.gz"; \
+    echo "${sha}  /tmp/infisical.tar.gz" | sha256sum -c -; \
+    tar -xzf /tmp/infisical.tar.gz -C /tmp infisical; \
+    install -m 0755 /tmp/infisical /usr/local/bin/infisical; \
+    infisical --version
+
 # Runtime stage
 FROM ${RUNNER_IMAGE}
 
@@ -93,6 +115,8 @@ ENV LC_ALL en_US.UTF-8
 
 WORKDIR /app
 RUN chown nobody /app
+
+COPY --from=infisical /usr/local/bin/infisical /usr/local/bin/infisical
 
 ENV MIX_ENV="prod"
 

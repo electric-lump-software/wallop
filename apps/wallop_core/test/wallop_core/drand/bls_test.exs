@@ -42,7 +42,7 @@ defmodule WallopCore.Drand.BlsTest do
     test "WallopCore.Application runs the self-test before starting anything" do
       source = File.read!("lib/wallop_core/application.ex")
       [start] = Regex.run(~r/def start\(.*?\n  end\n/s, source)
-      [before_children, _] = String.split(start, "children =", parts: 2)
+      [before_children, _] = String.split(start, "Supervisor.start_link", parts: 2)
       assert before_children =~ "Bls.self_test!()"
     end
 

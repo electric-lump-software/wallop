@@ -28,6 +28,9 @@ config :wallop_core, WallopCore.Entropy.DrandClient, bls: WallopCore.Test.DrandB
 # The invariant suite checks the test database's max_prepared_transactions itself.
 config :wallop_core, :prepared_transactions_check, false
 
+# Tested directly in WallopCore.VaultKeyCheckTest; at boot it would run outside the sandbox.
+config :wallop_core, :vault_key_check, false
+
 config :wallop_core, WallopCore.Vault,
   ciphers: [
     default:
