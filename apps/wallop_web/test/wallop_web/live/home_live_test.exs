@@ -6,7 +6,7 @@ defmodule WallopWeb.HomeLiveTest do
   describe "home page" do
     test "loads successfully and shows headline", %{conn: conn} do
       {:ok, _view, html} = live(conn, "/")
-      assert html =~ "Run a draw nobody"
+      assert html =~ "Run a draw anyone"
     end
 
     test "shows open source badge", %{conn: conn} do
@@ -155,7 +155,9 @@ defmodule WallopWeb.HomeLiveTest do
       "impossible",
       "guarantee",
       "Open-Meteo",
-      "Wittering"
+      "Wittering",
+      "can question",
+      "rests on"
     ]
 
     test "the home page, both tabs, makes none of the old overclaims", %{conn: conn} do
@@ -167,7 +169,7 @@ defmodule WallopWeb.HomeLiveTest do
       end
 
       assert plain =~ "at worst to drand on its own"
-      assert crypto =~ "rests on our word"
+      assert crypto =~ "#small-print"
     end
 
     test "how verification works names the fallbacks and what is trusted", %{conn: conn} do
@@ -180,6 +182,9 @@ defmodule WallopWeb.HomeLiveTest do
       assert html =~ "The National Grid"
       assert html =~ "drand does it alone"
       assert html =~ "Proven, and trusted."
+      assert html =~ "can cancel a draw only before then, and visibly"
+      assert html =~ "within tolerance after that"
+      refute html =~ "not even we can UPDATE"
       assert html =~ "the drand beacon is"
     end
   end
