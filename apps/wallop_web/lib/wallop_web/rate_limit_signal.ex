@@ -10,7 +10,7 @@ defmodule WallopWeb.RateLimitSignal do
   `%{api_key_id: id, kind: kind, limit: limit, window_start: datetime}`, where
   `window_start` is the clock-aligned minute.
 
-  `kind` is `:near_limit`, `:limited` or `:quota_limited`. Callers dedupe to
+  `kind` is `:near_limit` or `:limited`. Callers dedupe to
   once per key, kind and minute, and never call this on a store error.
 
   Never fails the request that triggered it, and never waits on PubSub: the
@@ -24,10 +24,10 @@ defmodule WallopWeb.RateLimitSignal do
 
   @topic "rate_limit_pressure"
 
-  @type kind :: :near_limit | :limited | :quota_limited
+  @type kind :: :near_limit | :limited
 
   @spec emit(Ecto.UUID.t(), kind(), pos_integer()) :: :ok
-  def emit(api_key_id, kind, limit) when kind in [:near_limit, :limited, :quota_limited] do
+  def emit(api_key_id, kind, limit) when kind in [:near_limit, :limited] do
     :telemetry.execute(
       [:wallop_web, :rate_limit, kind],
       %{count: 1},

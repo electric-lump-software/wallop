@@ -1,6 +1,9 @@
 defmodule WallopCore.Resources.ApiKeyTest do
   use WallopCore.DataCase, async: true
 
+  import WallopCore.TestHelpers, only: [create_api_key: 0, create_api_key: 1]
+
+  alias Ash.Resource.Info
   alias WallopCore.Resources.ApiKey
 
   defp create_key(name \\ "test key") do
@@ -44,6 +47,23 @@ defmodule WallopCore.Resources.ApiKeyTest do
 
       assert key.active == true
     end
+
+    test "accepts rate_limit_per_minute" do
+      assert create_api_key(%{rate_limit_per_minute: 300}).rate_limit_per_minute == 300
+    end
+
+    test "no longer accepts the old quota fields" do
+      for input <- [
+            %{tier: "pro"},
+            %{monthly_draw_limit: 10},
+            %{count_reset_at: DateTime.utc_now()}
+          ] do
+        assert {:error, %Ash.Error.Invalid{}} =
+                 ApiKey
+                 |> Ash.Changeset.for_create(:create, Map.put(input, :name, "k"))
+                 |> Ash.create(authorize?: false)
+      end
+    end
   end
 
   describe "deactivate" do
@@ -60,51 +80,72 @@ defmodule WallopCore.Resources.ApiKeyTest do
     end
   end
 
-  describe "tier metadata" do
-    test "tier defaults to nil and limit defaults to nil (unlimited)" do
-      {:ok, key} = create_key()
-      assert key.tier == nil
-      assert key.monthly_draw_limit == nil
-      assert key.monthly_draw_count == 0
-      assert key.count_reset_at == nil
-    end
+  describe "set_rate_limit" do
+    test "sets the per-minute limit" do
+      key = create_api_key()
 
-    test "create accepts tier metadata" do
-      {:ok, reset_at} = DateTime.new(~D[2026-05-01], ~T[00:00:00.000000], "Etc/UTC")
-
-      {:ok, key} =
-        ApiKey
-        |> Ash.Changeset.for_create(:create, %{
-          name: "test",
-          tier: "starter",
-          monthly_draw_limit: 50,
-          count_reset_at: reset_at
-        })
-        |> Ash.create(authorize?: false)
-
-      assert key.tier == "starter"
-      assert key.monthly_draw_limit == 50
-      assert key.count_reset_at == reset_at
-    end
-  end
-
-  describe "update_tier" do
-    test "updates tier metadata on an existing key" do
-      {:ok, key} = create_key()
-      {:ok, reset_at} = DateTime.new(~D[2026-05-01], ~T[00:00:00.000000], "Etc/UTC")
-
-      {:ok, updated} =
+      updated =
         key
-        |> Ash.Changeset.for_update(:update_tier, %{
-          tier: "pro",
-          monthly_draw_limit: 1000,
-          count_reset_at: reset_at
-        })
-        |> Ash.update(authorize?: false)
+        |> Ash.Changeset.for_update(:set_rate_limit, %{rate_limit_per_minute: 300})
+        |> Ash.update!(authorize?: false)
 
-      assert updated.tier == "pro"
-      assert updated.monthly_draw_limit == 1000
-      assert updated.count_reset_at == reset_at
+      assert updated.rate_limit_per_minute == 300
+    end
+
+    test "never writes tier or the other old quota columns" do
+      key = create_api_key()
+
+      for input <- [
+            %{tier: "pro"},
+            %{monthly_draw_limit: 10},
+            %{monthly_draw_count: 0},
+            %{count_reset_at: DateTime.utc_now()}
+          ] do
+        assert {:error, %Ash.Error.Invalid{}} =
+                 key
+                 |> Ash.Changeset.for_update(
+                   :set_rate_limit,
+                   Map.put(input, :rate_limit_per_minute, 300)
+                 )
+                 |> Ash.update(authorize?: false)
+      end
+
+      reloaded = Ash.get!(ApiKey, key.id, authorize?: false)
+      assert reloaded.tier == nil
+      assert reloaded.rate_limit_per_minute == nil
+    end
+
+    test "rejects a per-minute limit outside 1..6000" do
+      key = create_api_key()
+
+      for value <- [0, 6001] do
+        assert {:error, %Ash.Error.Invalid{errors: errors}} =
+                 key
+                 |> Ash.Changeset.for_update(:set_rate_limit, %{rate_limit_per_minute: value})
+                 |> Ash.update(authorize?: false)
+
+        assert Enum.any?(errors, &(Map.get(&1, :field) == :rate_limit_per_minute))
+      end
+
+      reloaded = Ash.get!(ApiKey, key.id, authorize?: false)
+      assert reloaded.rate_limit_per_minute == nil
+    end
+
+    test "accepts the edges of 1..6000" do
+      key = create_api_key()
+
+      for value <- [1, 6000] do
+        updated =
+          key
+          |> Ash.Changeset.for_update(:set_rate_limit, %{rate_limit_per_minute: value})
+          |> Ash.update!(authorize?: false)
+
+        assert updated.rate_limit_per_minute == value
+      end
+    end
+
+    test "update_tier is gone" do
+      assert Info.action(ApiKey, :update_tier) == nil
     end
   end
 
@@ -152,66 +193,9 @@ defmodule WallopCore.Resources.ApiKeyTest do
     end
   end
 
-  describe "increment_draw_count" do
-    test "increments the count and sets reset_at on first call" do
-      {:ok, key} = create_key()
-
-      {:ok, updated} =
-        key
-        |> Ash.Changeset.for_update(:increment_draw_count, %{})
-        |> Ash.update(authorize?: false)
-
-      assert updated.monthly_draw_count == 1
-      assert updated.count_reset_at != nil
-    end
-
-    test "increments the count without resetting if reset_at is in the future" do
-      future = DateTime.add(DateTime.utc_now(), 7 * 86_400, :second)
-
-      {:ok, key} =
-        ApiKey
-        |> Ash.Changeset.for_create(:create, %{name: "x", count_reset_at: future})
-        |> Ash.create(authorize?: false)
-
-      # Bump count to 5 directly
-      WallopCore.Repo.query!(
-        "UPDATE api_keys SET monthly_draw_count = 5 WHERE id = $1",
-        [Ecto.UUID.dump!(key.id)]
-      )
-
-      key = Ash.get!(ApiKey, key.id, authorize?: false)
-
-      {:ok, updated} =
-        key
-        |> Ash.Changeset.for_update(:increment_draw_count, %{})
-        |> Ash.update(authorize?: false)
-
-      assert updated.monthly_draw_count == 6
-      assert DateTime.compare(updated.count_reset_at, future) == :eq
-    end
-
-    test "resets the count to 1 if reset_at is in the past" do
-      past = DateTime.add(DateTime.utc_now(), -86_400, :second)
-
-      {:ok, key} =
-        ApiKey
-        |> Ash.Changeset.for_create(:create, %{name: "x", count_reset_at: past})
-        |> Ash.create(authorize?: false)
-
-      WallopCore.Repo.query!(
-        "UPDATE api_keys SET monthly_draw_count = 100 WHERE id = $1",
-        [Ecto.UUID.dump!(key.id)]
-      )
-
-      key = Ash.get!(ApiKey, key.id, authorize?: false)
-
-      {:ok, updated} =
-        key
-        |> Ash.Changeset.for_update(:increment_draw_count, %{})
-        |> Ash.update(authorize?: false)
-
-      assert updated.monthly_draw_count == 1
-      assert DateTime.compare(updated.count_reset_at, DateTime.utc_now()) == :gt
+  test "the draw counting actions are gone" do
+    for action <- [:increment_draw_count, :reset_draw_count] do
+      assert Info.action(ApiKey, action) == nil
     end
   end
 end

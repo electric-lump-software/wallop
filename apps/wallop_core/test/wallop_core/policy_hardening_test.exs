@@ -118,11 +118,7 @@ defmodule WallopCore.PolicyHardeningTest do
     test "create is Forbidden without authorize?: false" do
       assert_raise Ash.Error.Forbidden, fn ->
         ApiKey
-        |> Ash.Changeset.for_create(:create, %{
-          name: "rogue",
-          tier: "enterprise",
-          monthly_draw_limit: 9_999_999
-        })
+        |> Ash.Changeset.for_create(:create, %{name: "rogue", rate_limit_per_minute: 6000})
         |> Ash.create!()
       end
     end
@@ -148,26 +144,19 @@ defmodule WallopCore.PolicyHardeningTest do
       end
     end
 
-    test "update_tier is Forbidden" do
+    test "set_rate_limit is Forbidden" do
       api_key = create_api_key()
 
       assert_raise Ash.Error.Forbidden, fn ->
         api_key
-        |> Ash.Changeset.for_update(:update_tier, %{
-          tier: "enterprise",
-          monthly_draw_limit: 999_999
-        })
+        |> Ash.Changeset.for_update(:set_rate_limit, %{rate_limit_per_minute: 300})
         |> Ash.update!()
       end
-    end
-
-    test "increment_draw_count is Forbidden without authorize?: false" do
-      api_key = create_api_key()
 
       assert_raise Ash.Error.Forbidden, fn ->
         api_key
-        |> Ash.Changeset.for_update(:increment_draw_count, %{})
-        |> Ash.update!()
+        |> Ash.Changeset.for_update(:set_rate_limit, %{rate_limit_per_minute: 300})
+        |> Ash.update!(actor: api_key)
       end
     end
   end

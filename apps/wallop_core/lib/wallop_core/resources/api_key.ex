@@ -28,14 +28,7 @@ defmodule WallopCore.Resources.ApiKey do
     defaults([:read])
 
     create :create do
-      accept([
-        :name,
-        :tier,
-        :monthly_draw_limit,
-        :count_reset_at,
-        :operator_id,
-        :rate_limit_per_minute
-      ])
+      accept([:name, :operator_id, :rate_limit_per_minute])
 
       change({WallopCore.Resources.ApiKey.Changes.GenerateKey, []})
     end
@@ -62,28 +55,15 @@ defmodule WallopCore.Resources.ApiKey do
       change(set_attribute(:deactivated_at, &DateTime.utc_now/0))
     end
 
-    # Updates tier metadata. Called by a consumer application on subscription changes.
-    update :update_tier do
-      accept([:tier, :monthly_draw_limit, :count_reset_at, :rate_limit_per_minute])
-    end
-
-    # Increments monthly_draw_count. Called when a draw is created.
-    update :increment_draw_count do
-      require_atomic?(false)
-      change({WallopCore.Resources.ApiKey.Changes.IncrementDrawCount, []})
+    # Sets the key's per-minute request limit. Called by a consumer application.
+    update :set_rate_limit do
+      accept([:rate_limit_per_minute])
     end
 
     update :regenerate_webhook_secret do
       accept([])
       require_atomic?(false)
       change({WallopCore.Resources.ApiKey.Changes.RegenerateWebhookSecret, []})
-    end
-
-    # Resets monthly_draw_count to zero and bumps count_reset_at.
-    update :reset_draw_count do
-      require_atomic?(false)
-      change(set_attribute(:monthly_draw_count, 0))
-      change({WallopCore.Resources.ApiKey.Changes.AdvanceResetAt, []})
     end
   end
 
@@ -106,9 +86,7 @@ defmodule WallopCore.Resources.ApiKey do
              :set_operator,
              :record_key_digest,
              :deactivate,
-             :update_tier,
-             :increment_draw_count,
-             :reset_draw_count,
+             :set_rate_limit,
              :regenerate_webhook_secret
            ]) do
       forbid_if(always())
@@ -170,33 +148,31 @@ defmodule WallopCore.Resources.ApiKey do
       public?(false)
     end
 
+    # Kept so consumers on an older wallop_core can still use this table.
+    # Nothing in this version uses them; they are still mapped.
     attribute :tier, :string do
-      description(
-        "Subscription tier name (e.g. 'free', 'starter', 'pro'). Set by the consumer application."
-      )
+      description("Deprecated and unused; dropped in a later release.")
 
       allow_nil?(true)
       public?(false)
     end
 
     attribute :monthly_draw_limit, :integer do
-      description(
-        "Maximum draws per month. Null means unlimited. Set by the consumer application."
-      )
+      description("Deprecated and unused; dropped in a later release.")
 
       allow_nil?(true)
       public?(false)
     end
 
     attribute :monthly_draw_count, :integer do
-      description("Current month's draw count. Reset by reset_draw_count action.")
+      description("Deprecated and unused; dropped in a later release.")
       allow_nil?(false)
       default(0)
       public?(false)
     end
 
     attribute :count_reset_at, :utc_datetime_usec do
-      description("When the monthly count was last reset (or should next reset).")
+      description("Deprecated and unused; dropped in a later release.")
       allow_nil?(true)
       public?(false)
     end

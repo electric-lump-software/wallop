@@ -18,22 +18,25 @@ Within each version section, look for `### HTTP API surface`, `### Hex package s
 
 ## Unreleased (next release after 0.28.3)
 
-Replaces the rate limiters with one `WallopWeb.RateLimiter`, adds per-key limits, and signals limit pressure as telemetry and PubSub. `GET /api/v1/draws` is now paged and filterable by status, and API error pointers and messages on the update routes are fixed. **No protocol or signed-byte changes.** Requires a database migration.
+Removes the monthly draw quota. Replaces the rate limiters with one `WallopWeb.RateLimiter`, adds per-key limits, and signals limit pressure as telemetry and PubSub. `GET /api/v1/draws` is now paged and filterable by status, and API error pointers and messages on the update routes are fixed. **No protocol or signed-byte changes.** Requires a database migration.
 
 ### HTTP API surface
 
 - **BREAKING: `GET /api/v1/draws` is paged.** It used to return every draw for the key; it now returns the first 50, oldest first. Follow `links.next` until it is `null` (the key stays present on the last page) to get the rest. New optional parameters: `status` (one status or a comma-separated list; anything else is a `400` naming the allowed values), `page[limit]` (1 to 100, default 50) and `page[after]` (a cursor; take it from `links.next`). The `filter[...]` and `sort` query parameters are no longer accepted on this route (`400`). Paging is not a snapshot: a draw created while you page can commit behind a cursor already handed out, so sweep again if you need to be certain. Requires a database migration (an index on `draws`).
 - Error `source.pointer` on `PATCH /draws/:id/entries`, `/lock` and `/winner_count` no longer has a stray `/0/` (it is `/data/attributes/winner_count`, not `/data/attributes/0/winner_count`), and `detail` now has its constraint values filled in ("must be greater than or equal to 1", not "...%{min}"). Status codes and `code`s are unchanged: match on `code`, not on `detail` or the pointer.
 - The per-IP limit now counts only failed authentications (30 a minute by default, IPv6 per /64) and runs after authentication. Keys that match by digest are no longer refused because of their IP, so callers sharing one egress IP stop seeing the old 10-requests-a-minute `429`. A key still on bcrypt (not yet used since upgrading) is refused while its IP is over the failure limit; each key only takes that path once. Over-limit failures get `429` `ip_rate_limit_exceeded`.
-- Every `429` carries a `Retry-After` header in whole seconds. Per-key and per-IP values are at most 60; the quota `429` can be much longer (until `count_reset_at`, or 86400 when there is no future reset).
-- The quota `429` `title` is now "Too many requests" (was "Monthly draw limit reached"). The `code` is unchanged; match on that.
-- Per-key limits: `api_keys.rate_limit_per_minute` (`nil` means 60, otherwise 1 to 6000). Set it with `update_tier` (or `create`). Going over returns `429` `rate_limit_exceeded` with `meta.limit`.
+- Every `429` carries a `Retry-After` header in whole seconds. Per-key and per-IP values are at most 60.
+- The monthly quota is gone, along with its `429` `tier_limit_exceeded`. Nothing in wallop limits draws per month any more.
+- Per-key limits: `api_keys.rate_limit_per_minute` (`nil` means 60, otherwise 1 to 6000). Set it with `set_rate_limit` (or `create`). Going over returns `429` `rate_limit_exceeded` with `meta.limit`.
 
 ### Hex package surface
 
 - Stop starting `WallopWeb.RateLimit.Sweeper`. It is deleted, and so is `WallopWeb.Plugs.RateLimit`. The plugs' `table/0`, `window_ms/0` and `ensure_table/0` are gone too; if you called them, count through `WallopWeb.RateLimiter` instead.
-- Run the migration: `mix ecto.migrate` (adds `rate_limit_per_minute` on `api_keys`).
-- Pressure is now a telemetry event and a PubSub message (`[:wallop_web, :rate_limit, :near_limit | :limited | :quota_limited]`; topic `"rate_limit_pressure"` on `WallopCore.PubSub`). Nothing is stored; attach a handler if you want to keep it.
+- Run the migration: `mix ecto.migrate` (adds `rate_limit_per_minute` on `api_keys`). The four quota columns (`tier`, `monthly_draw_limit`, `monthly_draw_count`, `count_reset_at`) are no longer used and will be dropped in a later release, so be on this version before then. If several apps share the database, all of them must be on this version or later before then.
+- **BREAKING (Ash callers):** `ApiKey` `:update_tier` is now `:set_rate_limit` (accepts only `rate_limit_per_minute`). `:increment_draw_count` and `:reset_draw_count` are removed, and `:create` no longer accepts `tier`, `monthly_draw_limit` or `count_reset_at`. Passing any of the old quota fields to `:create` or `:set_rate_limit` returns `Ash.Error.Invalid`. The changes `WallopCore.Resources.ApiKey.Changes.IncrementDrawCount`, `WallopCore.Resources.ApiKey.Changes.AdvanceResetAt` and `WallopCore.Resources.Draw.Changes.IncrementApiKeyDrawCount` are deleted.
+- `monthly_draw_count` is no longer maintained and is stale after the upgrade. If you showed usage from it, count draws from the `draws` table instead.
+- **BREAKING:** `WallopWeb.Plugs.TierLimit` is removed; drop it from your pipeline. Nothing replaces it.
+- Pressure is now a telemetry event and a PubSub message (`[:wallop_web, :rate_limit, :near_limit | :limited]`; topic `"rate_limit_pressure"` on `WallopCore.PubSub`; `kind` is only `:near_limit` or `:limited`). Nothing is stored; attach a handler if you want to keep it.
 - Optional: share counters across nodes with `RATE_LIMIT_BACKEND=redis` and `REDIS_URL` (Redis 7 or later). Redis without `REDIS_URL` refuses to boot. If the store errors, requests are let through and `[:wallop_web, :rate_limiter, :backend_error]` is emitted; alert on it before enabling Redis.
 - Optional: `config :wallop_web, WallopWeb.IpAuthLimit, max_failures_per_minute:` changes the per-IP failure limit.
 

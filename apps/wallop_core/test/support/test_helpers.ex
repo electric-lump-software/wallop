@@ -6,8 +6,7 @@ defmodule WallopCore.TestHelpers do
   @doc """
   Creates an active API key and returns the struct (actor for Ash calls).
 
-  Accepts optional tier metadata: `tier`, `monthly_draw_limit`,
-  `monthly_draw_count`, `count_reset_at`.
+  Accepts optional `:name` and `:rate_limit_per_minute`.
   """
   def create_api_key(name_or_attrs \\ "test-key")
 
@@ -24,27 +23,12 @@ defmodule WallopCore.TestHelpers do
 
     create_attrs =
       attrs
-      |> Map.take([:name, :tier, :monthly_draw_limit, :count_reset_at])
+      |> Map.take([:name, :rate_limit_per_minute])
       |> Map.put(:operator_id, operator.id)
 
-    api_key =
-      WallopCore.Resources.ApiKey
-      |> Ash.Changeset.for_create(:create, create_attrs)
-      |> Ash.create!(authorize?: false)
-
-    case Map.get(attrs, :monthly_draw_count) do
-      nil ->
-        api_key
-
-      count when is_integer(count) ->
-        # Bump the count to the requested value via direct DB update
-        WallopCore.Repo.query!(
-          "UPDATE api_keys SET monthly_draw_count = $2 WHERE id = $1",
-          [Ecto.UUID.dump!(api_key.id), count]
-        )
-
-        Ash.get!(WallopCore.Resources.ApiKey, api_key.id, authorize?: false)
-    end
+    WallopCore.Resources.ApiKey
+    |> Ash.Changeset.for_create(:create, create_attrs)
+    |> Ash.create!(authorize?: false)
   end
 
   @doc """

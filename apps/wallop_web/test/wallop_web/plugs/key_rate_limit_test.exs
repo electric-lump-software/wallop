@@ -17,7 +17,7 @@ defmodule WallopWeb.Plugs.KeyRateLimitTest do
 
     :telemetry.attach_many(
       id,
-      for(k <- [:near_limit, :limited, :quota_limited], do: [:wallop_web, :rate_limit, k]),
+      for(k <- [:near_limit, :limited], do: [:wallop_web, :rate_limit, k]),
       fn [:wallop_web, :rate_limit, kind], %{count: 1}, meta, _ ->
         send(test_pid, {:telemetry, kind, meta})
       end,
@@ -32,7 +32,7 @@ defmodule WallopWeb.Plugs.KeyRateLimitTest do
     key = create_api_key()
 
     key
-    |> Ash.Changeset.for_update(:update_tier, %{rate_limit_per_minute: n})
+    |> Ash.Changeset.for_update(:set_rate_limit, %{rate_limit_per_minute: n})
     |> Ash.update!(authorize?: false)
 
     key
