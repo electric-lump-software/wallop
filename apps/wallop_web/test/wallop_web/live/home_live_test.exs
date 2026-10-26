@@ -6,7 +6,8 @@ defmodule WallopWeb.HomeLiveTest do
   describe "home page" do
     test "loads successfully and shows headline", %{conn: conn} do
       {:ok, _view, html} = live(conn, "/")
-      assert html =~ "Run a draw anyone"
+      assert html =~ "Random isn&#39;t enough"
+      assert html =~ "fair, and provably fair. Wallop! does both."
     end
 
     test "shows open source badge", %{conn: conn} do
