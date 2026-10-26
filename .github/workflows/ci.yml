@@ -143,6 +143,14 @@ jobs:
           key: ${{ runner.os }}-mix-${{ hashFiles('wallop/mix.lock') }}
           restore-keys: ${{ runner.os }}-mix-
 
+      - name: Rebuild wallop_core from source (and its drand BLS NIF)
+        # The cache above holds _build but not the NIF library Rustler writes
+        # under apps/wallop_core/priv, and its key only covers mix.lock. A
+        # restored build would otherwise skip the NIF and refuse to boot, or
+        # run an old one. Always compile wallop_core afresh.
+        working-directory: wallop
+        run: rm -rf _build/*/lib/wallop_core
+
       - name: Install dependencies
         run: mix deps.get
 
