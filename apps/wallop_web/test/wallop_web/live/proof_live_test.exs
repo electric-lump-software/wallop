@@ -262,6 +262,8 @@ defmodule WallopWeb.ProofLiveTest do
                  "did, and does not revise readings"
 
       assert html =~ "matches Elexon&#39;s readings for T…T+105s"
+      assert html =~ "can&#39;t tell a late reading from a withheld one."
+      assert html =~ "A private or amateur sensor beside the airfield could narrow it further"
       assert html =~ "the National Grid&#39;s hum instead of the weather"
       refute html =~ "reported this at"
       refute html =~ "weather_value))"
@@ -276,6 +278,11 @@ defmodule WallopWeb.ProofLiveTest do
 
       assert html =~ "seed = SHA-256(JCS(entry_hash, drand_randomness))"
       assert html =~ "drand alone, no weather or Grid"
+
+      assert html =~
+               "A reading can arrive after the deadline, so a fallback can happen for an hour"
+
+      assert html =~ "can&#39;t tell a late reading from a withheld one."
       refute html =~ "BMRS"
       refute html =~ "reported this at"
     end

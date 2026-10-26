@@ -39,7 +39,8 @@ defmodule WallopWeb.ProofWeather do
     "Fewer than drand's threshold of nodes collude.",
     "The public weather record is honest and stays available.",
     "The weather adds a little, not a lot: it only matters if drand's threshold is broken " <>
-      "and the colluders work with the operator.",
+      "and the colluders work with the operator. A private or amateur sensor beside the " <>
+      "airfield could narrow it further, and we haven't measured that.",
     "The lock time (locked_at) is wallop's clock.",
     "wallop settled whether it had the observation and the grid readings before the drand " <>
       "round existed. Its database refuses either recorded at the wrong time, which guards " <>
@@ -69,9 +70,13 @@ defmodule WallopWeb.ProofWeather do
   # What anyone can check afterwards, by state.
   @landobs_weather_check "Checkable with wallop-verify weather-attest: the value matches the " <>
                            "public record for that station and hour."
+  # ADR-0017 Amendment A: a fallback can't be told apart from a withheld reading.
+  @late_reading_caveat "A reading can arrive after the deadline, so a fallback can happen for " <>
+                         "an hour whose reading the archive does hold; weather-attest can show " <>
+                         "the reading exists, but can't tell a late reading from a withheld one."
   @landobs_frequency_check "Checkable with wallop-verify weather-attest: for a draw that used " <>
                              "the grid frequency, freq_value matches Elexon's readings for " <>
-                             "T…T+105s."
+                             "T…T+105s. " <> @late_reading_caveat
   @freq_frequency_check "Anyone can re-fetch Elexon's readings to check that wallop stored " <>
                           "what was published."
 
@@ -243,7 +248,8 @@ defmodule WallopWeb.ProofWeather do
   defp source_fields(tag, :drand_only, _signed, _bmrs_year) do
     %{
       fallback_label:
-        if(tag == :landobs, do: @landobs_drand_only_label, else: @freq_drand_only_label)
+        if(tag == :landobs, do: @landobs_drand_only_label, else: @freq_drand_only_label),
+      check_line: if(tag == :landobs, do: @late_reading_caveat)
     }
   end
 

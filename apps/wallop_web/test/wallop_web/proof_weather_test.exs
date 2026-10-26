@@ -33,7 +33,7 @@ defmodule WallopWeb.ProofWeatherTest do
   @landobs_trust [
     "Fewer than drand's threshold of nodes collude.",
     "The public weather record is honest and stays available.",
-    "The weather adds a little, not a lot: it only matters if drand's threshold is broken and the colluders work with the operator.",
+    "The weather adds a little, not a lot: it only matters if drand's threshold is broken and the colluders work with the operator. A private or amateur sensor beside the airfield could narrow it further, and we haven't measured that.",
     "The lock time (locked_at) is wallop's clock.",
     "wallop settled whether it had the observation and the grid readings before the drand round existed. Its database refuses either recorded at the wrong time, which guards against bugs and break-ins but not against wallop itself: a dishonest wallop that saw the drand round early could choose among at most three outcomes. Seeing it early would take drand's network colluding, or wallop deliberately getting round its own database.",
     "wallop can abort a draw, but only visibly, and only before the fetch deadline, which is before the drand round publishes.",
@@ -114,7 +114,7 @@ defmodule WallopWeb.ProofWeatherTest do
                "Middle Wallop's reading was running late, so this draw listened to the hum of the National Grid instead.",
              trust_lines: @landobs_trust,
              check_line:
-               "Checkable with wallop-verify weather-attest: for a draw that used the grid frequency, freq_value matches Elexon's readings for T…T+105s.",
+               "Checkable with wallop-verify weather-attest: for a draw that used the grid frequency, freq_value matches Elexon's readings for T…T+105s. A reading can arrive after the deadline, so a fallback can happen for an hour whose reading the archive does hold; weather-attest can show the reading exists, but can't tell a late reading from a withheld one.",
              bmrs_line: "Contains BMRS data © Elexon Limited copyright and database right 2026",
              out_of_table: false
            } = ProofWeather.summary(@draw, exec, lock)
@@ -137,7 +137,8 @@ defmodule WallopWeb.ProofWeatherTest do
              fallback_label:
                "Middle Wallop was late and the Grid went quiet, so drand did this one on its own.",
              trust_lines: @landobs_trust,
-             check_line: nil,
+             check_line:
+               "A reading can arrive after the deadline, so a fallback can happen for an hour whose reading the archive does hold; weather-attest can show the reading exists, but can't tell a late reading from a withheld one.",
              bmrs_line: nil,
              out_of_table: false
            } = ProofWeather.summary(@draw, exec, lock)

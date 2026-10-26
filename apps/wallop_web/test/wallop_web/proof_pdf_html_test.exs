@@ -79,6 +79,9 @@ defmodule WallopWeb.ProofPdfHTMLTest do
              "Middle Wallop was late and the Grid went quiet, so drand did this one on its own."
 
     assert html =~ "Combine entry hash and drand randomness into"
+
+    assert html =~ "A reading can arrive after the deadline, so a fallback can happen for an hour"
+    assert html =~ "can&#39;t tell a late reading from a withheld one."
     refute html =~ "BMRS"
     refute html =~ "Met Office"
     refute html =~ "drand entropy alone"
