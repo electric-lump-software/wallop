@@ -43,6 +43,15 @@ defmodule WallopCore.Entropy.LandObsClient do
           | {:transport, :http_error}
           | LandObsGrammar.error_reason()
 
+  @doc """
+  Whether a usable Land Observations key is configured: set, non-empty and
+  visible ASCII. It is the same check each request makes before it is sent,
+  so a lock that relies on this answer and the fetches that follow can't
+  disagree about it.
+  """
+  @spec key_configured?() :: boolean()
+  def key_configured?, do: match?({:ok, _}, api_key())
+
   @doc "The largest response body accepted, in bytes."
   @spec max_body_bytes() :: pos_integer()
   def max_body_bytes, do: @max_body_bytes

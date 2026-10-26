@@ -116,6 +116,31 @@ defmodule WallopCore.Entropy.LandObsClientTest do
     assert {:error, :no_api_key} = LandObsClient.fetch_hour("gcnfur", ~U[2026-10-14 19:00:00Z])
   end
 
+  test "key_configured?/0 agrees with the key check each request makes" do
+    serve("{}", 503)
+
+    for {key, configured?} <- [
+          {@key, true},
+          {nil, false},
+          {"", false},
+          {"has space", false},
+          {"tab\tkey", false},
+          {:not_a_string, false}
+        ] do
+      if key,
+        do: Application.put_env(:wallop_core, :met_office_obs_api_key, key),
+        else: Application.delete_env(:wallop_core, :met_office_obs_api_key)
+
+      assert LandObsClient.key_configured?() == configured?, inspect(key)
+
+      result = LandObsClient.fetch_hour("gcnfur", ~U[2026-10-14 19:00:00Z])
+
+      assert match?({:error, reason} when reason in [:no_api_key, :invalid_api_key], result) ==
+               not configured?,
+             inspect({key, result})
+    end
+  end
+
   test "a redirect is an error and is not followed" do
     Req.Test.stub(LandObsClient, fn conn ->
       if conn.host == "data.hub.api.metoffice.gov.uk" do
