@@ -148,6 +148,20 @@ What else you may send depends on your operator's draw protocol. The platform se
 
 Pick a later `draw_at` (or send none) and lock again. Without `draw_at` the error has no `source.pointer`. Match on `code` and `meta`, not on `detail`.
 
+**An observation-weather lock where wallop has no Land Observations key** is refused with `400` `invalid_argument`, with no `source.pointer` and an empty `meta`, and the draw stays open. Without the key no reading could be fetched, so the draw would always fall back; wallop says so now rather than at the result. Forecast and grid-frequency locks are unaffected. Other keys omitted:
+
+```json
+{
+  "errors": [
+    {
+      "status": "400",
+      "code": "invalid_argument",
+      "detail": "observation-weather draws are paused here: no Land Observations key is configured"
+    }
+  ]
+}
+```
+
 ---
 
 ### Get Draw

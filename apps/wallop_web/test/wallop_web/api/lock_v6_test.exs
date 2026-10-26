@@ -98,6 +98,7 @@ defmodule WallopWeb.Api.LockV6Test do
         assert error["status"] == "400"
         assert error["code"] == "invalid_argument"
         assert error["source"] in [nil, %{}]
+        assert error["meta"] in [nil, %{}]
 
         assert error["detail"] ==
                  "observation-weather draws are paused here: no Land Observations key is configured"

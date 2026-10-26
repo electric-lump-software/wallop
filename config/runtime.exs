@@ -7,9 +7,10 @@ if config_env() in [:dev, :test] do
     config :wallop_core, :met_office_api_key, met_key
   end
 
-  # Optional: only observation-weather draws use it. When it's missing, those
-  # draws fall back by rule (visible in the receipt); forecast draws are
-  # unaffected.
+  # Optional: only observation-weather draws use it. When it's missing (or
+  # unusable), new observation-weather locks are refused, and draws already
+  # locked fall back by rule (visible in the receipt). Forecast and
+  # grid-frequency draws are unaffected.
   if obs_key = env["MET_OFFICE_OBS_API_KEY"] do
     config :wallop_core, :met_office_obs_api_key, obs_key
   end
@@ -94,9 +95,10 @@ if config_env() == :prod do
 
   config :wallop_core, :met_office_api_key, met_office_api_key
 
-  # Optional: only observation-weather draws use it. When it's missing, those
-  # draws fall back by rule (visible in the receipt); forecast draws are
-  # unaffected.
+  # Optional: only observation-weather draws use it. When it's missing (or
+  # unusable), new observation-weather locks are refused, and draws already
+  # locked fall back by rule (visible in the receipt). Forecast and
+  # grid-frequency draws are unaffected.
   if obs_key = System.get_env("MET_OFFICE_OBS_API_KEY") do
     config :wallop_core, :met_office_obs_api_key, obs_key
   end
