@@ -263,7 +263,7 @@
           <div class="w-9 h-9 rounded-full bg-[#1a1a1a] text-white flex items-center justify-center text-sm font-bold shrink-0">2</div>
           <div>
             <h4 class="text-[15px] font-bold mb-1.5">Declare future entropy sources</h4>
-            <p class="text-sm text-[#555] leading-relaxed">Wallop! records a future drand quicknet round, plus when the second source is read: a weather time or a grid-frequency window. Nobody knows the drand value until it publishes, short of drand&#39;s network colluding. For observation-weather and grid-frequency draws the second source is in the future too. Forecast-weather draws work differently: see <a href="/how-verification-works#small-print" class="underline decoration-[#ccc] hover:decoration-[#1a1a1a]">the small print</a>.</p>
+            <p class="text-sm text-[#555] leading-relaxed">Wallop! records a future drand quicknet round, plus when the second source is read: a weather time or a grid-frequency window. Nobody knows the drand value until it publishes, and the second source is in the future too.</p>
             <code class="mt-2 inline-block font-mono text-[11px] text-[#666] bg-cream-dark px-2.5 py-1.5 rounded">drand quicknet · 3-second rounds · chain hash: 52db9ba7...</code>
           </div>
         </div>
@@ -469,8 +469,7 @@
           </summary>
           <div class="px-5 pb-4 pt-3 text-sm text-[#555] leading-[1.7] bg-white border-t border-cream-border">
             It&#39;s deterministic given the entropy — which is the point. The entropy comes from
-            drand, which nobody can predict before it publishes unless enough of its network
-            colludes, plus the Met Office weather or the National Grid&#39;s frequency, depending
+            drand, which nobody can predict before it publishes, plus the Met Office weather or the National Grid&#39;s frequency, depending
             on the draw. But once you have the seed, anyone can reproduce the exact result. That&#39;s what
             makes it verifiable.
           </div>
@@ -484,8 +483,7 @@
           <div class="px-5 pb-4 pt-3 text-sm text-[#555] leading-[1.7] bg-white border-t border-cream-border">
             drand is a public, distributed randomness beacon run by the League of Entropy —
             universities, tech companies, and other organisations. Every 3 seconds it publishes
-            a new random value that nobody can predict or steer in advance, short of enough of
-            its members ganging up. Think of it like
+            a new random value that nobody can predict or steer in advance. Think of it like
             a global lottery ball machine that runs constantly and publishes its results publicly.
           </div>
         </details>

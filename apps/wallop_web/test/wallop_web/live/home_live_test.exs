@@ -170,7 +170,11 @@ defmodule WallopWeb.HomeLiveTest do
       end
 
       assert plain =~ "at worst to drand on its own"
-      assert crypto =~ "#small-print"
+
+      for html <- [plain, crypto] do
+        refute html =~ ~r/forecast/i
+        refute html =~ ~r/collud|ganging/i
+      end
     end
 
     test "how verification works names the fallbacks and what is trusted", %{conn: conn} do
@@ -186,6 +190,12 @@ defmodule WallopWeb.HomeLiveTest do
       assert html =~ "can cancel a draw only before then, and visibly"
       assert html =~ "within tolerance after that"
       refute html =~ "not even we can UPDATE"
+      refute html =~ ~r/forecast/i
+
+      # The drand collusion caveat lives only in the small print's list.
+      [body, small_print] = String.split(html, ~s(id="small-print"), parts: 2)
+      refute body =~ ~r/collud|ganging/i
+      assert small_print =~ "fewer than drand&#39;s threshold of nodes collude"
       assert html =~ "the drand beacon is"
     end
   end
