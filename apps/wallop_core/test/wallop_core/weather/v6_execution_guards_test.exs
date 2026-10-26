@@ -433,8 +433,9 @@ defmodule WallopCore.Weather.V6ExecutionGuardsTest do
       locked = create_draw(api_key)
       assert locked.status == :awaiting_entropy
 
+      # PostgreSQL 17+ adds "RESTRICT setting of" to this message; 16 doesn't.
       assert try_sql("DELETE FROM draws WHERE id = $1", [dump(locked.id)]) =~
-               ~s(violates RESTRICT setting of foreign key constraint "operator_receipts_draw_id_fkey")
+               ~r/violates (RESTRICT setting of )?foreign key constraint "operator_receipts_draw_id_fkey"/
 
       with_triggers_off(fn ->
         Repo.query!("DELETE FROM operator_receipts WHERE draw_id = $1", [dump(locked.id)])
