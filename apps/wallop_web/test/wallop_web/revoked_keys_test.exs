@@ -1,6 +1,8 @@
 defmodule WallopWeb.RevokedKeysTest do
   use WallopWeb.ConnCase, async: false
 
+  import Phoenix.LiveViewTest
+
   require Ash.Query
 
   alias WallopCore.Protocol
@@ -183,6 +185,38 @@ defmodule WallopWeb.RevokedKeysTest do
       html = render_live.()
       assert html =~ "Cannot verify: signing key not published (key revoked)."
       refute html =~ "Verified by Wallop"
+    end
+
+    test "a draw completing while watched shows the reveal badge only while its keys are published",
+         %{conn: conn} do
+      ensure_infrastructure_key()
+
+      watch_completion = fn revoke? ->
+        api_key = create_api_key()
+        draw = create_draw(api_key)
+        {:ok, view, _html} = live(conn, "/live/proof/#{draw.id}")
+
+        if revoke? do
+          receipt =
+            OperatorReceipt
+            |> Ash.Query.filter(draw_id == ^draw.id)
+            |> Ash.read_one!(authorize?: false)
+
+          OperatorSigningKey
+          |> Ash.Query.filter(
+            operator_id == ^receipt.operator_id and key_id == ^receipt.signing_key_id
+          )
+          |> Ash.read_one!(authorize?: false)
+          |> revoke_key!()
+        end
+
+        completed = execute_draw(draw, test_seed(), api_key)
+        Phoenix.PubSub.broadcast(WallopCore.PubSub, "draw:#{draw.id}", {:draw_updated, completed})
+        render(view)
+      end
+
+      assert watch_completion.(false) =~ "data-reveal-badge"
+      refute watch_completion.(true) =~ "data-reveal-badge"
     end
   end
 end
