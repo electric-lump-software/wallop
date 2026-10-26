@@ -54,7 +54,7 @@ all_four="INFISICAL_UNIVERSAL_AUTH_CLIENT_ID=id INFISICAL_UNIVERSAL_AUTH_CLIENT_
 run_start() {
   rm -f "$work/calls" "$work/run_args"
   STUB_CALLS="$work/calls" STUB_RUN_ARGS="$work/run_args" PATH="$work/bin:$PATH" \
-    DATABASE_URL=from-railway env "$@" "$work/start" > "$work/out" 2> "$work/err"
+    DATABASE_URL=from-platform env "$@" "$work/start" > "$work/out" 2> "$work/err"
 }
 
 check() {
@@ -64,7 +64,7 @@ check() {
 run_start
 status=$?
 check "nothing configured starts as before, without calling Infisical" \
-  '[ $status -eq 0 ] && grep -q "DATABASE_URL=from-railway" "$work/out" && [ ! -e "$work/calls" ]'
+  '[ $status -eq 0 ] && grep -q "DATABASE_URL=from-platform" "$work/out" && [ ! -e "$work/calls" ]'
 
 # shellcheck disable=SC2086
 run_start $all_four
@@ -93,7 +93,7 @@ check "two paths are each passed as their own --path, in order" \
 # shellcheck disable=SC2086
 run_start $all_four STUB_MISSING_PATH=/core "INFISICAL_PATHS=/shared /core"
 status=$?
-check "a folder Infisical can't read stops the start" \
+check "a folder the CLI fails to read stops the start" \
   '[ $status -ne 0 ] && ! grep -q DATABASE_URL "$work/out"'
 
 run_start INFISICAL_UNIVERSAL_AUTH_CLIENT_ID=id INFISICAL_PROJECT_ID=project
