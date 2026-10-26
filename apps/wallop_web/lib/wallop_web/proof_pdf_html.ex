@@ -313,8 +313,8 @@ defmodule WallopWeb.ProofPdfHTML do
         </li>
         <li :if={!@weather and @draw.weather_value}>
           The weather value is a Met Office forecast for Middle Wallop. A forecast can't
-          be re-fetched later, so this value rests on wallop's word; drand still kept the
-          result unknown when the entries locked.
+          be re-fetched later, so for this value you have our word. drand still kept the
+          result unknown when the entries locked, unless drand's network colluded.
         </li>
         <li>
           Canonicalise the entries list via JCS (RFC 8785), SHA-256 the bytes,
