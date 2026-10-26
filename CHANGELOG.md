@@ -38,14 +38,14 @@ The forecast method (entropy tag `drand-quicknet+openmeteo-v1`, lock receipt sch
 
 - **Every operator is on observation weather unless moved to grid frequency.** The migration sets the default to `observation`, moves every `forecast` operator to it, and adds a check constraint allowing only `observation` and `frequency`.
 - **The database refuses every lock without lock schema 6.** An open draw with no lock schema can only stay open or expire, whatever code runs the update.
-- **A retired forecast draw's proof pages return `404`**, the same response as an unknown draw: `/proof/:id`, `/proof/:id/:entry_id`, `/proof/:id/entries`, `/proof/:id/pdf`, `/proof/:id/json` and `/live/proof/...`. Its signed receipts stay, byte for byte, at `/operator/:slug/receipts/:seq` and `/operator/:slug/executions/:seq`; the transparency anchors commit to them and are unaffected.
+- **A retired forecast draw's proof routes respond exactly as for an unknown draw**: `/proof/:id`, `/proof/:id/:entry_id`, `/proof/:id/entries`, `/proof/:id/pdf`, `/proof/:id/json` and `/live/proof/...`. Its signed receipts stay, byte for byte, at `/operator/:slug/receipts/:seq` and `/operator/:slug/executions/:seq`; the transparency anchors commit to them and are unaffected.
 - The re-drive reads only `lock_schema_version = '6'` draws, with one worker and one rule.
 - The proof page's browser check accepts only lock 6 / execution 5 receipts.
 - `spec/protocol.md`: the forecast sections become one "Retired" paragraph (§2.2.2); the frozen receipt set is lock 6 / execution 5 (§4.2.1); §4.4 no longer promises that every receipt since 0.16.0 verifies for the life of 1.x.
 
 **ADDED.**
 
-- `WallopCore.ForecastDrain` and its `WallopCore.Release` wrappers: the deploy gate that reports stranded forecast draws and, after the deploy, fails each with `failure_reason` `forecast_retired` and cancels the old worker's jobs. See `MIGRATING.md`.
+- `WallopCore.ForecastDrain` and its `WallopCore.Release` wrappers: the deploy gate that reports stranded forecast draws and, after the deploy, fails each with `failure_reason` `forecast_retired` and cancels the old worker's jobs. See `MIGRATING.md`. PDFs already cached for forecast draws stay in proof storage, unreachable; no cleanup is needed.
 
 ### Added: observation weather (lock schema 6 / execution schema 5), per operator
 
