@@ -23,8 +23,11 @@ config :wallop_core, Oban,
   # slots. :entropy is the forecast EntropyWorker; :weather the Land Obs
   # fetch; :frequency the grid-frequency window polls; :v6_execution the
   # schema 6 executions (ObservationDrawWorker, both tags).
-  # Every running job can hold a database connection: the sum of all queue
-  # limits must stay well under the Repo pool size (POOL_SIZE).
+  # The queue limits add up to 36, more than the Repo pool (POOL_SIZE,
+  # default 20). That is safe because jobs check a connection out per query
+  # and never hold one across an HTTP call or a snooze (the fetching workers
+  # refuse to fetch inside a transaction). Size the pool for queries running
+  # at the same time, not for jobs.
   queues: [entropy: 10, webhooks: 5, default: 5, weather: 5, frequency: 6, v6_execution: 5],
   plugins: [
     {Oban.Plugins.Cron,

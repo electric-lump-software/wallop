@@ -9,7 +9,7 @@ defmodule WallopCore.Entropy.WeatherObservationWorkerTest do
   alias WallopCore.Entropy.{LandObsClient, WeatherObservationWorker}
   alias WallopCore.Repo
   alias WallopCore.Test.WindowedLandObsClient
-  alias WallopCore.Weather.{Observations, Schedule, Stations}
+  alias WallopCore.Weather.{LandObsBudget, Observations, Schedule, Stations}
 
   @w Schedule.fetch_window_seconds()
   @primary Stations.primary().id
@@ -17,6 +17,7 @@ defmodule WallopCore.Entropy.WeatherObservationWorkerTest do
   @stored [:wallop_core, :weather, :stored]
   @store_refused [:wallop_core, :weather, :store_refused]
   @poll_error [:wallop_core, :weather, :poll_error]
+  @cap_reached [:wallop_core, :weather, :cap_reached]
 
   setup do
     Application.put_env(:wallop_core, LandObsClient, plug: {Req.Test, LandObsClient})
@@ -64,6 +65,29 @@ defmodule WallopCore.Entropy.WeatherObservationWorkerTest do
 
   defp run(wt),
     do: perform_job(WeatherObservationWorker, %{weather_time: DateTime.to_iso8601(wt)})
+
+  defp calls_today do
+    %{rows: rows} =
+      Repo.query!(
+        "SELECT calls FROM land_obs_call_counts WHERE utc_day = (statement_timestamp() AT TIME ZONE 'UTC')::date"
+      )
+
+    case rows do
+      [[calls]] -> calls
+      [] -> 0
+    end
+  end
+
+  defp set_cap(cap) do
+    previous = Application.get_env(:wallop_core, :land_obs_daily_cap)
+    Application.put_env(:wallop_core, :land_obs_daily_cap, cap)
+
+    on_exit(fn ->
+      if previous,
+        do: Application.put_env(:wallop_core, :land_obs_daily_cap, previous),
+        else: Application.delete_env(:wallop_core, :land_obs_daily_cap)
+    end)
+  end
 
   defp attach(events), do: :telemetry_test.attach_event_handlers(self(), events)
 
@@ -186,14 +210,24 @@ defmodule WallopCore.Entropy.WeatherObservationWorkerTest do
       stub_primary(row(wt, 12.34))
       ref = attach([@store_refused])
 
-      # The store refuses to run inside a caller's transaction.
-      capture_log(fn ->
-        assert {:ok, {:snooze, _}} = Repo.transaction(fn -> run(wt) end)
-      end)
+      # A trigger that refuses every insert, for this test's transaction only.
+      Repo.query!("""
+      CREATE FUNCTION test_refuse_observation() RETURNS trigger AS $$
+      BEGIN RAISE EXCEPTION 'refused for the test'; END;
+      $$ LANGUAGE plpgsql
+      """)
+
+      Repo.query!("""
+      CREATE TRIGGER test_refuse_observation BEFORE INSERT ON weather_observations
+        FOR EACH ROW EXECUTE FUNCTION test_refuse_observation()
+      """)
+
+      log = capture_log(fn -> assert {:snooze, _} = run(wt) end)
 
       assert_receive {@store_refused, ^ref, %{count: 1},
-                      %{station: @primary, weather_time: ^wt, reason: :nested_transaction}}
+                      %{station: @primary, weather_time: ^wt, reason: :refused}}
 
+      assert log =~ "refused (refused)"
       assert Observations.for_draw(d.id) == nil
     end
 
@@ -219,6 +253,112 @@ defmodule WallopCore.Entropy.WeatherObservationWorkerTest do
       assert :ok = run(wt)
       assert Observations.for_hour(wt) == nil
       refute_received {:fetched, _}
+    end
+  end
+
+  describe "the daily cap" do
+    test "each poll reserves one call on today's counter, before fetching" do
+      {wt, _} = v6_draws(-6 * 60, 1)
+      stub_primary("[]")
+      before = calls_today()
+
+      capture_log(fn -> assert {:snooze, _} = run(wt) end)
+      assert_receive {:fetched, "gcnfur"}
+      assert calls_today() == before + 1
+    end
+
+    test "at the cap: no call, a :daily_cap poll error, and a snooze past F" do
+      set_cap(1)
+      {wt, [d]} = v6_draws(-6 * 60, 1)
+      stub_primary(row(wt, 12.34))
+      {:ok, 1} = LandObsBudget.reserve()
+      ref = attach([@poll, @cap_reached, @stored])
+
+      log = capture_log(fn -> assert {:snooze, _} = run(wt) end)
+
+      refute_received {:fetched, _}
+      assert Observations.for_draw(d.id) == nil
+      refute_received {@stored, ^ref, _, _}
+
+      assert_received {@poll, ^ref, %{count: 1},
+                       %{station: @primary, weather_time: ^wt, ok?: false, error: :daily_cap}}
+
+      assert_received {@cap_reached, ^ref, %{count: 1}, %{weather_time: ^wt, cap: 1}}
+      assert log =~ "daily cap of 1 Land Observations calls reached"
+      assert log =~ "failed (:daily_cap)"
+    end
+
+    test "the snooze lands just after F, where the job ends" do
+      set_cap(1)
+      {:ok, 1} = LandObsBudget.reserve()
+      {wt, _} = v6_draws(-6 * 60, 1)
+      stub_primary("[]")
+
+      capture_log(fn ->
+        {:snooze, s} = run(wt)
+        until_f = DateTime.diff(Schedule.fetch_deadline(wt), DateTime.utc_now())
+        # One second past F, give or take the test's own running time.
+        assert s in (until_f + 1 - 2)..(until_f + 1 + 2)
+        assert s > Schedule.poll_interval_seconds()
+      end)
+
+      {late_wt, _} = v6_draws(-(@w + 1), 1)
+      assert :ok = run(late_wt)
+      refute_received {:fetched, _}
+    end
+
+    test "one error log a day, however many calls are refused; telemetry for each" do
+      set_cap(1)
+      {:ok, 1} = LandObsBudget.reserve()
+      {wt, _} = v6_draws(-6 * 60, 1)
+      ref = attach([@cap_reached])
+
+      log =
+        capture_log(fn ->
+          for _ <- 1..3, do: assert({:snooze, _} = run(wt))
+        end)
+
+      refute_received {:fetched, _}
+      assert length(Regex.scan(~r/daily cap of 1 Land Observations calls reached/, log)) == 1
+
+      for _ <- 1..3, do: assert_received({@cap_reached, ^ref, %{count: 1}, %{cap: 1}})
+      refute_received {@cap_reached, ^ref, _, _}
+      assert calls_today() == 4
+    end
+
+    test "a counter that can't be written means no call" do
+      {wt, _} = v6_draws(-6 * 60, 1)
+      stub_primary(row(wt, 12.34))
+      ref = attach([@poll_error])
+
+      Repo.query!("ALTER TABLE land_obs_call_counts RENAME TO land_obs_call_counts_moved")
+
+      log = capture_log(fn -> assert {:snooze, _} = run(wt) end)
+
+      refute_received {:fetched, _}
+      assert_received {@poll_error, ^ref, %{count: 1}, %{weather_time: ^wt, kind: :error}}
+      assert log =~ "failed (error"
+    end
+
+    test "inside a caller's transaction: nothing reserved, fetched or stored" do
+      {wt, [d]} = v6_draws(-6 * 60, 1)
+      stub_primary(row(wt, 12.34))
+      ref = attach([@poll, @store_refused])
+      before = calls_today()
+
+      log =
+        capture_log(fn ->
+          assert {:ok, {:snooze, _}} = Repo.transaction(fn -> run(wt) end)
+        end)
+
+      refute_received {:fetched, _}
+      assert calls_today() == before
+
+      assert_received {@poll, ^ref, %{count: 1}, %{ok?: false, error: :nested_transaction}}
+
+      refute_received {@store_refused, ^ref, _, _}
+      assert log =~ "failed (:nested_transaction)"
+      assert Observations.for_draw(d.id) == nil
     end
   end
 
@@ -316,6 +456,62 @@ defmodule WallopCore.Entropy.WeatherObservationWorkerTest do
 
       assert_receive {@poll_error, ^ref, %{count: 1},
                       %{weather_time: ^wt, station: nil, kind: :error}}
+    end
+
+    test "a failed poll is logged at warning with only its reason" do
+      {wt, _} = v6_draws(-6 * 60, 1)
+
+      for {status, body, logged} <- [
+            {503, "{}", "failed ({:unexpected_status, 503})"},
+            {200, "[]", "failed (:missing_hour)"},
+            {200, "not json", "failed (:invalid_json)"}
+          ] do
+        Req.Test.stub(LandObsClient, &Plug.Conn.send_resp(&1, status, body))
+        log = capture_log([level: :warning], fn -> assert {:snooze, _} = run(wt) end)
+        assert log =~ "[warning]"
+
+        assert log =~
+                 "WeatherObservationWorker: poll for #{WeatherObservationWorker.hour_arg(wt)}"
+
+        assert log =~ logged
+      end
+
+      Req.Test.stub(LandObsClient, &Req.Test.transport_error(&1, :econnrefused))
+      log = capture_log(fn -> assert {:snooze, _} = run(wt) end)
+      assert log =~ "failed (:transport)"
+    end
+
+    test "a sentinel key and body never reach the log, whatever the error" do
+      {wt, _} = v6_draws(-6 * 60, 1)
+      key = "SENTINEL-KEY-0f9e8d7c"
+      Application.put_env(:wallop_core, :met_office_obs_api_key, key)
+      previous_level = Logger.level()
+      Logger.configure(level: :debug)
+      on_exit(fn -> Logger.configure(level: previous_level) end)
+
+      log =
+        capture_log(fn ->
+          for {status, body} <- [
+                {401, ~s({"detail": "bad key SENTINEL-KEY-0f9e8d7c SENTINEL-BODY"})},
+                {200, ~s([{"datetime": "SENTINEL-BODY"}])},
+                {200, "SENTINEL-BODY"}
+              ] do
+            Req.Test.stub(LandObsClient, &Plug.Conn.send_resp(&1, status, body))
+            assert {:snooze, _} = run(wt)
+          end
+
+          Req.Test.stub(LandObsClient, &Req.Test.transport_error(&1, :timeout))
+          assert {:snooze, _} = run(wt)
+        end)
+
+      refute log =~ key
+      refute log =~ "SENTINEL"
+
+      # The poll lines name only the reason (the debug SQL above them names
+      # the raw column, so only these lines are checked for it).
+      failed = log |> String.split("\n") |> Enum.filter(&(&1 =~ "failed ("))
+      assert length(failed) == 4
+      refute Enum.any?(failed, &(&1 =~ "raw"))
     end
 
     test "logs and telemetry carry no body and no key" do

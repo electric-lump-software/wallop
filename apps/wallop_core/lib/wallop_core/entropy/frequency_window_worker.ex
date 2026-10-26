@@ -26,8 +26,14 @@ defmodule WallopCore.Entropy.FrequencyWindowWorker do
   fetch window, not the attempt count, ends the job. The HTTP client never
   retries; this polling is the retry, and it can't change a stored value.
 
-  Logs and telemetry carry only enumerated terms (the client's error terms,
-  exception kinds), never response bodies or request structs.
+  A run inside a database transaction makes no call
+  (`{:error, :nested_transaction}`): a fetch must never hold a connection,
+  or anything else, open across HTTP.
+
+  A failed poll is logged at warning, with its reason passed through
+  `WallopCore.Entropy.PollLog`. Logs and telemetry carry only enumerated
+  terms (the client's error terms, exception kinds), never response bodies
+  or request structs.
 
   Telemetry:
 
@@ -49,8 +55,9 @@ defmodule WallopCore.Entropy.FrequencyWindowWorker do
   require Logger
 
   alias WallopCore.DbClock
-  alias WallopCore.Entropy.ElexonFreqClient
+  alias WallopCore.Entropy.{ElexonFreqClient, PollLog}
   alias WallopCore.Frequency.{Schedule, Windows}
+  alias WallopCore.Repo
 
   # The client's own timeouts are per chunk, so each fetch is capped here.
   # Fetch cap + store (5 s statement timeout) + reads stay under the job
@@ -159,7 +166,13 @@ defmodule WallopCore.Entropy.FrequencyWindowWorker do
     end
   end
 
+  # Never inside a transaction; the check has to be here, since in the Task
+  # in_transaction? is always false.
   defp fetch(t) do
+    if Repo.in_transaction?(), do: {:error, :nested_transaction}, else: timed_fetch(t)
+  end
+
+  defp timed_fetch(t) do
     task = Task.async(fn -> fetch_one(t) end)
 
     case Task.yield(task, @fetch_timeout_ms) || Task.shutdown(task, :brutal_kill) do
@@ -192,6 +205,13 @@ defmodule WallopCore.Entropy.FrequencyWindowWorker do
         {:error, reason} -> reason
         {:raised, kind, _module} -> {:raised, kind}
       end
+
+    with {:error, reason} <- result do
+      Logger.warning(
+        "FrequencyWindowWorker: poll for #{start_arg(t)} failed " <>
+          "(#{inspect(PollLog.term(reason))})"
+      )
+    end
 
     :telemetry.execute([:wallop_core, :frequency, :poll], %{count: 1}, %{
       freq_start: t,

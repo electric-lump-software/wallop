@@ -11,17 +11,19 @@ defmodule WallopCore.Entropy.ObservationDrawWorkerTest do
     DrandClient,
     EntropyWorker,
     FrequencyWindowWorker,
+    LandObsClient,
     ObservationDrawWorker,
     StuckDrawRedriver,
     V6Execution,
-    V6Rules
+    V6Rules,
+    WeatherObservationWorker
   }
 
   alias WallopCore.Frequency.Schedule, as: FreqSchedule
   alias WallopCore.ProofBundle
   alias WallopCore.Protocol
   alias WallopCore.Resources.{Draw, ExecutionReceipt}
-  alias WallopCore.Weather.{Observations, Schedule, Stations}
+  alias WallopCore.Weather.{LandObsBudget, Observations, Schedule, Stations}
 
   import Ecto.Query, only: [from: 2]
 
@@ -300,6 +302,75 @@ defmodule WallopCore.Entropy.ObservationDrawWorkerTest do
 
       assert execution_receipt_count(draw) == 1
       payload = exec_payload(draw)
+      assert {payload["freq_value"], payload["freq_fallback_reason"]} == {@freq, nil}
+    end
+
+    test "an hour polled at the daily cap completes in state (b), from the window" do
+      previous_cap = Application.get_env(:wallop_core, :land_obs_daily_cap)
+      Application.put_env(:wallop_core, :land_obs_daily_cap, 1)
+      Application.put_env(:wallop_core, LandObsClient, plug: {Req.Test, LandObsClient})
+
+      on_exit(fn ->
+        Application.delete_env(:wallop_core, LandObsClient)
+
+        if previous_cap,
+          do: Application.put_env(:wallop_core, :land_obs_daily_cap, previous_cap),
+          else: Application.delete_env(:wallop_core, :land_obs_daily_cap)
+      end)
+
+      test_pid = self()
+
+      Req.Test.stub(LandObsClient, fn conn ->
+        send(test_pid, :land_obs_fetched)
+        Plug.Conn.send_resp(conn, 503, "{}")
+      end)
+
+      {_op, key} = create_v6_operator()
+      round = round_at(-10)
+      true_wt = Schedule.weather_time_for_round(round)
+      # The database clock can't be moved, so the hour is first placed inside
+      # its fetch window (6 minutes ago, as the worker tests do) for the
+      # capped poll, and then moved back to the round's own hour, whose F
+      # has passed, for the execution.
+      in_window = DateTime.utc_now() |> DateTime.add(-6 * 60) |> DateTime.truncate(:second)
+      draw = put_v6_awaiting!(open_draw_with_entries(key), in_window, round)
+
+      {:ok, 1} = LandObsBudget.reserve()
+
+      capture_log(fn ->
+        assert {:snooze, _} =
+                 perform_job(WeatherObservationWorker, %{
+                   weather_time: DateTime.to_iso8601(in_window)
+                 })
+      end)
+
+      refute_received :land_obs_fetched
+      assert Observations.for_hour(in_window) == nil
+
+      with_triggers_off(fn ->
+        Repo.query!("UPDATE draws SET weather_time = $2 WHERE id = $1", [
+          Ecto.UUID.dump!(draw.id),
+          DateTime.to_naive(true_wt)
+        ])
+      end)
+
+      assert Observations.for_hour(true_wt) == nil
+      put_frequency_window!(draw.freq_start, @freq)
+      assert :ok = perform_job(ObservationDrawWorker, %{draw_id: draw.id})
+
+      done = reload(draw)
+      assert done.status == :completed
+
+      assert {done.weather_value, done.weather_fallback_reason} ==
+               {nil, "no_observation_by_deadline"}
+
+      assert {done.freq_value, done.freq_fallback_reason} == {@freq, nil}
+
+      {seed, _} = Protocol.compute_freq_seed(done.entry_hash, @randomness, @freq)
+      assert done.seed == Base.encode16(seed, case: :lower)
+
+      payload = exec_payload(draw)
+      assert payload["weather_fallback_reason"] == "no_observation_by_deadline"
       assert {payload["freq_value"], payload["freq_fallback_reason"]} == {@freq, nil}
     end
 

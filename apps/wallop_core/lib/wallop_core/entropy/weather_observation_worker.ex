@@ -28,9 +28,21 @@ defmodule WallopCore.Entropy.WeatherObservationWorker do
   retry, and it can't change a stored value, because the first store for an
   hour is the only one.
 
-  Logs and telemetry carry only enumerated terms (the client's error terms,
-  exception module names), never response bodies, request structs or the
-  API key.
+  Each call is first reserved against the daily cap
+  (`WallopCore.Weather.LandObsBudget`, `LAND_OBS_DAILY_CAP`). At the cap no
+  call is made: the poll fails with `:daily_cap` like any other error, and
+  the job snoozes past F, so the hour's draws reach their deadline without
+  a reading and complete by the fallback rule. The first refusal of a UTC
+  day is logged as an error.
+
+  A run inside a database transaction makes no reservation and no call
+  (`{:error, :nested_transaction}`): a fetch must never hold a connection,
+  or anything else, open across HTTP.
+
+  A failed poll is logged at warning, with its reason passed through
+  `WallopCore.Entropy.PollLog`. Logs and telemetry carry only enumerated
+  terms (the client's error terms, exception module names), never response
+  bodies, request structs or the API key.
 
   Telemetry (`station`, when set, is always `"wmo-03749"`):
 
@@ -45,7 +57,10 @@ defmodule WallopCore.Entropy.WeatherObservationWorker do
     * `[:wallop_core, :weather, :poll_error]`, `%{count: 1}`,
       `%{weather_time, station, kind}`: a fetch (`station` set) or the run
       (`station: nil`) raised (`:error`), exited (`:exit`) or threw
-      (`:throw`).
+      (`:throw`);
+    * `[:wallop_core, :weather, :cap_reached]`, `%{count: 1}`,
+      `%{weather_time, cap}`: a call was refused at the daily cap (one event
+      per refused call).
   """
   use Oban.Worker,
     queue: :weather,
@@ -56,8 +71,9 @@ defmodule WallopCore.Entropy.WeatherObservationWorker do
   require Logger
 
   alias WallopCore.DbClock
-  alias WallopCore.Entropy.LandObsClient
-  alias WallopCore.Weather.{Observations, Schedule, Stations}
+  alias WallopCore.Entropy.{LandObsClient, PollLog}
+  alias WallopCore.Repo
+  alias WallopCore.Weather.{LandObsBudget, Observations, Schedule, Stations}
 
   # Tests swap in a wrapper around the real client; see
   # WallopCore.Test.WindowedLandObsClient. Fixed at compile time.
@@ -199,7 +215,12 @@ defmodule WallopCore.Entropy.WeatherObservationWorker do
     case window_state(now, wt) do
       :open ->
         with {:ok, reading} <- result, do: store(wt, station, reading)
-        if Observations.pending_draw_ids(wt) == [], do: :ok, else: next_poll(now, wt)
+
+        cond do
+          Observations.pending_draw_ids(wt) == [] -> :ok
+          result == {:error, :daily_cap} -> {:snooze, past_deadline(now, wt)}
+          true -> next_poll(now, wt)
+        end
 
       :closed ->
         :ok
@@ -210,8 +231,47 @@ defmodule WallopCore.Entropy.WeatherObservationWorker do
   end
 
   # One fetch, capped at @fetch_timeout_ms; a fetch still running then is
-  # killed and counts as {:error, :poll_timeout}.
+  # killed and counts as {:error, :poll_timeout}. Never inside a transaction
+  # (the check has to be here: in the Task, in_transaction? is always false),
+  # and only once the call is reserved under the daily cap.
   defp fetch_one(geohash, wt) do
+    if Repo.in_transaction?() do
+      {:error, :nested_transaction}
+    else
+      with :ok <- reserve(wt), do: timed_fetch(geohash, wt)
+    end
+  end
+
+  defp reserve(wt) do
+    case LandObsBudget.reserve() do
+      {:ok, _calls} ->
+        :ok
+
+      {:error, :daily_cap, calls} ->
+        cap_reached(wt, calls)
+        {:error, :daily_cap}
+    end
+  end
+
+  # One error log per UTC day, on the first refused reservation; telemetry
+  # on every one.
+  defp cap_reached(wt, calls) do
+    cap = LandObsBudget.cap()
+
+    if calls == cap + 1 do
+      Logger.error(
+        "WeatherObservationWorker: daily cap of #{cap} Land Observations calls reached; " <>
+          "no more calls until 00:00 UTC"
+      )
+    end
+
+    :telemetry.execute([:wallop_core, :weather, :cap_reached], %{count: 1}, %{
+      weather_time: wt,
+      cap: cap
+    })
+  end
+
+  defp timed_fetch(geohash, wt) do
     task = Task.async(fn -> fetch(geohash, wt) end)
 
     case Task.yield(task, @fetch_timeout_ms) || Task.shutdown(task, :brutal_kill) do
@@ -244,6 +304,13 @@ defmodule WallopCore.Entropy.WeatherObservationWorker do
         {:error, reason} -> reason
         {:raised, kind, _module} -> {:raised, kind}
       end
+
+    with {:error, reason} <- result do
+      Logger.warning(
+        "WeatherObservationWorker: poll for #{hour_arg(wt)} from #{station_id} failed " <>
+          "(#{inspect(PollLog.term(reason))})"
+      )
+    end
 
     :telemetry.execute([:wallop_core, :weather, :poll], %{count: 1}, %{
       station: station_id,
@@ -322,6 +389,10 @@ defmodule WallopCore.Entropy.WeatherObservationWorker do
   catch
     :exit, _ -> :error
   end
+
+  # Seconds to snooze so the next run lands just after F, where it ends.
+  defp past_deadline(now, wt),
+    do: max(DateTime.diff(Schedule.fetch_deadline(wt), now), 0) + 1
 
   defp first_poll_at(wt), do: DateTime.add(wt, Schedule.first_poll_after_weather_time_seconds())
 

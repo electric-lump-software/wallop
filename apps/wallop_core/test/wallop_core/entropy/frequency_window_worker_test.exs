@@ -205,18 +205,21 @@ defmodule WallopCore.Entropy.FrequencyWindowWorkerTest do
       refute log =~ "refused"
     end
 
-    test "a store refused inside a caller's transaction is reported, not retried silently" do
+    test "inside a caller's transaction it neither fetches nor stores, and says why" do
       t = inside()
       freq_draws(t, 1)
       elexon(t, @value)
-      ref = attach([@store_refused])
+      ref = attach([@poll, @store_refused])
 
-      capture_log(fn ->
-        assert {:ok, {:snooze, _}} = Repo.transaction(fn -> run(t) end)
-      end)
+      log =
+        capture_log(fn ->
+          assert {:ok, {:snooze, _}} = Repo.transaction(fn -> run(t) end)
+        end)
 
-      meta = %{freq_start: t, reason: :nested_transaction}
-      assert_received {@store_refused, ^ref, %{count: 1}, ^meta}
+      refute_received :fetched
+      assert_received {@poll, ^ref, %{count: 1}, %{error: :nested_transaction, ok?: false}}
+      refute_received {@store_refused, ^ref, _, _}
+      assert log =~ "failed (:nested_transaction)"
       assert Windows.for_start(t) == nil
     end
 
@@ -318,6 +321,25 @@ defmodule WallopCore.Entropy.FrequencyWindowWorkerTest do
       assert log =~ "Postgrex.Error"
       meta = %{freq_start: t, kind: :error}
       assert_received {@poll_error, ^ref, %{count: 1}, ^meta}
+    end
+
+    test "a failed poll is logged at warning with only its reason" do
+      t = inside()
+      freq_draws(t, 1)
+
+      for {status, body, logged} <- [
+            {503, "{}", "failed ({:unexpected_status, 503})"},
+            {200, "not json", "failed (:invalid_json)"}
+          ] do
+        Req.Test.stub(ElexonFreqClient, &Plug.Conn.send_resp(&1, status, body))
+        log = capture_log(fn -> assert {:snooze, _} = run(t) end)
+        assert log =~ "[warning]"
+        assert log =~ "FrequencyWindowWorker: poll for #{FrequencyWindowWorker.start_arg(t)}"
+        assert log =~ logged
+      end
+
+      Req.Test.stub(ElexonFreqClient, &Req.Test.transport_error(&1, :econnrefused))
+      assert capture_log(fn -> assert {:snooze, _} = run(t) end) =~ "failed (:transport)"
     end
 
     test "logs and telemetry carry no body" do
