@@ -43,6 +43,9 @@ config :phoenix_live_view,
 
 config :wallop_core, :met_office_api_key, System.get_env("MET_OFFICE_API_KEY", "dev-placeholder")
 
+# Mix tasks such as the OpenAPI generator start the app in :dev without a database.
+config :wallop_core, :vault_key_check, false
+
 # Note: MET_OFFICE_API_KEY is also read in runtime.exs via .env file.
 # The value here is a compile-time fallback. Prefer setting it in .env.
 
