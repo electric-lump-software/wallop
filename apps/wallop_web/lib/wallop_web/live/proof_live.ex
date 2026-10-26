@@ -16,6 +16,7 @@ defmodule WallopWeb.ProofLive do
   import WallopWeb.Components.PreLockPanel
 
   alias WallopCore.Proof
+  alias WallopWeb.Components.VerifyBlock
   alias WallopWeb.Plugs.SelfCheckRateLimit
   alias WallopWeb.ProofPreLockView
 
@@ -238,7 +239,7 @@ defmodule WallopWeb.ProofLive do
       WallopCore.Entries.load_for_draw(draw.id)
       |> Enum.map(fn %{uuid: uuid, weight: weight} -> %{"uuid" => uuid, "weight" => weight} end)
 
-    {Jason.encode!(entries), Jason.encode!(draw.results || [])}
+    {Jason.encode!(entries), VerifyBlock.results_json(draw.results)}
   end
 
   defp load_draw(id) do

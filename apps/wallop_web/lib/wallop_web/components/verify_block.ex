@@ -109,4 +109,16 @@ defmodule WallopWeb.Components.VerifyBlock do
     </div>
     """
   end
+
+  @doc """
+  The page's results as JSON, in position order, the same order as the
+  proof bundle, so the browser check compares like with like.
+  """
+  def results_json(nil), do: "[]"
+
+  def results_json(results) when is_list(results) do
+    results
+    |> Enum.sort_by(&(&1["position"] || &1[:position]))
+    |> Jason.encode!()
+  end
 end

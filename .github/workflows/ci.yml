@@ -92,6 +92,10 @@ jobs:
 
           echo "OK: wallop_rs pins spec/vectors tree $PINNED_VECTORS_SHA (match)."
 
+      - name: Proof page browser check (verify_core.js against the vendored WASM)
+        # Node built-ins only, with the runner's preinstalled Node: no npm install.
+        run: node apps/wallop_web/assets/test/verify_core_test.mjs
+
       - uses: erlef/setup-beam@v1
         id: beam
         with:

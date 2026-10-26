@@ -118,6 +118,10 @@ export function pageBindingProblem(d, bundle, keys) {
   const published = cls => keys.some(k => k.key_class === cls && k.public_key_hex === (cls === "operator" ? d.operatorPublicKeyHex : d.infraPublicKeyHex))
 
   if (d.drawId !== bundle.draw_id) return "draw id"
+  // Values shown in the line text, not only the ones checked.
+  if (String(d.entryCount) !== String(bundle.entries.length)) return "entry count"
+  if (String(d.winnerCount) !== String(bundle.results.length)) return "winner count"
+  if (String(d.drandRound) !== String(JSON.parse(bundle.execution_receipt.payload_jcs).drand_round)) return "drand round"
   if (d.lockReceiptJcs !== bundle.lock_receipt.payload_jcs) return "lock receipt"
   if (d.lockSignatureHex !== bundle.lock_receipt.signature_hex) return "lock signature"
   if (d.executionReceiptJcs !== bundle.execution_receipt.payload_jcs) return "execution receipt"
@@ -242,6 +246,9 @@ function verifyWinners(wasm, plan, d, entries, expected, count) {
  */
 export function computeChecks(wasm, d, published) {
   const receipts = hasReceipts(d)
+  // Any receipt data at all means the published proof decides; only a
+  // page with none is checked on its own (amber at best).
+  const gated = receiptState(d) !== "none"
   const result = {
     hasReceipts: receipts, receiptState: receiptState(d), gate: null, bindingProblem: null,
     lines: [], verdict: null, fatal: null,
@@ -256,7 +263,7 @@ export function computeChecks(wasm, d, published) {
 
   let exec = null
   let execJcs = null
-  if (receipts) {
+  if (gated) {
     if (!published) return refuse(REFUSED_RED)
     let bundle
     try {
@@ -274,7 +281,7 @@ export function computeChecks(wasm, d, published) {
   const lines = result.lines
   const statusFor = ok => {
     if (!ok) return "fail"
-    if (!receipts) return "unsigned"
+    if (!gated) return "unsigned"
     return result.gate === true ? "pass" : "unconfirmed"
   }
   const settle = (line, ok, failMessage) => {
@@ -285,7 +292,7 @@ export function computeChecks(wasm, d, published) {
     return ok
   }
   const done = () => {
-    result.verdict = finalVerdict({ gate: result.gate, linesPassed: lines.every(l => l.ok), hasReceipts: receipts })
+    result.verdict = finalVerdict({ gate: result.gate, linesPassed: lines.every(l => l.ok), hasReceipts: gated })
     return result
   }
   // Run one check; a throw fails the line with `errorPrefix: message`.
@@ -341,7 +348,17 @@ export function computeChecks(wasm, d, published) {
              "MISMATCH — draw math verification failed", "Verification error", () =>
     verifyWinners(wasm, plan, d, entries, JSON.parse(d.resultsJson), parseInt(d.winnerCount)))) return done()
 
-  if (!receipts) return done()
+  const gateLine = () => settle(
+    { id: "gate", text: "verify published proof bundle (attestable) → ", waitLabel: "passed", passLabel: "passed" },
+    result.gate === true,
+    GENERIC_RED)
+
+  // A partial page has nothing to show for the receipt lines; the gate
+  // (refused by the binding check) gives the verdict.
+  if (!receipts) {
+    if (gated) gateLine()
+    return done()
+  }
 
   const lockSig = { id: "lock_signature", text: "verify lock receipt (Ed25519) → ",
                     waitLabel: "valid signature", passLabel: "valid signature", mono: null, scrambleMs: 600 }
@@ -392,8 +409,6 @@ export function computeChecks(wasm, d, published) {
     wasm.verify_drand_wasm(exec.drand_chain, BigInt(exec.drand_round), exec.drand_signature, exec.drand_randomness)
   )) return done()
 
-  settle({ id: "gate", text: "verify published proof bundle (attestable) → ", waitLabel: "passed", passLabel: "passed" },
-         result.gate === true,
-         GENERIC_RED)
+  gateLine()
   return done()
 }

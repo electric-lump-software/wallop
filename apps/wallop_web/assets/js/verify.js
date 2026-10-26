@@ -7,21 +7,21 @@
  * is checked, and the verdict, live in verify_core.js.
  */
 import anime from "animejs/lib/anime.es.js"
-import { GENERIC_RED, REFUSED_RED, computeChecks, fetchPublishedProof, hasReceipts } from "./verify_core.js"
+import { GENERIC_RED, REFUSED_RED, computeChecks, fetchPublishedProof, receiptState } from "./verify_core.js"
 
-const VERDICT_COLOURS = { green: "#4ade80", amber: "#fbbf24", red: "#f87171" }
+// "neutral" is for when nothing was checked: never green, and nothing
+// suggesting the draw is at fault.
+const VERDICT_COLOURS = { green: "#4ade80", amber: "#fbbf24", red: "#f87171", neutral: "#a3a3a3" }
 
 const COULDNT_RUN =
   "COULDN'T RUN — your browser couldn't load the checker, so nothing was verified. " +
   "Try another browser, or the command below."
 const COULDNT_CHECK =
-  "COULDN'T CHECK — the proof couldn't be fetched, so nothing was verified. Try again in a moment."
-const AMBER = {
-  none: "NOT FULLY VERIFIED — the draw maths agrees with this page, but this draw has no signed " +
-    "receipts, so we can't confirm it wasn't changed afterwards. Nothing is wrong; there's just less to check.",
-  partial: "NOT FULLY VERIFIED — the draw maths agrees with this page, but this draw's signed " +
-    "receipts are incomplete, so we can't confirm it wasn't changed afterwards. Please tell the organiser."
-}
+  "COULDN'T CHECK — the proof couldn't be fetched, so nothing was verified either way. " +
+  "Check your connection and try again."
+const AMBER =
+  "NOT FULLY VERIFIED — the draw maths agrees with this page, but this draw has no signed " +
+  "receipts, so we can't confirm it wasn't changed afterwards. Nothing is wrong; there's just less to check."
 
 // Lazy-loaded WASM module
 let wasmModule = null
@@ -158,19 +158,21 @@ class VerifyRunner {
       wasm = await loadWasm()
     } catch (e) {
       this.markFailed(line0)
-      this.showResult("amber", COULDNT_RUN)
+      this.showResult("neutral", COULDNT_RUN)
       return
     }
 
     let published = null
-    if (hasReceipts(d)) {
+    // Any receipt data means the site must produce the published proof;
+    // an incomplete chain comes back refused (red), never amber.
+    if (receiptState(d) !== "none") {
       try {
         published = await fetchPublishedProof(d)
       } catch (e) {
         this.markFailed(line0)
         // A refused bundle (e.g. 500 proof_chain_incomplete) is a failed proof;
         // only a request that got no answer is "couldn't check".
-        this.showResult(e.kind === "network" ? "amber" : "red", e.kind === "network" ? COULDNT_CHECK : REFUSED_RED)
+        this.showResult(e.kind === "network" ? "neutral" : "red", e.kind === "network" ? COULDNT_CHECK : REFUSED_RED)
         return
       }
     }
@@ -222,7 +224,7 @@ class VerifyRunner {
 
   showVerdict(result) {
     if (result.verdict === "amber") {
-      this.showResult("amber", AMBER[result.receiptState] || AMBER.none)
+      this.showResult("amber", AMBER)
       return
     }
     if (result.verdict !== "green") {

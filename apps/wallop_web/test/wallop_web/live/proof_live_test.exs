@@ -112,8 +112,8 @@ defmodule WallopWeb.ProofLiveTest do
       end
     end
 
-    test "a draw whose proof chain is incomplete: the bundle URL the page names is refused, " <>
-           "and the page carries no execution receipt to pass off as complete",
+    test "a draw whose proof chain is incomplete still names the published proof, " <>
+           "and the site refuses it",
          %{conn: conn} do
       api_key = create_api_key()
       draw = create_draw(api_key, %{})
@@ -131,15 +131,20 @@ defmodule WallopWeb.ProofLiveTest do
       WallopCore.Repo.query!("SET LOCAL session_replication_role = 'origin'")
 
       html = conn |> get("/proof/#{draw.id}") |> html_response(200)
-      [bundle_url] = attr_values(html, "data-bundle-url")
 
-      # The browser check shows its "couldn't produce a complete proof"
-      # red for this response, never green.
-      assert %{"error" => "proof_chain_incomplete"} =
-               build_conn() |> get(bundle_url) |> json_response(500)
-
-      assert attr_values(html, "data-execution-receipt-jcs") == []
+      # The page has partial receipts: a lock receipt, no execution receipt.
       assert attr_values(html, "data-lock-receipt-jcs") != []
+      assert attr_values(html, "data-execution-receipt-jcs") == []
+
+      # It still names the bundle and both key lists, so the browser check
+      # (which fetches whenever there is any receipt data) asks for them.
+      assert_verify_urls(html, draw, operator_slug(draw))
+
+      # The site refuses the bundle. The browser check shows its red
+      # "couldn't produce a complete proof" for a refused bundle; that
+      # branch is covered in assets/test/verify_core_test.mjs.
+      assert %{"error" => "proof_chain_incomplete"} =
+               build_conn() |> get("/proof/#{draw.id}/json") |> json_response(500)
     end
 
     test "sets immutable cache headers", %{conn: conn} do
@@ -169,6 +174,19 @@ defmodule WallopWeb.ProofLiveTest do
   end
 
   describe "verify block component" do
+    test "results JSON is in position order, as in the proof bundle" do
+      results = [
+        %{"entry_id" => "b", "position" => 2},
+        %{"entry_id" => "c", "position" => 3},
+        %{"entry_id" => "a", "position" => 1}
+      ]
+
+      assert VerifyBlock.results_json(results) ==
+               ~s([{"entry_id":"a","position":1},{"entry_id":"b","position":2},{"entry_id":"c","position":3}])
+
+      assert VerifyBlock.results_json(nil) == "[]"
+    end
+
     test "names the published bundle and key endpoints when the draw has receipts" do
       draw = component_draw("d1d1d1d1-0000-4000-8000-000000000001")
 
