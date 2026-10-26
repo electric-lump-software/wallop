@@ -157,7 +157,7 @@ defmodule WallopWeb.ProofPdfHTML do
       <dl :if={!@weather and @draw.weather_value}>
         <dt>Station</dt>
         <dd>{@draw.weather_station || "—"}</dd>
-        <dt>Observation time</dt>
+        <dt>Forecast for</dt>
         <dd>
           <%= if @draw.weather_observation_time do %>
             {Calendar.strftime(@draw.weather_observation_time, "%Y-%m-%d %H:%M:%S UTC")}
@@ -165,7 +165,7 @@ defmodule WallopWeb.ProofPdfHTML do
             —
           <% end %>
         </dd>
-        <dt>Value (°C)</dt>
+        <dt>Forecast value</dt>
         <dd class="mono">{@draw.weather_value}</dd>
       </dl>
 
@@ -312,13 +312,9 @@ defmodule WallopWeb.ProofPdfHTML do
           and confirm they match the readings on the verification chain page.
         </li>
         <li :if={!@weather and @draw.weather_value}>
-          Fetch the Met Office Middle Wallop observation for
-          <%= if @draw.weather_observation_time do %>
-            {Calendar.strftime(@draw.weather_observation_time, "%Y-%m-%d %H:%M UTC")}.
-          <% else %>
-            the declared observation time.
-          <% end %>
-          Confirm the temperature value matches.
+          The weather value is a Met Office forecast for Middle Wallop. A forecast can't
+          be re-fetched later, so this value rests on wallop's word; drand still kept the
+          result unknown when the entries locked.
         </li>
         <li>
           Canonicalise the entries list via JCS (RFC 8785), SHA-256 the bytes,

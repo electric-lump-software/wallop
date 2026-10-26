@@ -141,4 +141,46 @@ defmodule WallopWeb.HomeLiveTest do
       assert html =~ "valid email"
     end
   end
+
+  # Public copy about randomness: never says or implies that every draw
+  # uses the weather, and never claims nobody (wallop included) can
+  # influence a result.
+  describe "public claims about the randomness" do
+    @overclaims [
+      "two independent sources",
+      "two completely independent",
+      "every draw comes",
+      "nobody (including us)",
+      "Neither is predictable",
+      "impossible",
+      "guarantee",
+      "Open-Meteo",
+      "Wittering"
+    ]
+
+    test "the home page, both tabs, makes none of the old overclaims", %{conn: conn} do
+      {:ok, view, plain} = live(conn, "/")
+      crypto = render_click(view, "switch_tab", %{"tab" => "crypto"})
+
+      for html <- [plain, crypto], phrase <- @overclaims do
+        refute html =~ phrase, "home page still says #{inspect(phrase)}"
+      end
+
+      assert plain =~ "at worst to drand on its own"
+      assert crypto =~ "rests on our word"
+    end
+
+    test "how verification works names the fallbacks and what is trusted", %{conn: conn} do
+      {:ok, _view, html} = live(conn, "/how-verification-works")
+
+      for phrase <- @overclaims do
+        refute html =~ phrase, "how-verification-works still says #{inspect(phrase)}"
+      end
+
+      assert html =~ "The National Grid"
+      assert html =~ "drand does it alone"
+      assert html =~ "Proven, and trusted."
+      assert html =~ "the drand beacon is"
+    end
+  end
 end

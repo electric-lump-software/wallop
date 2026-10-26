@@ -222,14 +222,14 @@
           <div class="w-9 h-9 rounded-full bg-[#1a1a1a] text-white flex items-center justify-center text-sm font-bold shrink-0">2</div>
           <div>
             <h4 class="text-[15px] font-bold mb-1.5">Promise which coin flip you&#39;ll use</h4>
-            <p class="text-sm text-[#555] leading-relaxed">Wallop! publicly declares: &#34;we will use the randomness published at this exact moment in the future, from these two independent sources.&#34; It&#39;s like saying &#34;we&#39;ll use the closing price of the FTSE on Thursday&#34; — before Thursday.</p>
+            <p class="text-sm text-[#555] leading-relaxed">Wallop! publicly declares: &#34;we will use the randomness published at this exact moment in the future.&#34; It&#39;s like saying &#34;we&#39;ll use the closing price of the FTSE on Thursday&#34; — before Thursday.</p>
           </div>
         </div>
         <div class="flex gap-6 py-6 border-b border-[#f0ebe4]">
           <div class="w-9 h-9 rounded-full bg-[#1a1a1a] text-white flex items-center justify-center text-sm font-bold shrink-0">3</div>
           <div>
             <h4 class="text-[15px] font-bold mb-1.5">Wait for the randomness</h4>
-            <p class="text-sm text-[#555] leading-relaxed">At the declared time, Wallop! fetches two completely independent bits of randomness: a value from a global public beacon, and a live weather observation from Middle Wallop, Hampshire — courtesy of the Met Office. Neither is predictable, and neither is controlled by anyone. Provably fair, and provably British.</p>
+            <p class="text-sm text-[#555] leading-relaxed">At the declared time, Wallop! takes a random number from drand, a public beacon run by a worldwide network, plus a second source: the Met Office weather at Middle Wallop, Hampshire, or, for draws that can&#39;t wait, the hum of the National Grid. If the second source turns up late, the draw falls back by set rules, at worst to drand on its own, and the proof says exactly what was used. Provably fair, and quite possibly British.</p>
           </div>
         </div>
         <div class="flex gap-6 py-6 border-b border-[#f0ebe4]">
@@ -262,7 +262,7 @@
           <div class="w-9 h-9 rounded-full bg-[#1a1a1a] text-white flex items-center justify-center text-sm font-bold shrink-0">2</div>
           <div>
             <h4 class="text-[15px] font-bold mb-1.5">Declare future entropy sources</h4>
-            <p class="text-sm text-[#555] leading-relaxed">Wallop! records the specific drand quicknet chain round number and a scheduled Met Office observation timestamp. Both are in the future at time of commitment — neither value is knowable until they are published.</p>
+            <p class="text-sm text-[#555] leading-relaxed">Wallop! records a future drand quicknet round, plus when the second source is read: a weather time or a grid-frequency window. Nobody knows the drand value until it publishes, short of drand&#39;s network colluding. For observation-weather and grid-frequency draws the second source is in the future too; a forecast-weather draw&#39;s forecast may already be out.</p>
             <code class="mt-2 inline-block font-mono text-[11px] text-[#666] bg-cream-dark px-2.5 py-1.5 rounded">drand quicknet · 3-second rounds · chain hash: 52db9ba7...</code>
           </div>
         </div>
@@ -270,8 +270,8 @@
           <div class="w-9 h-9 rounded-full bg-[#1a1a1a] text-white flex items-center justify-center text-sm font-bold shrink-0">3</div>
           <div>
             <h4 class="text-[15px] font-bold mb-1.5">Fetch and verify entropy</h4>
-            <p class="text-sm text-[#555] leading-relaxed">The drand round value is fetched and its BLS threshold signature is verified against the chain&#39;s public key. The Met Office value is fetched from the declared observation. Neither source is controllable by Wallop! or by the draw operator.</p>
-            <code class="mt-2 inline-block font-mono text-[11px] text-[#666] bg-cream-dark px-2.5 py-1.5 rounded">seed_input = JCS(&#123;entry_hash, drand_randomness, weather_value&#125;)</code>
+            <p class="text-sm text-[#555] leading-relaxed">The drand round value is fetched with its BLS threshold signature, which anyone can check against the chain&#39;s public key. The second source is a Met Office reading from Middle Wallop or 8 grid-frequency readings from Elexon, stored before the drand round exists. If it&#39;s missing, the draw falls back by fixed rules, at worst to drand alone, and the signed receipt says which. A forecast-weather draw&#39;s forecast can&#39;t be re-checked later, so for those the weather rests on our word.</p>
+            <code class="mt-2 inline-block font-mono text-[11px] text-[#666] bg-cream-dark px-2.5 py-1.5 rounded">seed_input = JCS(&#123;entry_hash, drand_randomness, weather_value | freq_value | neither&#125;)</code>
           </div>
         </div>
         <div class="flex gap-6 py-6 border-b border-[#f0ebe4]">
@@ -302,7 +302,8 @@
         You shouldn&#39;t trust us.<br />Verify it yourself.
       </h2>
       <p class="text-base text-[#555] leading-relaxed max-w-[580px] mb-10">
-        We built Wallop! so you never have to take our word for it. Every draw produces
+        We built Wallop! so you rarely have to take our word for anything, and we say
+        so when you do. Every draw produces
         a permanent proof record with everything you need to independently confirm the result.
       </p>
 
@@ -320,6 +321,7 @@
           <p class="text-xs text-[#555] leading-relaxed">
             Every proof page has a verify button that independently recomputes the draw,
             checks both Ed25519 receipt signatures, verifies the cryptographic chain between them,
+            checks the drand beacon is genuine and published after the entries locked,
             and runs a full pipeline double-check — all in your browser via WebAssembly.
             Open code. Your machine. Your call. For full cryptographic attribution to wallop&#39;s
             infrastructure key, run the
@@ -360,8 +362,10 @@
         <div class="p-6 rounded-xl border border-cream-border bg-white">
           <h3 class="text-sm font-bold mb-2">Locked before, sealed after</h3>
           <p class="text-xs text-[#555] leading-relaxed">
-            Entries are committed and hashed before the randomness is known — the seed is
-            computed afterwards, so nobody (including us) can influence the outcome. Once
+            Entries are committed and hashed before the randomness is known, and the seed is
+            computed afterwards, so nobody can pick entries to suit it. What&#39;s proven and
+            what you&#39;re trusting is spelled out in
+            <a href="/how-verification-works" class="underline hover:text-[#1a1a1a]">how verification works</a>. Once
             the draw runs, the proof record is locked at the database level and cached globally.
             Save the page — it works offline.
           </p>
@@ -436,10 +440,10 @@
             certain faith that systems can be fair if you design them properly.
           </p>
           <p class="text-sm text-[#555] leading-[1.8] mb-4">
-            It also felt fitting that part of the randomness underpinning every draw comes
-            from a live weather observation taken right there — Middle Wallop, Hampshire.
-            We thought there was something pleasing about the idea that the British weather,
-            of all things, is woven into the proof.
+            It also felt fitting that our weather draws take part of their randomness from
+            the weather right there in Middle Wallop, Hampshire. We thought there was
+            something pleasing about the idea that the British weather, of all things,
+            can be woven into the proof.
           </p>
           <p class="text-sm text-[#555] leading-[1.8] italic">Also, it&#39;s just a fun word to say.</p>
         </div>
@@ -463,9 +467,10 @@
             <span class="text-[#666] text-lg group-open:rotate-45 transition-transform">+</span>
           </summary>
           <div class="px-5 pb-4 pt-3 text-sm text-[#555] leading-[1.7] bg-white border-t border-cream-border">
-            It&#39;s deterministic given the entropy — which is the point. The entropy itself
-            (drand + Met Office weather) is genuinely unpredictable before it&#39;s published.
-            But once you have the seed, anyone can reproduce the exact result. That&#39;s what
+            It&#39;s deterministic given the entropy — which is the point. The entropy comes from
+            drand, which nobody can predict before it publishes unless enough of its network
+            colludes, plus the Met Office weather or the National Grid&#39;s frequency, depending
+            on the draw. But once you have the seed, anyone can reproduce the exact result. That&#39;s what
             makes it verifiable.
           </div>
         </details>
@@ -478,7 +483,8 @@
           <div class="px-5 pb-4 pt-3 text-sm text-[#555] leading-[1.7] bg-white border-t border-cream-border">
             drand is a public, distributed randomness beacon run by the League of Entropy —
             universities, tech companies, and other organisations. Every 3 seconds it publishes
-            a new random value that nobody can predict or control in advance. Think of it like
+            a new random value that nobody can predict or steer in advance, short of enough of
+            its members ganging up. Think of it like
             a global lottery ball machine that runs constantly and publishes its results publicly.
           </div>
         </details>
@@ -489,7 +495,8 @@
             <span class="text-[#666] text-lg group-open:rotate-45 transition-transform">+</span>
           </summary>
           <div class="px-5 pb-4 pt-3 text-sm text-[#555] leading-[1.7] bg-white border-t border-cream-border">
-            Yes. Every proof page shows all the inputs — entry hash, drand round, weather value.
+            Yes. Every proof page shows all the inputs — entry hash, drand round, and the weather
+            or grid readings, if the draw used them.
             You can download fair_pick and replay the draw locally.
             You&#39;ll get the same winners every time. See
             <a href="/how-verification-works" class="underline decoration-[#ccc] hover:decoration-[#1a1a1a]">how verification works</a>

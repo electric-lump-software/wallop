@@ -1497,7 +1497,7 @@ defmodule WallopCore.Resources.Draw do
         allow_nil?(true)
 
         description(
-          "Optional explicit weather observation time (UTC). When supplied, " <>
+          "Forecast operators only: optional explicit weather time (UTC). When supplied, " <>
             "the entropy worker will fire at this moment and the supplied " <>
             "value is signed verbatim into the lock receipt. If omitted, " <>
             "defaults to a jittered 3-5 minutes from lock-time. Must have " <>
@@ -1778,7 +1778,8 @@ defmodule WallopCore.Resources.Draw do
     attribute :seed, :string do
       description(
         "64-character hex SHA-256 seed used to drive the draw algorithm. Derived from " <>
-          "drand + weather entropy (seed_source: entropy) or supplied by the caller " <>
+          "drand plus the draw's second source, if it used one (seed_source: entropy), or " <>
+          "supplied by the caller " <>
           "(seed_source: caller). Sandbox draws live in a separate resource — see " <>
           "`WallopCore.Resources.SandboxDraw`."
       )
@@ -1826,7 +1827,8 @@ defmodule WallopCore.Resources.Draw do
     attribute :drand_randomness, :string do
       description(
         "The 64-character hex random value published by drand for the declared round. " <>
-          "Combined with weather_value to derive the draw seed."
+          "Combined with the entry hash and weather_value or freq_value, if the draw used one, " <>
+          "to derive the draw seed."
       )
 
       allow_nil?(true)
@@ -1855,9 +1857,10 @@ defmodule WallopCore.Resources.Draw do
 
     attribute :weather_value, :string do
       description(
-        "Temperature observation (°C) from the Middle Wallop, Hampshire Met Office station, " <>
-          "taken at the declared observation time. Combined with drand_randomness to derive " <>
-          "the draw seed."
+        "The weather value that fed the seed, for Middle Wallop, Hampshire. Forecast draws: the " <>
+          "Met Office forecast mean sea-level pressure in pascals. Observation-weather draws: the " <>
+          "Met Office Land Observations reading as \"<t>;<mslp>;<rh>;<vis>\". Null when the draw " <>
+          "used no weather."
       )
 
       allow_nil?(true)
@@ -1882,8 +1885,9 @@ defmodule WallopCore.Resources.Draw do
 
     attribute :freq_start, :utc_datetime_usec do
       description(
-        "Grid-frequency draws only: the time of the first of the 8 GB grid frequency readings " <>
-          "(Elexon FREQ, 15 seconds apart) that feed the seed. Null for other draws."
+        "The time of the first of the 8 GB grid frequency readings (Elexon FREQ, 15 seconds " <>
+          "apart). They feed the seed of a grid-frequency draw, and of an observation-weather " <>
+          "draw whose Middle Wallop reading was late. Null for forecast draws."
       )
 
       allow_nil?(true)
@@ -1892,8 +1896,9 @@ defmodule WallopCore.Resources.Draw do
 
     attribute :freq_value, :string do
       description(
-        "Grid-frequency draws only: the 8 readings in mHz, `;`-joined, in time order. " <>
-          "Null when the draw fell back to drand alone, and for other draws."
+        "The 8 grid frequency readings in mHz, `;`-joined, in time order, when they fed the " <>
+          "seed: on a grid-frequency draw, or an observation-weather draw whose Middle Wallop " <>
+          "reading was late. Null otherwise."
       )
 
       allow_nil?(true)
@@ -1902,7 +1907,8 @@ defmodule WallopCore.Resources.Draw do
 
     attribute :freq_fallback_reason, :string do
       description(
-        "Grid-frequency draws only: why no readings were used (`no_frequency_by_deadline`). Null otherwise."
+        "Why no grid frequency readings were used (`no_frequency_by_deadline`), on a " <>
+          "grid-frequency or observation-weather draw that ended on drand alone. Null otherwise."
       )
 
       allow_nil?(true)
@@ -2009,8 +2015,9 @@ defmodule WallopCore.Resources.Draw do
               :utc_datetime_usec,
               WallopCore.Resources.Draw.Calculations.ExpectedResultAt do
       description(
-        "Observation-weather draws only: when the result is due (the publication time of the " <>
-          "committed drand round). Not signed; derived from drand_round. Null for other draws."
+        "Observation-weather and grid-frequency draws: when the result is due (the publication " <>
+          "time of the committed drand round). Not signed; derived from drand_round. Null for " <>
+          "forecast draws."
       )
 
       public?(true)
