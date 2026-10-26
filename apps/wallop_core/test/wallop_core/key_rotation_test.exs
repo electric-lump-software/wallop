@@ -129,26 +129,35 @@ defmodule WallopCore.KeyRotationTest do
       assert Enum.map(operator_keys(operator.id), & &1.key_id) == [op_key.key_id]
     end
 
-    test "leaves an operator whose only key is not yet valid alone" do
+    test "refuses, revoking nothing, while a new key is not yet valid on this node's clock" do
+      create_infrastructure_key()
+      create_infrastructure_key()
       operator = create_operator()
       [current] = operator_keys(operator.id)
-      revoke_key!(current)
 
       {public_key, private_key} = :crypto.generate_key(:eddsa, :ed25519)
       {:ok, encrypted} = WallopCore.Vault.encrypt(private_key)
 
-      OperatorSigningKey
-      |> Ash.Changeset.for_create(:create, %{
-        operator_id: operator.id,
-        key_id: Protocol.key_id(public_key),
-        public_key: public_key,
-        private_key: encrypted,
-        valid_from: DateTime.add(DateTime.utc_now(), 30, :second)
-      })
-      |> Ash.create!(authorize?: false)
+      future =
+        OperatorSigningKey
+        |> Ash.Changeset.for_create(:create, %{
+          operator_id: operator.id,
+          key_id: Protocol.key_id(public_key),
+          public_key: public_key,
+          private_key: encrypted,
+          valid_from: DateTime.add(DateTime.utc_now(), 30, :second)
+        })
+        |> Ash.create!(authorize?: false)
 
-      assert {:ok, %{count: 0}} = KeyRotation.revoke_superseded_keys()
-      assert [_pending] = operator_keys(operator.id)
+      future_id = future.key_id
+
+      assert {:error, {:future_dated_keys, [^future_id]}} = KeyRotation.revoke_superseded_keys()
+
+      assert Ash.read!(WallopCore.Resources.SigningKeyRevocation, authorize?: false) == []
+      assert length(infra_key_ids()) == 2
+
+      assert Enum.sort(Enum.map(operator_keys(operator.id), & &1.key_id)) ==
+               Enum.sort([current.key_id, future_id])
     end
 
     test "a lock after revocation signs with the new key" do

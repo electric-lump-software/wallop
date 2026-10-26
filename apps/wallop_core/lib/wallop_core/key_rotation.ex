@@ -58,6 +58,11 @@ defmodule WallopCore.KeyRotation do
   (infrastructure) or of its operator. A class or operator with no current
   key is left alone, so this cannot stop anything from signing. Running it
   again revokes nothing.
+
+  Refuses, revoking nothing, while any unrevoked key has a `valid_from`
+  later than this node's clock: that key is about to become current, and
+  revoking around it would withdraw it instead of the key it replaces.
+  Run it again once the key is valid.
   """
   @spec revoke_superseded_keys() ::
           {:ok,
@@ -66,20 +71,28 @@ defmodule WallopCore.KeyRotation do
              infrastructure: [String.t()],
              operator: [%{operator_id: String.t(), key_id: String.t()}]
            }}
-          | {:error, term()}
+          | {:error, {:future_dated_keys, [String.t()]}}
   def revoke_superseded_keys do
     Repo.transaction(fn ->
       now = DateTime.utc_now()
+      infrastructure_keys = Ash.read!(InfrastructureSigningKey, authorize?: false)
+      operator_keys = Ash.read!(OperatorSigningKey, authorize?: false)
+
+      case Enum.filter(
+             infrastructure_keys ++ operator_keys,
+             &(DateTime.compare(&1.valid_from, now) == :gt)
+           ) do
+        [] -> :ok
+        future -> Repo.rollback({:future_dated_keys, Enum.map(future, & &1.key_id)})
+      end
 
       infrastructure =
-        InfrastructureSigningKey
-        |> Ash.read!(authorize?: false)
+        infrastructure_keys
         |> superseded(now)
         |> Enum.map(&revoke!(:infrastructure, nil, &1.key_id))
 
       operator =
-        OperatorSigningKey
-        |> Ash.read!(authorize?: false)
+        operator_keys
         |> Enum.group_by(& &1.operator_id)
         |> Enum.flat_map(fn {_operator_id, keys} -> superseded(keys, now) end)
         |> Enum.map(fn key ->
