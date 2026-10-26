@@ -125,6 +125,7 @@ defmodule WallopWeb.RevokedKeysTest do
 
       assert html =~ "Cannot verify: signing key not published."
       refute html =~ "data-verify-btn"
+      refute html =~ "Verified by Wallop"
     end
 
     test "a draw whose signing keys are published offers verification", %{conn: conn} do
@@ -136,6 +137,52 @@ defmodule WallopWeb.RevokedKeysTest do
 
       refute html =~ "Cannot verify"
       assert html =~ "data-verify-btn"
+      assert html =~ "Verified by Wallop"
+    end
+
+    test "the live proof template shows the badge only while the draw's keys are published" do
+      ensure_infrastructure_key()
+      api_key = create_api_key()
+      draw = api_key |> create_draw() |> execute_draw(test_seed(), api_key)
+      {operator, receipt, execution_receipt} = WallopCore.OperatorInfo.for_draw(draw)
+
+      render_live = fn ->
+        {op_hex, infra_hex} = WallopCore.OperatorInfo.signing_keys_hex(receipt, execution_receipt)
+
+        %{
+          draw: draw,
+          revealing: false,
+          reveal_from: nil,
+          reveal_to: nil,
+          open_view: nil,
+          check_result: nil,
+          checked_entry_id: nil,
+          entropy_status: nil,
+          entries_json: "[]",
+          results_json: "[]",
+          operator: operator,
+          receipt: receipt,
+          execution_receipt: execution_receipt,
+          operator_public_key_hex: op_hex,
+          infra_public_key_hex: infra_hex,
+          verify_command: nil
+        }
+        |> WallopWeb.ProofLive.render()
+        |> Phoenix.LiveViewTest.rendered_to_string()
+      end
+
+      assert render_live.() =~ "Verified by Wallop"
+
+      OperatorSigningKey
+      |> Ash.Query.filter(
+        operator_id == ^receipt.operator_id and key_id == ^receipt.signing_key_id
+      )
+      |> Ash.read_one!(authorize?: false)
+      |> revoke_key!()
+
+      html = render_live.()
+      assert html =~ "Cannot verify: signing key not published."
+      refute html =~ "Verified by Wallop"
     end
   end
 end

@@ -16,7 +16,17 @@ defmodule WallopWeb.Components.VerifyBlock do
   attr(:verify_command, :map, default: nil)
 
   def verify_block(assigns) do
-    assigns = assign(assigns, :key_unpublished?, key_unpublished?(assigns))
+    assigns =
+      assign(
+        assigns,
+        :key_unpublished?,
+        key_unpublished?(
+          assigns.receipt,
+          assigns.operator_public_key_hex,
+          assigns.execution_receipt,
+          assigns.infra_public_key_hex
+        )
+      )
 
     ~H"""
     <div class="bg-white border border-cream-border rounded-xl">
@@ -128,8 +138,12 @@ defmodule WallopWeb.Components.VerifyBlock do
     |> Jason.encode!()
   end
 
-  defp key_unpublished?(assigns) do
-    (assigns.receipt != nil and assigns.operator_public_key_hex == nil) or
-      (assigns.execution_receipt != nil and assigns.infra_public_key_hex == nil)
+  @doc """
+  True when a draw has a receipt whose signing key is not published (it
+  doesn't exist or has been revoked), so the draw cannot be verified.
+  """
+  def key_unpublished?(receipt, operator_public_key_hex, execution_receipt, infra_public_key_hex) do
+    (receipt != nil and operator_public_key_hex == nil) or
+      (execution_receipt != nil and infra_public_key_hex == nil)
   end
 end

@@ -27,7 +27,15 @@
 
   <div class="flex items-center gap-3">
     <span
-      :if={@draw.seed_source == :entropy}
+      :if={
+        @draw.seed_source == :entropy and
+          not WallopWeb.Components.VerifyBlock.key_unpublished?(
+            @receipt,
+            @operator_public_key_hex,
+            @execution_receipt,
+            @infra_public_key_hex
+          )
+      }
       class="inline-flex items-center gap-1.5 bg-green-100 text-green-800 text-xs font-semibold px-3 py-1 rounded-full"
     >
       ✦ Verified by Wallop
