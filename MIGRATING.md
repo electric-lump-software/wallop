@@ -18,7 +18,17 @@ Within each version section, look for `### HTTP API surface`, `### Hex package s
 
 ## Unreleased (next release after 0.28.3)
 
-Removes the monthly draw quota. Replaces the rate limiters with one `WallopWeb.RateLimiter`, adds per-key limits, and signals limit pressure as telemetry and PubSub. `GET /api/v1/draws` is now paged and filterable by status, and API error pointers and messages on the update routes are fixed. **No protocol or signed-byte changes.** Requires a database migration.
+Adds two opt-in draw protocols, observation weather and grid frequency (lock schema 6 / execution schema 5), set per operator by the platform. **The forecast protocol is unchanged and stays the default: forecast draws' signed bytes don't change.** Also removes the monthly draw quota, replaces the rate limiters with one `WallopWeb.RateLimiter`, adds per-key limits, and signals limit pressure as telemetry and PubSub. `GET /api/v1/draws` is now paged and filterable by status, and API error pointers and messages on the update routes are fixed. Requires a database migration.
+
+### Observation weather and grid frequency
+
+- **Run `mix ecto.migrate`.** It adds the `weather_observations` and `frequency_windows` tables, `operators.draw_protocol` (default `forecast`), and `draws.lock_schema_version`, `entropy_composition`, `freq_start`, `freq_value` and `freq_fallback_reason`, with their triggers and SQL functions.
+- **Set `MET_OFFICE_OBS_API_KEY`** (a Met Office Weather DataHub Land Observations key) on the service that runs core jobs. It's optional: without it, observation draws fall back by rule, visibly. Grid frequency needs no key.
+- **Oban queues.** If your Oban config overrides core's queue list, add `weather`, `frequency` and `v6_execution` only if your app executes core jobs. An insert-only Oban instance needs nothing.
+- **Older embedded cores.** An app that embeds a `wallop_core` older than 0.29.0 always locks on the forecast protocol, whatever the operator's setting.
+- **Never roll the service that runs core jobs back below 0.29.0 while observation or grid-frequency draws are in flight.** Older code doesn't know their worker. In fact, once any lock schema 6 draw has been locked, older code can neither run nor verify it, so roll forward instead; see the operator's runbook.
+- **HTTP API.** `PATCH /draws/:id/lock` takes `draw_at` for `observation` and `frequency` operators, and refuses it for `forecast` ones. A late lock is a `400` `invalid_argument` with `meta.latest_lock_at`. Draws gain `expected_result_at`, `freq_start`, `freq_value` and `freq_fallback_reason` (all `null` on forecast draws). See `API.md`.
+- **Verifiers.** Lock schema 6 / execution schema 5 bundles need `wallop_verifier` 0.17.0 or later. Forecast bundles verify as before.
 
 ### HTTP API surface
 

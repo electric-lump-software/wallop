@@ -7,6 +7,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added: observation weather (lock schema 6 / execution schema 5), per operator
+
+**The forecast protocol is unchanged and stays the default.** Forecast draws (lock schema 5 / execution schema 4) lock, run and verify exactly as before, with the same signed bytes. Nothing changes for an operator until the platform moves it.
+
+**ADDED.**
+
+- **The operator setting.** `Operator.draw_protocol` is `forecast` by default, or `observation` (or `frequency`, below). It is set only by the platform, through the admin-only `set_draw_protocol` action; it isn't part of the API. Draws keep the protocol they were locked with, so flipping it never touches a draw in flight.
+- **Observation weather.** An `observation` operator's draws lock under lock schema 6 with entropy tag `drand-quicknet+metoffice-landobs-v1`. The second source is Middle Wallop's Met Office Land Observations reading for a whole hour, stored once per hour before the drand round exists, as `"<t>;<mslp>;<rh>;<vis>"`. If that reading isn't stored by the deadline, the draw uses the GB grid frequency for the same drand round, and if that is missing too, drand alone. The signed execution receipt says which, and `weather_station` is `wmo-03749` throughout. Spec §2.2.3.
+- **`draw_at`** on `PATCH /draws/:id/lock`, for `observation` (and `frequency`) operators only: when the result is due, in whole seconds on drand quicknet's 3-second grid (any whole minute is). Without it, wallop picks the earliest allowed time. A forecast operator sending `draw_at` is refused, and so is an observation operator sending `weather_time`.
+- **`expected_result_at`** on the draw: when the result is due, computed from the committed drand round and not signed. `null` for forecast draws.
+- **A lock that is too late is refused** with `400` `invalid_argument` and `meta.latest_lock_at` (whole seconds, UTC), and the draw stays open. For observation weather the lock must happen by the observation hour minus 46 minutes: for a 20:00 draw, 18:14.
+- **`MET_OFFICE_OBS_API_KEY`** (optional): a Met Office Weather DataHub Land Observations key. Without it, observation draws fall back by rule, visibly; forecast draws don't use it.
+- **Queues and cron.** New Oban queues `weather` (the hourly Land Observations fetch), `frequency` (the grid-frequency window fetch) and `v6_execution` (the lock schema 6 draws themselves). A cron, `StuckDrawRedriver`, runs every 10 minutes on the `default` queue: it puts back the execution job of a lock schema 6 draw that has lost it, re-inserts a lost hourly fetch job while the hour is still open, and emits `[:wallop_core, :v6, :overdue]` for draws past due. Re-driving forecast draws is off unless `config :wallop_core, :redrive_forecast_draws, true`.
+- **Database.** New table `weather_observations` (one write-once reading per hour). New columns `operators.draw_protocol`, and `draws.lock_schema_version`, `draws.entropy_composition`, `draws.freq_start`, `draws.freq_value` and `draws.freq_fallback_reason`. Triggers and SQL functions enforce the timing, the three states and the receipts on the database's own clock. Run `mix ecto.migrate`.
+- **Vectors.** The shared vectors for both lock schema 6 tags were regenerated with this release (see the vectors entry below).
+
+**CHANGED (spec).** `spec/protocol.md` now describes the forecast protocol as it actually runs: a Site-Specific Forecast value in pascals, a `weather_time` 3–5 minutes after lock unless the operator sends one, and a drand-only fallback decided at execution. Its trust note no longer claims more than a forecast can give.
+
+### Added: grid-frequency draws (lock schema 6 / execution schema 5), per operator
+
+For operators who sell right up to the draw. Weather stays the default; forecast draws are unchanged.
+
+**ADDED.**
+
+- **`frequency`** on `Operator.draw_protocol`, set only by the platform. Draws lock under lock schema 6 with entropy tag `drand-quicknet+elexon-freq-v1`. The second source is 8 readings of the GB grid frequency from Elexon, 15 seconds apart, starting at `freq_start`. The National Grid hums at 50 Hz, give or take a kettle. Spec §2.2.4.
+- **About 7 minutes** from entries closing to the result. `draw_at` and `expected_result_at` work as for observation weather. The lock must happen by 60 seconds before the first reading (19:53:00 for a 20:00:00 draw); a later lock gets the same `400` with `meta.latest_lock_at`.
+- **Three draw fields:** `freq_start`, `freq_value` and `freq_fallback_reason`. If no valid window is stored by its deadline, the draw uses drand alone, with `freq_fallback_reason` `no_frequency_by_deadline`.
+- **Database.** New table `frequency_windows` (one write-once window per start time), in the same migrations. No new key: Elexon's data needs none. It uses the `frequency` and `v6_execution` queues above.
+- Contains BMRS data © Elexon Limited copyright and database right [year].
+
+**Operator note.** No forecast draw's bytes change. Never roll the service that runs core jobs back below this release once a lock schema 6 draw has been locked; see MIGRATING.
+
 ### Shared vectors for lock v6 / execution v5; older receipt vectors and bundles regenerated on real drand rounds
 
 **ADDED.** `spec/vectors` now freezes both lock v6 / execution v5 entropy tags: the observation-weather tag in all three of its execution states (observation, grid-frequency window, drand only) and the grid-frequency tag. Each tag gets its schedule, its value grammar, its receipts and passing proof bundles, and `proof-bundle-v6-negative.json` holds the bundles that must fail, each with the exact set of verifier steps that fail. The vectors README gains a "Third-party data" section: Elexon BMRS attribution, a note that the Met Office rows are synthetic (with a link to the real sample data), and a note on the drand beacons.
