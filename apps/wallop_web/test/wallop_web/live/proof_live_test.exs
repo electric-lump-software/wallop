@@ -427,7 +427,7 @@ defmodule WallopWeb.ProofLiveTest do
       conn = get(conn, "/proof/#{draw.id}?entry_id=#{unknown_uuid}")
       html = html_response(conn, 200)
 
-      assert html =~ "in the winner list. Check you typed it correctly"
+      assert html =~ "Not a winner this time"
     end
   end
 
@@ -457,7 +457,7 @@ defmodule WallopWeb.ProofLiveTest do
       conn = get(conn, "/proof/#{draw.id}/#{losing_uuid}")
       html = html_response(conn, 200)
 
-      assert html =~ "in the winner list. Check you typed it correctly"
+      assert html =~ "Not a winner this time"
     end
 
     test "pre-fills the entry ID input", %{conn: conn} do
@@ -492,7 +492,7 @@ defmodule WallopWeb.ProofLiveTest do
       conn = get(conn, "/proof/#{draw.id}/#{losing_uuid}")
       html = html_response(conn, 200)
 
-      assert html =~ "in the winner list. Check you typed it correctly"
+      assert html =~ "Not a winner this time"
       assert html =~ "https://operator.example/check-your-ticket"
       assert html =~ ~s|rel="noopener noreferrer"|
       assert html =~ ~s|target="_blank"|
@@ -510,7 +510,7 @@ defmodule WallopWeb.ProofLiveTest do
       conn = get(conn, "/proof/#{draw.id}/#{losing_uuid}")
       html = html_response(conn, 200)
 
-      assert html =~ "in the winner list. Check you typed it correctly"
+      assert html =~ "Not a winner this time"
       refute html =~ "check-your-ticket"
       refute html =~ "ticket-check page"
     end
@@ -674,7 +674,7 @@ defmodule WallopWeb.ProofLiveTest do
       # ...and further checks say they were refused, not that the entry lost.
       html = render_hook(view, "check_entry", %{"entry_id" => Ecto.UUID.generate()})
       refute html =~ "is a winner"
-      refute html =~ "in the winner list. Check you typed it correctly"
+      refute html =~ "Not a winner this time"
       assert html =~ "Too many checks from your connection"
 
       # Neither the proxy bucket ("unknown") nor another client was touched.
@@ -710,7 +710,7 @@ defmodule WallopWeb.ProofLiveTest do
           check_url: nil
         )
 
-      refute html =~ "in the winner list. Check you typed it correctly"
+      refute html =~ "Not a winner this time"
       refute html =~ "in the winner list."
       assert html =~ "Too many checks from your connection"
     end
@@ -724,7 +724,7 @@ defmodule WallopWeb.ProofLiveTest do
 
       html = render_hook(view, "check_entry", %{"entry_id" => Ecto.UUID.generate()})
 
-      refute html =~ "in the winner list. Check you typed it correctly"
+      refute html =~ "Not a winner this time"
       assert html =~ "Too many checks from your connection"
     end
 
