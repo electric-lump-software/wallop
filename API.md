@@ -103,7 +103,7 @@ Freezes entries and starts entropy collection.
 }
 ```
 
-What else you may send depends on your operator's draw protocol. The platform sets the protocol per operator; it is `forecast` unless you've been moved. A draw keeps the protocol it was locked with, even if the setting changes afterwards.
+What else you may send depends on your operator's draw protocol. The platform sets the protocol per operator; it is `forecast` unless the platform has moved your operator. A draw keeps the protocol it was locked with, even if the setting changes afterwards.
 
 | Protocol | Optional attribute | Rules |
 |---|---|---|

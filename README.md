@@ -6,9 +6,9 @@ Provably fair random draw service. Commit-reveal protocol with public entropy.
 
 ## What is this?
 
-Wallop runs verifiably fair random draws where nobody controls the outcome — not the organiser, not the platform, not the service itself.
+Wallop runs verifiably fair random draws where nobody controls the outcome — not the organiser, not the platform — and a third party can check the result.
 
-Entries are locked before the draw. The seed is computed from a [drand](https://drand.love) beacon value and a second public source: Met Office weather for Middle Wallop, Hampshire — three villages in the Test Valley, and the reason the service is called Wallop — or, for operators who need a result within minutes, the frequency of the GB electricity grid. When the second source doesn't arrive in time, a draw falls back by its protocol's rules, at worst to drand on its own, and its proof says which. None of these sources is predictable or controllable. The algorithm is open source and deterministic. Anyone can re-run it and verify the result.
+Entries are locked before the draw. The seed is computed from a [drand](https://drand.love) beacon value and a second public source: Met Office weather for Middle Wallop, Hampshire — three villages in the Test Valley, and the reason the service is called Wallop — or, for operators who need a result within minutes, the frequency of the GB electricity grid. When the second source doesn't arrive in time, a draw falls back by its protocol's rules, at worst to drand on its own, and its proof says which. No one can predict a drand value before its round publishes. What each second source adds, and what is trusted rather than proven, is set out in the spec (§4.4). The algorithm is open source and deterministic. Anyone can re-run it and verify the result.
 
 You shouldn't trust us. [Verify it yourself](https://wallop.run/how-verification-works).
 
@@ -26,7 +26,7 @@ Single-draw verifiability — the commit-reveal protocol above — proves any *o
 
 - Every API key may belong to an `Operator`. Operators are public identities with a stable slug.
 - Every draw an operator locks gets a **gap-free per-operator sequence number**. Discarded, expired, and failed draws still occupy their slot — gaps are detectable.
-- At lock time, wallop_core signs an Ed25519 **commitment receipt** (lock receipt, schema v4) over a canonical JSON payload that binds the operator, per-operator `sequence`, `draw_id`, `commitment_hash`, `entry_hash`, `locked_at`, `signing_key_id`, declared entropy sources (drand chain + round, weather station + time), `winner_count`, `wallop_core_version`, `fair_pick_version`, and the pinned algorithm identity tags (JCS version, signature algorithm, entropy composition). The receipt is inserted in the same transaction as the lock, so a draw cannot be locked without its receipt being committed atomically. The execution receipt (schema v3) is signed at draw-completion time and commits the realised entropy values, the computed seed, the ordered results, the `lock_receipt_hash` (binding execution to the specific lock receipt), and the `signing_key_id` of the wallop infrastructure key that produced the signature.
+- At lock time, wallop_core signs an Ed25519 **commitment receipt** (lock receipt, schema 5 (forecast) or 6) over a canonical JSON payload that binds the operator, per-operator `sequence`, `draw_id`, `commitment_hash`, `entry_hash`, `locked_at`, `signing_key_id`, declared entropy sources (drand chain + round, weather station + time), `winner_count`, `wallop_core_version`, `fair_pick_version`, and the pinned algorithm identity tags (JCS version, signature algorithm, entropy composition). The receipt is inserted in the same transaction as the lock, so a draw cannot be locked without its receipt being committed atomically. The execution receipt (schema 4 or 5) is signed at draw-completion time and commits the realised entropy values, the computed seed, the ordered results, the `lock_receipt_hash` (binding execution to the specific lock receipt), and the `signing_key_id` of the wallop infrastructure key that produced the signature.
 - The operator's public registry lives at `/operator/:slug` and lists every draw they have ever locked, in sequence order, with status badges. Signed receipts are served as JSON at `/operator/:slug/receipts` and individually at `/operator/:slug/receipts/:n`. The current Ed25519 public key is at `/operator/:slug/key`.
 - A **transparency log** at `/transparency` publishes a daily Merkle root over all receipts, pinned to a drand round number. Mirroring the receipt log over time and recomputing the root lets a third party detect any retroactive tampering with operator receipts.
 
@@ -57,7 +57,7 @@ config :wallop_core, Oban,
   plugins: []
 ```
 
-`weather`, `frequency` and `v6_execution` run observation-weather and grid-frequency draws (lock schema 6): the Met Office Land Observations fetch, the grid-frequency window fetch, and the draws themselves. You need them only if your app executes core jobs. Every running job can hold a database connection, so keep the sum of the queue limits well under your Repo pool size.
+`weather`, `frequency` and `v6_execution` run observation-weather and grid-frequency draws (lock schema 6): the Met Office Land Observations fetch, the grid-frequency window fetch, and the draws themselves. You need them only if your app executes core jobs. In that case also add `{"*/10 * * * *", WallopCore.Entropy.StuckDrawRedriver}` to your Cron plugin, or a lost execution job is never put back. Every running job can hold a database connection, so keep the sum of the queue limits well under your Repo pool size.
 
 The wallop service uses the default `public` prefix. Your app uses `oban_app` (or any other name). Both share the database but process their own jobs independently.
 

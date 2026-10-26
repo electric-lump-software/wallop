@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added: observation weather (lock schema 6 / execution schema 5), per operator
 
-**The forecast protocol is unchanged and stays the default.** Forecast draws (lock schema 5 / execution schema 4) lock, run and verify exactly as before, with the same signed bytes. Nothing changes for an operator until the platform moves it.
+**The forecast protocol is unchanged and stays the default.** Forecast draws (lock schema 5 / execution schema 4) lock, run and verify exactly as before, with the same signed bytes. Nothing about a forecast draw's lock, execution or proof changes until the platform moves its operator.
 
 **ADDED.**
 
@@ -32,10 +32,10 @@ For operators who sell right up to the draw. Weather stays the default; forecast
 **ADDED.**
 
 - **`frequency`** on `Operator.draw_protocol`, set only by the platform. Draws lock under lock schema 6 with entropy tag `drand-quicknet+elexon-freq-v1`. The second source is 8 readings of the GB grid frequency from Elexon, 15 seconds apart, starting at `freq_start`. The National Grid hums at 50 Hz, give or take a kettle. Spec §2.2.4.
-- **About 7 minutes** from entries closing to the result. `draw_at` and `expected_result_at` work as for observation weather. The lock must happen by 60 seconds before the first reading (19:53:00 for a 20:00:00 draw); a later lock gets the same `400` with `meta.latest_lock_at`.
+- **About 7 minutes** (7m00s to 7m12s) from entries closing to the result. `draw_at` and `expected_result_at` work as for observation weather. The lock must happen by 60 seconds before the first reading (19:53:00 for a 20:00:00 draw); a later lock gets the same `400` with `meta.latest_lock_at`.
 - **Three draw fields:** `freq_start`, `freq_value` and `freq_fallback_reason`. If no valid window is stored by its deadline, the draw uses drand alone, with `freq_fallback_reason` `no_frequency_by_deadline`.
 - **Database.** New table `frequency_windows` (one write-once window per start time), in the same migrations. No new key: Elexon's data needs none. It uses the `frequency` and `v6_execution` queues above.
-- Contains BMRS data © Elexon Limited copyright and database right [year].
+- Pages and proofs that show grid-frequency readings carry 'Contains BMRS data © Elexon Limited copyright and database right [year]', with the readings' year.
 
 **Operator note.** No forecast draw's bytes change. Never roll the service that runs core jobs back below this release once a lock schema 6 draw has been locked; see MIGRATING.
 
