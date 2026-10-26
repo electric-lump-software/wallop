@@ -8,7 +8,7 @@ Provably fair random draw service. Commit-reveal protocol with public entropy.
 
 Wallop runs verifiably fair random draws where nobody controls the outcome — not the organiser, not the platform — and a third party can check the result.
 
-Entries are locked before the draw. The seed is computed from a [drand](https://drand.love) beacon value and a second public source: Met Office weather for Middle Wallop, Hampshire — three villages in the Test Valley, and the reason the service is called Wallop — or, for operators who need a result within minutes, the frequency of the GB electricity grid. When the second source doesn't arrive in time, a draw falls back by its protocol's rules, at worst to drand on its own, and its proof says which. No one can predict a drand value before its round publishes. What each second source adds, and what is trusted rather than proven, is set out in the spec (§4.4). The algorithm is open source and deterministic. Anyone can re-run it and verify the result.
+Entries are locked before the draw. The seed is computed from a [drand](https://drand.love) beacon value and a second public source: Met Office weather for Middle Wallop, Hampshire — three villages in the Test Valley, and the reason the service is called Wallop — or, for operators who need a result within minutes, the frequency of the GB electricity grid. When the second source doesn't arrive in time, a draw falls back by its protocol's rules, at worst to drand on its own, and its proof says which. No one can predict a drand value before its round publishes. What each second source adds, and what is trusted rather than proven, is set out in [the spec](spec/protocol.md#44-historical-verifiability) (§4.4). The algorithm is open source and deterministic. Anyone can re-run it and verify the result.
 
 You shouldn't trust us. [Verify it yourself](https://wallop.run/how-verification-works).
 
@@ -57,7 +57,7 @@ config :wallop_core, Oban,
   plugins: []
 ```
 
-`weather`, `frequency` and `v6_execution` run observation-weather and grid-frequency draws (lock schema 6): the Met Office Land Observations fetch, the grid-frequency window fetch, and the draws themselves. You need them only if your app executes core jobs. In that case also add `{"*/10 * * * *", WallopCore.Entropy.StuckDrawRedriver}` to your Cron plugin, or a lost execution job is never put back. Every running job can hold a database connection, so keep the sum of the queue limits well under your Repo pool size.
+`weather`, `frequency` and `v6_execution` run observation-weather and grid-frequency draws (lock schema 6): the Met Office Land Observations fetch, the grid-frequency window fetch, and the draws themselves. You need them only if your app executes core jobs. `WallopCore.Entropy.StuckDrawRedriver` reads Oban's `public` job table only. Run it only in a service whose core Oban uses the `public` prefix; an app with its own prefix must not add it. Without it, a lost execution job is never put back. Every running job can hold a database connection, so keep the sum of the queue limits well under your Repo pool size.
 
 The wallop service uses the default `public` prefix. Your app uses `oban_app` (or any other name). Both share the database but process their own jobs independently.
 

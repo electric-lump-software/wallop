@@ -45,7 +45,7 @@ Adds two opt-in draw protocols, observation weather and grid frequency (lock sch
 
 - **Run `mix ecto.migrate`.** It adds the `weather_observations` and `frequency_windows` tables, `operators.draw_protocol` (default `forecast`), and `draws.lock_schema_version`, `entropy_composition`, `freq_start`, `freq_value` and `freq_fallback_reason`, with their triggers and SQL functions.
 - **Set `MET_OFFICE_OBS_API_KEY`** (a Met Office Weather DataHub Land Observations key) on the service that runs core jobs. It's optional: without it, observation draws fall back by rule, visibly. Grid frequency needs no key.
-- **Oban queues and cron.** If your Oban config overrides core's, add the `weather`, `frequency` and `v6_execution` queues, and `{"*/10 * * * *", WallopCore.Entropy.StuckDrawRedriver}` to your Cron plugin, only if your app executes core jobs. An insert-only Oban instance needs nothing.
+- **Oban queues and cron.** If your Oban config overrides core's, add the `weather`, `frequency` and `v6_execution` queues only if your app executes core jobs. An insert-only Oban instance needs nothing. `WallopCore.Entropy.StuckDrawRedriver` reads Oban's `public` job table only. Run it only in a service whose core Oban uses the `public` prefix; an app with its own prefix must not add it. Without it, a lost execution job is never put back.
 - **Older embedded cores.** An app that embeds a `wallop_core` older than 0.29.0 always locks on the forecast protocol, whatever the operator's setting.
 - **Once any observation-weather or grid-frequency draw has been locked, never roll the service that runs core jobs back below 0.29.0; roll forward.** Older code can neither run nor verify those draws. Record this in your own runbook.
 

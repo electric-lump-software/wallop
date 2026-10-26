@@ -368,8 +368,8 @@ stored for its hour by F. The database allows state (b) or (c) only once
 its clock is past F + 1 minute, and state (c) only once it is also past
 F_freq + M. Both are before the drand round exists: F + 60 s ≤ pub(R) and
 F_freq + M ≤ pub(R). A fetch of T's window is scheduled at lock for every
-draw, whether or not the weather arrives. Execution runs at pub(R) plus a few seconds, and
-`executed_at` ≥ pub(R).
+draw, whether or not the weather arrives. Execution runs at pub(R) plus a
+few seconds, and `executed_at` ≥ pub(R).
 
 **Reasons.** `weather_fallback_reason` is `null` or
 `"no_observation_by_deadline"`. `freq_fallback_reason` is `null` or
@@ -1130,8 +1130,8 @@ see `docs/decisions/0001-picker-architecture.md`.
 
 - **Two entropy sources, with a visible fallback:** The trust model requires
   that no single party can influence the outcome, so every draw is
-  declared with drand and a second, independent source. When the second source isn't
-  available, a draw uses drand alone, and its signed execution receipt says
+  declared with drand and a second, independent source. When the second
+  source isn't available, a draw uses drand alone, and its signed execution receipt says
   so (§2.4). On lock schema 6 that is decided from what was stored before
   the drand round existed.
 
