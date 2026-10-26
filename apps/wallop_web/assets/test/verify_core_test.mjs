@@ -151,7 +151,7 @@ const V6 = {
   },
   "proof-bundle-v6-freq.json": { formula: "frequency", label: null, bmrs: true },
   "proof-bundle-v6-freq-fallback.json": {
-    formula: "drand_only", label: "drand only (grid frequency fallback: no_frequency_by_deadline)", bmrs: false
+    formula: "drand_only", label: "The Grid went quiet, so drand did this one on its own.", bmrs: false
   }
 }
 for (const [f, want] of Object.entries(V6)) {
@@ -247,6 +247,43 @@ await t("a signed hour the round doesn't imply fails the hour line itself, not o
   const hour = r.lines.find(l => l.id === "observation_hour")
   assert.ok(hour && hour.status === "fail", statuses(r))
   noPass(r)
+})
+await t("the BMRS year is the signed window start T's, not the execution time's", () => {
+  const v = read("proof-bundle-v6-freq-window.json")
+  const b = JSON.parse(v.bundle)
+  const lock = JSON.parse(b.lock_receipt.payload_jcs)
+  lock.freq_start = "2025-12-31T23:54:00.000000Z"
+  b.lock_receipt.payload_jcs = JSON.stringify(lock)
+  const bj = JSON.stringify(b)
+  const d = pageFor(bj, v.keys)
+  const r = core.computeChecks(wasm, d, published(bj, v.keys))
+  // The edit breaks the signature, so it is red; the year still follows T.
+  assert.equal(r.verdict, "red")
+  assert.equal(r.bmrsYear, "2025")
+})
+await t("grid-frequency tag outside its two states: seed line fails, no label, no BMRS", () => {
+  const base = read("proof-bundle-v6-freq.json")
+  const fb = read("proof-bundle-v6-freq-fallback.json")
+  const edits = [
+    [base, e => { e.freq_fallback_reason = "no_frequency_by_deadline" }],
+    [fb, e => { e.freq_fallback_reason = null }],
+    [base, e => { e.weather_station = "wmo-03749" }],
+    [base, e => { delete e.weather_fallback_reason }]
+  ]
+  for (const [v, edit] of edits) {
+    const b = JSON.parse(v.bundle)
+    const exec = JSON.parse(b.execution_receipt.payload_jcs)
+    edit(exec)
+    b.execution_receipt.payload_jcs = JSON.stringify(exec)
+    const bj = JSON.stringify(b)
+    const r = core.computeChecks(wasm, pageFor(bj, v.keys), published(bj, v.keys))
+    assert.equal(r.verdict, "red")
+    const seed = r.lines.find(l => l.id === "seed")
+    assert.ok(seed && seed.status === "fail", statuses(r))
+    assert.equal(r.fallbackLabel, null)
+    assert.equal(r.bmrsYear, null)
+    noPass(r)
+  }
 })
 await t("forecast and grid-frequency-tag draws have no observation hour line", () => {
   for (const bj of [FORECAST[0][1], read("proof-bundle-v6-freq.json").bundle]) {

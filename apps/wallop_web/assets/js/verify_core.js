@@ -33,6 +33,10 @@ export const LANDOBS_FREQUENCY_LABEL =
   "Middle Wallop's reading was running late, so this draw listened to the hum of the National Grid instead."
 export const LANDOBS_DRAND_ONLY_LABEL =
   "Middle Wallop was late and the Grid went quiet, so drand did this one on its own."
+/** What a grid-frequency draw says when the readings didn't turn up. */
+export const FREQ_DRAND_ONLY_LABEL = "The Grid went quiet, so drand did this one on its own."
+const FREQ_FALLBACK_REASON = "no_frequency_by_deadline"
+const FREQ_WEATHER_KEYS = ["weather_station", "weather_value", "weather_observation_time", "weather_fallback_reason"]
 
 // drand quicknet's genesis and period, and the observation tag's fetch
 // window W and slack, all frozen by the tag. Used only to show the
@@ -206,12 +210,18 @@ export function seedPlan(wasm, exec, execJcs, d) {
   }
 
   if (tag === FREQ_TAG) {
-    if (exec.weather_value != null) throw new Error("a grid-frequency receipt carries a weather value")
-    if (typeof exec.freq_value === "string") return signed("frequency", exec.freq_value)
-    if (exec.freq_value === null) {
-      return signed("drand_only", null, `drand only (grid frequency fallback: ${exec.freq_fallback_reason})`)
+    // Two states: readings with no reason, or no readings with the tag's
+    // reason; every weather field null. Anything else is refused.
+    if (FREQ_WEATHER_KEYS.some(k => !(k in exec) || exec[k] !== null)) {
+      throw new Error("a grid-frequency receipt carries a weather field")
     }
-    throw new Error("freq_value is neither a string nor null")
+    if (typeof exec.freq_value === "string" && exec.freq_fallback_reason === null) {
+      return signed("frequency", exec.freq_value)
+    }
+    if (exec.freq_value === null && exec.freq_fallback_reason === FREQ_FALLBACK_REASON) {
+      return signed("drand_only", null, FREQ_DRAND_ONLY_LABEL)
+    }
+    throw new Error("grid-frequency receipt is in neither state (readings, or drand only after no_frequency_by_deadline)")
   }
 
   if (exec.schema_version === V6_EXEC_SCHEMA) throw new Error(`unknown entropy tag: ${tag}`)
@@ -281,6 +291,7 @@ export function computeChecks(wasm, d, published) {
 
   let exec = null
   let execJcs = null
+  let lockSigned = null
   if (gated) {
     if (!published) return refuse(REFUSED_RED)
     let bundle
@@ -288,6 +299,7 @@ export function computeChecks(wasm, d, published) {
       bundle = JSON.parse(published.bundleJson)
       execJcs = bundle.execution_receipt.payload_jcs
       exec = JSON.parse(execJcs)
+      lockSigned = JSON.parse(bundle.lock_receipt.payload_jcs)
       result.bindingProblem = pageBindingProblem(d, bundle, published.keys)
     } catch (_e) {
       return refuse(REFUSED_RED)
@@ -353,8 +365,9 @@ export function computeChecks(wasm, d, published) {
   result.formula = plan.formula
   result.fallbackLabel = plan.fallbackLabel
   if (plan.formula === "frequency") {
-    const year = exec && typeof exec.executed_at === "string" ? exec.executed_at.substring(0, 4) : ""
-    result.bmrsYear = year || String(new Date().getUTCFullYear())
+    // The readings' year: the signed window start T's.
+    const t = lockSigned && typeof lockSigned.freq_start === "string" ? lockSigned.freq_start : ""
+    result.bmrsYear = t.substring(0, 4) || String(new Date().getUTCFullYear())
   }
 
   // the draw itself (shown as a count; the next line checks it)

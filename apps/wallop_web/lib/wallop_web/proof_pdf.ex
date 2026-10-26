@@ -110,7 +110,7 @@ defmodule WallopWeb.ProofPdf do
 
   defp generate_with_fingerprint(draw, _fingerprint) do
     entries = WallopCore.Entries.load_for_draw(draw.id)
-    {operator, receipt, _execution_receipt} = WallopCore.OperatorInfo.for_draw(draw)
+    {operator, receipt, execution_receipt} = WallopCore.OperatorInfo.for_draw(draw)
     winners = draw.results || []
 
     assigns = %{
@@ -118,6 +118,7 @@ defmodule WallopWeb.ProofPdf do
       entries: entries,
       operator: operator,
       receipt: receipt,
+      weather: WallopWeb.ProofWeather.summary(draw, execution_receipt, receipt),
       winners: winners,
       public_url: public_url(draw.id),
       generated_at: DateTime.utc_now()

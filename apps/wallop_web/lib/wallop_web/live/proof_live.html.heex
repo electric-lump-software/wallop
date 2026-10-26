@@ -216,7 +216,7 @@
     <div>Draw ID: <span class="font-mono">{@draw.id}</span></div>
     <.operator_link operator={@operator} draw={@draw} />
     <div :if={weather = WallopWeb.ProofWeather.summary(@draw, @execution_receipt, @receipt)}>
-      Result due at {Calendar.strftime(weather.expected_result_at, "%H:%M:%S UTC on %d %b %Y")}
+      Result due at {Calendar.strftime(weather.expected_result_at, "%H:%M:%S UTC on %d %b %Y")}, when drand publishes its random number for this draw
     </div>
   </div>
 

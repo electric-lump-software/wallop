@@ -11,7 +11,7 @@ defmodule WallopWeb.Components.DrawTimeline do
 
   attr(:weather, :map,
     default: nil,
-    doc: "`WallopWeb.ProofWeather.summary/3` for observation-weather draws; nil otherwise"
+    doc: "`WallopWeb.ProofWeather.summary/3` for lock schema 6 draws; nil otherwise"
   )
 
   def draw_timeline(assigns) do
@@ -111,9 +111,7 @@ defmodule WallopWeb.Components.DrawTimeline do
       weather_text =
         cond do
           weather ->
-            "Middle Wallop's #{Calendar.strftime(weather.observation_hour, "%H:%M UTC")} " <>
-              "weather reading, result due at " <>
-              Calendar.strftime(weather.expected_result_at, "%H:%M:%S UTC")
+            declared_text(weather, status)
 
           draw.weather_time ->
             "weather at #{Calendar.strftime(draw.weather_time, "%H:%M UTC")}"
@@ -133,35 +131,59 @@ defmodule WallopWeb.Components.DrawTimeline do
     end
   end
 
+  # Lock schema 6: what was declared, from the signed lock receipt. Before
+  # the result, it may or may not turn up; after, it was only declared
+  # (the fetching stage names what was used).
+  defp declared_text(weather, status) when status in [:awaiting_entropy, :pending_entropy] do
+    "#{declared_source(weather)}, if it turns up. The result is due at " <>
+      Calendar.strftime(weather.expected_result_at, "%H:%M:%S UTC")
+  end
+
+  defp declared_text(weather, _status), do: "#{declared_source(weather)} declared"
+
+  defp declared_source(%{tag: :landobs, observation_hour: %DateTime{} = hour}),
+    do: "Middle Wallop's #{Calendar.strftime(hour, "%H:%M UTC")} weather reading"
+
+  defp declared_source(%{tag: :landobs}), do: "Middle Wallop's weather reading"
+
+  defp declared_source(%{tag: :freq, freq_start: %DateTime{} = t}),
+    do: "the National Grid's frequency from #{Calendar.strftime(t, "%H:%M:%S UTC")}"
+
+  defp declared_source(%{tag: :freq}), do: "the National Grid's frequency"
+
+  # Lock schema 6: the result is due when the drand round publishes.
+  defp awaiting_stage(_draw, %{} = weather) do
+    %{
+      label: "Fetching Entropy",
+      detail: nil,
+      state: :current,
+      countdown_target: weather.expected_result_at,
+      countdown_label: "Result due in"
+    }
+  end
+
+  defp awaiting_stage(draw, nil) do
+    %{
+      label: "Fetching Entropy",
+      detail: nil,
+      state: :current,
+      countdown_target: draw.weather_time
+    }
+  end
+
+  defp pending_detail(%{tag: :freq}), do: "waiting for drand round and grid frequency readings..."
+  defp pending_detail(_weather), do: "waiting for drand round and weather observation..."
+
   defp fetching_entropy_stage(draw, status, weather) do
     case status do
       s when s in [:open, :locked] ->
         %{label: "Fetching Entropy", detail: nil, state: :pending}
 
-      # Observation weather: the result is due when the drand round publishes.
-      :awaiting_entropy when weather != nil ->
-        %{
-          label: "Fetching Entropy",
-          detail: nil,
-          state: :current,
-          countdown_target: weather.expected_result_at,
-          countdown_label: "Result due in"
-        }
-
       :awaiting_entropy ->
-        %{
-          label: "Fetching Entropy",
-          detail: nil,
-          state: :current,
-          countdown_target: draw.weather_time
-        }
+        awaiting_stage(draw, weather)
 
       :pending_entropy ->
-        %{
-          label: "Fetching Entropy",
-          detail: "waiting for drand round and weather observation...",
-          state: :current
-        }
+        %{label: "Fetching Entropy", detail: pending_detail(weather), state: :current}
 
       :completed ->
         ts = draw.stage_timestamps || %{}
@@ -228,25 +250,36 @@ defmodule WallopWeb.Components.DrawTimeline do
     end
   end
 
-  # Observation weather: the source is the signed receipt's, not the row's.
+  # Lock schema 6: the source is the signed receipt's, not the row's.
   defp entropy_detail(draw, %{} = weather) do
     source_part =
-      case weather.source do
-        :weather ->
-          "Middle Wallop: #{weather.weather_value}, observed at " <>
+      case {weather.source, weather.tag} do
+        {:weather, _} ->
+          "Middle Wallop reported #{weather.weather_value} at " <>
             Calendar.strftime(weather.observed_at, "%H:%M UTC")
 
-        :frequency ->
-          "grid frequency instead of the weather"
+        {:frequency, :landobs} ->
+          "the National Grid's hum instead of the weather"
 
-        :drand_only ->
-          "drand alone"
+        {:frequency, :freq} ->
+          "the National Grid's hum"
 
-        nil ->
+        {:drand_only, :landobs} ->
+          "drand alone, no weather or Grid"
+
+        {:drand_only, :freq} ->
+          "drand alone, no Grid"
+
+        {nil, _} ->
           nil
       end
 
-    [if(draw.drand_randomness, do: "drand: #{truncate_hash(draw.drand_randomness)}"), source_part]
+    [
+      if(draw.drand_randomness,
+        do: "a random number from drand: #{truncate_hash(draw.drand_randomness)}"
+      ),
+      source_part
+    ]
     |> Enum.reject(&is_nil/1)
     |> Enum.join(", ")
   end

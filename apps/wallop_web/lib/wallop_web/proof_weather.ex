@@ -1,52 +1,90 @@
 defmodule WallopWeb.ProofWeather do
   @moduledoc """
-  What the proof page says about an observation-weather draw's entropy,
-  read from the signed receipts, never from the draw row.
+  What the proof page and PDF say about a lock schema 6 draw's entropy
+  (observation weather, or grid frequency), read from the signed
+  receipts, never from the draw row.
 
-  Which source the draw used (Middle Wallop's reading, the grid
-  frequency, or drand alone) is the execution receipt's state under the
-  tag's three-state table, as `WallopCore.Protocol.Tags.LandObs.exec_state/1`
-  names it. A receipt that fits none of the three states gets no source
-  and is marked `out_of_table`.
+  Which source the draw used is the execution receipt's state:
 
-  This is display only. Nothing here checks a signature; the browser
-  check's verifier gate does that, and only it may show a match.
+    * observation weather tag: the three-state table, as
+      `WallopCore.Protocol.Tags.LandObs.exec_state/1` names it (Middle
+      Wallop's reading, the grid frequency, or drand alone);
+    * grid-frequency tag: a `freq_value` string with no reason (the
+      grid frequency), or a null `freq_value` with the tag's reason
+      (drand alone), and every weather field null.
+
+  A receipt that fits none of its tag's states gets no source and is
+  marked `out_of_table`.
+
+  This is display only, and says so on the page ("The signed receipt
+  says:"). Nothing here checks a signature; the browser check's
+  verifier gate does that, and only it may show a match.
   """
 
   alias WallopCore.Drand.Quicknet
-  alias WallopCore.Protocol.Tags.LandObs
-  alias WallopCore.Weather.{Schedule, Stations}
+  alias WallopCore.Frequency.Schedule, as: FreqSchedule
+  alias WallopCore.Protocol.Tags.{Freq, LandObs}
+  alias WallopCore.Weather.Stations
 
-  @frequency_label "Middle Wallop's reading was running late, so this draw listened to the hum " <>
-                     "of the National Grid instead."
-  @drand_only_label "Middle Wallop was late and the Grid went quiet, so drand did this one on its own."
+  @landobs_frequency_label "Middle Wallop's reading was running late, so this draw listened to " <>
+                             "the hum of the National Grid instead."
+  @landobs_drand_only_label "Middle Wallop was late and the Grid went quiet, so drand did this " <>
+                              "one on its own."
+  @freq_drand_only_label "The Grid went quiet, so drand did this one on its own."
+
+  # ADR wording, verbatim where quoted.
+  @landobs_trust_lines [
+    "Trusted: on a fallback to the grid frequency, Elexon published what the grid actually " <>
+      "did, and does not revise readings.",
+    "Proven with weather-attest: for a draw that used the grid frequency, freq_value matches " <>
+      "Elexon's readings for T…T+105s."
+  ]
+  @freq_trust_lines [
+    "Trusted: Elexon published what the grid actually did, and doesn't revise readings.",
+    "Anyone can re-fetch Elexon's readings to check that wallop stored what was published."
+  ]
+
+  @landobs_out_of_table "This draw's signed receipt doesn't match any of the three ways a " <>
+                          "weather draw can go (Middle Wallop, the Grid, or drand alone), so " <>
+                          "there's no weather source to show, and we can't vouch for it."
+  @freq_out_of_table "This draw's signed receipt doesn't match either way a grid-frequency " <>
+                       "draw can go (the Grid, or drand alone), so there's no source to show, " <>
+                       "and we can't vouch for it."
 
   # The five keys of the three-state table. All must be present.
-  @state_keys ~w(weather_value weather_observation_time weather_fallback_reason freq_value freq_fallback_reason)
+  @landobs_state_keys ~w(weather_value weather_observation_time weather_fallback_reason freq_value freq_fallback_reason)
+  # Signed under the grid-frequency tag, always null.
+  @freq_weather_keys ~w(weather_station weather_value weather_observation_time weather_fallback_reason)
 
   @type source :: :weather | :frequency | :drand_only
   @type t :: %{
-          observation_hour: DateTime.t(),
+          tag: :landobs | :freq,
+          observation_hour: DateTime.t() | nil,
           expected_result_at: DateTime.t(),
+          freq_start: DateTime.t() | nil,
           source: source() | nil,
           out_of_table: boolean(),
+          out_of_table_text: String.t(),
           station_label: String.t() | nil,
           weather_value: String.t() | nil,
           observed_at: DateTime.t() | nil,
           freq_value: String.t() | nil,
-          freq_start: DateTime.t() | nil,
           fallback_label: String.t() | nil,
+          trust_lines: [String.t()],
           bmrs_line: String.t() | nil
         }
 
   @doc """
-  The weather summary for an observation-weather draw, or nil for every
-  other draw (forecast draws and grid-frequency-tag draws).
+  The entropy summary for a lock schema 6 draw, or nil for every other
+  draw (forecast draws keep their own markup).
 
-  `observation_hour` and `expected_result_at` follow from `drand_round`.
-  The rest comes from the execution receipt when there is one;
-  `freq_start` (the start of the grid-frequency window, T) from the
-  signed lock receipt.
+  * `observation_hour` (observation weather only) and `freq_start` (T)
+    are the signed lock receipt's `weather_time` and `freq_start`; nil
+    without a lock receipt.
+  * `expected_result_at` is pub(drand_round), as the draw's
+    `expected_result_at` calculation gives it (not signed).
+  * The source and its values come from the execution receipt, when
+    there is one.
   """
   @spec summary(map(), map() | nil, map() | nil) :: t() | nil
   def summary(draw, execution_receipt, lock_receipt \\ nil)
@@ -57,48 +95,69 @@ defmodule WallopWeb.ProofWeather do
         lock_receipt
       )
       when is_integer(round) and round >= 1 do
-    if Map.get(draw, :entropy_composition) == LandObs.tag() do
-      base = %{
-        observation_hour: Schedule.weather_time_for_round(round),
-        expected_result_at: Quicknet.pub_time(round),
-        source: nil,
-        out_of_table: false,
-        station_label: nil,
-        weather_value: nil,
-        observed_at: nil,
-        freq_value: nil,
-        freq_start: nil,
-        fallback_label: nil,
-        bmrs_line: nil
-      }
-
-      case execution_receipt do
-        %{payload_jcs: jcs} when is_binary(jcs) ->
-          Map.merge(base, from_receipt(jcs, lock_receipt))
-
-        _ ->
-          base
-      end
+    case tag(Map.get(draw, :entropy_composition)) do
+      nil -> nil
+      tag -> build(tag, round, execution_receipt, signed(lock_receipt))
     end
   end
 
   def summary(_draw, _execution_receipt, _lock_receipt), do: nil
 
-  defp from_receipt(jcs, lock_receipt) do
+  defp tag(composition) do
+    cond do
+      composition == LandObs.tag() -> :landobs
+      composition == Freq.tag() -> :freq
+      true -> nil
+    end
+  end
+
+  defp build(tag, round, execution_receipt, lock) do
+    freq_start = time(lock["freq_start"])
+
+    base = %{
+      tag: tag,
+      observation_hour: if(tag == :landobs, do: time(lock["weather_time"])),
+      expected_result_at: Quicknet.pub_time(round),
+      freq_start: freq_start,
+      source: nil,
+      out_of_table: false,
+      out_of_table_text: if(tag == :landobs, do: @landobs_out_of_table, else: @freq_out_of_table),
+      station_label: nil,
+      weather_value: nil,
+      observed_at: nil,
+      freq_value: nil,
+      fallback_label: nil,
+      trust_lines: [],
+      bmrs_line: nil
+    }
+
+    case execution_receipt do
+      %{payload_jcs: jcs} when is_binary(jcs) ->
+        bmrs_year = (freq_start || FreqSchedule.freq_start_for_round(round)).year
+        Map.merge(base, from_receipt(tag, jcs, bmrs_year))
+
+      _ ->
+        base
+    end
+  end
+
+  defp from_receipt(tag, jcs, bmrs_year) do
+    composition = if tag == :landobs, do: LandObs.tag(), else: Freq.tag()
+
     with {:ok, %{} = signed} <- Jason.decode(jcs),
-         true <- signed["entropy_composition"] == LandObs.tag(),
-         {:ok, source} <- state(signed) do
-      for_source(source, signed, lock_receipt)
+         true <- signed["entropy_composition"] == composition,
+         {:ok, source} <- state(tag, signed) do
+      for_source(tag, source, signed, bmrs_year)
     else
       _ -> %{out_of_table: true}
     end
   end
 
-  defp state(signed) do
-    if Enum.all?(@state_keys, &Map.has_key?(signed, &1)) do
+  defp state(:landobs, signed) do
+    if Enum.all?(@landobs_state_keys, &Map.has_key?(signed, &1)) do
       LandObs.exec_state(%{
         weather_value: signed["weather_value"],
-        weather_observation_time: parse_time(signed["weather_observation_time"]),
+        weather_observation_time: time_or_text(signed["weather_observation_time"]),
         weather_fallback_reason: signed["weather_fallback_reason"],
         freq_value: signed["freq_value"],
         freq_fallback_reason: signed["freq_fallback_reason"]
@@ -108,61 +167,74 @@ defmodule WallopWeb.ProofWeather do
     end
   end
 
-  defp for_source(:weather, signed, _lock_receipt) do
+  defp state(:freq, signed) do
+    weather_null? =
+      Enum.all?(@freq_weather_keys, &(Map.has_key?(signed, &1) and is_nil(signed[&1])))
+
+    keys? = Map.has_key?(signed, "freq_value") and Map.has_key?(signed, "freq_fallback_reason")
+    reason = Freq.fallback_reason()
+
+    case {weather_null? and keys?, signed["freq_value"], signed["freq_fallback_reason"]} do
+      {true, value, nil} when is_binary(value) -> {:ok, :frequency}
+      {true, nil, ^reason} -> {:ok, :drand_only}
+      _ -> :error
+    end
+  end
+
+  defp for_source(_tag, :weather, signed, _bmrs_year) do
     %{
       source: :weather,
       station_label: station_label(signed["weather_station"]),
       weather_value: signed["weather_value"],
-      observed_at: parse_time(signed["weather_observation_time"])
+      observed_at: time(signed["weather_observation_time"])
     }
   end
 
-  defp for_source(:frequency, signed, lock_receipt) do
+  defp for_source(tag, :frequency, signed, bmrs_year) do
     %{
       source: :frequency,
       freq_value: signed["freq_value"],
-      freq_start: lock_freq_start(lock_receipt),
-      fallback_label: @frequency_label,
-      bmrs_line:
-        "Contains BMRS data © Elexon Limited copyright and database right #{bmrs_year(signed)}"
+      # Under the grid-frequency tag the grid is the plan, not a fallback.
+      fallback_label: if(tag == :landobs, do: @landobs_frequency_label),
+      trust_lines: if(tag == :landobs, do: @landobs_trust_lines, else: @freq_trust_lines),
+      bmrs_line: "Contains BMRS data © Elexon Limited copyright and database right #{bmrs_year}"
     }
   end
 
-  defp for_source(:drand_only, _signed, _lock_receipt) do
-    %{source: :drand_only, fallback_label: @drand_only_label}
+  defp for_source(tag, :drand_only, _signed, _bmrs_year) do
+    %{
+      source: :drand_only,
+      fallback_label:
+        if(tag == :landobs, do: @landobs_drand_only_label, else: @freq_drand_only_label)
+    }
   end
 
-  # The readings' year, as the browser check gives it: the signed execution time's.
-  defp bmrs_year(signed) do
-    case parse_time(signed["executed_at"]) do
-      %DateTime{year: year} -> year
-      _ -> DateTime.utc_now().year
-    end
-  end
-
-  defp lock_freq_start(%{payload_jcs: jcs}) when is_binary(jcs) do
+  defp signed(%{payload_jcs: jcs}) when is_binary(jcs) do
     case Jason.decode(jcs) do
-      {:ok, %{"freq_start" => t}} ->
-        case parse_time(t) do
-          %DateTime{} = dt -> dt
-          _ -> nil
-        end
-
-      _ ->
-        nil
+      {:ok, %{} = map} -> map
+      _ -> %{}
     end
   end
 
-  defp lock_freq_start(_), do: nil
+  defp signed(_), do: %{}
 
-  defp parse_time(text) when is_binary(text) do
+  # A DateTime, or nil for anything that isn't a UTC timestamp.
+  defp time(value) do
+    case time_or_text(value) do
+      %DateTime{} = dt -> dt
+      _ -> nil
+    end
+  end
+
+  # Keeps an unreadable timestamp as text, so the state check refuses it.
+  defp time_or_text(text) when is_binary(text) do
     case DateTime.from_iso8601(text) do
       {:ok, dt, 0} -> dt
       _ -> text
     end
   end
 
-  defp parse_time(other), do: other
+  defp time_or_text(other), do: other
 
   defp station_label(id) when is_binary(id) do
     case Stations.fetch(id) do

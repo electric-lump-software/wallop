@@ -11,7 +11,7 @@ defmodule WallopWeb.Components.ProofChain do
 
   attr(:weather, :map,
     default: nil,
-    doc: "`WallopWeb.ProofWeather.summary/3` for observation-weather draws; nil otherwise"
+    doc: "`WallopWeb.ProofWeather.summary/3` for lock schema 6 draws; nil otherwise"
   )
 
   def proof_chain(assigns) do
@@ -141,58 +141,52 @@ defmodule WallopWeb.Components.ProofChain do
 
   attr(:weather, :map, required: true)
 
-  # What the signed execution receipt says the draw used. Display only:
-  # the browser check's verifier gate is what shows a match.
+  # What the signed receipts say the draw used. Display only, and headed
+  # as such: the browser check's verifier gate is what shows a match.
   defp observation_weather(assigns) do
     ~H"""
     <div class="mt-2 text-xs text-[#555] space-y-1" data-observation-weather={@weather.source || "none"}>
-      <div>
-        Weather hour: {Calendar.strftime(@weather.observation_hour, "%H:%M UTC %d %b %Y")}
-        (it follows from the drand round)
+      <div :if={@weather.observation_hour}>
+        Weather hour: {Calendar.strftime(@weather.observation_hour, "%H:%M UTC %d %b %Y")}.
+        Set by the draw's drand round, so nobody gets to pick it; the check above confirms it.
       </div>
 
-      <div :if={@weather.source == :weather}>
-        <div>
-          Observed at {@weather.station_label}, {Calendar.strftime(@weather.observed_at, "%H:%M UTC %d %b %Y")}
-        </div>
-        <div>
-          Weather value: <span class="font-mono">{@weather.weather_value}</span>
-        </div>
-      </div>
+      <div :if={@weather.source} class="pt-1 space-y-1" data-signed-receipt-says>
+        <div class="font-semibold text-[#1a1a1a]">The signed receipt says:</div>
 
-      <div :if={@weather.fallback_label} class="text-[#1a1a1a]">
-        {@weather.fallback_label}
-      </div>
+        <div :if={@weather.source == :weather}>
+          <div>
+            {@weather.station_label} reported this at {Calendar.strftime(@weather.observed_at, "%H:%M UTC %d %b %Y")}:
+          </div>
+          <div>
+            Weather value: <span class="font-mono">{@weather.weather_value}</span>
+          </div>
+        </div>
 
-      <div :if={@weather.source == :frequency} class="space-y-1">
-        <div>
-          Grid frequency readings (mHz): <span class="font-mono break-all">{@weather.freq_value}</span>
+        <div :if={@weather.fallback_label} class="text-[#1a1a1a]">
+          {@weather.fallback_label}
         </div>
-        <div :if={@weather.freq_start}>
-          Eight readings, 15 seconds apart, from T =
-          {Calendar.strftime(@weather.freq_start, "%H:%M:%S UTC %d %b %Y")}
+
+        <div :if={@weather.source == :frequency} class="space-y-1">
+          <div>
+            Grid frequency readings (mHz): <span class="font-mono break-all">{@weather.freq_value}</span>
+          </div>
+          <div :if={@weather.freq_start}>
+            Eight readings, 15 seconds apart, from T =
+            {Calendar.strftime(@weather.freq_start, "%H:%M:%S UTC %d %b %Y")}
+          </div>
+          <div class="pt-1">
+            What you're trusting here:
+            <ul class="list-disc ml-4">
+              <li :for={line <- @weather.trust_lines}>{line}</li>
+            </ul>
+          </div>
+          <div class="text-[#777]">{@weather.bmrs_line}</div>
         </div>
-        <div class="pt-1">
-          What this part rests on:
-          <ul class="list-disc ml-4">
-            <li>
-              Trusted: on a fallback to the grid frequency, Elexon published what the grid
-              actually did, and does not revise readings.
-            </li>
-            <li>
-              Proven with <code class="font-mono">weather-attest</code>: for a draw that used
-              the grid frequency, <code class="font-mono">freq_value</code>
-              matches Elexon's readings for T…T+105s.
-            </li>
-          </ul>
-        </div>
-        <div class="text-[#777]">{@weather.bmrs_line}</div>
       </div>
 
       <div :if={@weather.out_of_table} class="text-red-700">
-        This draw's signed execution receipt doesn't fit any of the three ways an
-        observation-weather draw can go, so there's no weather source to show, and the
-        draw can't be verified.
+        {@weather.out_of_table_text}
       </div>
     </div>
     """
