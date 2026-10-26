@@ -108,7 +108,7 @@ if config_env() == :prod do
   end
 
   vault_key =
-    System.get_env("VAULT_KEY") || System.get_env("CLOAK_KEY") ||
+    System.get_env("VAULT_KEY") ||
       raise "VAULT_KEY environment variable is not set"
 
   # Optional retired-key slot for dual-key rotation (ADR-0013). Unset in

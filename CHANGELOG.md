@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Secrets can come from Infisical; a wrong vault key stops the boot
 
+**BREAKING (self-hosters).** `CLOAK_KEY` is no longer read. If your deployment sets only `CLOAK_KEY`, set `VAULT_KEY` to the same value before upgrading; otherwise the release refuses to boot with "VAULT_KEY environment variable is not set".
+
 **ADDED.**
 
 - **A boot check that proves the vault key.** For each configured cipher (`VAULT_KEY`, plus `VAULT_KEY_OLD` when set), wallop_core decrypts one stored signing key carrying that cipher's tag and checks it against the row's public key and `key_id`. A key that can't decrypt it, or a row that doesn't match itself, stops the boot before Oban starts, so a node on the wrong key never runs a job. A tag no row carries (a fresh install) is skipped. Every app that starts wallop_core runs it; `config :wallop_core, :vault_key_check, false` turns it off (the test config does). The log and error name the table, `key_id`, tag and reason, never key material.
