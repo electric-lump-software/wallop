@@ -64,11 +64,10 @@ defmodule WallopWeb.Components.EntryCheck do
         </div>
         <div
           :if={!Map.get(@check_result, :rate_limited, false) && @draw_status == :completed && !@check_result.winner}
-          class="bg-yellow-50 border border-yellow-200 text-yellow-800 rounded-lg px-4 py-3 text-sm"
+          class="bg-cream-50 border border-cream-border text-[#555] rounded-lg px-4 py-3 text-sm"
         >
           <p>
-            Not in the winner list. To check whether your entry was submitted,
-            contact the operator of this draw.
+            Not a winner this time. The organiser can tell you more about your ticket.
           </p>
           <p :if={@check_url} class="mt-2">
             The operator provides a ticket-check page at:
