@@ -1,0 +1,150 @@
+{
+  "attributes": [
+    {
+      "allow_nil?": false,
+      "default": "fragment(\"gen_random_uuid()\")",
+      "generated?": false,
+      "precision": null,
+      "primary_key?": true,
+      "references": null,
+      "scale": null,
+      "size": null,
+      "source": "id",
+      "type": "uuid"
+    },
+    {
+      "allow_nil?": false,
+      "default": "nil",
+      "generated?": false,
+      "precision": null,
+      "primary_key?": false,
+      "references": null,
+      "scale": null,
+      "size": null,
+      "source": "key_class",
+      "type": "text"
+    },
+    {
+      "allow_nil?": false,
+      "default": "nil",
+      "generated?": false,
+      "precision": null,
+      "primary_key?": false,
+      "references": null,
+      "scale": null,
+      "size": null,
+      "source": "key_id",
+      "type": "text"
+    },
+    {
+      "allow_nil?": false,
+      "default": "nil",
+      "generated?": false,
+      "precision": null,
+      "primary_key?": false,
+      "references": null,
+      "scale": null,
+      "size": null,
+      "source": "reason",
+      "type": "text"
+    },
+    {
+      "allow_nil?": false,
+      "default": "fragment(\"(now() AT TIME ZONE 'utc')\")",
+      "generated?": false,
+      "precision": null,
+      "primary_key?": false,
+      "references": null,
+      "scale": null,
+      "size": null,
+      "source": "revoked_at",
+      "type": "utc_datetime_usec"
+    },
+    {
+      "allow_nil?": true,
+      "default": "nil",
+      "generated?": false,
+      "precision": null,
+      "primary_key?": false,
+      "references": {
+        "deferrable": false,
+        "destination_attribute": "id",
+        "destination_attribute_default": null,
+        "destination_attribute_generated": null,
+        "index?": false,
+        "match_type": null,
+        "match_with": null,
+        "multitenancy": {
+          "attribute": null,
+          "global": null,
+          "strategy": null
+        },
+        "name": "signing_key_revocations_operator_id_fkey",
+        "on_delete": "restrict",
+        "on_update": null,
+        "primary_key?": true,
+        "schema": "public",
+        "table": "operators"
+      },
+      "scale": null,
+      "size": null,
+      "source": "operator_id",
+      "type": "uuid"
+    }
+  ],
+  "base_filter": null,
+  "check_constraints": [
+    {
+      "attribute": [
+        "operator_id"
+      ],
+      "base_filter": null,
+      "check": "(key_class = 'operator' AND operator_id IS NOT NULL) OR (key_class = 'infrastructure' AND operator_id IS NULL)",
+      "name": "signing_key_revocations_operator_matches_class"
+    }
+  ],
+  "create_table_options": null,
+  "custom_indexes": [],
+  "custom_statements": [
+    {
+      "code?": false,
+      "down": "DO $do$\nBEGIN\n  DROP TRIGGER IF EXISTS signing_key_revocations_no_truncate ON signing_key_revocations;\n  DROP TRIGGER IF EXISTS signing_key_revocation_immutability ON signing_key_revocations;\n  DROP FUNCTION IF EXISTS prevent_signing_key_revocation_mutation();\nEND\n$do$\n",
+      "name": "signing_key_revocations_append_only",
+      "up": "DO $do$\nBEGIN\n  CREATE OR REPLACE FUNCTION prevent_signing_key_revocation_mutation() RETURNS trigger AS $fn$\n  BEGIN\n    RAISE EXCEPTION 'signing_key_revocations is append-only — % forbidden', TG_OP;\n  END;\n  $fn$ LANGUAGE plpgsql;\n  DROP TRIGGER IF EXISTS signing_key_revocation_immutability ON signing_key_revocations;\n  CREATE TRIGGER signing_key_revocation_immutability\n    BEFORE UPDATE OR DELETE ON signing_key_revocations\n    FOR EACH ROW EXECUTE FUNCTION prevent_signing_key_revocation_mutation();\n  DROP TRIGGER IF EXISTS signing_key_revocations_no_truncate ON signing_key_revocations;\n  CREATE TRIGGER signing_key_revocations_no_truncate\n    BEFORE TRUNCATE ON signing_key_revocations\n    EXECUTE FUNCTION prevent_signing_key_revocation_mutation();\nEND\n$do$\n"
+    }
+  ],
+  "has_create_action": true,
+  "hash": "F7E62741CFCCBA5A70CDE824CEF33AE79F79C2A67C6E8F6C594435C21A022358",
+  "identities": [
+    {
+      "all_tenants?": false,
+      "base_filter": null,
+      "index_name": "signing_key_revocations_unique_revocation_index",
+      "keys": [
+        {
+          "type": "atom",
+          "value": "key_class"
+        },
+        {
+          "type": "atom",
+          "value": "operator_id"
+        },
+        {
+          "type": "atom",
+          "value": "key_id"
+        }
+      ],
+      "name": "unique_revocation",
+      "nils_distinct?": false,
+      "where": null
+    }
+  ],
+  "multitenancy": {
+    "attribute": null,
+    "global": null,
+    "strategy": null
+  },
+  "repo": "Elixir.WallopCore.Repo",
+  "schema": null,
+  "table": "signing_key_revocations"
+}

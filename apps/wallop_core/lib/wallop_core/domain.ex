@@ -33,6 +33,7 @@ defmodule WallopCore.Domain do
     resource(WallopCore.Resources.LandObsCallCount)
     resource(WallopCore.Resources.ObservationReadiness)
     resource(WallopCore.Resources.InfrastructureSigningKey)
+    resource(WallopCore.Resources.SigningKeyRevocation)
     resource(WallopCore.Resources.TransparencyAnchor)
     resource(WallopCore.Resources.WaitlistSignup)
   end

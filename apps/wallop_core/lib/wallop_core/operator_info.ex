@@ -50,43 +50,41 @@ defmodule WallopCore.OperatorInfo do
 
   @doc """
   Returns `{operator_public_key_hex, infra_public_key_hex}` for receipt
-  verification. Looks up signing keys by the `signing_key_id` on each receipt.
+  verification. Looks up the operator key by the lock receipt's
+  `operator_id` and `signing_key_id`, and the infrastructure key by the
+  execution receipt's `signing_key_id`.
 
-  Returns nils for missing receipts or keys.
+  Returns nil for a missing receipt, or for a key that doesn't exist or has
+  been revoked.
   """
   def signing_keys_hex(lock_receipt, execution_receipt) do
-    op_key_hex =
-      case lock_receipt do
-        %{signing_key_id: kid} when is_binary(kid) ->
-          OperatorSigningKey
-          |> Ash.Query.filter(key_id == ^kid)
-          |> Ash.Query.limit(1)
-          |> Ash.read!(authorize?: false)
-          |> case do
-            [%{public_key: pk}] -> Base.encode16(pk, case: :lower)
-            [] -> nil
-          end
+    {operator_key_hex(lock_receipt), infrastructure_key_hex(execution_receipt)}
+  end
 
-        _ ->
-          nil
-      end
+  defp operator_key_hex(%{signing_key_id: kid, operator_id: operator_id})
+       when is_binary(kid) and is_binary(operator_id) do
+    OperatorSigningKey
+    |> Ash.Query.filter(operator_id == ^operator_id and key_id == ^kid)
+    |> public_key_hex()
+  end
 
-    infra_key_hex =
-      case execution_receipt do
-        %{signing_key_id: kid} when is_binary(kid) ->
-          InfrastructureSigningKey
-          |> Ash.Query.filter(key_id == ^kid)
-          |> Ash.Query.limit(1)
-          |> Ash.read!(authorize?: false)
-          |> case do
-            [%{public_key: pk}] -> Base.encode16(pk, case: :lower)
-            [] -> nil
-          end
+  defp operator_key_hex(_receipt), do: nil
 
-        _ ->
-          nil
-      end
+  defp infrastructure_key_hex(%{signing_key_id: kid}) when is_binary(kid) do
+    InfrastructureSigningKey
+    |> Ash.Query.filter(key_id == ^kid)
+    |> public_key_hex()
+  end
 
-    {op_key_hex, infra_key_hex}
+  defp infrastructure_key_hex(_receipt), do: nil
+
+  defp public_key_hex(query) do
+    query
+    |> Ash.Query.limit(1)
+    |> Ash.read!(authorize?: false)
+    |> case do
+      [%{public_key: pk}] -> Base.encode16(pk, case: :lower)
+      [] -> nil
+    end
   end
 end

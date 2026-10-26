@@ -12,10 +12,13 @@ defmodule WallopCore.Resources.InfrastructureSigningKey do
   Append-only with `valid_from` ordering, same pattern as
   `OperatorSigningKey`. The "current" key is the row with the largest
   `valid_from <= now`. Old keys remain forever so historical execution
-  receipts continue to verify.
+  receipts continue to verify, unless revoked: every read excludes a key
+  with a `SigningKeyRevocation`, so a revoked key is neither served nor
+  used to sign.
 
-  One wallop-wide key — not per-operator, not per-environment. Manual
-  annual rotation via `mix wallop.rotate_infrastructure_key`. Published
+  One wallop-wide key — not per-operator, not per-environment. Rotated by
+  `WallopCore.KeyRotation.rotate_infrastructure_key/0` (or
+  `mix wallop.rotate_infrastructure_key`). Published
   at `GET /infrastructure/key`.
   """
 
@@ -28,6 +31,12 @@ defmodule WallopCore.Resources.InfrastructureSigningKey do
   postgres do
     table("infrastructure_signing_keys")
     repo(WallopCore.Repo)
+  end
+
+  preparations do
+    prepare(
+      {WallopCore.Resources.SigningKeyRevocation.ExcludeRevoked, key_class: :infrastructure}
+    )
   end
 
   actions do
