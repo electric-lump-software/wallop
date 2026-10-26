@@ -3,30 +3,26 @@ defmodule WallopWeb.RetiredDraw do
   Draws locked under the retired forecast-weather method.
 
   A draw is retired when it has no lock schema (`lock_schema_version` is
-  NULL) and a stored lock receipt: it was locked, but not under lock
-  schema 6. Every lock now carries lock schema 6, so no new draw can be
-  retired. An open or expired draw has no lock receipt, so it is never
-  retired and keeps its normal page.
+  nil) and has left open by any route but expiry. Every lock now carries
+  lock schema 6, and the database refuses any other way out of open, so
+  that test is exact and needs no query. It also covers the old draws that
+  have a lock receipt but no execution receipt. An open or expired draw is
+  never retired and keeps its normal page.
 
-  Every proof route treats a retired draw as one that doesn't exist, with
-  the same response, so the two can't be told apart. Current tools don't
-  verify these draws, so no page here shows their winners, seed or a check.
-  Their signed receipts stay available, byte for byte, at
-  `/operator/:slug/receipts/:seq` and `/operator/:slug/executions/:seq`,
-  because the transparency anchors commit to those bytes.
+  Every proof route answers a retired draw exactly as it answers an
+  unknown id. Current tools don't check these draws, so no page here shows
+  their winners, seed or a check. Their signed receipts stay available,
+  byte for byte, at `/operator/:slug/receipts/:seq` and
+  `/operator/:slug/executions/:seq`, because the transparency anchors
+  commit to those bytes.
   """
 
-  require Ash.Query
+  alias WallopCore.Resources.Draw
 
-  alias WallopCore.Resources.{Draw, OperatorReceipt}
-
-  @doc "True when `draw` has no lock schema and a stored lock receipt."
-  @spec retired?(Draw.t()) :: boolean()
-  def retired?(%{lock_schema_version: nil, id: id}) do
-    OperatorReceipt
-    |> Ash.Query.filter(draw_id == ^id)
-    |> Ash.exists?(authorize?: false)
-  end
+  @doc "True when `draw` has no lock schema and is neither open nor expired."
+  @spec retired?(map()) :: boolean()
+  def retired?(%{lock_schema_version: nil, status: status}),
+    do: status not in [:open, :expired]
 
   def retired?(_draw), do: false
 

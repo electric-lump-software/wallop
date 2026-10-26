@@ -7,6 +7,21 @@ defmodule WallopWeb.OperatorLiveTest do
   alias WallopCore.Resources.Draw
 
   describe "operator listing — cross-draw transparency commitment" do
+    test "a retired forecast draw is listed without a proof link", %{conn: conn} do
+      operator = create_operator()
+      api_key = create_api_key_for_operator(operator)
+      put_observation_readiness!(true)
+      retired = put_retired_forecast_draw!(api_key, :completed)
+      live_draw = create_draw(api_key)
+
+      {:ok, _live, html} = live(conn, "/operator/#{operator.slug}")
+
+      assert html =~ "##{retired.operator_sequence}"
+      refute html =~ ~s(href="/proof/#{retired.id}")
+      assert html =~ "retired method"
+      assert html =~ ~s(href="/proof/#{live_draw.id}")
+    end
+
     test "lists draws with assigned operator_sequence", %{conn: conn} do
       operator = create_operator()
       api_key = create_api_key_for_operator(operator)

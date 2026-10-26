@@ -1,8 +1,8 @@
 defmodule WallopWeb.RetiredDrawTest do
   @moduledoc """
-  A retired forecast draw (no lock schema, a stored lock receipt) is not
-  found on every proof route, with exactly the response an unknown id gets,
-  so the two can't be told apart. Its signed receipts stay served at the
+  A retired forecast draw (no lock schema, neither open nor expired) is not
+  found on every proof route: each answers it exactly as it answers an
+  unknown id. Its signed receipts stay served at the
   receipt and execution endpoints. Open and expired draws are not retired.
   """
   use WallopWeb.ConnCase, async: false
@@ -51,9 +51,18 @@ defmodule WallopWeb.RetiredDrawTest do
     }
   end
 
-  test "retired?/1: a NULL lock schema with a lock receipt; open and expired draws are not",
+  test "retired?/1: no lock schema and neither open nor expired; needs no query",
        %{key: key, retired: retired} do
     for draw <- retired, do: assert(RetiredDraw.retired?(draw))
+
+    # Exact without a receipt: an old draw locked but never executed.
+    for status <- [:locked, :awaiting_entropy, :pending_entropy, :completed, :failed] do
+      assert RetiredDraw.retired?(%{lock_schema_version: nil, status: status})
+    end
+
+    for status <- [:open, :expired] do
+      refute RetiredDraw.retired?(%{lock_schema_version: nil, status: status})
+    end
 
     open = open_draw_with_entries(key)
     refute RetiredDraw.retired?(open)
