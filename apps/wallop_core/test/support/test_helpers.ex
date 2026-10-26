@@ -186,6 +186,26 @@ defmodule WallopCore.TestHelpers do
     key
   end
 
+  @doc """
+  Revokes one signing key directly, as `WallopCore.KeyRotation` would, but
+  without its rule that the current key is never revoked. Returns the key.
+  """
+  def revoke_key!(%WallopCore.Resources.InfrastructureSigningKey{key_id: key_id} = key) do
+    insert_revocation!(%{key_class: :infrastructure, key_id: key_id})
+    key
+  end
+
+  def revoke_key!(%WallopCore.Resources.OperatorSigningKey{} = key) do
+    insert_revocation!(%{key_class: :operator, operator_id: key.operator_id, key_id: key.key_id})
+    key
+  end
+
+  defp insert_revocation!(attrs) do
+    WallopCore.Resources.SigningKeyRevocation
+    |> Ash.Changeset.for_create(:create, Map.put(attrs, :reason, "test"))
+    |> Ash.create!(authorize?: false)
+  end
+
   @doc "Creates an api_key bound to the given operator."
   def create_api_key_for_operator(operator, name \\ "op-key") do
     WallopCore.Resources.ApiKey

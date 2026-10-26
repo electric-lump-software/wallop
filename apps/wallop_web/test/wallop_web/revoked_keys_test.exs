@@ -1,0 +1,222 @@
+defmodule WallopWeb.RevokedKeysTest do
+  use WallopWeb.ConnCase, async: false
+
+  import Phoenix.LiveViewTest
+
+  require Ash.Query
+
+  alias WallopCore.Protocol
+  alias WallopCore.Protocol.Pin
+  alias WallopCore.Resources.{InfrastructureSigningKey, OperatorReceipt, OperatorSigningKey}
+
+  defp add_infra_key!(offset_seconds) do
+    {public_key, private_key} = :crypto.generate_key(:eddsa, :ed25519)
+    {:ok, encrypted} = WallopCore.Vault.encrypt(private_key)
+
+    InfrastructureSigningKey
+    |> Ash.Changeset.for_create(:create, %{
+      key_id: Protocol.key_id(public_key),
+      public_key: public_key,
+      private_key: encrypted,
+      valid_from: DateTime.add(DateTime.utc_now(), offset_seconds, :second)
+    })
+    |> Ash.create!(authorize?: false)
+  end
+
+  defp add_operator_key!(operator, offset_seconds) do
+    {public_key, private_key} = :crypto.generate_key(:eddsa, :ed25519)
+    {:ok, encrypted} = WallopCore.Vault.encrypt(private_key)
+
+    OperatorSigningKey
+    |> Ash.Changeset.for_create(:create, %{
+      operator_id: operator.id,
+      key_id: Protocol.key_id(public_key),
+      public_key: public_key,
+      private_key: encrypted,
+      valid_from: DateTime.add(DateTime.utc_now(), offset_seconds, :second)
+    })
+    |> Ash.create!(authorize?: false)
+  end
+
+  defp served_key_ids(response), do: Enum.map(response["keys"], & &1["key_id"])
+
+  describe "the infrastructure endpoints" do
+    setup do
+      kept = add_infra_key!(-50)
+      revoked = add_infra_key!(-10) |> revoke_key!()
+      %{kept: kept, revoked: revoked}
+    end
+
+    test "GET /infrastructure/keys omits a revoked key", %{conn: conn, kept: kept} do
+      response = conn |> get("/infrastructure/keys") |> json_response(200)
+
+      assert served_key_ids(response) == [kept.key_id]
+      assert response["schema_version"] == "1"
+
+      assert Map.keys(hd(response["keys"])) |> Enum.sort() ==
+               ~w(inserted_at key_class key_id public_key_hex)
+    end
+
+    test "GET /infrastructure/key never serves a revoked key", %{conn: conn, kept: kept} do
+      resp = get(conn, "/infrastructure/key")
+
+      assert resp.status == 200
+      assert get_resp_header(resp, "x-wallop-key-id") == [kept.key_id]
+    end
+  end
+
+  describe "the operator endpoints" do
+    setup do
+      operator = create_operator()
+      [kept] = OperatorSigningKey |> Ash.Query.filter(operator_id == ^operator.id) |> Ash.read!()
+      revoked = operator |> add_operator_key!(-5) |> revoke_key!()
+      %{operator: operator, kept: kept, revoked: revoked}
+    end
+
+    test "GET /operator/:slug/keys omits a revoked key", %{conn: conn} = ctx do
+      response = conn |> get("/operator/#{ctx.operator.slug}/keys") |> json_response(200)
+
+      assert served_key_ids(response) == [ctx.kept.key_id]
+      assert response["schema_version"] == "1"
+    end
+
+    test "GET /operator/:slug/key never serves a revoked key", %{conn: conn} = ctx do
+      resp = get(conn, "/operator/#{ctx.operator.slug}/key")
+
+      assert resp.status == 200
+      assert get_resp_header(resp, "x-wallop-key-id") == [ctx.kept.key_id]
+    end
+
+    test "keyring-pin.json lists no revoked operator key and is signed by an unrevoked infra key",
+         %{conn: conn} = ctx do
+      kept_infra = add_infra_key!(-50)
+      add_infra_key!(-10) |> revoke_key!()
+
+      response =
+        conn
+        |> get("/operator/#{ctx.operator.slug}/keyring-pin.json")
+        |> json_response(200)
+
+      assert served_key_ids(response) == [ctx.kept.key_id]
+
+      preimage = response |> Map.delete("infrastructure_signature") |> Jcs.encode()
+      signature = Base.decode16!(response["infrastructure_signature"], case: :lower)
+      assert Pin.verify(preimage, signature, kept_infra.public_key)
+    end
+  end
+
+  describe "the proof page" do
+    test "a draw whose signing key is revoked says it cannot be verified", %{conn: conn} do
+      ensure_infrastructure_key()
+      api_key = create_api_key()
+      draw = api_key |> create_draw() |> execute_draw(test_seed(), api_key)
+
+      receipt =
+        OperatorReceipt
+        |> Ash.Query.filter(draw_id == ^draw.id)
+        |> Ash.read_one!(authorize?: false)
+
+      OperatorSigningKey
+      |> Ash.Query.filter(
+        operator_id == ^receipt.operator_id and key_id == ^receipt.signing_key_id
+      )
+      |> Ash.read_one!(authorize?: false)
+      |> revoke_key!()
+
+      html = conn |> get("/proof/#{draw.id}") |> html_response(200)
+
+      assert html =~ "Cannot verify: signing key not published (key revoked)."
+      refute html =~ "data-verify-btn"
+      refute html =~ "Verified by Wallop"
+    end
+
+    test "a draw whose signing keys are published offers verification", %{conn: conn} do
+      ensure_infrastructure_key()
+      api_key = create_api_key()
+      draw = api_key |> create_draw() |> execute_draw(test_seed(), api_key)
+
+      html = conn |> get("/proof/#{draw.id}") |> html_response(200)
+
+      refute html =~ "Cannot verify"
+      assert html =~ "data-verify-btn"
+      assert html =~ "Verified by Wallop"
+    end
+
+    test "the live proof template shows the badge only while the draw's keys are published" do
+      ensure_infrastructure_key()
+      api_key = create_api_key()
+      draw = api_key |> create_draw() |> execute_draw(test_seed(), api_key)
+      {operator, receipt, execution_receipt} = WallopCore.OperatorInfo.for_draw(draw)
+
+      render_live = fn ->
+        {op_hex, infra_hex} = WallopCore.OperatorInfo.signing_keys_hex(receipt, execution_receipt)
+
+        %{
+          draw: draw,
+          revealing: false,
+          reveal_from: nil,
+          reveal_to: nil,
+          open_view: nil,
+          check_result: nil,
+          checked_entry_id: nil,
+          entropy_status: nil,
+          entries_json: "[]",
+          results_json: "[]",
+          operator: operator,
+          receipt: receipt,
+          execution_receipt: execution_receipt,
+          operator_public_key_hex: op_hex,
+          infra_public_key_hex: infra_hex,
+          verify_command: nil
+        }
+        |> WallopWeb.ProofLive.render()
+        |> Phoenix.LiveViewTest.rendered_to_string()
+      end
+
+      assert render_live.() =~ "Verified by Wallop"
+
+      OperatorSigningKey
+      |> Ash.Query.filter(
+        operator_id == ^receipt.operator_id and key_id == ^receipt.signing_key_id
+      )
+      |> Ash.read_one!(authorize?: false)
+      |> revoke_key!()
+
+      html = render_live.()
+      assert html =~ "Cannot verify: signing key not published (key revoked)."
+      refute html =~ "Verified by Wallop"
+    end
+
+    test "a draw completing while watched shows the reveal badge only while its keys are published",
+         %{conn: conn} do
+      ensure_infrastructure_key()
+
+      watch_completion = fn revoke? ->
+        api_key = create_api_key()
+        draw = create_draw(api_key)
+        {:ok, view, _html} = live(conn, "/live/proof/#{draw.id}")
+
+        if revoke? do
+          receipt =
+            OperatorReceipt
+            |> Ash.Query.filter(draw_id == ^draw.id)
+            |> Ash.read_one!(authorize?: false)
+
+          OperatorSigningKey
+          |> Ash.Query.filter(
+            operator_id == ^receipt.operator_id and key_id == ^receipt.signing_key_id
+          )
+          |> Ash.read_one!(authorize?: false)
+          |> revoke_key!()
+        end
+
+        completed = execute_draw(draw, test_seed(), api_key)
+        Phoenix.PubSub.broadcast(WallopCore.PubSub, "draw:#{draw.id}", {:draw_updated, completed})
+        render(view)
+      end
+
+      assert watch_completion.(false) =~ "data-reveal-badge"
+      refute watch_completion.(true) =~ "data-reveal-badge"
+    end
+  end
+end

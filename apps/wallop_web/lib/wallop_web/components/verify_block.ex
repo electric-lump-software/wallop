@@ -16,10 +16,26 @@ defmodule WallopWeb.Components.VerifyBlock do
   attr(:verify_command, :map, default: nil)
 
   def verify_block(assigns) do
+    assigns =
+      assign(
+        assigns,
+        :key_unpublished?,
+        key_unpublished?(
+          assigns.receipt,
+          assigns.operator_public_key_hex,
+          assigns.execution_receipt,
+          assigns.infra_public_key_hex
+        )
+      )
+
     ~H"""
     <div class="bg-white border border-cream-border rounded-xl">
       <div class="p-5 space-y-4">
+        <p :if={@key_unpublished?} data-verify-unavailable class="text-[12px] text-[#444]">
+          Cannot verify: signing key not published (key revoked).
+        </p>
         <div
+          :if={!@key_unpublished?}
           id="verify-animation"
           data-verify
           data-draw-id={@draw.id}
@@ -120,5 +136,14 @@ defmodule WallopWeb.Components.VerifyBlock do
     results
     |> Enum.sort_by(&(&1["position"] || &1[:position]))
     |> Jason.encode!()
+  end
+
+  @doc """
+  True when a draw has a receipt whose signing key is not published (it
+  doesn't exist or has been revoked), so the draw cannot be verified.
+  """
+  def key_unpublished?(receipt, operator_public_key_hex, execution_receipt, infra_public_key_hex) do
+    (receipt != nil and operator_public_key_hex == nil) or
+      (execution_receipt != nil and infra_public_key_hex == nil)
   end
 end

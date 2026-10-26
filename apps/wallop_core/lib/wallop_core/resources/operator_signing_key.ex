@@ -8,6 +8,9 @@ defmodule WallopCore.Resources.OperatorSigningKey do
   embedded in every signed receipt so verifiers can pick the right pubkey
   even after rotation.
 
+  Every read excludes a key with a `SigningKeyRevocation`, so a revoked key
+  is neither served nor used to sign.
+
   The private key is stored as Cloak-encrypted bytes using `WallopCore.Vault`.
   """
 
@@ -20,6 +23,10 @@ defmodule WallopCore.Resources.OperatorSigningKey do
   postgres do
     table("operator_signing_keys")
     repo(WallopCore.Repo)
+  end
+
+  preparations do
+    prepare({WallopCore.Resources.SigningKeyRevocation.ExcludeRevoked, key_class: :operator})
   end
 
   actions do
