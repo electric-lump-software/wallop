@@ -114,13 +114,13 @@ defmodule WallopCore.Application do
     if !is_umbrella and prefix in [nil, "public"] and queues != false do
       Logger.warning("""
       [WallopCore] Oban is using the default prefix in a consuming app.
-      This means your app will compete with the wallop service for entropy
+      This means your app will compete with the wallop service for draw
       and webhook jobs. Set a different prefix in your config:
 
           config :wallop_core, Oban,
             repo: WallopCore.Repo,
             prefix: "oban_app",
-            queues: [entropy: 10, webhooks: 5, default: 5, weather: 5],
+            queues: [webhooks: 5, default: 5, weather: 5, frequency: 6, v6_execution: 5],
             plugins: []
       """)
     end

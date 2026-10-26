@@ -27,8 +27,14 @@ defmodule WallopCore.TestHelpers do
     attrs = Map.put_new(attrs, :name, "test-key")
 
     # All API keys must have an operator (draws require it for the proof protocol).
-    # Auto-create one if not provided.
-    operator = Map.get_lazy(attrs, :operator, fn -> create_operator() end)
+    # Auto-create one if not provided. A new operator is on observation
+    # weather, whose locks need a fresh readiness record, as a working
+    # fetcher would keep it.
+    operator =
+      Map.get_lazy(attrs, :operator, fn ->
+        put_observation_readiness!(true)
+        create_operator()
+      end)
 
     create_attrs =
       attrs
@@ -44,7 +50,10 @@ defmodule WallopCore.TestHelpers do
   Creates a draw with sensible defaults, using the given api_key as actor.
 
   Uses the full open draw flow (create → add_entries → lock) which produces
-  a draw in `:awaiting_entropy` status with entropy sources declared.
+  a draw in `:awaiting_entropy` status with entropy sources declared. The
+  operator's protocol decides the tag (observation weather by default); the
+  observation readiness record is set to ready first, as a working fetcher
+  would keep it.
   """
   def create_draw(api_key, attrs \\ %{}) do
     {entries, params} = Map.pop(attrs, :entries, nil)
@@ -77,38 +86,174 @@ defmodule WallopCore.TestHelpers do
       )
       |> Ash.update!()
 
+    put_observation_readiness!(true)
+
     # Lock computes hash and declares entropy
     draw
     |> Ash.Changeset.for_update(:lock, %{}, actor: api_key)
     |> Ash.update!()
   end
 
-  @doc """
-  Executes a draw via the entropy path with a deterministic test seed.
+  @test_observation "141;1025;85;2432"
 
-  Transitions through awaiting_entropy → pending_entropy → completed
-  using fake entropy values.
+  @doc "The Land Observations reading `execute_draw/3` stores and completes with."
+  def test_observation, do: @test_observation
+
+  @doc """
+  Completes a Land Observations draw locked by `create_draw/2` through the
+  real `:execute_v6` action, in state (a): Middle Wallop's reading is used.
+
+  A real lock commits to a round about 1.5 hours ahead, so with every
+  trigger off this first moves the draw to a round three hours in the past
+  and re-signs its lock receipt for that round (as `put_v6_awaiting!/4`
+  does), and stores the hour's reading. Everything after that runs with the
+  triggers on.
   """
-  def execute_draw(draw, _seed_hex, _api_key) do
+  def execute_draw(draw, _seed_hex \\ nil, _api_key \\ nil) do
     ensure_infrastructure_key()
 
-    # Transition to pending_entropy
-    draw =
-      draw
-      |> Ash.Changeset.for_update(:transition_to_pending, %{})
-      |> Ash.update!(domain: WallopCore.Domain, authorize?: false)
-
-    # Execute with fake entropy values
     draw
-    |> Ash.Changeset.for_update(:execute_with_entropy, %{
-      drand_randomness: test_drand_randomness(),
-      drand_signature: "test-signature",
-      drand_response: "{}",
-      weather_value: "12.3",
-      weather_raw: "{}",
-      weather_observation_time: DateTime.add(draw.inserted_at, 1, :second)
-    })
+    |> pending_for_execution!()
+    |> Ash.Changeset.for_update(:execute_v6, test_drand_args())
     |> Ash.update!(domain: WallopCore.Domain, authorize?: false)
+  end
+
+  @doc "The drand arguments `execute_draw/3` passes to `:execute_v6`."
+  def test_drand_args do
+    %{
+      drand_randomness: test_drand_randomness(),
+      drand_signature: test_drand_signature(),
+      drand_response: "{}"
+    }
+  end
+
+  @doc """
+  The first half of `execute_draw/3`: moves a Land Observations draw locked
+  by `create_draw/2` to a round three hours in the past (with every trigger
+  off, re-signing its lock receipt for that round) and into
+  `pending_entropy`, ready for `:execute_v6`. With `observation: false` no
+  reading is stored, so the draw completes on drand alone (state (c)).
+  """
+  def pending_for_execution!(draw, opts \\ []) do
+    round = Quicknet.round_at_or_after(DateTime.add(DateTime.utc_now(), -3 * 3600))
+    wt = Schedule.weather_time_for_round(round)
+
+    with_triggers_off(fn ->
+      Repo.query!(
+        """
+        UPDATE draws SET drand_round = $2, weather_time = $3, freq_start = $4 WHERE id = $1
+        """,
+        [
+          Ecto.UUID.dump!(draw.id),
+          round,
+          DateTime.to_naive(wt),
+          DateTime.to_naive(FreqSchedule.freq_start_for_round(round))
+        ]
+      )
+
+      # Re-signed with the key the lock used, read straight from its row, so
+      # a key revoked since the lock still signs (as it did at the lock).
+      %{rows: [[key_id, private_key]]} =
+        Repo.query!(
+          """
+          SELECT k.key_id, k.private_key FROM operator_receipts r
+          JOIN operator_signing_keys k
+            ON k.operator_id = r.operator_id AND k.key_id = r.signing_key_id
+          WHERE r.draw_id = $1
+          """,
+          [Ecto.UUID.dump!(draw.id)]
+        )
+
+      Repo.query!("DELETE FROM operator_receipts WHERE draw_id = $1", [Ecto.UUID.dump!(draw.id)])
+
+      insert_v6_lock_receipt!(draw, draw.entry_hash, draw.entropy_composition, round, %{
+        key_id: key_id,
+        private_key: private_key
+      })
+
+      if Keyword.get(opts, :observation, true) do
+        Repo.query!(
+          """
+          INSERT INTO weather_observations (id, station, observation_time, value, raw, stored_at)
+          VALUES ($1, $2, $3, $4, '[]', $3)
+          ON CONFLICT DO NOTHING
+          """,
+          [
+            Ecto.UUID.dump!(Ecto.UUID.generate()),
+            Stations.primary().id,
+            DateTime.to_naive(wt),
+            @test_observation
+          ]
+        )
+      end
+    end)
+
+    Draw
+    |> Ash.get!(draw.id, authorize?: false)
+    |> Ash.Changeset.for_update(:transition_to_pending, %{})
+    |> Ash.update!(domain: WallopCore.Domain, authorize?: false)
+  end
+
+  @doc """
+  A draw as the retired forecast method left it: no lock schema, a stored
+  lock receipt (a lock schema 5 payload) and `status`, written with every
+  trigger off, since no current code path can lock one. Returns the draw.
+  """
+  def put_retired_forecast_draw!(api_key, status \\ :completed) do
+    draw = open_draw_with_entries(api_key)
+    {hash, canonical} = Protocol.entry_hash({draw.id, Entries.load_for_draw(draw.id)})
+    operator = Ash.get!(Operator, api_key.operator_id, authorize?: false)
+    locked_at = DateTime.utc_now() |> DateTime.add(-3600) |> DateTime.truncate(:microsecond)
+
+    payload =
+      Jason.encode!(%{
+        "schema_version" => "5",
+        "entropy_composition" => "drand-quicknet+openmeteo-v1",
+        "draw_id" => draw.id,
+        "operator_id" => operator.id,
+        "operator_slug" => to_string(operator.slug),
+        "sequence" => draw.operator_sequence,
+        "entry_hash" => hash
+      })
+
+    with_triggers_off(fn ->
+      Repo.query!(
+        """
+        UPDATE draws SET status = $2, entry_hash = $3, entry_canonical = $4,
+          drand_chain = $5, drand_round = 1, weather_station = 'middle-wallop',
+          weather_time = $6
+        WHERE id = $1
+        """,
+        [
+          Ecto.UUID.dump!(draw.id),
+          to_string(status),
+          hash,
+          canonical,
+          Quicknet.chain_hash(),
+          DateTime.to_naive(DateTime.add(locked_at, 300))
+        ]
+      )
+
+      Repo.query!(
+        """
+        INSERT INTO operator_receipts (id, operator_id, draw_id, sequence, commitment_hash,
+          entry_hash, locked_at, signing_key_id, payload_jcs, signature, inserted_at)
+        VALUES ($1, $2, $3, $4, $5, $5, $6, 'retired0', $7, $8, $6)
+        """,
+        [
+          Ecto.UUID.dump!(Ecto.UUID.generate()),
+          Ecto.UUID.dump!(operator.id),
+          Ecto.UUID.dump!(draw.id),
+          draw.operator_sequence,
+          hash,
+          DateTime.to_naive(locked_at),
+          payload,
+          :binary.copy(<<0>>, 64)
+        ]
+      )
+    end)
+
+    Ash.get!(Draw, draw.id, authorize?: false)
   end
 
   @doc "Returns a known 64-character hex string for deterministic test draws."
@@ -129,9 +274,17 @@ defmodule WallopCore.TestHelpers do
     end
   end
 
-  @doc "Returns a deterministic drand randomness hex value for tests."
+  @doc """
+  A deterministic drand randomness hex value for tests: a real quicknet
+  beacon's, the SHA-256 of `test_drand_signature/0`.
+  """
   def test_drand_randomness do
-    "abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890"
+    "140117383b03a0c0c7a899a32b8cbd2ffff9e2569504037c358ee8c7c2efe2fd"
+  end
+
+  @doc "The quicknet BLS signature `test_drand_randomness/0` is the hash of."
+  def test_drand_signature do
+    "b6541e41bb68ff318e8bd74b9f6e168ae6424476c432241420c38427df58c6ef33fe009ce202a7101120ab481702fddf"
   end
 
   @doc """
@@ -391,19 +544,21 @@ defmodule WallopCore.TestHelpers do
   signed value and the receipt's `locked_at` column. Signs with the operator's current key, chosen as the
   production lock path chooses it (latest `valid_from` not after now).
   """
-  def insert_v6_lock_receipt!(draw, entry_hash, entropy_composition, drand_round) do
+  def insert_v6_lock_receipt!(draw, entry_hash, entropy_composition, drand_round, key \\ nil) do
     require Ash.Query
 
     operator_id = draw.operator_id
 
     now = DateTime.utc_now()
 
-    [key] =
-      OperatorSigningKey
-      |> Ash.Query.filter(operator_id == ^operator_id and valid_from <= ^now)
-      |> Ash.Query.sort(valid_from: :desc)
-      |> Ash.Query.limit(1)
-      |> Ash.read!(authorize?: false)
+    key =
+      key ||
+        OperatorSigningKey
+        |> Ash.Query.filter(operator_id == ^operator_id and valid_from <= ^now)
+        |> Ash.Query.sort(valid_from: :desc)
+        |> Ash.Query.limit(1)
+        |> Ash.read!(authorize?: false)
+        |> hd()
 
     {:ok, private} = Vault.decrypt(key.private_key)
     operator = Ash.get!(Operator, operator_id, authorize?: false)

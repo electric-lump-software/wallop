@@ -165,15 +165,13 @@ defmodule WallopWeb.Components.DrawTimeline do
     }
   end
 
-  defp awaiting_stage(draw, nil) do
-    %{
-      label: "Fetching Entropy",
-      detail: nil,
-      state: :current,
-      countdown_target: draw.weather_time
-    }
+  # No lock schema 6 summary (a draw the database would have refused): no
+  # countdown.
+  defp awaiting_stage(_draw, nil) do
+    %{label: "Fetching Entropy", detail: nil, state: :current}
   end
 
+  defp pending_detail(nil), do: "waiting for drand round..."
   defp pending_detail(%{tag: :freq}), do: "waiting for drand round and grid frequency readings..."
   defp pending_detail(_weather), do: "waiting for drand round and weather observation..."
 
@@ -288,27 +286,8 @@ defmodule WallopWeb.Components.DrawTimeline do
   end
 
   defp entropy_detail(draw, nil) do
-    weather_part =
-      cond do
-        draw.weather_value ->
-          "weather: #{draw.weather_value}"
-
-        draw.weather_fallback_reason ->
-          "weather unavailable"
-
-        true ->
-          nil
-      end
-
-    [
-      if(draw.drand_randomness, do: "drand: #{truncate_hash(draw.drand_randomness)}"),
-      weather_part,
-      if(draw.weather_observation_time,
-        do: "observed at #{Calendar.strftime(draw.weather_observation_time, "%H:%M UTC")}"
-      )
-    ]
-    |> Enum.reject(&is_nil/1)
-    |> Enum.join(", ")
+    if draw.drand_randomness,
+      do: "a random number from drand: #{truncate_hash(draw.drand_randomness)}"
   end
 
   defp step_class(:done), do: "step step-done"

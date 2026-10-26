@@ -18,7 +18,7 @@ Within each version section, look for `### HTTP API surface`, `### Hex package s
 
 ## Unreleased (next release after 0.28.3)
 
-Adds two opt-in draw protocols, observation weather and grid frequency (lock schema 6 / execution schema 5), set per operator by the platform. **The forecast protocol is unchanged and stays the default: forecast draws' signed bytes don't change.** Also removes the monthly draw quota, replaces the rate limiters with one `WallopWeb.RateLimiter`, adds per-key limits, and signals limit pressure as telemetry and PubSub. `GET /api/v1/draws` is now paged and filterable by status, and API error pointers and messages on the update routes are fixed. Requires a database migration.
+Adds two draw protocols, observation weather and grid frequency (lock schema 6 / execution schema 5), set per operator by the platform, and **retires the forecast protocol: every operator moves to observation weather, and every new lock is a lock schema 6 lock.** Also removes the monthly draw quota, replaces the rate limiters with one `WallopWeb.RateLimiter`, adds per-key limits, and signals limit pressure as telemetry and PubSub. `GET /api/v1/draws` is now paged and filterable by status, and API error pointers and messages on the update routes are fixed. Requires a database migration.
 
 ### HTTP API surface
 
@@ -28,7 +28,9 @@ Adds two opt-in draw protocols, observation weather and grid frequency (lock sch
 - Every `429` carries a `Retry-After` header in whole seconds. Per-key and per-IP values are at most 60.
 - The monthly quota is gone, along with its `429` `tier_limit_exceeded`. Nothing in wallop limits draws per month any more.
 - Per-key limits: `api_keys.rate_limit_per_minute` (`nil` means 60, otherwise 1 to 6000). Set it with `set_rate_limit` (or `create`). Going over returns `429` `rate_limit_exceeded` with `meta.limit`.
-- Observation weather and grid frequency: `PATCH /draws/:id/lock` takes `draw_at` for `observation` and `frequency` operators, and refuses it for `forecast` ones. A late lock is a `400` `invalid_argument` with `meta.latest_lock_at`. Draws gain `expected_result_at`, `freq_start`, `freq_value` and `freq_fallback_reason` (all `null` on forecast draws). See `API.md`.
+- Observation weather and grid frequency: `PATCH /draws/:id/lock` takes `draw_at`. A late lock is a `400` `invalid_argument` with `meta.latest_lock_at`. Draws gain `expected_result_at`, `freq_start`, `freq_value` and `freq_fallback_reason`. See `API.md`.
+- **BREAKING: forecast draws are retired.** `weather_time` is no longer a lock attribute: sending it is a `400` `invalid_body`. Stop sending it, and replace the old 60 second to 7 day bounds with `draw_at`'s rules (`API.md`): an observation-weather result comes more than an hour after the latest lock time, a grid-frequency one about 7 minutes after it. Read `expected_result_at` for when the result is due.
+- **BREAKING: a retired forecast draw's proof routes respond exactly as for an unknown draw**: `/proof/:id`, `/proof/:id/:entry_id`, `/proof/:id/entries`, `/proof/:id/pdf`, `/proof/:id/json` and `/live/proof/...`. Its signed receipts stay at `/operator/:slug/receipts/:seq` and `/operator/:slug/executions/:seq`.
 
 ### Hex package surface
 
@@ -43,17 +45,32 @@ Adds two opt-in draw protocols, observation weather and grid frequency (lock sch
 
 ### Deployment configuration (observation weather and grid frequency)
 
-- **Run `mix ecto.migrate`.** It adds the `weather_observations` and `frequency_windows` tables, `operators.draw_protocol` (default `forecast`), and `draws.lock_schema_version`, `entropy_composition`, `freq_start`, `freq_value` and `freq_fallback_reason`, with their triggers and SQL functions.
-- **Set `MET_OFFICE_OBS_API_KEY`** (a Met Office Weather DataHub Land Observations key) on the service that runs the `weather` queue, and nowhere else. It's optional, but observation-weather locks depend on it: that service records whether it holds a usable key, at boot and every 10 minutes (`WallopCore.Weather.ObservationReadinessWorker`, in core's cron), and a lock in any service is refused with `400` `invalid_argument` unless that record says yes and is under 30 minutes old. An app that embeds `wallop_core` with an insert-only Oban needs no key and writes nothing. If your Oban config overrides core's, add the readiness worker to the cron of the service that runs the `weather` queue. A draw locked before the key went away falls back by rule, visibly. Forecast and grid-frequency locks don't read the record.
+- **Run `mix ecto.migrate`.** It adds the `weather_observations` and `frequency_windows` tables, `operators.draw_protocol` (default `observation`; every existing operator moves to `observation`, and the database allows only `observation` and `frequency`), and `draws.lock_schema_version`, `entropy_composition`, `freq_start`, `freq_value` and `freq_fallback_reason`, with their triggers and SQL functions.
+- **Set `MET_OFFICE_OBS_API_KEY`** (a Met Office Weather DataHub Land Observations key) on the service that runs the `weather` queue, and nowhere else. It's optional, but observation-weather locks depend on it: that service records whether it holds a usable key, at boot and every 10 minutes (`WallopCore.Weather.ObservationReadinessWorker`, in core's cron), and a lock in any service is refused with `400` `invalid_argument` unless that record says yes and is under 30 minutes old. An app that embeds `wallop_core` with an insert-only Oban needs no key and writes nothing. If your Oban config overrides core's, add the readiness worker to the cron of the service that runs the `weather` queue. A draw locked before the key went away falls back by rule, visibly. Grid-frequency locks don't read the record.
 - **`LAND_OBS_DAILY_CAP`** (optional, 1 to 900, default 800) caps Land Observations calls per UTC day; any other value stops the boot. If several environments share one Met Office key, keep the sum of their caps, plus anything else using the key, within the key's 900 a day. Below 624 (a full day of polling) boot warns that weather draws may fall back. The cap only matters on the service that runs the `weather` queue; an app that embeds `wallop_core` with an insert-only Oban needs nothing. A service that runs the queue without core's `runtime.exs` can set `config :wallop_core, :land_obs_daily_cap, n`; it is checked at start the same way, and a bad value stops the boot.
 - **`POOL_SIZE` defaults to 20** (was 10). Check that your Postgres `max_connections` covers it, plus every other pool on the same database.
 - **Oban queues and cron.** If your Oban config overrides core's, add the `weather`, `frequency` and `v6_execution` queues only if your app executes core jobs. An insert-only Oban instance needs nothing. `WallopCore.Entropy.StuckDrawRedriver` reads Oban's `public` job table only. Run it only in a service whose core Oban uses the `public` prefix; an app with its own prefix must not add it. Without it, a lost execution job is never put back.
-- **Older embedded cores.** An app that embeds a `wallop_core` older than 0.29.0 always locks on the forecast protocol, whatever the operator's setting.
-- **Once any observation-weather or grid-frequency draw has been locked, never roll the service that runs core jobs back below 0.29.0; roll forward.** Older code can neither run nor verify those draws. Record this in your own runbook.
+- **Order of deploys: core first.** Run this release's migrations (the service that runs core jobs) before deploying an app that embeds it. An app pinned to 0.29.0 writes columns an older schema doesn't have.
+- **During the deploy window**, while 0.28 containers are still serving:
+  - a lock from 0.28 code writes no lock schema, and the database refuses it with an error; the draw stays open and the lock can be retried on the new code;
+  - a 0.28 container creating an operator gets `observation` from the new default, so it isn't refused; if it ever wrote `forecast` itself, the new check constraint would refuse it loudly, and the call can be retried;
+  - a forecast draw already in flight on a 0.28 container can still finish there; once it has, it counts as retired like any other forecast draw (its proof routes answer as for an unknown draw).
+- **After migrating, check the operators** (staging first, then production): `SELECT count(*) FROM operators WHERE draw_protocol <> ALL('{observation,frequency}')` must return 0. The migration's `UPDATE operators SET draw_protocol = 'observation' WHERE draw_protocol = 'forecast'` is hand-written inside the generated file: regenerating the migration drops it, so check it is still there before deploying.
+- **The forecast drain gate.**
+  - Before the deploy (optional, read-only): `bin/wallop eval "WallopCore.Release.forecast_drain_report()"` should report 0 stranded forecast draws and 0 live forecast jobs.
+  - After the deploy, **once**, after the last 0.28 container has stopped: `bin/wallop rpc "WallopCore.Release.drain_retired_forecast() |> IO.inspect()"`. It fails any forecast draw still in `awaiting_entropy` or `pending_entropy` with `failure_reason` `forecast_retired` (nothing in this release can run one), and cancels the old forecast worker's jobs. A draw it returns under `not_failed` needs a person. Running it again does nothing more.
+  - `rpc` reaches the running node with its `RELEASE_COOKIE`. When the secrets come from Infisical (`load_infisical_secrets`), only the process that loader started has the cookie: a plain ssh shell can't `rpc`. Run the command under the same loader, for example `infisical run --projectId "$INFISICAL_PROJECT_ID" --env "$INFISICAL_ENV" -- /app/bin/wallop rpc "..."` after `infisical login`, with the same `--path` values, or set `RELEASE_COOKIE` to the running node's value first. `eval` needs the database secrets the same way.
+  - Try `bin/wallop rpc` on staging before production.
+- **Caches.** Proof pages were served with long-lived `Cache-Control`. After the deploy, check Cloudflare's cache for `/proof/*` and purge it, so a cached forecast proof page, PDF or bundle isn't still served. Browser caches can't be purged; they expire on their own.
+- **Cached PDFs.** PDFs already generated for forecast draws stay in proof storage, unreachable: every route to them now answers as for an unknown draw. No cleanup job is needed.
+- **`MET_OFFICE_API_KEY` is no longer read.** Remove it once this release is live.
+- **`EXAMPLE_PROOF_URL`** (optional): an `https://` URL of a completed observation-weather proof page, linked from the home page and the verification explainer as the example proof. Unset, the example links are hidden. Set to anything not starting with `https://`, the boot stops.
+- **Never roll the service that runs core jobs back below 0.29.0; roll forward.** Older code can neither run nor verify lock schema 6 draws, and the database now refuses every forecast lock. Record this in your own runbook.
 
 ### Verifier surface
 
-- Lock schema 6 / execution schema 5 bundles need `wallop_verifier` 0.17.0 or later. Forecast bundles verify as before.
+- Lock schema 6 / execution schema 5 bundles need `wallop_verifier` 0.17.0 or later.
+- Forecast bundles (lock schemas 4 and 5, execution schemas 2, 3 and 4) are retired. wallop no longer serves them or checks them, and makes no claim that one verifies. `wallop_verifier` before 0.18 still parses them; any result it gives is not a wallop claim.
 
 ### Draw outcomes
 

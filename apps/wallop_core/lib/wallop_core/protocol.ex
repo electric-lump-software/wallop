@@ -157,15 +157,12 @@ defmodule WallopCore.Protocol do
     {:crypto.hash(:sha256, jcs_string), jcs_string}
   end
 
-  @receipt_schema_version "5"
-
   # Algorithm identity tags. Embedded verbatim into every signed receipt
   # so the cryptographic choices are forensically anchored at commitment
   # time. Rotating any algorithm requires a new tag value plus a schema
   # version bump — the tag is how verifiers decide which rules to apply.
   @jcs_version "sha256-jcs-v1"
   @signature_algorithm "ed25519"
-  @entropy_composition "drand-quicknet+openmeteo-v1"
   @drand_signature_algorithm "bls12_381_g2"
   @merkle_algorithm "sha256-pairwise-v1"
 
@@ -175,64 +172,14 @@ defmodule WallopCore.Protocol do
   @spec signature_algorithm() :: String.t()
   def signature_algorithm, do: @signature_algorithm
 
-  @spec entropy_composition() :: String.t()
-  def entropy_composition, do: @entropy_composition
-
   @spec drand_signature_algorithm() :: String.t()
   def drand_signature_algorithm, do: @drand_signature_algorithm
 
   @spec merkle_algorithm() :: String.t()
   def merkle_algorithm, do: @merkle_algorithm
 
-  @doc """
-  Build the canonical JCS payload bytes for an operator commitment receipt.
-
-  Pure function — no IO, no time. Caller passes everything in.
-
-  ## Schema version history
-
-  - **v1** — original: `commitment_hash`, `draw_id`, `entry_hash`,
-    `locked_at`, `operator_id`, `operator_slug`, `schema_version`,
-    `sequence`, `signing_key_id`.
-  - **v2** — adds `winner_count`, declared entropy sources
-    (`drand_chain`, `drand_round`, `weather_station`, `weather_time`),
-    and algorithm version pinning (`wallop_core_version`,
-    `fair_pick_version`). Closes the receipt completeness gaps where
-    outcome-influencing fields were trigger-frozen but not
-    cryptographically committed.
-  - **v3** — same 16 fields as v2. The bump signals that `entry_hash`
-    is now computed from the wallop-assigned UUID canonical form
-    (draw_id binding) rather than the legacy operator-supplied-id form.
-    There is only one live canonical form — verifiers reject any
-    `schema_version` they do not recognise rather than attempting to
-    reconstruct an older shape. `wallop_core_version` in the payload
-    is the forensic anchor if a future canonical form ever ships.
-  - **v4** — long-running shape; same field set as v3. Bundle wrapper
-    carries inline `operator_public_key_hex` for self-consistency.
-  - **v5** — coordination flag for resolver-driven verification. Field
-    set is byte-identical to v4 — the schema_version difference encodes
-    verifier behaviour, not receipt bytes. Producers MUST omit
-    `operator_public_key_hex` from the bundle's lock_receipt wrapper
-    (verifiers resolve operator keys via `KeyResolver` against
-    `/operator/:slug/keys` or an operator-published `.well-known` pin).
-    See spec §4.2.4.
-  - **v6** — same field set as v5, built by `build_v6_lock_payload/1`
-    under an entropy tag that sets the weather rules.
-
-  `locked_at` must be a `DateTime` with microsecond precision; the caller is
-  responsible for capturing it once at lock time and not re-stamping.
-  """
-  @spec build_receipt_payload(map()) :: binary()
-  def build_receipt_payload(input) do
-    refuse_foreign_tag!(input)
-
-    input
-    |> lock_fields(@receipt_schema_version, @entropy_composition)
-    |> Jcs.encode()
-  end
-
-  # The lock receipt's base field map (the lock 5 field set). Shared by
-  # every lock schema; a tag's extra fields are merged on top, never in here.
+  # The lock receipt's base field map (the field set lock schemas 2 to 6
+  # share). A tag's extra fields are merged on top, never in here.
   defp lock_fields(
          %{
            operator_id: operator_id,
@@ -280,74 +227,9 @@ defmodule WallopCore.Protocol do
     payload
   end
 
-  # The lock 5 / execution 4 builders sign only their own tag. An input
-  # that names another tag (a v6 input sent here by mistake) is refused
-  # rather than silently signed under the wrong rules. No key keeps the
-  # long-standing behaviour.
-  defp refuse_foreign_tag!(%{entropy_composition: @entropy_composition}), do: :ok
-
-  defp refuse_foreign_tag!(%{entropy_composition: other}) do
-    raise ArgumentError,
-          "lock v5 / execution v4 receipts carry entropy_composition " <>
-            "#{inspect(@entropy_composition)}, got: #{inspect(other)}"
-  end
-
-  defp refuse_foreign_tag!(_input), do: :ok
-
-  # Frozen enum for the execution receipt's `weather_fallback_reason`
-  # field. Anything outside this set raises — the classifier in
-  # `WallopCore.Entropy.WeatherFallback` is the only permitted source.
-  # A fifth value is a schema bump, not a minor addition.
-  @valid_weather_fallback_reasons ["station_down", "stale", "unreachable", nil]
-
-  defp validate_weather_fallback_reason!(reason)
-       when reason in @valid_weather_fallback_reasons,
-       do: :ok
-
-  defp validate_weather_fallback_reason!(other) do
-    raise ArgumentError,
-          "weather_fallback_reason must be one of " <>
-            "#{inspect(@valid_weather_fallback_reasons)}, got: #{inspect(other)}"
-  end
-
-  @execution_receipt_schema_version "4"
-
-  @doc """
-  Build the canonical JCS payload bytes for an execution receipt.
-
-  Signed by the wallop infrastructure key (not the operator's key).
-  Links to the lock receipt via `lock_receipt_hash`.
-
-  `results` must be a flat list of entry_id strings in position order —
-  derived from FairPick output via `Enum.map(results, & &1.entry_id)`.
-
-  ## Schema version history
-
-  - **v2** — pre-F2 shape; no `signing_key_id` on the signed payload.
-  - **v3** — adds `signing_key_id` (F2 closure). Bundle wrapper carries
-    inline `infrastructure_public_key_hex`.
-  - **v4** — coordination flag mirroring lock v5. Field set is
-    byte-identical to v3 — the schema_version difference encodes
-    verifier behaviour. Producers MUST omit
-    `infrastructure_public_key_hex` from the bundle's execution_receipt
-    wrapper. See spec §4.2.4.
-  - **v5** — same field set as v4, built by `build_v6_execution_payload/1`
-    under an entropy tag that sets the weather rules. Pairs only with
-    lock v6.
-  """
-  @spec build_execution_receipt_payload(map()) :: binary()
-  def build_execution_receipt_payload(%{weather_fallback_reason: reason} = input) do
-    refuse_foreign_tag!(input)
-    validate_weather_fallback_reason!(reason)
-
-    input
-    |> execution_fields(@execution_receipt_schema_version, @entropy_composition)
-    |> Jcs.encode()
-  end
-
-  # The execution receipt's base field map (the execution 4 field set).
-  # Shared by every execution schema; a tag's extra fields are merged on
-  # top, never in here.
+  # The execution receipt's base field map (the field set execution
+  # schemas 3 to 5 share). A tag's extra fields are merged on top, never in
+  # here.
   defp execution_fields(
          %{
            draw_id: draw_id,
@@ -410,7 +292,7 @@ defmodule WallopCore.Protocol do
 
   # ── Lock schema 6 / execution schema 5 ─────────────────────────────
   #
-  # The base field maps are the lock 5 / execution 4 field sets. The
+  # The base field maps are the shared lock / execution field sets. The
   # input's `entropy_composition` picks a tag module from `@v6_tag_modules`;
   # the module validates the input and returns the fields its tag adds,
   # which are merged on top of the base map. A new tag is a new
@@ -485,9 +367,17 @@ defmodule WallopCore.Protocol do
   def v6_entropy_compositions, do: Enum.map(@v6_tag_modules, & &1.tag())
 
   @doc """
-  Build the canonical JCS payload bytes for a lock receipt, schema 6.
+  Build the canonical JCS payload bytes for a lock receipt, schema 6, the
+  operator's signed commitment at lock.
 
-  Takes the same keys as `build_receipt_payload/1`, plus
+  Pure function — no IO, no time. Caller passes everything in.
+  `locked_at` must be a `DateTime` with microsecond precision; the caller is
+  responsible for capturing it once at lock time and not re-stamping.
+
+  Takes `operator_id`, `operator_slug`, `sequence`, `draw_id`,
+  `commitment_hash`, `entry_hash`, `locked_at`, `signing_key_id`,
+  `winner_count`, `drand_chain`, `drand_round`, `weather_station`,
+  `weather_time`, `wallop_core_version`, `fair_pick_version` and
   `entropy_composition`, which picks the tag's rules and is signed
   verbatim. A tag not in `v6_entropy_compositions/0`, or none, raises
   `ArgumentError`. See the tag modules (`WallopCore.Protocol.Tags.LandObs`,
@@ -511,8 +401,20 @@ defmodule WallopCore.Protocol do
   @doc """
   Build the canonical JCS payload bytes for an execution receipt, schema 5.
 
-  Takes the same keys as `build_execution_receipt_payload/1`, plus
+  Signed by the wallop infrastructure key (not the operator's key). Links
+  to the lock receipt via `lock_receipt_hash`. `results` must be a flat list
+  of entry_id strings in position order.
+
+  Takes `draw_id`, `operator_id`, `operator_slug`, `sequence`,
+  `lock_receipt_hash`, `entry_hash`, `drand_chain`, `drand_round`,
+  `drand_randomness`, `drand_signature`, the weather fields
+  (`weather_station`, `weather_observation_time`, `weather_value`,
+  `weather_fallback_reason`), `wallop_core_version`, `fair_pick_version`,
+  `seed`, `results`, `executed_at`, `signing_key_id` and
   `entropy_composition`, chosen and checked as in `build_v6_lock_payload/1`.
+
+  Lock schemas 1 to 5 and execution schemas 1 to 4 are retired: wallop no
+  longer builds them, and current tools don't verify them.
   """
   @spec build_v6_execution_payload(map()) :: binary()
   def build_v6_execution_payload(input) do

@@ -153,27 +153,6 @@ defmodule WallopWeb.ProofPdfHTML do
         <dd class="mono wrap">{@draw.drand_signature || "—"}</dd>
       </dl>
 
-      <h3 :if={!@weather and @draw.weather_value}>Weather entropy</h3>
-      <dl :if={!@weather and @draw.weather_value}>
-        <dt>Station</dt>
-        <dd>{@draw.weather_station || "—"}</dd>
-        <dt>Observation time</dt>
-        <dd>
-          <%= if @draw.weather_observation_time do %>
-            {Calendar.strftime(@draw.weather_observation_time, "%Y-%m-%d %H:%M:%S UTC")}
-          <% else %>
-            —
-          <% end %>
-        </dd>
-        <dt>Value (°C)</dt>
-        <dd class="mono">{@draw.weather_value}</dd>
-      </dl>
-
-      <div :if={!@weather and @draw.weather_fallback_reason} class="note">
-        <strong>Weather fallback:</strong>
-        {@draw.weather_fallback_reason}. The seed was computed from drand entropy alone.
-      </div>
-
       <h3>Seed</h3>
       <dl>
         <dt>Source</dt>
@@ -311,26 +290,12 @@ defmodule WallopWeb.ProofPdfHTML do
           Fetch Elexon's grid frequency readings (BMRS dataset FREQ) for T to T + 105 seconds,
           and confirm they match the readings on the verification chain page.
         </li>
-        <li :if={!@weather and @draw.weather_value}>
-          Fetch the Met Office Middle Wallop observation for
-          <%= if @draw.weather_observation_time do %>
-            {Calendar.strftime(@draw.weather_observation_time, "%Y-%m-%d %H:%M UTC")}.
-          <% else %>
-            the declared observation time.
-          <% end %>
-          Confirm the temperature value matches.
-        </li>
         <li>
           Canonicalise the entries list via JCS (RFC 8785), SHA-256 the bytes,
           and confirm the hash matches the entry hash on the certificate page.
         </li>
         <li :if={@weather}>
           {seed_step(@weather.source)}
-        </li>
-        <li :if={!@weather}>
-          Combine entry hash, drand randomness, and weather value into a
-          JCS-canonical JSON object and SHA-256 the bytes. Confirm the result
-          matches the published seed.
         </li>
         <li>
           Run <span class="mono">fair_pick</span> (open source, published on Hex.pm)

@@ -60,37 +60,47 @@
           <p class="text-[10px] font-bold tracking-[2px] uppercase text-[#aaa] mb-2">The question</p>
           <h2 class="text-xl font-extrabold mb-3">Was the randomness unpredictable and public?</h2>
           <p class="text-sm text-[#555] leading-relaxed mb-4">
-            A fair draw needs randomness that nobody — not Wallop, not the operator, not anyone —
-            could have predicted or controlled. Wallop! uses two independent public sources:
+            A fair draw needs randomness that nobody could predict or steer when the entries
+            were fixed. Every Wallop! draw uses drand, plus a second public source when it
+            can get one:
           </p>
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
             <div class="p-4 rounded-lg border border-cream-border bg-cream">
               <h3 class="text-sm font-bold mb-1">drand beacon</h3>
               <p class="text-xs text-[#555] leading-relaxed">
                 A global randomness beacon run by the
                 <a href="https://drand.love" target="_blank" rel="noopener" class="underline decoration-[#ccc] hover:decoration-[#1a1a1a]">League of Entropy</a>
                 — Cloudflare, Protocol Labs, universities. Every 3 seconds it publishes a new
-                random value that nobody can predict. Each value carries a BLS cryptographic
-                signature proving it came from the real beacon.
+                random value that nobody can predict.
+                Each value carries a BLS signature proving it came from the real beacon.
               </p>
             </div>
             <div class="p-4 rounded-lg border border-cream-border bg-cream">
               <h3 class="text-sm font-bold mb-1">Middle Wallop weather</h3>
               <p class="text-xs text-[#555] leading-relaxed">
-                A live atmospheric pressure reading from Met Office station 3749 in
-                Middle Wallop, Hampshire. Nobody controls the weather. It&#39;s a second,
-                completely independent source of unpredictability — and it&#39;s provably British.
+                Observation-weather draws use the Met Office&#39;s hourly reading from Middle Wallop,
+                Hampshire: temperature, pressure, humidity and visibility, taken after the
+                entries lock. If the reading is late, the draw listens to the National Grid
+                instead, and if that goes quiet too, drand does it alone.
+              </p>
+            </div>
+            <div class="p-4 rounded-lg border border-cream-border bg-cream">
+              <h3 class="text-sm font-bold mb-1">The National Grid</h3>
+              <p class="text-xs text-[#555] leading-relaxed">
+                Draws that can&#39;t wait an hour or two use the hum of the GB grid: 8
+                frequency readings from Elexon, 15 seconds apart, a few minutes before the
+                result. If they go missing, drand does it alone.
               </p>
             </div>
           </div>
           <p class="text-sm text-[#555] leading-relaxed mb-4">
-            Both sources are declared in advance — &#34;we will use drand round 12345 and
-            the weather at 14:00&#34; — before either value is published. You can check both
-            directly from the proof page.
+            Everything is declared when the entries lock — &#34;drand round 12345 and Middle
+            Wallop&#39;s 14:00 reading&#34; — before that drand round publishes. The proof page
+            says which source the draw actually used.
           </p>
           <div class="bg-cream-dark rounded-lg px-4 py-3">
             <p class="text-xs font-semibold text-[#555] mb-1">What proves it</p>
-            <p class="text-xs text-[#777]">Execution receipt → drand round, drand randomness (BLS-verified), weather value, weather station, observation time. Both entropy sources are independently verifiable from public records.</p>
+            <p class="text-xs text-[#777]">Execution receipt → drand round and randomness (BLS-signed, published after the lock), then the weather value or grid readings, or the reason there weren&#39;t any. A Middle Wallop reading or Elexon&#39;s grid readings can be checked against the public record with <code class="font-mono">wallop-verify weather-attest</code>: exactly for about two days, within tolerance after that, while the records last.</p>
           </div>
         </div>
       </div>
@@ -102,7 +112,7 @@
           <p class="text-[10px] font-bold tracking-[2px] uppercase text-[#aaa] mb-2">The question</p>
           <h2 class="text-xl font-extrabold mb-3">Was the algorithm run correctly?</h2>
           <p class="text-sm text-[#555] leading-relaxed mb-4">
-            The entry hash and the two entropy values are combined into a single seed.
+            The entry hash and the entropy values are combined into a single seed.
             That seed is fed into
             <a href="https://github.com/electric-lump-software/fair_pick" target="_blank" rel="noopener" class="underline decoration-[#ccc] hover:decoration-[#1a1a1a]">fair_pick</a>,
             an open-source algorithm that shuffles the entries and picks the winners.
@@ -122,7 +132,7 @@
           </p>
           <div class="bg-cream-dark rounded-lg px-4 py-3">
             <p class="text-xs font-semibold text-[#555] mb-1">What proves it</p>
-            <p class="text-xs text-[#777]">seed = SHA-256(JCS(entry_hash + drand_randomness + weather_value)) → fair_pick.draw(entries, seed, winner_count) → results. Deterministic. Reproducible. Open source.</p>
+            <p class="text-xs text-[#777]">seed = SHA-256(JCS(entry_hash + drand_randomness + weather_value or freq_value, if the draw used one)) → fair_pick.draw(entries, seed, winner_count) → results. Deterministic. Reproducible. Open source.</p>
           </div>
         </div>
       </div>
@@ -165,11 +175,45 @@
           </p>
           <div class="bg-cream-dark rounded-lg px-4 py-3">
             <p class="text-xs font-semibold text-[#555] mb-1">What proves it</p>
-            <p class="text-xs text-[#777]">Dual Ed25519-signed receipts → cryptographic chain (execution receipt embeds SHA-256 of lock receipt) → gap-free operator log → daily transparency anchors. Database immutability enforced at the trigger level — not even we can UPDATE or DELETE.</p>
+            <p class="text-xs text-[#777]">Dual Ed25519-signed receipts → cryptographic chain (execution receipt embeds SHA-256 of lock receipt) → gap-free operator log → daily transparency anchors. Triggers refuse UPDATE and DELETE; if we ever got round them, the signed receipts and daily anchors would show it.</p>
           </div>
         </div>
       </div>
 
+    </div>
+  </section>
+
+  <%!-- PROVEN VERSUS TRUSTED --%>
+  <section id="small-print" class="bg-white pb-18 px-6 md:px-12">
+    <div class="mx-auto max-w-[740px]">
+      <p class="text-[10px] font-bold tracking-[2px] uppercase text-[#aaa] mb-4">The small print</p>
+      <h2 class="text-3xl font-extrabold tracking-tight leading-snug mb-4">
+        Proven, and trusted.
+      </h2>
+      <p class="text-sm text-[#555] leading-relaxed mb-4">
+        <strong>Proven by the proof alone:</strong> the entries were signed before the drand
+        round published, the drand value is genuine, and the winners follow.
+      </p>
+      <p class="text-sm text-[#555] leading-relaxed mb-4">
+        <strong>Proven with</strong> <code class="font-mono text-xs">wallop-verify weather-attest</code>:
+        the weather or grid readings match the public record, exactly for about two days and
+        within tolerance after that, while the records last (Elexon&#39;s, as long as Elexon
+        keeps them).
+      </p>
+      <p class="text-sm text-[#555] leading-relaxed mb-2"><strong>Trusted:</strong></p>
+      <ul class="text-sm text-[#555] leading-relaxed mb-4 list-disc pl-5 space-y-1">
+        <li>fewer than drand&#39;s threshold of nodes collude;</li>
+        <li>the Met Office and Elexon report what really happened;</li>
+        <li>our clock, on when the entries locked;</li>
+        <li>we settled whether we had a reading before drand published, and can cancel a draw only before then, and visibly;</li>
+        <li>a late reading looks like a withheld one, so a wallop colluding with drand could pick among at most three outcomes;</li>
+        <li>the weather adds a little, not a lot: it only matters if drand&#39;s network is colluding with the operator.</li>
+      </ul>
+      <p class="text-sm text-[#555] leading-relaxed">
+        The
+        <a href="https://github.com/electric-lump-software/wallop/blob/main/spec/protocol.md#44-historical-verifiability" target="_blank" rel="noopener" class="underline decoration-[#ccc] hover:decoration-[#1a1a1a]">spec</a>
+        has the long version.
+      </p>
     </div>
   </section>
 
@@ -193,7 +237,8 @@
             <p class="text-sm text-[#555] leading-relaxed mb-3">
               Every proof page has a &#34;Verify independently&#34; button. It downloads the
               Rust verifier as WebAssembly and reruns every check — entry hash, seed derivation,
-              algorithm, receipt signatures, chain integrity — right in your browser.
+              algorithm, receipt signatures, chain integrity, and that the drand beacon is
+              genuine and published after the entries locked — right in your browser.
             </p>
             <p class="text-sm text-[#777] italic">
               Open code. Your machine. Your call.
@@ -284,7 +329,8 @@
         Every completed draw has a public proof page. Pick one and try the verify button yourself.
       </p>
       <a
-        href="https://wallop.run/proof/286838f2-c6d7-49a8-acdb-7b60bce69f35"
+        :if={@example_proof_url}
+        href={@example_proof_url}
         target="_blank"
         rel="noopener"
         class="inline-flex items-center gap-2 bg-[#1a1a1a] text-white px-6 py-3 rounded-lg text-sm font-bold hover:bg-[#333] transition-colors"

@@ -2,6 +2,8 @@
 
 > Audit date: 2026-04-09. Covers wallop_core 0.13.2.
 >
+> Superseded in part by the retirement of forecast draws (0.29.0): `execute_with_entropy` and `execute_drand_only` no longer exist; draws execute through `execute_v6`.
+>
 > Every Ash action on Draw, SandboxDraw, and Entry, with the state
 > filter that gates it, the policy that controls access, and what it
 > writes. If an action can fire from a state its docstring doesn't

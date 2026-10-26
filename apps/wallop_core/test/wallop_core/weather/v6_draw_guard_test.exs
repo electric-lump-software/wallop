@@ -1,7 +1,8 @@
 defmodule WallopCore.Weather.V6DrawGuardTest do
   @moduledoc """
   The database refuses what the observation-weather protocol forbids, and
-  leaves draws without a lock schema (every forecast draw) alone.
+  leaves draws without a lock schema (retired forecast draws) alone, apart
+  from refusing any lock that would leave one without it.
   """
   use WallopCore.DataCase, async: false
 
@@ -161,8 +162,8 @@ defmodule WallopCore.Weather.V6DrawGuardTest do
       end
     end
 
-    test "a forecast draw that has left open can't become v6" do
-      draw = create_draw(create_api_key())
+    test "a retired forecast draw that has left open can't become v6" do
+      draw = put_retired_forecast_draw!(create_api_key(), :awaiting_entropy)
       assert draw.status == :awaiting_entropy
 
       assert refusal(
@@ -173,17 +174,15 @@ defmodule WallopCore.Weather.V6DrawGuardTest do
     end
   end
 
-  describe "forecast draws are untouched" do
-    test "lock, execute and expire work as before, with a (NULL, NULL) pair" do
-      ensure_infrastructure_key()
+  describe "draws with no lock schema" do
+    test "a lock with a (NULL, NULL) pair is refused; expiry still works" do
       key = create_api_key()
+      draw = open_draw_with_entries(key)
 
-      draw = create_draw(key)
-      assert {draw.lock_schema_version, draw.entropy_composition} == {nil, nil}
+      assert refusal("UPDATE draws SET status = 'awaiting_entropy' WHERE id = $1", [id(draw)]) ==
+               "a draw leaves open only by locking under lock schema 6, or by expiring"
 
-      completed = execute_draw(draw, test_seed(), key)
-      assert completed.status == :completed
-
+      completed = put_retired_forecast_draw!(key, :completed)
       reloaded = Ash.get!(Draw, completed.id, authorize?: false, load: [:expected_result_at])
       assert {reloaded.lock_schema_version, reloaded.entropy_composition} == {nil, nil}
       assert reloaded.expected_result_at == nil
@@ -199,8 +198,8 @@ defmodule WallopCore.Weather.V6DrawGuardTest do
       assert expired.status == :expired
     end
 
-    test "raw updates to a forecast draw don't reach the v6 rules" do
-      draw = create_draw(create_api_key())
+    test "raw updates to a retired forecast draw don't reach the v6 rules" do
+      draw = put_retired_forecast_draw!(create_api_key(), :awaiting_entropy)
       past = DateTime.to_naive(DateTime.add(DateTime.utc_now(), -4 * 3600))
 
       # A v6 lock this late would be refused; a forecast draw's state moves on.
@@ -383,8 +382,8 @@ defmodule WallopCore.Weather.V6DrawGuardTest do
                "a v6 lock receipt must carry its draw's schema and entropy_composition"
     end
 
-    test "a forecast lock and its receipt work as before" do
-      draw = create_draw(create_api_key())
+    test "a retired forecast draw keeps its non-schema-6 receipt" do
+      draw = put_retired_forecast_draw!(create_api_key(), :completed)
       receipt = Ash.load!(draw, :receipt, authorize?: false).receipt
       assert Jason.decode!(receipt.payload_jcs)["schema_version"] != "6"
     end
@@ -506,7 +505,11 @@ defmodule WallopCore.Weather.V6DrawGuardTest do
     v6 = Ash.get!(Draw, d.id, authorize?: false, load: [:expected_result_at])
     assert v6.expected_result_at == s.expected_result_at
 
-    v5 = Ash.load!(create_draw(create_api_key()), :expected_result_at, authorize?: false)
+    v5 =
+      create_api_key()
+      |> put_retired_forecast_draw!(:completed)
+      |> Ash.load!(:expected_result_at, authorize?: false)
+
     assert v5.expected_result_at == nil
   end
 

@@ -224,15 +224,8 @@ defmodule WallopWeb.ProofController do
     result
   end
 
-  defp load_draw(id) do
-    case Ash.get(WallopCore.Resources.Draw, id,
-           domain: WallopCore.Domain,
-           authorize?: false
-         ) do
-      {:ok, draw} -> {:ok, draw}
-      _ -> {:error, :not_found}
-    end
-  end
+  # A retired forecast draw is not found, exactly like an unknown id.
+  defp load_draw(id), do: WallopWeb.RetiredDraw.fetch(id)
 
   defp not_found(conn) do
     conn

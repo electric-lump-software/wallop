@@ -245,9 +245,9 @@ defmodule WallopCore.Frequency.FreqDrawGuardTest do
     end
   end
 
-  describe "forecast draws return before any tag arm" do
+  describe "retired forecast draws return before any tag arm" do
     test "a (NULL, NULL) draw meets no tag rule, but can't carry the frequency columns" do
-      draw = create_draw(create_api_key())
+      draw = put_retired_forecast_draw!(create_api_key(), :awaiting_entropy)
       assert {draw.lock_schema_version, draw.entropy_composition} == {nil, nil}
 
       assert try_sql("UPDATE draws SET freq_value = 'x' WHERE id = $1", [dump(draw.id)]) ==

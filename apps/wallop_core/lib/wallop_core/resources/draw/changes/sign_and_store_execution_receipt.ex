@@ -19,8 +19,8 @@ defmodule WallopCore.Resources.Draw.Changes.SignAndStoreExecutionReceipt do
   — the draw completion rolls back. The draw stays in its pre-completion
   state and the entropy worker retries.
 
-  With `version: "6"` (lock schema 6 draws: Met Office Land Observations or
-  GB grid frequency) it signs an execution receipt schema 5 under the
+  It signs an execution receipt schema 5 (every draw is a lock schema 6
+  draw: Met Office Land Observations or GB grid frequency) under the
   draw's stored entropy tag, with that tag's fields from
   `WallopCore.Entropy.V6Rules.receipt_input/2`: under Land Obs, the station
   whose reading was used (the first station on a fallback); under grid
@@ -30,7 +30,6 @@ defmodule WallopCore.Resources.Draw.Changes.SignAndStoreExecutionReceipt do
   window no longer matches the stored one, when (grid frequency) the
   draw's seed isn't the seed of its inputs, or when this build's
   `fair_pick_version` differs from the lock receipt's.
-  Without the option it builds the schema 4 receipt exactly as before.
   """
   use Ash.Resource.Change
 
@@ -45,18 +44,16 @@ defmodule WallopCore.Resources.Draw.Changes.SignAndStoreExecutionReceipt do
   require Logger
 
   @impl true
-  def change(changeset, opts, _context) do
-    version = opts[:version]
-
+  def change(changeset, _opts, _context) do
     Ash.Changeset.after_action(changeset, fn _changeset, draw ->
       case draw.operator_id do
         nil -> {:error, "draw has no operator — cannot sign execution receipt"}
-        _operator_id -> sign_and_store(draw, version)
+        _operator_id -> sign_and_store(draw)
       end
     end)
   end
 
-  defp sign_and_store(draw, version) do
+  defp sign_and_store(draw) do
     with {:ok, lock_receipt} <- load_lock_receipt(draw.id),
          {:ok, infra_key} <- load_current_infra_key(),
          {:ok, private_key} <- decrypt_private_key(infra_key.private_key),
@@ -70,7 +67,7 @@ defmodule WallopCore.Resources.Draw.Changes.SignAndStoreExecutionReceipt do
          {:ok, canonical_results} <- validate_results(draw.results),
          lock_receipt_hash = hash_lock_receipt(lock_receipt.payload_jcs),
          {:ok, payload} <-
-           build_payload(version, draw, lock_receipt, %{
+           build_payload(draw, lock_receipt, %{
              draw_id: draw.id,
              operator_id: draw.operator_id,
              operator_slug: operator_slug,
@@ -137,7 +134,7 @@ defmodule WallopCore.Resources.Draw.Changes.SignAndStoreExecutionReceipt do
   # ArgumentError here becomes a refusal: that is safe because a refusal
   # never fails a draw. It rolls the execution back, cancels the job and
   # leaves the draw for the re-drive, with an alert.
-  defp build_payload("6", draw, lock_receipt, input) do
+  defp build_payload(draw, lock_receipt, input) do
     with {:ok, rules} <- v6_rules(draw),
          {:ok, tag_input} <- v6_receipt_input(rules, draw),
          :ok <- same_fair_pick_version(lock_receipt, input.fair_pick_version) do
@@ -150,9 +147,6 @@ defmodule WallopCore.Resources.Draw.Changes.SignAndStoreExecutionReceipt do
     e in ArgumentError ->
       refused("the execution receipt builder refused: #{Exception.message(e)}")
   end
-
-  defp build_payload(_version, _draw, _lock_receipt, input),
-    do: {:ok, Protocol.build_execution_receipt_payload(input)}
 
   defp v6_rules(draw) do
     case V6Rules.rules(draw) do

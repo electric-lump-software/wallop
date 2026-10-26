@@ -78,8 +78,8 @@ defmodule WallopCore.Weather.V6ExecutionGuardsTest do
                )
     end
 
-    test "leaves a forecast draw's execution receipts alone, refusing only schema 5" do
-      draw = create_draw(create_api_key())
+    test "leaves a retired forecast draw's execution receipts alone, refusing only schema 5" do
+      draw = put_retired_forecast_draw!(create_api_key(), :completed)
 
       for payload <- ["not json", ~s({"schema_version":"4"}), ~s([5]), ~s("5")] do
         assert insert_exec_receipt(payload, forecast_cols(draw)) == nil, payload
@@ -418,7 +418,7 @@ defmodule WallopCore.Weather.V6ExecutionGuardsTest do
       assert try_sql("DELETE FROM draws WHERE id = $1", [dump(draw.id)]) == nil
     end
 
-    test "forecast draws are deleted, or refused, exactly as before" do
+    test "draws with no lock schema are deleted, or refused, exactly as before" do
       api_key = create_api_key()
 
       open =
@@ -428,9 +428,9 @@ defmodule WallopCore.Weather.V6ExecutionGuardsTest do
 
       assert try_sql("DELETE FROM draws WHERE id = $1", [dump(open.id)]) == nil
 
-      # A locked forecast draw: its lock receipt's foreign key refuses, and
-      # with the receipt gone the draw is deletable, as before.
-      locked = create_draw(api_key)
+      # A retired locked forecast draw: its lock receipt's foreign key
+      # refuses, and with the receipt gone the draw is deletable, as before.
+      locked = put_retired_forecast_draw!(api_key, :awaiting_entropy)
       assert locked.status == :awaiting_entropy
 
       # PostgreSQL 17+ adds "RESTRICT setting of" to this message; 16 doesn't.
@@ -443,11 +443,7 @@ defmodule WallopCore.Weather.V6ExecutionGuardsTest do
 
       assert try_sql("DELETE FROM draws WHERE id = $1", [dump(locked.id)]) == nil
 
-      done = create_draw(api_key)
-
-      with_triggers_off(fn ->
-        Repo.query!("UPDATE draws SET status = 'completed' WHERE id = $1", [dump(done.id)])
-      end)
+      done = put_retired_forecast_draw!(api_key, :completed)
 
       assert try_sql("DELETE FROM draws WHERE id = $1", [dump(done.id)]) ==
                "Cannot delete a completed draw"

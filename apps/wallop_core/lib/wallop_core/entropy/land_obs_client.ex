@@ -2,7 +2,7 @@ defmodule WallopCore.Entropy.LandObsClient do
   @moduledoc """
   Met Office DataHub Land Observations (`/observation-land/1/{geohash}`).
 
-  Used only by observation-weather draws; v5 draws use `WeatherClient`.
+  Used only by observation-weather draws.
   The response body is kept byte-for-byte as `raw`. Numbers are read from
   their JSON text by `WallopCore.Weather.LandObsGrammar` (never as floats),
   and only the row for exactly the requested hour is used.

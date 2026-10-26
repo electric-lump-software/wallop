@@ -25,30 +25,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Revocation is permanent and breaks old proofs.** A revocation can't be undone: the table refuses DELETE. Every proof signed with a revoked key stops verifying, for good. Revocation is for a key that is compromised, not for routine rotation: after a routine rotation, leave the old key published so its proofs keep verifying.
 - **Database.** Run `mix ecto.migrate`. The migration only adds the table.
 
-### Added: observation weather (lock schema 6 / execution schema 5), per operator
+### Removed: forecast-weather draws (BREAKING)
 
-**The forecast protocol is unchanged and stays the default.** Forecast draws (lock schema 5 / execution schema 4) lock, run and verify exactly as before, with the same signed bytes. Nothing about a forecast draw's lock, execution or proof changes until the platform moves its operator.
+The forecast method (entropy tag `drand-quicknet+openmeteo-v1`, lock receipt schemas 4 and 5, execution receipt schemas 2, 3 and 4) is retired. It was the one method whose own spec said a compromised producer could pick the seed. Every new draw is a lock schema 6 / execution schema 5 draw, on observation weather or grid frequency.
+
+**REMOVED.**
+
+- The forecast producer (`EntropyWorker`, `WeatherClient`, `WeatherFallback`), the `:execute_with_entropy` and `:execute_drand_only` actions, the forecast receipt builders (`Protocol.build_receipt_payload/1`, `Protocol.build_execution_receipt_payload/1`, `Protocol.entropy_composition/0`), the `:entropy` Oban queue, the `:redrive_forecast_draws` flag and `MET_OFFICE_API_KEY`.
+- `weather_time` as a lock attribute. Sending it is a `400` `invalid_body`; send `draw_at`, or nothing.
+
+**CHANGED.**
+
+- **Every operator is on observation weather unless moved to grid frequency.** The migration sets the default to `observation`, moves every `forecast` operator to it, and adds a check constraint allowing only `observation` and `frequency`.
+- **The database refuses every lock without lock schema 6.** An open draw with no lock schema can only stay open or expire, whatever code runs the update.
+- **A retired forecast draw's proof routes respond exactly as for an unknown draw**: `/proof/:id`, `/proof/:id/:entry_id`, `/proof/:id/entries`, `/proof/:id/pdf`, `/proof/:id/json` and `/live/proof/...`. Its signed receipts stay, byte for byte, at `/operator/:slug/receipts/:seq` and `/operator/:slug/executions/:seq`; the transparency anchors commit to them and are unaffected.
+- The re-drive reads only `lock_schema_version = '6'` draws, with one worker and one rule.
+- The proof page's browser check accepts only lock 6 / execution 5 receipts.
+- `spec/protocol.md`: the forecast sections become one "Retired" paragraph (§2.2.2); the frozen receipt set is lock 6 / execution 5 (§4.2.1); §4.4 no longer promises that every receipt since 0.16.0 verifies for the life of 1.x.
 
 **ADDED.**
 
-- **The operator setting.** `Operator.draw_protocol` is `forecast` by default, or `observation` (or `frequency`, below). It is set only by the platform, through the admin-only `set_draw_protocol` action; it isn't part of the API. Draws keep the protocol they were locked with, so flipping it never touches a draw in flight.
+- `WallopCore.ForecastDrain` and its `WallopCore.Release` wrappers: the deploy gate that reports stranded forecast draws and, after the deploy, fails each with `failure_reason` `forecast_retired` and cancels the old worker's jobs. See `MIGRATING.md`. PDFs already cached for forecast draws stay in proof storage, unreachable; no cleanup is needed.
+
+### Added: observation weather (lock schema 6 / execution schema 5), per operator
+
+**ADDED.**
+
+- **The operator setting.** `Operator.draw_protocol` is `observation` by default, or `frequency` (below). It is set only by the platform, through the admin-only `set_draw_protocol` action; it isn't part of the API. Draws keep the protocol they were locked with, so flipping it never touches a draw in flight.
 - **Observation weather.** An `observation` operator's draws lock under lock schema 6 with entropy tag `drand-quicknet+metoffice-landobs-v1`. The second source is Middle Wallop's Met Office Land Observations reading for a whole hour, stored once per hour before the drand round exists, as `"<t>;<mslp>;<rh>;<vis>"`. If that reading isn't stored by the deadline, the draw uses the GB grid frequency for the same drand round, and if that is missing too, drand alone. The signed execution receipt says which, and `weather_station` is `wmo-03749` throughout. Spec §2.2.3.
-- **`draw_at`** on `PATCH /draws/:id/lock`, for `observation` (and `frequency`) operators only: when the result is due, in whole seconds on drand quicknet's 3-second grid (any whole minute is). Without it, wallop picks the earliest allowed time. A forecast operator sending `draw_at` is refused, and so is an observation operator sending `weather_time`.
-- **`expected_result_at`** on the draw: when the result is due, computed from the committed drand round and not signed. `null` for forecast draws.
+- **`draw_at`** on `PATCH /draws/:id/lock`, for `observation` (and `frequency`) operators only: when the result is due, in whole seconds on drand quicknet's 3-second grid (any whole minute is). Without it, wallop picks the earliest allowed time.
+- **`expected_result_at`** on the draw: when the result is due, computed from the committed drand round and not signed. `null` until the draw is locked.
 - **A lock that is too late is refused** with `400` `invalid_argument` and `meta.latest_lock_at` (whole seconds, UTC), and the draw stays open. For observation weather the lock must happen by the observation hour minus 46 minutes: for a 20:00 draw, 18:14.
-- **`MET_OFFICE_OBS_API_KEY`** (optional): a Met Office Weather DataHub Land Observations key, needed only on the service that runs the `weather` queue. That service records whether it holds a usable key, at boot and every 10 minutes, in a new one-row table, `observation_readiness` (a yes or no and the database time; never the key). A new observation-weather lock, in whichever service runs it, is refused with `400` `invalid_argument` and no `source.pointer` unless that record says yes and is under 30 minutes old; the draw stays open. Without the key no reading could ever be fetched, so every such draw would fall back. A draw already locked when the key goes away falls back by rule, visibly in its receipt. Forecast and grid-frequency locks don't read it.
+- **`MET_OFFICE_OBS_API_KEY`** (optional): a Met Office Weather DataHub Land Observations key, needed only on the service that runs the `weather` queue. That service records whether it holds a usable key, at boot and every 10 minutes, in a new one-row table, `observation_readiness` (a yes or no and the database time; never the key). A new observation-weather lock, in whichever service runs it, is refused with `400` `invalid_argument` and no `source.pointer` unless that record says yes and is under 30 minutes old; the draw stays open. Without the key no reading could ever be fetched, so every such draw would fall back. A draw already locked when the key goes away falls back by rule, visibly in its receipt. Grid-frequency locks don't read it.
 - **`LAND_OBS_DAILY_CAP`** (optional): the most Land Observations calls wallop makes in a UTC day, a whole number from 1 to 900; default 800. Any other value stops the boot, whether it came from the environment or from an embedding app's own config. It is a fuse, not a dial: a full day of polling costs at most 624 calls (26 an hour), so at the default it trips only if something polls more than it should. Below 624, boot logs a warning, because weather draws may then fall back. At the cap no call is made until 00:00 UTC; the hour's draws carry on to their deadline and fall back as for any late reading, and `[:wallop_core, :weather, :cap_reached]` is emitted with one error log a day. Calls are counted in a new table, `land_obs_call_counts`, one row per UTC day on the database clock.
 - **Failed polls are logged** at warning, for both Land Observations and grid frequency. The log line carries only the error's name (`:missing_hour`, `{:unexpected_status, 503}`, `{:transport, :timeout}` and so on), never the key or a response body.
-- **Queues and cron.** New Oban queues `weather` (the hourly Land Observations fetch), `frequency` (the grid-frequency window fetch) and `v6_execution` (the lock schema 6 draws themselves). A cron, `StuckDrawRedriver`, runs every 10 minutes on the `default` queue: it puts back the execution job of a lock schema 6 draw that has lost it, re-inserts a lost hourly fetch job while the hour is still open, and emits `[:wallop_core, :v6, :overdue]` for draws past due. Re-driving forecast draws is off unless `config :wallop_core, :redrive_forecast_draws, true`.
-- **`POOL_SIZE` now defaults to 20** (was 10). The Oban queue limits add up to 36, more than the pool, which is fine because no job holds a connection across an HTTP call: the fetching workers refuse to fetch inside a transaction. Set `POOL_SIZE` explicitly if your Postgres has few connections to spare.
+- **Queues and cron.** New Oban queues `weather` (the hourly Land Observations fetch), `frequency` (the grid-frequency window fetch) and `v6_execution` (the lock schema 6 draws themselves). A cron, `StuckDrawRedriver`, runs every 10 minutes on the `default` queue: it puts back the execution job of a lock schema 6 draw that has lost it, re-inserts a lost hourly fetch job while the hour is still open, and emits `[:wallop_core, :v6, :overdue]` for draws past due.
+- **`POOL_SIZE` now defaults to 20** (was 10). The Oban queue limits add up to 26, more than the pool, which is fine because no job holds a connection across an HTTP call: the fetching workers refuse to fetch inside a transaction. Set `POOL_SIZE` explicitly if your Postgres has few connections to spare.
 - **Database.** New table `weather_observations` (one write-once reading per hour). New columns `operators.draw_protocol`, and `draws.lock_schema_version`, `draws.entropy_composition`, `draws.freq_start`, `draws.freq_value` and `draws.freq_fallback_reason`. Triggers and SQL functions enforce the timing, the three states and the receipts on the database's own clock. Run `mix ecto.migrate`.
 - **Vectors.** The shared vectors for both lock schema 6 tags were regenerated with this release (see the vectors entry below).
 
-**CHANGED (spec).** `spec/protocol.md` now describes the forecast protocol as it actually runs: a Site-Specific Forecast value in pascals, a `weather_time` 3–5 minutes after lock unless the operator sends one, and a drand-only fallback decided at execution. Its trust note no longer claims more than a forecast can give.
-
 ### Added: grid-frequency draws (lock schema 6 / execution schema 5), per operator
 
-For operators who sell right up to the draw. Weather stays the default; forecast draws are unchanged.
+For operators who sell right up to the draw. Observation weather stays the default.
 
 **ADDED.**
 
@@ -58,7 +76,7 @@ For operators who sell right up to the draw. Weather stays the default; forecast
 - **Database.** New table `frequency_windows` (one write-once window per start time), in the same migrations. No new key: Elexon's data needs none. It uses the `frequency` and `v6_execution` queues above.
 - Pages and proofs that show grid-frequency readings carry 'Contains BMRS data © Elexon Limited copyright and database right [year]', with the readings' year.
 
-**Operator note.** No forecast draw's bytes change. Never roll the service that runs core jobs back below this release once a lock schema 6 draw has been locked; see MIGRATING.
+**Operator note.** Never roll the service that runs core jobs back below this release; see MIGRATING.
 
 ### Shared vectors for lock v6 / execution v5; older receipt vectors and bundles regenerated on real drand rounds
 

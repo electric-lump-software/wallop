@@ -13,13 +13,13 @@ defmodule WallopCore.ActionReachabilityTest do
   alias WallopCore.Resources.SandboxDraw
 
   describe "Draw action inventory" do
-    test "exactly 14 actions exist (1 create + 11 update + 2 read)" do
+    test "exactly 12 actions exist (1 create + 9 update + 2 read)" do
       actions = Ash.Resource.Info.actions(Draw)
-      assert length(actions) == 14
+      assert length(actions) == 12
 
       by_type = Enum.group_by(actions, & &1.type)
       assert length(by_type[:create] || []) == 1
-      assert length(by_type[:update] || []) == 11
+      assert length(by_type[:update] || []) == 9
       assert length(by_type[:read] || []) == 2
     end
 
@@ -41,8 +41,6 @@ defmodule WallopCore.ActionReachabilityTest do
           :update_winner_count,
           :lock,
           :transition_to_pending,
-          :execute_with_entropy,
-          :execute_drand_only,
           :execute_v6,
           :expire,
           :mark_failed
@@ -78,8 +76,6 @@ defmodule WallopCore.ActionReachabilityTest do
   describe "internal-only actions are forbidden by policy" do
     @internal_actions [
       :transition_to_pending,
-      :execute_with_entropy,
-      :execute_drand_only,
       :execute_v6,
       :expire,
       :mark_failed

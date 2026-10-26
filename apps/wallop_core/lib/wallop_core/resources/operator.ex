@@ -50,13 +50,21 @@ defmodule WallopCore.Resources.Operator do
 
   @max_name_length 80
 
-  # Weather protocols an operator's new locks can use. Adding one is a
-  # one-line change here.
-  @draw_protocols [:forecast, :observation, :frequency]
+  # Entropy protocols an operator's new locks can use. Adding one is a
+  # one-line change here and in the check constraint below.
+  @draw_protocols [:observation, :frequency]
 
   postgres do
     table("operators")
     repo(WallopCore.Repo)
+
+    # The retired forecast protocol can't come back through a direct write.
+    check_constraints do
+      check_constraint(:draw_protocol, "operators_draw_protocol_known",
+        check: "draw_protocol IN ('observation', 'frequency')",
+        message: "must be observation or frequency"
+      )
+    end
   end
 
   actions do
@@ -150,12 +158,12 @@ defmodule WallopCore.Resources.Operator do
 
     attribute :draw_protocol, :atom do
       description(
-        "Entropy protocol for new locks: forecast (lock schema 5), observation (lock schema 6, " <>
-          "Met Office Land Observations) or frequency (lock schema 6, GB grid frequency). Admin-only."
+        "Entropy protocol for new locks: observation (lock schema 6, Met Office Land " <>
+          "Observations) or frequency (lock schema 6, GB grid frequency). Admin-only."
       )
 
       constraints(one_of: @draw_protocols)
-      default(:forecast)
+      default(:observation)
       allow_nil?(false)
       public?(false)
     end

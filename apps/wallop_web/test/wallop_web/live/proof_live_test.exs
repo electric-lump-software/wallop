@@ -203,18 +203,6 @@ defmodule WallopWeb.ProofLiveTest do
                  Calendar.strftime(due, "%H:%M:%S UTC")
     end
 
-    test "a forecast draw awaiting entropy is as before", %{conn: conn} do
-      draw = create_draw(create_api_key(), %{})
-
-      {:ok, _view, html} = live(conn, "/live/proof/#{draw.id}")
-
-      assert html =~ "weather at #{Calendar.strftime(draw.weather_time, "%H:%M UTC")}"
-      assert html =~ "Entropy available in"
-      assert attr_values(html, "data-target") == [DateTime.to_iso8601(draw.weather_time)]
-      refute html =~ "Result due"
-      refute html =~ "Middle Wallop"
-    end
-
     test "state (a): Middle Wallop's reading, as the signed receipt says", %{conn: conn} do
       draw = completed_signed!(:observed)
       html = conn |> get("/proof/#{draw.id}") |> html_response(200) |> squash()
@@ -427,7 +415,7 @@ defmodule WallopWeb.ProofLiveTest do
       conn = get(conn, "/proof/#{draw.id}?entry_id=#{unknown_uuid}")
       html = html_response(conn, 200)
 
-      assert html =~ "Not in the winner list"
+      assert html =~ "Not a winner this time"
     end
   end
 
@@ -457,7 +445,7 @@ defmodule WallopWeb.ProofLiveTest do
       conn = get(conn, "/proof/#{draw.id}/#{losing_uuid}")
       html = html_response(conn, 200)
 
-      assert html =~ "Not in the winner list"
+      assert html =~ "Not a winner this time"
     end
 
     test "pre-fills the entry ID input", %{conn: conn} do
@@ -492,7 +480,7 @@ defmodule WallopWeb.ProofLiveTest do
       conn = get(conn, "/proof/#{draw.id}/#{losing_uuid}")
       html = html_response(conn, 200)
 
-      assert html =~ "Not in the winner list"
+      assert html =~ "Not a winner this time"
       assert html =~ "https://operator.example/check-your-ticket"
       assert html =~ ~s|rel="noopener noreferrer"|
       assert html =~ ~s|target="_blank"|
@@ -510,7 +498,7 @@ defmodule WallopWeb.ProofLiveTest do
       conn = get(conn, "/proof/#{draw.id}/#{losing_uuid}")
       html = html_response(conn, 200)
 
-      assert html =~ "Not in the winner list"
+      assert html =~ "Not a winner this time"
       refute html =~ "check-your-ticket"
       refute html =~ "ticket-check page"
     end
@@ -674,7 +662,7 @@ defmodule WallopWeb.ProofLiveTest do
       # ...and further checks say they were refused, not that the entry lost.
       html = render_hook(view, "check_entry", %{"entry_id" => Ecto.UUID.generate()})
       refute html =~ "is a winner"
-      refute html =~ "Not in the winner list"
+      refute html =~ "Not a winner this time"
       assert html =~ "Too many checks from your connection"
 
       # Neither the proxy bucket ("unknown") nor another client was touched.
@@ -710,7 +698,7 @@ defmodule WallopWeb.ProofLiveTest do
           check_url: nil
         )
 
-      refute html =~ "Not in the winner list"
+      refute html =~ "Not a winner this time"
       refute html =~ "in the winner list."
       assert html =~ "Too many checks from your connection"
     end
@@ -724,7 +712,7 @@ defmodule WallopWeb.ProofLiveTest do
 
       html = render_hook(view, "check_entry", %{"entry_id" => Ecto.UUID.generate()})
 
-      refute html =~ "Not in the winner list"
+      refute html =~ "Not a winner this time"
       assert html =~ "Too many checks from your connection"
     end
 

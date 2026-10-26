@@ -27,7 +27,7 @@ defmodule WallopCore.ProtocolPinVectorTest do
   alias WallopCore.Protocol.Pin
 
   # Vector lives at the umbrella root. Same path-expansion pattern as
-  # `proof_bundle_generator.exs` and `vectors_regenerator.exs`.
+  # `protocol_key_rotation_test.exs`.
   @vector_path Path.expand("../../../../spec/vectors/pin/v1/valid.json", __DIR__)
 
   setup_all do

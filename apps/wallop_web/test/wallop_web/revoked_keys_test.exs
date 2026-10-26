@@ -159,7 +159,6 @@ defmodule WallopWeb.RevokedKeysTest do
           open_view: nil,
           check_result: nil,
           checked_entry_id: nil,
-          entropy_status: nil,
           entries_json: "[]",
           results_json: "[]",
           operator: operator,

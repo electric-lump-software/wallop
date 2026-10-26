@@ -23,7 +23,7 @@ defmodule WallopCore.Resources.Draw.Changes.DeclareEntropyFreq do
     * this draw's execution job, `ObservationDrawWorker`, at the result time
       plus `Schedule.execution_delay_seconds/0`.
 
-  It never inserts an `EntropyWorker` job. If either insert fails, the lock
+  If either insert fails, the lock
   rolls back. The lock is broadcast once it has committed (an
   `after_transaction` hook), never from inside the transaction.
   """

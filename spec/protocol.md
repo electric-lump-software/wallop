@@ -202,7 +202,6 @@ lock by the lock receipt's schema and entropy tag (`entropy_composition`,
 
 | Lock / execution schema | `entropy_composition` | Second source |
 |---|---|---|
-| lock ≤ 5 / execution ≤ 4 | `drand-quicknet+openmeteo-v1` | A Met Office forecast value (§2.2.2) |
 | lock 6 / execution 5 | `drand-quicknet+metoffice-landobs-v1` | A Met Office observation from Middle Wallop or, when that is late, the GB grid frequency (§2.2.3) |
 | lock 6 / execution 5 | `drand-quicknet+elexon-freq-v1` | The GB grid frequency (§2.2.4) |
 
@@ -213,39 +212,23 @@ The signed execution receipt says which inputs were used.
 
 - Source: League of Entropy (https://drand.love), the quicknet chain.
   Round R publishes at pub(R) = 1692803367 + (R − 1) × 3 (unix seconds).
-- At lock time, the API declares a future drand round number:
-  - lock schema ≤ 5: the latest round that publishes at least 30 seconds
-    before `weather_time` (§2.2.2);
-  - lock schema 6: the round with pub(R) = `draw_at` (§2.2.3, §2.2.4).
+- At lock time, the API declares a future drand round number: the round
+  with pub(R) = `draw_at` (§2.2.3, §2.2.4).
 - After that round publishes, the `randomness` field from the drand response is
   the input. This is a 64-character lowercase hex string (32 bytes).
 - The drand round, chain hash, and signature are stored for independent
   verification.
 
-#### 2.2.2 Weather, lock schema ≤ 5 / execution schema ≤ 4 (forecast)
+#### 2.2.2 Retired: forecast weather
 
-This is what the reference producer does for draws locked under lock
-schema 5 or earlier. It is the default protocol, and it is unchanged by
-lock schema 6.
-
-- **Source:** the Met Office Weather DataHub **Site-Specific Forecast**
-  (`sitespecific/v0/point/hourly`, `dataSource` `BD1`, hourly steps) for
-  Middle Wallop's coordinates (51.1494, −1.5714). It is a forecast, not an
-  observation. The receipts' `weather_station` is `"middle-wallop"`.
-- **`weather_time`:** by default a jittered 3–5 minutes after lock, in whole
-  seconds. An operator may supply one instead (whole seconds, at least 60
-  seconds ahead, within about 7 days). It needn't be a whole hour.
-- **drand round:** the latest quicknet round that publishes at least 30
-  seconds before `weather_time`, so the drand value is public before the
-  weather value is fetched.
-- **`weather_value`:** the forecast `mslp` in **pascals**, as an integer
-  string (for example `"101820"`), taken from the latest hourly step at or
-  before `weather_time` and no more than one hour before it.
-  `weather_observation_time` records that step's time.
-- **What a forecast can't do:** a forecast value can be published before
-  lock, can change between model runs, and can't be re-fetched later. No
-  third party can check it after the fact (see §4.4).
-- The raw API response is stored as `weather_raw`.
+Before 1.0, draws could take their second input from a Met Office weather
+forecast, under the tag `drand-quicknet+openmeteo-v1` with lock receipt
+schemas `"4"` and `"5"` and execution receipt schemas `"2"`, `"3"` and
+`"4"`. That method is retired. A verifier conforming to this
+specification MUST reject these schema values and this tag, and they will
+never be reused. Receipts already signed under them stay in the
+operator's public record (§4.2.7) byte for byte, but wallop no longer
+checks them (§4.4).
 
 #### 2.2.3 Weather observation, lock schema 6 / execution schema 5
 
@@ -471,7 +454,7 @@ The object takes one of three forms:
 
 | Form | Keys | Used by |
 |---|---|---|
-| `compute_seed(entry_hash, drand_randomness, weather_value)` | `drand_randomness`, `entry_hash`, `weather_value` | A forecast draw with weather; state (a) of §2.2.3 |
+| `compute_seed(entry_hash, drand_randomness, weather_value)` | `drand_randomness`, `entry_hash`, `weather_value` | State (a) of §2.2.3 |
 | `compute_freq_seed(entry_hash, drand_randomness, freq_value)` | `drand_randomness`, `entry_hash`, `freq_value` | The grid-frequency tag with a window; state (b) of §2.2.3 |
 | `compute_seed(entry_hash, drand_randomness)` | `drand_randomness`, `entry_hash` | Every drand-only draw |
 
@@ -485,11 +468,6 @@ be present: a receipt that fits no state has no seed.
 
 - Every draw needs its declared drand round. The producer never
   substitutes a later round and never uses an internal RNG.
-- **Lock schema ≤ 5 (forecast):** the producer falls back to drand alone
-  after repeated weather failures (5 attempts) while drand is available,
-  with a `weather_fallback_reason` of `"station_down"`, `"stale"` or
-  `"unreachable"`. The producer decides this at execution, with the drand
-  value already known. That is a documented trust assumption (§4.4).
 - **Lock schema 6, `drand-quicknet+metoffice-landobs-v1`:** the draw falls
   back if and only if nothing was stored for its hour by F, first to T's
   grid-frequency window and then, if that wasn't stored either, to drand
@@ -517,15 +495,15 @@ available:
 | `drand_round` | Declared round number |
 | `drand_randomness` | Hex string from drand |
 | `drand_signature` | For independent drand verification |
-| `weather_station` | `"middle-wallop"` (lock schema ≤ 5), `"wmo-03749"` (`drand-quicknet+metoffice-landobs-v1`), or null (`drand-quicknet+elexon-freq-v1`) |
-| `weather_time` | Lock schema ≤ 5: when the forecast value is fetched (§2.2.2). Lock schema 6, observation weather: the observation hour (§2.2.3). Null under grid frequency. |
-| `weather_observation_time` | Lock schema ≤ 5: the forecast step used. Lock schema 6: equal to `weather_time`, or null on a fallback. |
+| `weather_station` | `"wmo-03749"` (`drand-quicknet+metoffice-landobs-v1`), or null (`drand-quicknet+elexon-freq-v1`) |
+| `weather_time` | Observation weather: the observation hour (§2.2.3). Null under grid frequency. |
+| `weather_observation_time` | Equal to `weather_time`, or null on a fallback. |
 | `weather_value` | Normalized string, or null |
 | `weather_fallback_reason` | Why there is no weather value, or null (§2.6) |
 | `weather_raw` | Raw API response (for verification) |
-| `freq_start` | Lock schema 6: the grid-frequency window start T. Null otherwise. |
-| `freq_value` | Lock schema 6: the window's readings (§2.2.4), or null |
-| `freq_fallback_reason` | Lock schema 6: why there is no window, or null |
+| `freq_start` | The grid-frequency window start T |
+| `freq_value` | The window's readings (§2.2.4), or null |
+| `freq_fallback_reason` | Why there is no window, or null |
 | `seed_json` | The JCS-serialized JSON from §2.3 |
 | `seed` | Hex-encoded 32-byte seed |
 | `winner_count` | Requested number of winners |
@@ -542,10 +520,9 @@ Two signed artefacts bind the proof record to cryptographic commitments:
 - **Lock receipt** — signed by the operator's `OperatorSigningKey` at
   lock time. Commits `entry_hash` (bound to `draw_id`), declared
   entropy sources, `winner_count`, `commitment_hash`, and the pinned
-  algorithm identity tags enumerated below. Current schema versions:
-  `"5"` (forecast) and `"6"` (observation weather and grid frequency).
-  Lock schema 6 adds `freq_start` (20 fields) and requires
-  `commitment_hash` to equal `entry_hash`.
+  algorithm identity tags enumerated below. Current schema version:
+  `"6"` (observation weather and grid frequency), 20 fields including
+  `freq_start`. It requires `commitment_hash` to equal `entry_hash`.
 - **Execution receipt** — signed by the wallop infrastructure key at
   execution time. Links back to the lock receipt via
   `lock_receipt_hash`, commits the realised entropy values
@@ -554,19 +531,18 @@ Two signed artefacts bind the proof record to cryptographic commitments:
   fingerprint of the infrastructure key that produced the signature
   (see §4.2.4 for the generic rule), and the same algorithm identity
   tags plus the drand signature scheme and the Merkle construction
-  used in downstream commitments. Current schema versions: `"4"`
-  (paired with lock `"5"`) and `"5"` (paired with lock `"6"`; adds
-  `freq_value` and `freq_fallback_reason`, 28 fields). Historical `"2"`
-  and `"3"` receipts remain verifiable for the life of 1.x; see §4.4.
+  used in downstream commitments. Current schema version: `"5"`
+  (paired with lock `"6"`), 28 fields including `freq_value` and
+  `freq_fallback_reason`. The retired forecast schemas (§2.2.2) are
+  rejected; see §4.4.
 
 Both receipts are JCS-canonicalised before signing. Verifiers MUST
 reject any receipt whose `schema_version` value does not match a known
-shape — historical receipts remain verifiable with older verifier
-versions; new receipts require current-version verifiers.
+shape.
 
 `wallop_core_version` is informational and isn't verified.
-`fair_pick_version` is pinned: under lock 6 / execution 5 the execution
-receipt's value MUST equal the lock receipt's, and MUST be a `fair_pick`
+`fair_pick_version` is pinned: the execution receipt's value MUST equal
+the lock receipt's, and MUST be a `fair_pick`
 release the verifier implements.
 
 Timestamps inside signed payloads (`locked_at`, `executed_at`,
@@ -604,26 +580,22 @@ decides which rules to apply.
 
 | Value | Receipt schemas | Meaning |
 |---|---|---|
-| `"drand-quicknet+openmeteo-v1"` | lock ≤ 5 / execution ≤ 4 | drand plus the forecast value of §2.2.2. A frozen historical name: the source was in fact the Met Office Site-Specific Forecast, not Open-Meteo. |
 | `"drand-quicknet+metoffice-landobs-v1"` | lock 6 / execution 5 | drand plus Middle Wallop's observation, with the grid-frequency fallback (§2.2.3) |
 | `"drand-quicknet+elexon-freq-v1"` | lock 6 / execution 5 | drand plus the GB grid frequency (§2.2.4) |
 
-A draw's lock and execution receipts carry the same `entropy_composition`.
+The retired forecast tag, `"drand-quicknet+openmeteo-v1"` (§2.2.2), is
+rejected and never reused. A draw's lock and execution receipts carry the
+same `entropy_composition`.
 A verifier dispatches on the (`schema_version`, `entropy_composition`)
 pair, and rejects an unknown pair or a draw whose two receipts carry
 different tags.
 
 #### `weather_fallback_reason` enum (execution receipt)
 
-- **Execution schema ≤ 4:** `"station_down"`, `"stale"`, `"unreachable"`,
-  or `null`. Free-text values are rejected. A fifth value requires a
-  schema version bump. Classification of raw weather-client errors
-  into the enum is performed by the producer before signing;
-  verifiers reject any value outside the four listed.
-- **Execution schema 5:** `"no_observation_by_deadline"` or `null`, and
-  only `null` under `drand-quicknet+elexon-freq-v1`. `"station_down"`,
-  `"stale"` and `"unreachable"` are invalid on execution schema 5, and
-  `"no_observation_by_deadline"` is invalid on execution schema ≤ 4.
+`"no_observation_by_deadline"` or `null`, and only `null` under
+`drand-quicknet+elexon-freq-v1`. Free-text values are rejected, as are
+the retired forecast values `"station_down"`, `"stale"` and
+`"unreachable"`. Another value requires a schema version bump.
 
 #### `freq_fallback_reason` enum (execution receipt, schema 5 only)
 
@@ -782,35 +754,34 @@ A third-party verifier author needs to know exactly what's frozen. The full cont
 
 | Frozen surface | Subsection |
 |---|---|
-| Receipt schemas (lock v4 / v5 / v6; execution v2 / v3 / v4 / v5); bundle-wrapper consistency rule; closed-set key-identity fields; algorithm identity tags; `weather_fallback_reason` and `freq_fallback_reason` enums; `weather_station` charset; canonical timestamp format; `schema_version` and (`schema_version`, `entropy_composition`) dispatch | §4.2.1 |
+| Receipt schemas (lock v6; execution v5; the retired forecast schemas rejected); bundle-wrapper consistency rule; closed-set key-identity fields; algorithm identity tags; `weather_fallback_reason` and `freq_fallback_reason` enums; `weather_station` charset; canonical timestamp format; `schema_version` and (`schema_version`, `entropy_composition`) dispatch | §4.2.1 |
 | JCS canonicalisation per RFC 8785; `entry_hash` canonical form; UUID canonical form; weight type; hex normalisation; empty-draw rejection | §4.2.2 |
 | SHA-256; Ed25519 (RFC 8032 §5.1); BLS12-381-G2 over the pinned drand quicknet chain hash; Merkle `sha256-pairwise-v1` construction including empty-list sentinel | §4.2.3 |
 | `key_id` fingerprint rule; key-identity routing-not-security rule; revocation semantics; temporal binding to `inserted_at`; verifier mode taxonomy (Attributable / Attestable / Self-consistency only); resolver-failure-is-terminal rule; verifier-side keyring-row consistency check; signed pin file format and verifier obligations; bundled-anchor trust root for attributable mode; `/operator/:slug/keys` and `/infrastructure/keys` response shapes | §4.2.4 |
-| Proof bundle byte contents at `/proof/:id.json`; bundle field-set closed-set rule; verifier hash-recomputation obligations; cross-receipt field consistency; weather observation window | §4.2.5 |
+| Proof bundle byte contents at `/proof/:id.json`; bundle field-set closed-set rule; verifier hash-recomputation obligations; cross-receipt field consistency | §4.2.5 |
 | Transparency anchor construction (`SHA-256("wallop-anchor-v1" || op_root || exec_root)`); domain-separator string; per-receipt leaf bytes with length prefix; deterministic leaf order; empty-epoch sub-root sentinel; anchor envelope JCS shape | §4.2.6 |
 | Cross-draw transparency commitment at `/operator/:slug`; per-operator monotonic sequence numbers; sequence-slot immutability post-lock; lock-receipt persistence; operator slug stability | §4.2.7 |
 
 #### 4.2.1 Receipt schemas
 
-- **Lock receipt schema version `"5"`**. Key set and key names per §2.6 — byte-identical to v4. The bump is a coordination flag, not a payload change: a v5 receipt signals that the bundle wrapper omits the inline `operator_public_key_hex` and the verifier MUST resolve the operator key via the rules in §4.2.4 (`KeyResolver` against `/operator/:slug/keys` or an operator-published `.well-known` pin). The historical v4 shape — same field set, with inline `operator_public_key_hex` on the bundle wrapper — remains verifiable for the life of 1.x per §4.4.
-- **Lock receipt schema version `"6"`**. The lock v5 key set plus `freq_start`: 20 fields. Carries `entropy_composition` `"drand-quicknet+metoffice-landobs-v1"` (§2.2.3) or `"drand-quicknet+elexon-freq-v1"` (§2.2.4); both tags share the one key set. `commitment_hash` MUST equal `entry_hash`. Like v5, the bundle wrapper omits the inline key.
-- **Execution receipt schema version `"5"`**. The execution v4 key set plus `freq_value` and `freq_fallback_reason`: 28 fields. Pairs only with lock `"6"`, under the same `entropy_composition`. Like v4, the bundle wrapper omits the inline key.
-- **Execution receipt schema version `"4"`**. Key set and key names per §2.6 — byte-identical to v3. Mirrors lock v5: a v4 execution receipt signals that the bundle wrapper omits the inline `infrastructure_public_key_hex` and the verifier MUST resolve the infrastructure key via §4.2.4. The v3 shape is v2 plus the `signing_key_id` field identifying the wallop infrastructure signing key. v0.16.x-era v2 receipts and v0.17.x-era v3 receipts remain verifiable for the life of 1.x per §4.4; conforming verifiers MUST dispatch on `schema_version` first per §4.2.1 "older-schema rejection."
+- **Lock receipt schema version `"6"`**. Key set and key names per §2.6: 20 fields, including `freq_start`. Carries `entropy_composition` `"drand-quicknet+metoffice-landobs-v1"` (§2.2.3) or `"drand-quicknet+elexon-freq-v1"` (§2.2.4); both tags share the one key set. `commitment_hash` MUST equal `entry_hash`. Like v5, the bundle wrapper omits the inline key.
+- **Execution receipt schema version `"5"`**. Key set and key names per §2.6: 28 fields, including `freq_value` and `freq_fallback_reason`. Pairs only with lock `"6"`, under the same `entropy_composition`. The bundle wrapper omits the inline key.
+- **Retired schemas.** Lock receipt schemas `"4"` and `"5"` and execution receipt schemas `"2"`, `"3"` and `"4"` belonged to the retired forecast method (§2.2.2). Conforming verifiers MUST reject them like any unknown `schema_version`, and the values are never reused.
 - **Bundle-wrapper / receipt-version consistency rule.** The bundle's `lock_receipt` and `execution_receipt` wrapper objects carry an inline `operator_public_key_hex` / `infrastructure_public_key_hex` only for receipt schemas that legacy-encode key identity inline (lock v4; execution v2 / v3). For lock v5 / v6 and execution v4 / v5 the wrapper MUST omit the inline key. A bundle whose receipt schema and wrapper shape disagree MUST reject as a downgrade-relabel attempt (v5 with inline key) or upgrade-spoof attempt (v4 / v3 / v2 missing inline key). Mirrors the v2 / v3 deny_unknown_fields defence one level out: producers cannot relabel one schema as another to elide or smuggle a field.
 - **Key-identity fields on receipts are closed-set.** The `signing_key_id` field is the sole permitted key-identity field on any wallop-produced signed receipt or anchor envelope. Fields describing key version, algorithm, issuance time, expiry, custodian, or provenance are out of scope for wallop_core and MUST NOT be added in 1.x. Key metadata beyond identity belongs in the published keyring artefact, not on individual receipts. Any proposal to add such a field is a v2.0.0 discussion.
 - **Anti-forgery binding vs identity disambiguation.** `lock_receipt_hash` on the execution receipt is the anti-forgery binding — it cryptographically commits the execution to the specific lock receipt signed by the operator, so an attacker cannot substitute an execution receipt onto a different lock without holding the operator key. `signing_key_id` is identity disambiguation — it tells the verifier which infrastructure public key to resolve from the keyring, closing the "try all historical keys" brute-force path after a rotation. Neither prevents compromise of a key an attacker already controls; together they localise any future key compromise to receipts signed after the compromise, without re-opening any pre-compromise receipt.
 - **Algorithm identity tags** inside every signed receipt (§2.6):
   - `jcs_version: "sha256-jcs-v1"`
   - `signature_algorithm: "ed25519"`
-  - `entropy_composition`: `"drand-quicknet+openmeteo-v1"` (lock ≤ 5 / execution ≤ 4; a frozen historical name for the forecast protocol), `"drand-quicknet+metoffice-landobs-v1"` or `"drand-quicknet+elexon-freq-v1"` (lock 6 / execution 5). The value MUST be one listed for the receipt's schema, and the lock and execution receipts of a bundle MUST carry the same value.
+  - `entropy_composition`: `"drand-quicknet+metoffice-landobs-v1"` or `"drand-quicknet+elexon-freq-v1"` (lock 6 / execution 5). The lock and execution receipts of a bundle MUST carry the same value. The retired forecast tag `"drand-quicknet+openmeteo-v1"` MUST be rejected and is never reused.
   - `drand_signature_algorithm: "bls12_381_g2"` (execution receipt only)
   - `merkle_algorithm: "sha256-pairwise-v1"` (execution receipt only)
-- **`weather_fallback_reason` enum** values: on execution schema ≤ 4, `"station_down"`, `"stale"`, `"unreachable"`, or `null`; on execution schema 5, `"no_observation_by_deadline"` or `null`. A value from the other schema's set rejects. The key MUST always be present on execution receipts; omission vs explicit `null` is a parity bug. Any other value rejects.
+- **`weather_fallback_reason` enum** values: `"no_observation_by_deadline"` or `null`. The retired forecast values (`"station_down"`, `"stale"`, `"unreachable"`) reject. The key MUST always be present on execution receipts; omission vs explicit `null` is a parity bug. Any other value rejects.
 - **`freq_fallback_reason` enum** (execution schema 5 only): `"no_frequency_by_deadline"` or `null`. The key MUST always be present on execution schema 5 receipts.
-- **`weather_station` charset**: `^[a-z0-9][a-z0-9_-]*[a-z0-9]$` — lowercase ASCII alphanumeric with internal hyphens or underscores allowed, no leading/trailing separator, minimum 2 characters, maximum 32. The 32-byte cap is deliberately tight: weather station identifiers in every sensible naming scheme (NOAA, METAR, MADIS, Met Office) fit comfortably, while the cap shuts the door on a bad-actor fork smuggling hashed identity data through an unconstrained free string. Conforming verifiers MUST reject receipts with non-matching `weather_station` values. Current production values: `"middle-wallop"` (lock ≤ 5 / execution ≤ 4) and `"wmo-03749"` (`drand-quicknet+metoffice-landobs-v1`, both receipts). Under `drand-quicknet+elexon-freq-v1` it is `null`.
+- **`weather_station` charset**: `^[a-z0-9][a-z0-9_-]*[a-z0-9]$` — lowercase ASCII alphanumeric with internal hyphens or underscores allowed, no leading/trailing separator, minimum 2 characters, maximum 32. The 32-byte cap is deliberately tight: weather station identifiers in every sensible naming scheme (NOAA, METAR, MADIS, Met Office) fit comfortably, while the cap shuts the door on a bad-actor fork smuggling hashed identity data through an unconstrained free string. Conforming verifiers MUST reject receipts with non-matching `weather_station` values. Current production value: `"wmo-03749"` (`drand-quicknet+metoffice-landobs-v1`, both receipts). Under `drand-quicknet+elexon-freq-v1` it is `null`.
 - **Timestamp format** for every timestamp field in a signed payload (`locked_at`, `executed_at`, `weather_time`, `weather_observation_time`, `freq_start`): RFC 3339 UTC, exactly 6 fractional digits, explicit `Z` suffix (never `+00:00`), matching the regex `^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{6}Z$` (anchored to the full string; no `^`/`$` multiline flag, equivalent to Rust `\A...\z`). This regex is the normative ingest acceptance test; conforming verifiers MUST gate on it *before* handing the string to a general-purpose RFC 3339 parser. Implementations MUST pad to 6 digits when the source has fewer and MUST reject any timestamp whose serialised form does not match the regex. Example: `"2026-04-23T14:22:17.123456Z"`. **Note (informative, as of 2026):** general-purpose RFC 3339 parsers (historically including Rust `chrono::DateTime::parse_from_rfc3339` and `time::OffsetDateTime`) accept variable fractional-digit counts and `+00:00` offsets and would silently admit non-canonical forms if not gated by the regex above.
-- **Verifiers MUST read `schema_version` first and dispatch on it.** Field-shape heuristics are not a substitute. A naive verifier that accepts any receipt whose fields look familiar will accept a future v5 (or v3 execution) receipt whose superset is a superset — that is a vulnerability, not a feature. Lock schema 6 and execution schema 5 carry more than one entropy tag, so for them the verifier MUST dispatch on the (`schema_version`, `entropy_composition`) pair, and MUST reject a pair it doesn't know. It never falls back to another tag's rules.
-- **Older-schema rejection and dual-version support.** A verifier pinned to a single execution schema MUST reject receipts with any OTHER `schema_version` with the same clarity as unknown-future values. A verifier MAY simultaneously support BOTH `"2"` and `"3"` execution receipts for the life of 1.x (`wallop_verifier` ≥ 0.9.0 does this — see §4.5); in that case each version MUST be parsed under its own exact-field-set schema (no shared "loose" parser), and a payload whose declared `schema_version` does not match its actual field set MUST reject. In concrete terms: a v3 payload with `signing_key_id` stripped and relabelled as `"2"` fails the v2 parser's exact-field-set check; a v2 payload relabelled as `"3"` fails the v3 parser's "`signing_key_id` is required" check. Verifiers that silently accept older receipts by pattern-matching on familiar fields enable downgrade attacks.
+- **Verifiers MUST read `schema_version` first and dispatch on it.** Field-shape heuristics are not a substitute. A naive verifier that accepts any receipt whose fields look familiar will accept a future receipt whose field set is a superset — that is a vulnerability, not a feature. Lock schema 6 and execution schema 5 carry more than one entropy tag, so the verifier MUST dispatch on the (`schema_version`, `entropy_composition`) pair, and MUST reject a pair it doesn't know. It never falls back to another tag's rules.
+- **Older-schema rejection.** A verifier MUST reject receipts with any `schema_version` other than lock `"6"` and execution `"5"`, the retired ones included, with the same clarity as unknown-future values. Each schema is parsed under its own exact field set (no shared "loose" parser), and a payload whose declared `schema_version` does not match its actual field set MUST reject. Verifiers that silently accept older receipts by pattern-matching on familiar fields enable downgrade attacks.
 
 #### 4.2.2 Canonical forms
 
@@ -944,8 +915,7 @@ The rules in this subsection apply to every key whose signatures are verified by
   - `lock_receipt_hash` in the execution receipt — recompute `SHA-256` of the lock receipt's canonical payload bytes and compare; this binding is what prevents an execution receipt from being substituted onto a different lock receipt.
   Any mismatch MUST reject. A bundle with extra entries whose `entry_hash` still matches would require a second preimage on SHA-256 — mathematically infeasible; a bundle with extra entries whose `entry_hash` does not match must reject.
 - **Cross-receipt field consistency.** Every field that appears in both the lock receipt and the execution receipt with the same name and the same intended value MUST be byte-identical across the two receipts; the verifier MUST reject a bundle on any mismatch. Without this check, an infra-level attacker signing a fraudulent execution receipt can pair it with a legitimate lock receipt from a different draw (or a different operator, or a different entropy window) — `lock_receipt_hash` alone binds the lock bytes into the exec but does not bind the exec's own duplicated fields back to the lock. The fields subject to this rule, as of this spec revision, are: **`draw_id`**, **`operator_id`**, **`sequence`**, **`drand_chain`**, **`drand_round`**, and **`weather_station`**. The bundle envelope's `draw_id` MUST also match both receipts' `draw_id`. Fields intentionally excluded are `signing_key_id` (different keys by design — the operator's on the lock receipt, the wallop infrastructure's on the execution receipt) and `operator_slug` (derivative of `operator_id`). Algorithm identity tags (`jcs_version`, `signature_algorithm`, `entropy_composition`, `drand_signature_algorithm`, `merkle_algorithm`) are already validated per-receipt against pinned values in §4.2.1 and §2.6. **Under lock 6 / execution 5** the list is longer: **`draw_id`**, **`operator_id`**, **`sequence`**, **`drand_chain`**, **`drand_round`**, **`entropy_composition`**, **`operator_slug`**, **`fair_pick_version`** and **`weather_station`** MUST each be byte-identical across the two receipts. `entropy_composition` must match across lock and execution, not just each against a pinned value; `fair_pick_version` must also be a release the verifier implements. Under `drand-quicknet+metoffice-landobs-v1` both receipts name `wmo-03749`; under `drand-quicknet+elexon-freq-v1` both carry `null`.
-- **drand round after lock (every schema).** pub(R) = 1692803367 + (R − 1) × 3 MUST be strictly later than the lock receipt's `locked_at`. Verifiers MUST reject otherwise. Under lock 6 / execution 5, `executed_at` MUST also be ≥ pub(R).
-- **Weather observation window, lock ≤ 5 / execution ≤ 4.** The execution receipt's `weather_observation_time` MUST fall in the interval `[lock.weather_time - 3600s, lock.weather_time]` inclusive. Verifiers MUST reject on violation. The bound direction follows the producer: it takes the latest hourly forecast step at or before `weather_time` (§2.2.2), so `exec.weather_observation_time` is typically earlier than `lock.weather_time` by up to an hour. The reference producer accepts ±3600 s, but produces only observations at or before `weather_time`; a receipt outside the verifier window is rejected. The check bounds only the signed `weather_observation_time`; it can't show where the value came from, and it does not stop selection within the window (§4.4).
+- **drand round after lock.** pub(R) = 1692803367 + (R − 1) × 3 MUST be strictly later than the lock receipt's `locked_at`, and `executed_at` MUST be ≥ pub(R). Verifiers MUST reject otherwise.
 - **Lock 6 / execution 5, `drand-quicknet+metoffice-landobs-v1`.** All offline, from signed fields and the tag's constants (§2.2.3). The verifier MUST reject unless:
   - `weather_time` is a whole UTC hour and is the latest hour h with h + W + 60 s ≤ pub(R);
   - `freq_start` is floor15(pub(R) − 360 s), the window start of R (§2.2.4);
@@ -1001,22 +971,21 @@ The following surfaces are explicitly **not** part of the 1.x stability contract
 - **Pre-lock proof-page rendering and the proof-page fingerprint.** A draw in `:open` status has no signed lock receipt, no committed `entry_hash`, no entropy declaration, and no execution receipt. The public proof page therefore renders only the build-side allowlist defined in `WallopWeb.ProofPreLockView` (cross-language vector at `spec/vectors/pre_lock_wide_gap_v1.json`). **The PDF fingerprint sidecar is undefined for pre-lock draws** — implementations MUST NOT emit one, and verifiers MUST reject any fingerprint claim attached to a draw not yet locked. The fingerprint is a function of signed receipt bytes that do not yet exist; a "pre-lock fingerprint" is structurally a category error. Allowlist evolution (adding or removing a field) is operational and may change in any 1.x release subject to the wide-gap vector being updated; verifiers consuming the pre-lock surface MUST treat any field outside the version-pinned allowlist as out of contract.
 - **Operational knobs**. Rate limit thresholds, retry policies, entropy attempt caps, worker queue configuration, Oban pruning windows, weather fallback attempt budgets. None of these appear in signed bytes; none are protocol.
 - **Webhook payload schema**. Webhooks are operational. Additive changes in any 1.x release are permitted. The one protocol-adjacent commitment: **webhook payloads will not expose information beyond what is already in the proof bundle.** Webhooks are a push-notification convenience, not a second protocol surface.
-- **On-disk storage conventions** (database schema columns beyond what is surfaced in the proof bundle, filesystem layout, cache layouts). The bytes a verifier consumes are protocol; how those bytes are stored is not. **Separately**: wallop retains the raw inputs needed to reconstruct a proof bundle (weather API response, drand beacon payload) for at least the lifetime of the 1.x major. A proof bundle fetched two years post-draw still verifies against live wallop; operators requiring longer retention SHOULD archive bundles themselves.
+- **On-disk storage conventions** (database schema columns beyond what is surfaced in the proof bundle, filesystem layout, cache layouts). The bytes a verifier consumes are protocol; how those bytes are stored is not. **Separately**: wallop retains the raw inputs needed to reconstruct a proof bundle (weather API response, drand beacon payload) for at least the lifetime of the 1.x major. A proof bundle fetched two years post-draw still verifies against live wallop; operators requiring longer retention SHOULD archive bundles themselves. Retired forecast draws (§2.2.2) are the exception: their bundles are no longer served.
 - **Error message strings** returned to operators or rendered on the proof page. Copy may evolve in any release, with one protocol-adjacent rule: **error strings MUST NOT leak entry UUIDs, entry counts, or draw internals beyond what is already in the proof bundle.** Observability leaks via error messages are a classic privacy footgun; copy changes don't get to reintroduce them.
 
 - **Observable side channels** on public proof endpoints (HTTP status codes, response timings, `Cache-Control` and `Server-Timing` headers, `ETag` values, rate-limit response headers). These SHOULD NOT differentiate between draw states in ways that reveal information absent from the public proof bundle. Specifically: a draw that exists but hasn't reached the stage a caller is asking about, and a draw that does not exist, SHOULD return the same status code and body shape to an unauthenticated caller. Timing oracles on entry-existence checks: response times on self-check endpoints SHOULD NOT materially vary with hit vs miss. A measurable version of this rule (e.g. "p99 differential ≤ Nms under a reference load harness") is follow-up work for the pre-1.0.0 infra-hardening audit; until that ships, implementations aim for indistinguishability in the qualitative sense and document any known oracle. **If that audit does not land before 1.0.0 final, this bullet stays qualitative; the qualitative form is the 1.x floor and a measurable form can only be introduced additively (never as a normative strengthening of existing SHOULDs — that would be a v2.0.0 under §4.1).**
+- **Retired forecast draws.** A retired forecast draw's proof routes (§2.2.2) respond exactly as for an unknown draw: the page, the entry check, the entry list, the PDF and the proof JSON. This reveals nothing the operator's public registry doesn't already list. Its signed receipts stay available, byte for byte, at `/operator/:slug/receipts/:seq` and `/operator/:slug/executions/:seq`, because the transparency anchors commit to those bytes.
 
 ### 4.4 Historical verifiability
 
-Every receipt ever produced by a wallop_core version **≥ 0.16.0** remains verifiable for the life of the 1.x series.
+Every lock schema 6 / execution schema 5 receipt remains verifiable for the life of the 1.x series.
 
-- A verifier that understands lock receipt v4 and execution receipts v2 **and** v3 continues to verify every draw locked from wallop_core 0.16.0 onwards. `wallop_verifier` ≥ 0.9.0 provides this dual-version support; earlier verifier versions that understand only v2 can verify v0.16.x-era receipts but MUST reject anything labelled `"3"` per §4.2.1.
-- Lock schema 5 / execution schema 4 receipts (no inline keys on the bundle wrapper) need `wallop_verifier` 0.12.0 or later.
 - Lock schema 6 / execution schema 5 receipts need a verifier that knows both of their entropy tags: `wallop_verifier` 0.17.0 or later. Older verifiers MUST reject them as unknown schemas (§4.2.1).
+- Before 1.0, the forecast receipts (lock schemas 4 and 5, execution schemas 2, 3 and 4; §2.2.2) were retired. Conforming verifiers reject them, and wallop's proof pages no longer serve them (§4.3). Wallop makes no claim that a forecast bundle verifies. `wallop_verifier` before 0.18 still parses them; any result it gives is not a wallop claim. The signed bytes stay in the operator's public record and under the transparency anchors.
 - Future 1.x verifier releases MAY add support for newer schema versions without removing support for previously-frozen versions. `schema_version` is the discriminator.
 - v0.15.x and earlier receipts are not covered by this contract. They exist only in pre-launch dev environments and are historical curiosities; no 1.x verifier is obliged to reproduce their bytes.
-- **Keyring retention trust assumption (operational, not cryptographic).** Historical verifiability for the life of 1.x requires the wallop operator to retain every infrastructure signing key used to sign any 1.x-era execution receipt or transparency anchor, for the duration of 1.x. A key that is rotated remains in the keyring (marked `revoked_at` per §4.2.4 revocation semantics), not removed. A verifier that encounters an unresolvable `signing_key_id` on a historical receipt MUST reject per §4.2.4 — this is what makes the retention commitment load-bearing for goal 3 (no holes). Operators who, for any reason, cannot meet this retention commitment for 1.x MUST declare that at deployment time; downstream verifiers have no way to distinguish "key rotated out" from "receipt tampered" if the keyring is incomplete.
-- **Weather trust, lock schema ≤ 5 / execution schema ≤ 4 (operational, not cryptographic).** The weather value is a forecast product (§2.2.2), recorded by wallop and not attested by anyone. It can't be checked against a permanent archive: a forecast value can be published before lock, can change between model runs, and can't be re-fetched later. The §4.2.5 window bounds *when* the forecast step falls, not *which* value was recorded. The drand value is public before the forecast is fetched (§2.2.2), and the drand-only fallback (§2.4) is also decided then. A compromised producer could therefore pick the seed: it could record any forecast value it was willing to claim, or fall back to drand alone. Against a compromised wallop, these draws rest on wallop's word. drand still stops anyone else, the operator included, from knowing the result at lock. Transparency anchors (§4.2.6) don't change this; they detect only post-execution rewriting of a completed draw. Known residual trust assumption of the 1.x protocol.
+- **Keyring retention trust assumption (operational, not cryptographic).** Historical verifiability for the life of 1.x requires the wallop operator to retain every infrastructure signing key used to sign any execution receipt schema 5 or any transparency anchor, for the duration of 1.x. A key that is rotated remains in the keyring (marked `revoked_at` per §4.2.4 revocation semantics), not removed. A verifier that encounters an unresolvable `signing_key_id` on a historical receipt MUST reject per §4.2.4 — this is what makes the retention commitment load-bearing for goal 3 (no holes). Operators who, for any reason, cannot meet this retention commitment for 1.x MUST declare that at deployment time; downstream verifiers have no way to distinguish "key rotated out" from "receipt tampered" if the keyring is incomplete.
 - **Weather trust, lock schema 6 / execution schema 5 (`drand-quicknet+metoffice-landobs-v1`).**
   - **Proven from the bundle alone:**
     - the entries were fixed and signed at least 46 minutes before the observation hour;
@@ -1050,10 +1019,10 @@ Every receipt ever produced by a wallop_core version **≥ 0.16.0** remains veri
   - `weather-attest` does the re-fetch, with no key. NESO's one-second archive is a different measurement chain, so it shows plausibility only. A fallback can't be proven after the fact: it is wallop's statement, committed by F_freq, at least M seconds before pub(R) (the commit-time check).
   - **The database guards** cover bugs and partial compromise. They don't cover wallop itself: its server owns the database, so it could disable triggers, use `SET CONSTRAINTS … IMMEDIATE`, or use `PREPARE TRANSACTION` to defer a commit past pub(R). An in-database timestamp can't prove "not after" without publishing outside wallop before pub(R). Pinned in tests: `max_prepared_transactions = 0`, and no `SET CONSTRAINTS` or `PREPARE TRANSACTION` in core's `lib/`. The same applies to the observation-weather store.
   - Contains BMRS data © Elexon Limited copyright and database right [year].
-- **drand BLS attestation trust assumption (operational, not cryptographic).** wallop_core's producer does NOT verify the drand BLS signature when fetching a beacon; it trusts the drand relay's TLS chain to deliver an honest `(round, randomness, signature)` tuple and commits those bytes verbatim into the signed execution receipt. Any verifier consuming the receipt re-verifies the BLS signature off the receipt bytes against the public chain key (`drand_chain` in the signed payload), so a forgery introduced between the drand relay and the producer is detectable downstream and the receipt rejects at verification. The producer also trusts the relay for the current-round number it commits as `drand_round` on the **lock** receipt; a relay that lies about the current round at lock time would let a colluding producer pin a round it can grind. That gap is bounded by two complementary checks: the cross-receipt consistency rule in §4.2.5 (the execution receipt's `drand_round` MUST equal the lock receipt's `drand_round`, byte-identical) and the verifier-side BLS check on the eventual execution receipt — so the grinder's chosen round must still verify against the public chain key with its actually-published bytes. The trust assumption is therefore narrow: a producer compromised together with the drand relay — or a TLS MITM between them — can sign one bad-bytes receipt that the verifier-side check correctly rejects, but the resulting `failed`/`completed`-with-bad-bytes draw lives forever in the operator's public listing as a publicly visible artefact that cannot be silently corrected. No fairness invariant is broken; verifiers reach the right verdict. The cost of the assumption is a UX failure mode, not a fairness failure mode. Closing it would require running drand BLS verification producer-side as well as verifier-side, which is out of scope for 1.x (goal 2). This paragraph describes lock schema ≤ 5 draws. For lock schema 6 draws the producer does check each beacon before using it: the chain is quicknet, the round is the one committed, the BLS signature verifies against quicknet's public key, and the randomness is the SHA-256 of the signature. A beacon that fails is refused and another relay is asked; if none answers well, the producer retries, and the draw is never marked failed for it.
+- **drand beacon checks.** Before using a beacon, the producer checks it: the chain is quicknet, the round is the one committed at lock, the BLS signature verifies against quicknet's public key, and the randomness is the SHA-256 of the signature. A beacon that fails is refused and another relay is asked; if none answers well, the producer retries, and the draw is never marked failed for it. The committed round follows from `draw_at` by the published formula (§2.2.1), so no relay chooses it. Verifiers check the BLS signature again from the receipt bytes against the public chain key (`drand_chain` in the signed payload), so a forged beacon is rejected at verification even if a producer signed it.
 - **Single-node rate-limit trust assumption (operational, not cryptographic).** The per-IP, per-API-key, and per-self-check rate-limit buckets are stored in node-local ETS and are not replicated across BEAM nodes. wallop_core 1.x ships single-node; running multiple nodes behind a load balancer would multiply each bucket's effective ceiling by node count, which is not the rate-limit guarantee the documentation makes. Operators MUST keep the deployment single-node, or replace the rate-limit storage with a distributed counter (e.g. Hammer with Redis, or a Postgres NOTIFY-backed counter), before scaling out. No commitment, receipt, or seed byte depends on rate-limit state; the assumption is purely an operational constraint on horizontal scale-out and a documented limit on what "we rate-limit per IP" means as deployed.
-- **API key compromise blast radius trust assumption (operational, not cryptographic).** A compromised api_key can perform every action that key was authorised to perform, including locking any of the operator's open draws — which commits the entry set and starts the entropy pipeline. wallop_core 1.x does not provide per-action capability flags on api keys; key compromise is a full takeover of that key's draws. Operators are responsible for key custody and rotation. Deactivating a compromised key (via `:deactivate` on the `ApiKey` resource) stops new requests immediately, but does NOT invalidate in-flight Oban work that was authorised before deactivation: the entropy and webhook flows complete on draws that were authorised at create time, by design. The resulting lock or execution receipt is a permanent artefact of the historical authorisation window, not of the current authorisation state — known 1.x limitation, candidate for revisit post-1.0 if operator demand justifies the added surface area. **Operators have no API surface to induce `:failed` state on an in-flight draw**: every `:failed` transition is made by wallop's own workers, never by an operator request. On lock schema ≤ 5 that happens after the entropy worker runs out of retries. On lock schema 6 it can happen only before the fetch deadline (§2.4). The `failure_reason` on the public listing therefore always identifies an infrastructure-attributable cause, not an operator action — relevant when `lock` carries an operator-supplied `weather_time` that puts the draw in `:awaiting_entropy` for an extended window. The transparency listing in §4.2.7 makes the gap observable: every locked draw is publicly visible from lock time onwards, so a surprise lock by a stolen key is detectable by any party watching the operator's registry, even if not preventable in-flight.
-- **Entropy-queue ordering trust assumption (operational, not cryptographic).** Entropy fetches are processed FIFO with bounded concurrency from Oban queues. A single authenticated operator can extend other operators' draw-completion latency by minutes by exhausting their per-key HTTP rate limit and saturating the queue with concurrent locks. This is a scheduling property, not a fairness property — the determinism of `winner = fair_pick(entries, seed)` is unaffected because `drand_round` is committed and signed in the lock receipt at lock time, before any worker fires. A delayed worker fetches the same round-N beacon bytes and binds the same entropy. The producer MUST NOT substitute a later round. On lock schema ≤ 5 it fails the draw on permanent drand error. On lock schema 6 it never fails the draw after the fetch deadline, and retries (§2.4). The reference implementation retries the same `(chain, round)` and never advances the round. Worst-case cross-tenant influence is therefore bounded to execution timeliness, not outcome. Mitigation is bounded by the per-key HTTP rate limit; an additional per-key per-day cap is a planned 1.x-or-later hardening tracked separately. Re-open trigger: any operator reports sustained starvation, or observed queue depth exceeds 100 jobs for more than 5 minutes in production at current operator scale. At that point the right next steps are per-tenant fairness (round-robin across api_key_ids) or a per-tenant concurrency cap — both achievable additively without changing any signed bytes or schema.
+- **API key compromise blast radius trust assumption (operational, not cryptographic).** A compromised api_key can perform every action that key was authorised to perform, including locking any of the operator's open draws — which commits the entry set and starts the entropy pipeline. wallop_core 1.x does not provide per-action capability flags on api keys; key compromise is a full takeover of that key's draws. Operators are responsible for key custody and rotation. Deactivating a compromised key (via `:deactivate` on the `ApiKey` resource) stops new requests immediately, but does NOT invalidate in-flight Oban work that was authorised before deactivation: the entropy and webhook flows complete on draws that were authorised at create time, by design. The resulting lock or execution receipt is a permanent artefact of the historical authorisation window, not of the current authorisation state — known 1.x limitation, candidate for revisit post-1.0 if operator demand justifies the added surface area. **Operators have no API surface to induce `:failed` state on an in-flight draw**: every `:failed` transition is made by wallop itself, never by an operator request. On lock schema 6, only before the fetch deadline (§2.4). Retired forecast draws failed after retries ran out, or were failed by the retirement drain (`forecast_retired`). The `failure_reason` on the public listing therefore always identifies an infrastructure-attributable cause, not an operator action — relevant when `lock` carries an operator-supplied `draw_at` that puts the draw in `:awaiting_entropy` for an extended window. The transparency listing in §4.2.7 makes the gap observable: every locked draw is publicly visible from lock time onwards, so a surprise lock by a stolen key is detectable by any party watching the operator's registry, even if not preventable in-flight.
+- **Entropy-queue ordering trust assumption (operational, not cryptographic).** Entropy fetches are processed FIFO with bounded concurrency from Oban queues. A single authenticated operator can extend other operators' draw-completion latency by minutes by exhausting their per-key HTTP rate limit and saturating the queue with concurrent locks. This is a scheduling property, not a fairness property — the determinism of `winner = fair_pick(entries, seed)` is unaffected because `drand_round` is committed and signed in the lock receipt at lock time, before any worker fires. A delayed worker fetches the same round-N beacon bytes and binds the same entropy. The producer MUST NOT substitute a later round. It never fails the draw after the fetch deadline, and retries (§2.4). The reference implementation retries the same `(chain, round)` and never advances the round. Worst-case cross-tenant influence is therefore bounded to execution timeliness, not outcome. Mitigation is bounded by the per-key HTTP rate limit; an additional per-key per-day cap is a planned 1.x-or-later hardening tracked separately. Re-open trigger: any operator reports sustained starvation, or observed queue depth exceeds 100 jobs for more than 5 minutes in production at current operator scale. At that point the right next steps are per-tenant fairness (round-robin across api_key_ids) or a per-tenant concurrency cap — both achievable additively without changing any signed bytes or schema.
 - **Proof-page verify command trust assumption (operational, not cryptographic).** The reference implementation's proof page renders a pre-filled `wallop-verify --mode attributable` command. On a deployment whose infrastructure keys are in the released bundled anchor set it pre-fills identifiers only — base URL (from server configuration, never the request's `Host` header), operator slug, and bundle filename — and never `--infra-key-pin`. A wrong identifier makes verification fail, never pass: the pin must verify against an anchor the verifier already holds, and `pin.operator_slug` must equal the bundle's. Deployments outside the bundled set (staging, development, self-hosted) additionally pre-fill one `--infra-key-pin` record per key in their full infrastructure keyring; that command checks the bundle is consistent with what the instance publishes, not that it is authentic, and the page says so. The page itself is not a trust root: a compromised server controls the whole page, including which form of the command it shows and the install instruction above it. Attributable-mode independence comes from obtaining `wallop_verifier` from crates.io and the invocation from published documentation, not from the proof page.
 - **Keyring pin replay (known gap).** Pin freshness (§4.2.4) rejects only future-dated pins; verifiers accept any older genuine pin. A server, or a mirror the verifier user points `--pin-from-url` at, can therefore serve a previously published pin whose `keys[]` still lists an operator key that has since been rotated out. Exploitation also requires that rotated-out key's private half; without it, a replayed pin yields nothing. The reference verifier does not yet emit the SHOULD-level stale-pin warning described under Pin freshness. Until it does, a verifier user relying on operator key rotation for compromise recovery should check the pin's `published_at` themselves.
 

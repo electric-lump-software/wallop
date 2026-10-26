@@ -18,6 +18,7 @@ defmodule WallopCore.Resources.DrawEntropyTest do
 
   alias Ecto.Adapters.SQL
   alias WallopCore.Entropy.DrandClient
+  alias WallopCore.Weather.{Schedule, Stations}
 
   describe "create with entropy declarations" do
     test "sets status to awaiting_entropy" do
@@ -36,21 +37,21 @@ defmodule WallopCore.Resources.DrawEntropyTest do
       assert draw.drand_chain == DrandClient.quicknet_chain_hash()
     end
 
-    test "declares weather_time as ~3-5 minutes from now" do
+    test "declares the observation hour that follows from the round" do
       api_key = create_api_key()
       draw = create_draw(api_key)
 
-      assert draw.weather_time != nil
-      # weather_time should be 3-5 minutes from now (jittered)
-      diff = DateTime.diff(draw.weather_time, DateTime.utc_now(), :second)
-      assert diff >= 170 and diff <= 310, "Expected weather_time 3-5min from now, got #{diff}s"
+      assert draw.weather_time ==
+               Schedule.weather_time_for_round(draw.drand_round)
+
+      assert DateTime.compare(draw.weather_time, DateTime.utc_now()) == :gt
     end
 
-    test "declares weather_station as middle-wallop" do
+    test "declares Middle Wallop's station" do
       api_key = create_api_key()
       draw = create_draw(api_key)
 
-      assert draw.weather_station == "middle-wallop"
+      assert draw.weather_station == Stations.primary().id
     end
 
     test "rejects invalid callback_url (HTTP) in prod" do
@@ -72,11 +73,11 @@ defmodule WallopCore.Resources.DrawEntropyTest do
       assert draw.callback_url == "https://example.com/hook"
     end
 
-    test "schedules an Oban EntropyWorker job" do
+    test "schedules its execution job" do
       api_key = create_api_key()
       draw = create_draw(api_key)
 
-      jobs = all_enqueued(worker: WallopCore.Entropy.EntropyWorker)
+      jobs = all_enqueued(worker: WallopCore.Entropy.ObservationDrawWorker)
       job = Enum.find(jobs, fn j -> j.args["draw_id"] == draw.id end)
       assert job != nil
       assert job.scheduled_at != nil

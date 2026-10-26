@@ -46,7 +46,6 @@ defmodule WallopWeb.Components.VerifyBlock do
           data-seed-full={@draw.seed}
           data-drand-round={@draw.drand_round}
           data-drand-randomness={@draw.drand_randomness}
-          data-weather-value={@draw.weather_value}
           data-winner-count={length(@draw.results || [])}
           data-entries-json={@entries_json}
           data-results-json={@results_json}

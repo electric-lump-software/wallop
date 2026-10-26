@@ -69,12 +69,16 @@ defmodule WallopWeb.Api.LockV6Test do
       assert DateTime.compare(expected, draw_at) == :eq
     end
 
-    test "weather_time is refused, pointing at weather_time", %{key: key, draw: draw} do
+    test "weather_time is refused as an unknown input, pointing at weather_time", %{
+      key: key,
+      draw: draw
+    } do
       [error] =
         lock(key, draw, %{"weather_time" => DateTime.to_iso8601(top_of_hour(3))}, 400)["errors"]
 
+      # weather_time is no longer a lock input: the body is refused.
       assert error["source"]["pointer"] == "/data/attributes/weather_time"
-      assert error["detail"] == "can't be set for this operator; send draw_at instead"
+      assert error["code"] == "invalid_body"
     end
   end
 
@@ -97,14 +101,6 @@ defmodule WallopWeb.Api.LockV6Test do
       end
 
       assert Ash.get!(WallopCore.Resources.Draw, draw.id, authorize?: false).status == :open
-    end
-
-    test "a forecast lock is unchanged" do
-      put_observation_readiness!(nil)
-      key = create_api_key()
-      attrs = lock(key, open_draw_with_entries(key), %{}, 200)["data"]["attributes"]
-      assert attrs |> Map.keys() |> Enum.sort() == forecast_lock_keys()
-      assert attrs["status"] == "awaiting_entropy"
     end
   end
 
@@ -139,71 +135,4 @@ defmodule WallopWeb.Api.LockV6Test do
       assert error.detail =~ "is too late: this draw must be locked by"
     end
   end
-
-  describe "forecast operators" do
-    setup do
-      key = create_api_key()
-      %{key: key, draw: open_draw_with_entries(key)}
-    end
-
-    test "draw_at is refused, pointing at draw_at", %{key: key, draw: draw} do
-      [error] =
-        lock(key, draw, %{"draw_at" => DateTime.to_iso8601(top_of_hour(3))}, 400)["errors"]
-
-      assert error["code"] == "invalid_argument"
-      assert error["source"]["pointer"] == "/data/attributes/draw_at"
-
-      assert error["detail"] ==
-               "is only available to operators on the observation-weather or grid-frequency protocol"
-
-      assert error["meta"] == %{}
-    end
-
-    test "a plain lock's response is unchanged", %{key: key, draw: draw} do
-      attrs = lock(key, draw, %{}, 200)["data"]["attributes"]
-
-      assert attrs |> Map.keys() |> Enum.sort() == forecast_lock_keys()
-      assert attrs["status"] == "awaiting_entropy"
-      assert attrs["expected_result_at"] == nil
-      assert attrs["weather_station"] == "middle-wallop"
-
-      # The grid-frequency columns are in every draw's JSON, null here.
-      assert Map.take(attrs, ~w(freq_start freq_value freq_fallback_reason)) ==
-               %{"freq_start" => nil, "freq_value" => nil, "freq_fallback_reason" => nil}
-    end
-
-    test "weather_time errors are unchanged", %{key: key, draw: draw} do
-      sub_second =
-        %{DateTime.add(DateTime.utc_now(), 3600) | microsecond: {123_456, 6}}
-        |> DateTime.to_iso8601()
-
-      [error] = lock(key, draw, %{"weather_time" => sub_second}, 400)["errors"]
-
-      assert Map.take(error, ["status", "code", "title", "detail", "source", "meta"]) ==
-               forecast_weather_time_error()
-    end
-  end
-
-  # Captured from the lock response before draw_at existed.
-  defp forecast_lock_keys,
-    do: ~w(callback_url check_url drand_chain drand_randomness drand_response drand_round
-           drand_signature entry_canonical entry_count entry_hash executed_at
-           expected_result_at failed_at failure_reason freq_fallback_reason freq_start
-           freq_value metadata name operator_id
-           operator_sequence results seed seed_json seed_source stage_timestamps status
-           weather_fallback_reason weather_observation_time weather_raw weather_station
-           weather_time weather_value winner_count)
-
-  # Captured from the lock error before draw_at existed.
-  defp forecast_weather_time_error,
-    do: %{
-      "code" => "invalid_attribute",
-      "detail" =>
-        "must have second precision (no sub-second component); " <>
-          "the supplied value is signed verbatim into the lock receipt",
-      "meta" => %{},
-      "source" => %{"pointer" => "/data/attributes/weather_time"},
-      "status" => "400",
-      "title" => "InvalidAttribute"
-    }
 end

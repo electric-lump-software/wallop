@@ -1,8 +1,8 @@
 defmodule WallopCore.Resources.Draw.Changes.LockDraw do
   @moduledoc """
   Locks an open draw: validates entry count, computes entry hash from
-  the entries table, prunes idempotency rows, and delegates to
-  DeclareEntropy.
+  the entries table and prunes idempotency rows. The entropy declaration
+  is the tag's own change (`DeclareEntropyV6` or `DeclareEntropyFreq`).
 
   Runs as before_action so all changes are applied in a single DB write
   inside the action's transaction. The idempotency prune (ADR-0012) is

@@ -10,13 +10,15 @@ Wallop runs verifiably fair random draws where nobody controls the outcome — n
 
 Entries are locked before the draw. The seed is computed from a [drand](https://drand.love) beacon value and a second public source: Met Office weather for Middle Wallop, Hampshire — three villages in the Test Valley, and the reason the service is called Wallop — or, for operators who need a result within minutes, the frequency of the GB electricity grid. When the second source doesn't arrive in time, a draw falls back by its protocol's rules, at worst to drand on its own, and its proof says which. No one can predict a drand value before its round publishes. What each second source adds, and what is trusted rather than proven, is set out in [the spec](spec/protocol.md#44-historical-verifiability) (§4.4). The algorithm is open source and deterministic. Anyone can re-run it and verify the result.
 
+**Can Wallop influence the result?** No. Every choice we could make — which reading to use, or to fall back without one — is fixed by rule and settled before the drand value it's mixed with is published. Bending a result would need a threshold of the drand network in on it, or Wallop deliberately getting round its own database, and you can check every input yourself.
+
 You shouldn't trust us. [Verify it yourself](https://wallop.run/how-verification-works).
 
 ## How it works
 
 1. **Lock entries** — caller submits entry list, Wallop computes and publishes the entry hash
 2. **Commit** — Wallop declares which future entropy sources will be used (a drand beacon round, plus a weather time or a grid-frequency window)
-3. **Fetch entropy** — Wallop fetches randomness from [drand](https://drand.love) and the declared second source: a Met Office weather value, or GB grid-frequency readings from Elexon
+3. **Fetch entropy** — Wallop fetches randomness from [drand](https://drand.love) and the declared second source: Middle Wallop's Met Office weather observation, or GB grid-frequency readings from Elexon
 4. **Compute seed & run** — entropy sources are combined via JCS + SHA256 to produce a seed, which is fed into the deterministic [fair_pick](https://github.com/electric-lump-software/fair_pick) algorithm
 5. **Permanent proof** — the full proof record (entries, entropy, seed, results) is stored permanently with a public verification page
 
@@ -26,7 +28,7 @@ Single-draw verifiability — the commit-reveal protocol above — proves any *o
 
 - Every API key may belong to an `Operator`. Operators are public identities with a stable slug.
 - Every draw an operator locks gets a **gap-free per-operator sequence number**. Discarded, expired, and failed draws still occupy their slot — gaps are detectable.
-- At lock time, wallop_core signs an Ed25519 **commitment receipt** (lock receipt, schema 5 (forecast) or 6) over a canonical JSON payload that binds the operator, per-operator `sequence`, `draw_id`, `commitment_hash`, `entry_hash`, `locked_at`, `signing_key_id`, declared entropy sources (drand chain + round, weather station + time), `winner_count`, `wallop_core_version`, `fair_pick_version`, and the pinned algorithm identity tags (JCS version, signature algorithm, entropy composition). The receipt is inserted in the same transaction as the lock, so a draw cannot be locked without its receipt being committed atomically. The execution receipt (schema 4 or 5) is signed at draw-completion time and commits the realised entropy values, the computed seed, the ordered results, the `lock_receipt_hash` (binding execution to the specific lock receipt), and the `signing_key_id` of the wallop infrastructure key that produced the signature.
+- At lock time, wallop_core signs an Ed25519 **commitment receipt** (lock receipt, schema 6) over a canonical JSON payload that binds the operator, per-operator `sequence`, `draw_id`, `commitment_hash`, `entry_hash`, `locked_at`, `signing_key_id`, declared entropy sources (drand chain + round, weather station + time), `winner_count`, `wallop_core_version`, `fair_pick_version`, and the pinned algorithm identity tags (JCS version, signature algorithm, entropy composition). The receipt is inserted in the same transaction as the lock, so a draw cannot be locked without its receipt being committed atomically. The execution receipt (schema 5) is signed at draw-completion time and commits the realised entropy values, the computed seed, the ordered results, the `lock_receipt_hash` (binding execution to the specific lock receipt), and the `signing_key_id` of the wallop infrastructure key that produced the signature.
 - The operator's public registry lives at `/operator/:slug` and lists every draw they have ever locked, in sequence order, with status badges. Signed receipts are served as JSON at `/operator/:slug/receipts` and individually at `/operator/:slug/receipts/:n`. The current Ed25519 public key is at `/operator/:slug/key`.
 - A **transparency log** at `/transparency` publishes a daily Merkle root over all receipts, pinned to a drand round number. Mirroring the receipt log over time and recomputing the root lets a third party detect any retroactive tampering with operator receipts.
 
@@ -53,7 +55,7 @@ If your app includes `wallop_core` as a dependency and shares the same database,
 config :wallop_core, Oban,
   repo: WallopCore.Repo,
   prefix: "oban_app",
-  queues: [entropy: 10, webhooks: 5, default: 5, weather: 5, frequency: 6, v6_execution: 5],
+  queues: [webhooks: 5, default: 5, weather: 5, frequency: 6, v6_execution: 5],
   plugins: []
 ```
 
@@ -72,7 +74,7 @@ defmodule MyApp.Repo.Migrations.AddObanAppJobs do
 end
 ```
 
-Your app also needs `MET_OFFICE_API_KEY` and `HONEYCOMB_API_KEY` environment variables set, since the EntropyWorker and OTel exporter run in your process. `MET_OFFICE_OBS_API_KEY` (a Met Office Weather DataHub Land Observations key) goes only on the service that runs the `weather` queue; an app with an insert-only Oban doesn't need it. That service records, every 10 minutes, whether it holds a usable key, and observation-weather locks in any service are refused (`400` `invalid_argument`) unless it recently said yes. A draw locked before the key went away falls back by rule, visibly in the receipt. Forecast draws don't need it. The grid-frequency source needs no key. Set a distinct OTel service name so traces are separated in Honeycomb:
+Your app also needs the `HONEYCOMB_API_KEY` environment variable set, since the OTel exporter runs in your process. `MET_OFFICE_OBS_API_KEY` (a Met Office Weather DataHub Land Observations key) goes only on the service that runs the `weather` queue; an app with an insert-only Oban doesn't need it. That service records, every 10 minutes, whether it holds a usable key, and observation-weather locks in any service are refused (`400` `invalid_argument`) unless it recently said yes. A draw locked before the key went away falls back by rule, visibly in the receipt. The grid-frequency source needs no key. Set a distinct OTel service name so traces are separated in Honeycomb:
 
 ```elixir
 # In your app's runtime.exs
@@ -149,11 +151,12 @@ Production sets the same variable via the hosting platform's env var mechanism.
 
 - `MET_OFFICE_OBS_API_KEY` (optional): the Met Office Land Observations key for observation-weather draws, on the service that runs the `weather` queue. That service reports whether it has a usable key at boot and every 10 minutes; without a recent yes, observation-weather locks are refused.
 - `LAND_OBS_DAILY_CAP` (optional): the most Land Observations calls in a UTC day, a whole number from 1 to 900; default 800. Anything else stops the boot. A full day of polling costs at most 624 calls (26 an hour), so the default only trips if something has gone wrong; below 624 the boot warns that weather draws may fall back. At the cap, wallop stops calling until midnight UTC, and the hour's draws fall back as they would for any late reading.
-- `POOL_SIZE` (production): the database pool size; default 20. The job queues add up to 36, which is fine because no job holds a connection across an HTTP call.
+- `POOL_SIZE` (production): the database pool size; default 20. The job queues add up to 26, which is fine because no job holds a connection across an HTTP call.
+- `EXAMPLE_PROOF_URL` (optional): an `https://` URL of a completed observation-weather proof page, linked from the home page and the verification explainer as the example proof. Unset, the example links are hidden. Set to anything not starting with `https://`, the boot stops.
 
 ## Status
 
-Active development. The algorithm, protocol layer, API, entropy layer (drand + Met Office weather), and public proof pages are all implemented.
+Active development. The algorithm, protocol layer, API, entropy layer (drand, Met Office weather and GB grid frequency), and public proof pages are all implemented.
 
 ## License
 

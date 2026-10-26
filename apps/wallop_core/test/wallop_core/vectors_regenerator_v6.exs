@@ -1285,26 +1285,25 @@ defmodule WallopCore.VectorsV6 do
     landobs ++ freq
   end
 
-  # State (a)'s execution receipt as the execution 4 builder makes it: the
-  # forecast tag, schema 4, no freq fields.
+  # State (a)'s execution receipt in the retired execution 4 shape: the
+  # forecast tag, schema 4, no freq fields. That builder is gone; its field
+  # set is the shared base, so this is the v5 receipt without the fields
+  # the Land Obs tag adds.
   defp exec_v4(exec) do
-    {_, lock_jcs, input, _} = base(:a)
-
-    input
-    |> Map.drop([:entropy_composition, :freq_value, :freq_fallback_reason])
-    |> Map.put(:lock_receipt_hash, sha256_hex(lock_jcs))
-    |> Protocol.build_execution_receipt_payload()
-    |> Jason.decode!()
-    |> tap(fn v4 -> true = v4["seed"] == exec["seed"] end)
+    exec
+    |> Map.drop(["freq_value", "freq_fallback_reason"])
+    |> Map.merge(%{"schema_version" => "4", "entropy_composition" => @forecast})
   end
 
-  # The state (a) lock as the lock 5 builder makes it: the forecast tag,
-  # schema 5, no freq_start.
+  # The state (a) lock in the retired lock 5 shape: the forecast tag,
+  # schema 5, no freq_start. Built from the v6 lock the same way.
   defp lock_v5 do
-    lock_input(@landobs)
-    |> Map.drop([:entropy_composition, :freq_start])
-    |> Protocol.build_receipt_payload()
+    {_, lock_jcs, _, _} = base(:a)
+
+    lock_jcs
     |> Jason.decode!()
+    |> Map.delete("freq_start")
+    |> Map.merge(%{"schema_version" => "5", "entropy_composition" => @forecast})
   end
 
   # ── Output ────────────────────────────────────────────────────────

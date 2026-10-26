@@ -16,10 +16,9 @@ defmodule WallopCore.Entropy.DrandClient do
   next relay and callers retry. `{:error, :invalid_response}` is kept for a
   JSON object that is the wrong beacon (wrong round, bad randomness).
 
-  With `verify_bls: true` (observation-weather draws) the beacon must also
-  be quicknet's own: its BLS signature is checked against quicknet's public
-  key (`WallopCore.Drand.Bls`), so a relay can't forge a round. Forecast
-  draws don't pass it yet and are checked as before.
+  With `verify_bls: true` (every draw execution passes it) the beacon must
+  also be quicknet's own: its BLS signature is checked against quicknet's
+  public key (`WallopCore.Drand.Bls`), so a relay can't forge a round.
   """
 
   require Logger

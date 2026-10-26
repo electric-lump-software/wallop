@@ -22,15 +22,15 @@ defmodule WallopCore.Entropy.ObservationDrawWorker do
   discarded job can be inserted again by the re-drive.
   """
   use Oban.Worker,
-    # Its own queue, apart from the forecast EntropyWorker's :entropy, so a
-    # burst of v6 executions never delays a forecast draw.
+    # Its own queue, apart from the fetch queues, so a burst of executions
+    # never holds a fetch's slots.
     queue: :v6_execution,
     max_attempts: 10,
     unique: [period: :infinity, keys: [:draw_id], states: :incomplete]
 
   alias WallopCore.Entropy.V6Execution
 
-  # Ends before Lifeline rescues at 2 minutes, as EntropyWorker does.
+  # Ends before Lifeline rescues at 2 minutes.
   @impl Oban.Worker
   def timeout(_job), do: :timer.seconds(90)
 
@@ -53,7 +53,7 @@ defmodule WallopCore.Entropy.ObservationDrawWorker do
     case Ash.get(WallopCore.Resources.Draw, id, domain: WallopCore.Domain, authorize?: false) do
       {:ok, %{status: status}} when status in [:completed, :failed, :expired] -> :ok
       {:ok, %{lock_schema_version: "6"} = draw} -> V6Execution.run(draw, attempt, max)
-      {:ok, _forecast_draw} -> {:cancel, "not an observation-weather draw"}
+      {:ok, _other} -> {:cancel, "not a lock schema 6 draw"}
       {:error, error} -> if not_found?(error), do: :ok, else: {:error, error}
     end
   end

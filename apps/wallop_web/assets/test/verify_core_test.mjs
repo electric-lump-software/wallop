@@ -80,68 +80,66 @@ const noPass = r => assert.ok(!r.lines.some(l => l.status === "pass"), "a line s
 const allPass = r => assert.ok(r.lines.every(l => l.status === "pass"), statuses(r))
 const flipFirst = hex => (hex[0] === "a" ? "b" : "a") + hex.slice(1)
 
-const FORECAST = [
-  ["proof-bundle.json", readText("proof-bundle.json")],
-  ["proof-bundle-drand-only.json", readText("proof-bundle-drand-only.json")]
-]
+// The lock 6 / execution 5 bundles, with their published keys.
+const BASES = ["proof-bundle-v6.json", "proof-bundle-v6-freq-window.json", "proof-bundle-v6-fallback.json",
+               "proof-bundle-v6-freq.json", "proof-bundle-v6-freq-fallback.json"]
 const ALL_LINES = ["entry_hash", "seed", "draw", "winners", "lock_signature", "lock_binding",
                    "exec_signature", "chain", "results_binding", "drand", "gate"]
 
-// --- forecast draws: green, and nothing else can be ---
-for (const [name, bj] of FORECAST) {
-  await t(`forecast ${name}: green, every line passes, drand line present`, () => {
-    const r = core.computeChecks(wasm, pageFor(bj, V6KEYS), published(bj, V6KEYS))
-    assert.equal(r.gate, true)
-    assert.equal(r.verdict, "green")
-    allPass(r)
-    assert.deepEqual(r.lines.map(l => l.id), ALL_LINES)
-    assert.equal(r.bmrsYear, null)
-  })
-  await t(`forecast ${name}: one byte changed in the fetched bundle -> red, no line passes`, () => {
+// --- every draw: green, and nothing else can be ---
+for (const name of BASES) {
+  const { bundle: bj, keys } = read(name)
+  await t(`${name}: one byte changed in the fetched bundle -> red, no line passes`, () => {
     const b = JSON.parse(bj)
     b.execution_receipt.signature_hex = flipFirst(b.execution_receipt.signature_hex)
-    const r = core.computeChecks(wasm, pageFor(bj, V6KEYS), published(JSON.stringify(b), V6KEYS))
+    const r = core.computeChecks(wasm, pageFor(bj, keys), published(JSON.stringify(b), keys))
     assert.equal(r.gate, false)
     assert.equal(r.verdict, "red")
     noPass(r)
   })
-  await t(`forecast ${name}: operator key not published -> red`, () => {
-    const keys = V6KEYS.filter(k => k.key_class !== "operator")
-    const r = core.computeChecks(wasm, pageFor(bj, V6KEYS), published(bj, keys))
+  await t(`${name}: operator key not published -> red`, () => {
+    const r = core.computeChecks(wasm, pageFor(bj, keys), published(bj, keys.filter(k => k.key_class !== "operator")))
     assert.equal(r.verdict, "red")
     noPass(r)
   })
-  await t(`forecast ${name}: revoked keys, absent from the page and the endpoints -> red`, () => {
-    const d = pageFor(bj, V6KEYS)
+  await t(`${name}: revoked keys, absent from the page and the endpoints -> red`, () => {
+    const d = pageFor(bj, keys)
     delete d.operatorPublicKeyHex
     delete d.infraPublicKeyHex
     const r = core.computeChecks(wasm, d, published(bj, []))
     assert.equal(r.verdict, "red")
     noPass(r)
   })
-  await t(`forecast ${name}: page without receipts -> amber, every line "unsigned"`, () => {
-    const r = core.computeChecks(wasm, pageFor(bj, V6KEYS, { receipts: false }), null)
-    assert.equal(r.verdict, "amber")
+  await t(`${name}: page without receipts -> red, the seed line fails, nothing passes`, () => {
+    const r = core.computeChecks(wasm, pageFor(bj, keys, { receipts: false }), null)
+    assert.equal(r.verdict, "red")
     noPass(r)
-    assert.ok(r.lines.every(l => l.status === "unsigned"), statuses(r))
+    assert.equal(r.lines.find(l => l.id === "seed").status, "fail", statuses(r))
   })
-  await t(`forecast ${name}: page seed differs from the signed one -> red`, () => {
-    const d = pageFor(bj, V6KEYS)
+  await t(`${name}: page seed differs from the signed one -> red`, () => {
+    const d = pageFor(bj, keys)
     d.seedFull = "00" + d.seedFull.slice(2)
-    assert.equal(core.computeChecks(wasm, d, published(bj, V6KEYS)).verdict, "red")
+    assert.equal(core.computeChecks(wasm, d, published(bj, keys)).verdict, "red")
   })
 }
 
-await t("forecast fallback label, only when the receipt names a reason", () => {
-  const bj = FORECAST[1][1]
-  const exec = JSON.parse(JSON.parse(bj).execution_receipt.payload_jcs)
-  assert.ok(exec.weather_fallback_reason, "the drand-only vector names a reason")
-  const r = core.computeChecks(wasm, pageFor(bj, V6KEYS), published(bj, V6KEYS))
-  assert.equal(r.fallbackLabel,
-    "Weather data wasn't available for this draw, so the seed came from drand's public randomness " +
-    `beacon alone (reason: ${exec.weather_fallback_reason})`)
-  const w = core.computeChecks(wasm, pageFor(FORECAST[0][1], V6KEYS), published(FORECAST[0][1], V6KEYS))
-  assert.equal(w.fallbackLabel, null)
+// --- retired forecast receipts (lock 4/5, exec 2/3/4) are never checked ---
+await t("seedPlan throws on any receipt that isn't lock 6 / execution 5", () => {
+  const v = read("proof-bundle-v6.json")
+  const b = JSON.parse(v.bundle)
+  const exec = JSON.parse(b.execution_receipt.payload_jcs)
+  const lock = JSON.parse(b.lock_receipt.payload_jcs)
+  assert.ok(core.seedPlan(wasm, exec, b.execution_receipt.payload_jcs, lock))
+  for (const schema of ["2", "3", "4"]) {
+    assert.throws(() => core.seedPlan(wasm, { ...exec, schema_version: schema }, "", lock), /schema/)
+  }
+  for (const schema of ["4", "5"]) {
+    assert.throws(() => core.seedPlan(wasm, exec, b.execution_receipt.payload_jcs, { ...lock, schema_version: schema }), /schema/)
+  }
+  assert.throws(() => core.seedPlan(wasm, { ...exec, entropy_composition: "drand-quicknet+openmeteo-v1" }, "", lock),
+    /unknown entropy tag/)
+  assert.throws(() => core.seedPlan(wasm, null, null, null), /no signed execution receipt/)
+  assert.throws(() => core.seedPlan(wasm, exec, b.execution_receipt.payload_jcs, null), /lock receipt schema/)
 })
 
 // --- lock v6 / execution v5: the signed receipt picks the formula ---
@@ -293,11 +291,12 @@ await t("grid-frequency tag outside its two states: seed line fails, no label, n
     noPass(r)
   }
 })
-await t("forecast and grid-frequency-tag draws have no observation hour line", () => {
-  for (const bj of [FORECAST[0][1], read("proof-bundle-v6-freq.json").bundle]) {
-    const keys = bj === FORECAST[0][1] ? V6KEYS : read("proof-bundle-v6-freq.json").keys
+await t("grid-frequency-tag draws have no observation hour line", () => {
+  for (const f of ["proof-bundle-v6-freq.json", "proof-bundle-v6-freq-fallback.json"]) {
+    const { bundle: bj, keys } = read(f)
     const r = core.computeChecks(wasm, pageFor(bj, keys), published(bj, keys))
     assert.equal(r.verdict, "green")
+    assert.deepEqual(r.lines.map(l => l.id), ALL_LINES)
     assert.ok(!r.lines.some(l => l.id === "observation_hour"), statuses(r))
   }
 })
@@ -353,7 +352,7 @@ const response = (status, body) => ({
 })
 const URLS = { bundleUrl: "/b", operatorKeysUrl: "/o", infraKeysUrl: "/i" }
 await t("fetchPublishedProof keeps the bundle bytes and maps both key lists", async () => {
-  const bundle = FORECAST[0][1]
+  const bundle = read("proof-bundle-v6.json").bundle
   const routes = {
     "/b": response(200, bundle),
     "/o": response(200, JSON.stringify({ schema_version: "1", keys: [{ key_id: "a", key_class: "operator", public_key_hex: "aa", inserted_at: "t", extra: 1 }] })),
@@ -379,10 +378,12 @@ await t("fetchPublishedProof: no answer is 'network'; a non-2xx, unreadable keys
 
 // --- every ticked line is tied to the published bytes ---
 {
-  const bj = FORECAST[0][1]
-  const otherB = JSON.parse(FORECAST[1][1])
+  const bj = read("proof-bundle-v6.json").bundle
+  // Same keys and draw id, but another lock and execution receipt.
+  const otherJson = read("proof-bundle-v6-freq.json").bundle
+  const otherB = JSON.parse(otherJson)
   await t("a self-consistent page from another draw, beside a valid published bundle -> red", () => {
-    const r = core.computeChecks(wasm, pageFor(FORECAST[1][1], V6KEYS), published(bj, V6KEYS))
+    const r = core.computeChecks(wasm, pageFor(otherJson, V6KEYS), published(bj, V6KEYS))
     assert.equal(r.verdict, "red")
     noPass(r)
     assert.ok(r.bindingProblem)
@@ -455,7 +456,7 @@ await t("fetchPublishedProof: no answer is 'network'; a non-2xx, unreadable keys
 
 // --- a refused or unreadable bundle has its own red ---
 {
-  const bj = FORECAST[0][1]
+  const bj = read("proof-bundle-v6.json").bundle
   await t("the refused text is distinct from the generic red", () => {
     assert.equal(core.REFUSED_RED,
       "FAILED — this site couldn't produce a complete proof for this draw, so it can't be verified. " +

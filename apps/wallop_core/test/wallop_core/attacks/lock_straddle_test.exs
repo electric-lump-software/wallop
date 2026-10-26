@@ -15,8 +15,8 @@ defmodule WallopCore.Attacks.LockStraddleTest do
   minutes), so a test can't place it a few seconds ahead the way the
   observation tests place F; a late commit can't be shown on demand. These
   tests pin that both checks exist and read the clock at the right moment,
-  and show the commit-time check passing an in-time lock and ignoring a
-  forecast one.
+  and show the commit-time check passing an in-time lock; a lock with no
+  lock schema is refused before it gets there.
   """
   use WallopCore.InvariantCase, async: false
 
@@ -64,19 +64,15 @@ defmodule WallopCore.Attacks.LockStraddleTest do
            end) == nil
   end
 
-  test "a forecast lock is untouched by the commit-time check" do
+  test "a raw lock with no lock schema never reaches the commit-time check" do
     key = create_api_key()
     draw = open_draw_with_entries(key)
 
     assert check_now(fn ->
-             {:ok, locked} =
-               draw
-               |> Ash.Changeset.for_update(:lock, %{}, actor: key)
-               |> Ash.Changeset.set_context(%{warn_on_transaction_hooks?: false})
-               |> Ash.update()
-
-             assert locked.lock_schema_version == nil
-           end) == nil
+             Repo.query!("UPDATE draws SET status = 'awaiting_entropy' WHERE id = $1", [
+               Ecto.UUID.dump!(draw.id)
+             ])
+           end) == "a draw leaves open only by locking under lock schema 6, or by expiring"
   end
 
   # Runs `fun` in a savepoint, then fires the deferred lock check at once.

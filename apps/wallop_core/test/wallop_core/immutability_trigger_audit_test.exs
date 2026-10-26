@@ -98,7 +98,11 @@ defmodule WallopCore.ImmutabilityTriggerAuditTest do
       end
     end
 
-    test "cannot UPDATE status on completed draw", %{draw: draw} do
+    # A v6 draw's own guard refuses these first, so the generic trigger is
+    # checked on a draw with no lock schema (a retired forecast draw).
+    test "cannot UPDATE status on completed draw" do
+      draw = put_retired_forecast_draw!(create_api_key(), :completed)
+
       assert_raise Postgrex.Error, ~r/Cannot modify a completed draw/, fn ->
         WallopCore.Repo.query!(
           "UPDATE draws SET status = 'open' WHERE id = $1",
@@ -107,7 +111,9 @@ defmodule WallopCore.ImmutabilityTriggerAuditTest do
       end
     end
 
-    test "cannot DELETE completed draw", %{draw: draw} do
+    test "cannot DELETE completed draw" do
+      draw = put_retired_forecast_draw!(create_api_key(), :completed)
+
       assert_raise Postgrex.Error, ~r/Cannot delete a completed draw/, fn ->
         WallopCore.Repo.query!(
           "DELETE FROM draws WHERE id = $1",
@@ -184,7 +190,9 @@ defmodule WallopCore.ImmutabilityTriggerAuditTest do
       %{draw: draw}
     end
 
-    test "awaiting_entropy cannot jump to open", %{draw: draw} do
+    test "awaiting_entropy cannot jump to open" do
+      draw = put_retired_forecast_draw!(create_api_key(), :awaiting_entropy)
+
       assert_raise Postgrex.Error, ~r/Invalid state transition/, fn ->
         WallopCore.Repo.query!(
           "UPDATE draws SET status = 'open' WHERE id = $1",
@@ -203,14 +211,7 @@ defmodule WallopCore.ImmutabilityTriggerAuditTest do
     end
 
     test "pending_entropy cannot return to open" do
-      api_key = create_api_key()
-      draw = create_draw(api_key)
-
-      # Transition to pending_entropy
-      draw =
-        draw
-        |> Ash.Changeset.for_update(:transition_to_pending, %{})
-        |> Ash.update!(domain: WallopCore.Domain, authorize?: false)
+      draw = put_retired_forecast_draw!(create_api_key(), :pending_entropy)
 
       assert_raise Postgrex.Error, ~r/Invalid state transition/, fn ->
         WallopCore.Repo.query!(
@@ -240,16 +241,9 @@ defmodule WallopCore.ImmutabilityTriggerAuditTest do
 
   describe "draws: failed state is terminal" do
     test "cannot UPDATE failed draw" do
-      api_key = create_api_key()
-      draw = create_draw(api_key)
-
       draw =
-        draw
-        |> Ash.Changeset.for_update(:transition_to_pending, %{})
-        |> Ash.update!(domain: WallopCore.Domain, authorize?: false)
-
-      draw =
-        draw
+        create_api_key()
+        |> put_retired_forecast_draw!(:pending_entropy)
         |> Ash.Changeset.for_update(:mark_failed, %{failure_reason: "test failure"})
         |> Ash.update!(domain: WallopCore.Domain, authorize?: false)
 
@@ -262,16 +256,9 @@ defmodule WallopCore.ImmutabilityTriggerAuditTest do
     end
 
     test "cannot DELETE failed draw" do
-      api_key = create_api_key()
-      draw = create_draw(api_key)
-
       draw =
-        draw
-        |> Ash.Changeset.for_update(:transition_to_pending, %{})
-        |> Ash.update!(domain: WallopCore.Domain, authorize?: false)
-
-      _draw =
-        draw
+        create_api_key()
+        |> put_retired_forecast_draw!(:pending_entropy)
         |> Ash.Changeset.for_update(:mark_failed, %{failure_reason: "test failure"})
         |> Ash.update!(domain: WallopCore.Domain, authorize?: false)
 

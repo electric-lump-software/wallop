@@ -8,8 +8,8 @@ defmodule WallopCore.Resources.Draw.Changes.SignAndStoreReceipt do
   rolls back via Ash's before_action error path. The draw stays `:open`
   and no sequence is burned.
 
-  With `version: "6"` it signs lock schema 6 (`Protocol.build_v6_lock_payload/1`)
-  under the draw's recorded tag (Land Observations or grid frequency).
+  It signs lock schema 6 (`Protocol.build_v6_lock_payload/1`) under the
+  draw's recorded tag (Land Observations or grid frequency).
   `locked_at` is taken once, after the draw row is locked, and that one
   value is checked against the draw's latest lock time by the tag's late
   check (`v6_lock_time_error/3` or `freq_lock_time_error/3`), signed, stored in the receipt's `locked_at` column and
@@ -18,8 +18,6 @@ defmodule WallopCore.Resources.Draw.Changes.SignAndStoreReceipt do
   sees one; if the builder raises anyway, the lock transaction rolls back.
   The database checks the same stored value again when the receipt is
   inserted, after the lock UPDATE in the same transaction.
-
-  Without `version` it signs lock schema 5, exactly as before schema 6.
   """
   use Ash.Resource.Change
 
@@ -35,11 +33,11 @@ defmodule WallopCore.Resources.Draw.Changes.SignAndStoreReceipt do
   require Ash.Query
 
   @impl true
-  def change(changeset, opts, _context) do
-    Ash.Changeset.before_action(changeset, &sign(&1, opts[:version]))
+  def change(changeset, _opts, _context) do
+    Ash.Changeset.before_action(changeset, &sign/1)
   end
 
-  defp sign(changeset, version) do
+  defp sign(changeset) do
     draw = changeset.data
 
     case draw.operator_id do
@@ -50,20 +48,20 @@ defmodule WallopCore.Resources.Draw.Changes.SignAndStoreReceipt do
         )
 
       operator_id ->
-        do_sign(changeset, draw, operator_id, version)
+        do_sign(changeset, draw, operator_id)
     end
   end
 
-  defp do_sign(changeset, draw, operator_id, version) do
+  defp do_sign(changeset, draw, operator_id) do
     locked_at = DateTime.utc_now() |> DateTime.truncate(:microsecond)
 
-    case lock_time_error(version, locked_at, changeset) do
-      nil -> sign_at(changeset, draw, operator_id, version, locked_at)
+    case lock_time_error(locked_at, changeset) do
+      nil -> sign_at(changeset, draw, operator_id, locked_at)
       error -> Ash.Changeset.add_error(changeset, error)
     end
   end
 
-  defp sign_at(changeset, draw, operator_id, version, locked_at) do
+  defp sign_at(changeset, draw, operator_id, locked_at) do
     with {:ok, operator} <- load_operator(operator_id),
          {:ok, signing_key} <- load_current_signing_key(operator_id, locked_at),
          {:ok, private_key} <- decrypt_private_key(signing_key.private_key),
@@ -92,11 +90,11 @@ defmodule WallopCore.Resources.Draw.Changes.SignAndStoreReceipt do
         fair_pick_version: app_version!(:fair_pick)
       }
 
-      payload = build_payload(version, input, changeset)
+      payload = build_payload(input, changeset)
       signature = Protocol.sign_receipt(payload, private_key)
 
       changeset
-      |> record_locked_at(version, locked_at)
+      |> record_locked_at(locked_at)
       |> Ash.Changeset.after_action(fn _cs, draw ->
         persist_receipt(draw, operator.id, signature, payload, locked_at, signing_key.key_id)
       end)
@@ -111,7 +109,7 @@ defmodule WallopCore.Resources.Draw.Changes.SignAndStoreReceipt do
 
   # The refusal points at draw_at only when the operator sent one; a lock
   # on the default draw time is refused at the action level.
-  defp lock_time_error("6", locked_at, changeset) do
+  defp lock_time_error(locked_at, changeset) do
     field = if Ash.Changeset.get_argument(changeset, :draw_at), do: :draw_at
     pair = EntropyRulesAre.pair(changeset)
 
@@ -139,8 +137,6 @@ defmodule WallopCore.Resources.Draw.Changes.SignAndStoreReceipt do
         )
     end
   end
-
-  defp lock_time_error(nil, _locked_at, _changeset), do: nil
 
   @doc false
   # Lock schema 6: a lock at `locked_at` must be no later than the draw's
@@ -185,7 +181,7 @@ defmodule WallopCore.Resources.Draw.Changes.SignAndStoreReceipt do
   # so latest_lock_at is a whole second.
   defp whole_second(dt), do: dt |> DateTime.truncate(:second) |> DateTime.to_iso8601()
 
-  defp build_payload("6", input, changeset) do
+  defp build_payload(input, changeset) do
     input
     |> Map.put(
       :entropy_composition,
@@ -196,11 +192,9 @@ defmodule WallopCore.Resources.Draw.Changes.SignAndStoreReceipt do
     |> Protocol.build_v6_lock_payload()
   end
 
-  defp build_payload(nil, input, _changeset), do: Protocol.build_receipt_payload(input)
-
-  # Lock schema 6 only: the draw's locked_at stage timestamp is the signed
-  # value, not a second reading of the clock.
-  defp record_locked_at(changeset, "6", locked_at) do
+  # The draw's locked_at stage timestamp is the signed value, not a second
+  # reading of the clock.
+  defp record_locked_at(changeset, locked_at) do
     stages = Ash.Changeset.get_attribute(changeset, :stage_timestamps) || %{}
 
     Ash.Changeset.force_change_attribute(
@@ -209,8 +203,6 @@ defmodule WallopCore.Resources.Draw.Changes.SignAndStoreReceipt do
       Map.put(stages, "locked_at", WallopCore.Time.to_rfc3339_usec(locked_at))
     )
   end
-
-  defp record_locked_at(changeset, nil, _locked_at), do: changeset
 
   defp persist_receipt(draw, operator_id, signature, payload, locked_at, key_id) do
     case insert_receipt(operator_id, draw, signature, payload, locked_at, key_id) do

@@ -88,33 +88,8 @@ defmodule WallopCore.Resources.Draw.ExecuteV6Test do
     assert {:error, _} = execute(pending, %{@args | drand_randomness: String.duplicate("A", 64)})
   end
 
-  test "the forecast execute actions can't complete a v6 draw" do
-    pending = pending_v6(-(@w + 60), -10)
-
-    for {action, args} <- [
-          {:execute_drand_only, Map.put(@args, :weather_fallback_reason, "weather_unavailable")},
-          {:execute_with_entropy,
-           Map.merge(@args, %{
-             weather_value: "102500",
-             weather_raw: "{}",
-             weather_observation_time: pending.weather_time
-           })}
-        ] do
-      assert {:error, _} =
-               pending |> Ash.Changeset.for_update(action, args) |> Ash.update(authorize?: false),
-             "#{action}"
-    end
-
-    assert Ash.get!(Draw, pending.id, authorize?: false).status == :pending_entropy
-  end
-
-  test "can't execute a forecast draw" do
-    draw = create_draw(create_api_key())
-
-    pending =
-      draw
-      |> Ash.Changeset.for_update(:transition_to_pending, %{})
-      |> Ash.update!(authorize?: false)
+  test "can't execute a retired forecast draw" do
+    pending = put_retired_forecast_draw!(create_api_key(), :pending_entropy)
 
     assert {:error, _} = execute(pending)
     assert Ash.get!(Draw, pending.id, authorize?: false).status == :pending_entropy

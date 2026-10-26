@@ -294,124 +294,6 @@ defmodule WallopCore.Invariants.LockAndGuardTest do
     end
   end
 
-  # ── INV-3 ─────────────────────────────────────────────────────────
-
-  # Pinned here as well as in the fixtures, so regenerating a fixture can't
-  # move them. The fixtures are byte copies of the published vectors as they
-  # stood before any v6 work (see V5BuilderRegressionTest); the two
-  # execution files were copied in for this suite.
-  @fixtures_dir Path.expand("../../fixtures/v5_builder_regression", __DIR__)
-  @pinned %{
-    "lock-receipt-v5.json" => "36427205d9e43e3207bba207c628fbb8a1b292bd3572e62c33cd5d08fe7cf517",
-    "cross-receipt-linkage-v5.json" =>
-      "54713e34d3bc84f6f60d59d428b0981816641201cd537dba44faa43be877be52",
-    "lock-receipt.json" => "8beb350be89858ab6307fb67f4917e824e9d36b87fb1be7f966f57b699b756bc",
-    "cross-receipt-linkage.json" =>
-      "3fbacc9e2aa7e80593edcec4b64c89c791b776a9e3371af5e34bc8cdd4138fa3",
-    "execution-receipt-v4.json" =>
-      "fb2f44863148f3de23ee15e712100ba89d52ce95f237f5ad04ea8dfba843483c",
-    "execution-receipt-drand-only-v4.json" =>
-      "7f230c28622bbbfe2a92c691bf276d106952d64c0a6a83b636bd66f1765d02fa"
-  }
-
-  defp fixture(name), do: @fixtures_dir |> Path.join(name) |> File.read!() |> Jason.decode!()
-  defp sha256_hex(bytes), do: :crypto.hash(:sha256, bytes) |> Base.encode16(case: :lower)
-
-  defp as_schema_4(jcs),
-    do: jcs |> Jason.decode!() |> Map.put("schema_version", "4") |> Jcs.encode()
-
-  defp time!(nil), do: nil
-
-  defp time!(str) do
-    {:ok, t, 0} = DateTime.from_iso8601(str)
-    t
-  end
-
-  defp lock_input(map) do
-    %{
-      operator_id: map["operator_id"],
-      operator_slug: map["operator_slug"],
-      sequence: map["sequence"],
-      draw_id: map["draw_id"],
-      commitment_hash: map["commitment_hash"],
-      entry_hash: map["entry_hash"],
-      locked_at: time!(map["locked_at"]),
-      signing_key_id: map["signing_key_id"],
-      winner_count: map["winner_count"],
-      drand_chain: map["drand_chain"],
-      drand_round: map["drand_round"],
-      weather_station: map["weather_station"],
-      weather_time: time!(map["weather_time"]),
-      wallop_core_version: map["wallop_core_version"],
-      fair_pick_version: map["fair_pick_version"]
-    }
-  end
-
-  defp exec_input(map) do
-    %{
-      draw_id: map["draw_id"],
-      operator_id: map["operator_id"],
-      operator_slug: map["operator_slug"],
-      sequence: map["sequence"],
-      lock_receipt_hash: map["lock_receipt_hash"],
-      entry_hash: map["entry_hash"],
-      drand_chain: map["drand_chain"],
-      drand_round: map["drand_round"],
-      drand_randomness: map["drand_randomness"],
-      drand_signature: map["drand_signature"],
-      weather_station: map["weather_station"],
-      weather_observation_time: time!(map["weather_observation_time"]),
-      weather_value: map["weather_value"],
-      weather_fallback_reason: map["weather_fallback_reason"],
-      wallop_core_version: map["wallop_core_version"],
-      fair_pick_version: map["fair_pick_version"],
-      seed: map["seed"],
-      results: map["results"],
-      executed_at: time!(map["executed_at"]),
-      signing_key_id: map["signing_key_id"]
-    }
-  end
-
-  describe "INV-3 lock v5 / exec v4 bytes are unchanged against the pinned hashes" do
-    test "INV-3 the fixtures still carry the pinned hashes" do
-      for {name, hash} <- @pinned do
-        v = fixture(name)
-        assert (v["expected_payload_sha256"] || v["expected_lock_payload_sha256"]) == hash, name
-      end
-    end
-
-    test "INV-3 lock v5 bytes" do
-      for name <- ["lock-receipt-v5.json", "cross-receipt-linkage-v5.json"] do
-        v = fixture(name)
-
-        payload =
-          Protocol.build_receipt_payload(lock_input(v["input"] || v["lock_receipt_input"]))
-
-        assert sha256_hex(payload) == @pinned[name], name
-        assert Jason.decode!(payload)["schema_version"] == "5"
-      end
-    end
-
-    test "INV-3 lock schema 4 bytes (lock v5 output with schema_version 4)" do
-      for name <- ["lock-receipt.json", "cross-receipt-linkage.json"] do
-        v = fixture(name)
-
-        payload =
-          Protocol.build_receipt_payload(lock_input(v["input"] || v["lock_receipt_input"]))
-
-        assert sha256_hex(as_schema_4(payload)) == @pinned[name], name
-      end
-    end
-
-    test "INV-3 exec v4 bytes, with weather and drand-only" do
-      for name <- ["execution-receipt-v4.json", "execution-receipt-drand-only-v4.json"] do
-        payload = Protocol.build_execution_receipt_payload(exec_input(fixture(name)["input"]))
-        assert sha256_hex(payload) == @pinned[name], name
-        assert Jason.decode!(payload)["schema_version"] == "4"
-      end
-    end
-  end
-
   # ── The guard triggers ────────────────────────────────────────────
 
   # Every trigger on the tables the invariants rest on, as the database
@@ -456,50 +338,15 @@ defmodule WallopCore.Invariants.LockAndGuardTest do
     end
   end
 
-  # ── INV-4 ─────────────────────────────────────────────────────────
+  # ── INV-3 ─────────────────────────────────────────────────────────
 
-  describe "INV-4 forecast/v5 draws are untouched by every v6 trigger" do
+  describe "INV-3 every lock is a lock schema 6 lock: an open draw with no lock schema can only expire" do
     setup do
       ensure_infrastructure_key()
       %{fkey: create_api_key()}
     end
 
-    test "INV-4 insert, lock and receipt, execution with weather: all as before", %{fkey: key} do
-      draw = create_draw(key)
-      assert draw.status == :awaiting_entropy
-      assert {draw.lock_schema_version, draw.entropy_composition} == {nil, nil}
-
-      locked = Ash.load!(draw, [:receipt, :expected_result_at], authorize?: false)
-      assert Jason.decode!(locked.receipt.payload_jcs)["schema_version"] == "5"
-      assert locked.expected_result_at == nil
-
-      done = execute_draw(draw, test_seed(), key)
-      assert done.status == :completed
-      done = Ash.load!(done, [:execution_receipt], authorize?: false)
-      assert Jason.decode!(done.execution_receipt.payload_jcs)["schema_version"] == "4"
-    end
-
-    test "INV-4 drand-only execution as before", %{fkey: key} do
-      done =
-        key
-        |> create_draw()
-        |> Ash.Changeset.for_update(:transition_to_pending, %{})
-        |> Ash.update!(authorize?: false)
-        |> Ash.Changeset.for_update(:execute_drand_only, %{
-          drand_randomness: test_drand_randomness(),
-          drand_signature: "test-signature",
-          drand_response: "{}",
-          weather_fallback_reason: "unreachable"
-        })
-        |> Ash.update!(authorize?: false)
-        |> Ash.load!([:execution_receipt], authorize?: false)
-
-      assert done.status == :completed
-      assert {done.lock_schema_version, done.entropy_composition} == {nil, nil}
-      assert Jason.decode!(done.execution_receipt.payload_jcs)["schema_version"] == "4"
-    end
-
-    test "INV-4 expiry as before", %{fkey: key} do
+    test "INV-3 an open draw with a NULL pair still expires", %{fkey: key} do
       expired =
         Draw
         |> Ash.Changeset.for_create(:create, %{winner_count: 1}, actor: key)
@@ -508,13 +355,42 @@ defmodule WallopCore.Invariants.LockAndGuardTest do
         |> Ash.update!(authorize?: false)
 
       assert expired.status == :expired
+      assert {expired.lock_schema_version, expired.entropy_composition} == {nil, nil}
     end
 
-    test "INV-4 raw SQL on a (NULL, NULL) draw meets none of the v6 rules", %{fkey: key} do
-      draw = create_draw(key)
+    test "INV-3 an open draw can't leave open with a NULL pair except by expiring",
+         %{fkey: key} do
       [late | _] = missed_schedules()
 
-      # Insert: a copy already out of open, with a NULL pair.
+      for status <- ~w(locked awaiting_entropy pending_entropy completed failed) do
+        open = open_draw_with_entries(key)
+
+        assert try_sql(
+                 "UPDATE draws SET status = $2, weather_time = $3, drand_round = 1, weather_station = 'anywhere' WHERE id = $1",
+                 [dump(open.id), status, DateTime.to_naive(late.weather_time)]
+               ) =~ "leaves open only by locking under lock schema 6",
+               status
+
+        assert Repo.reload!(open).status == :open
+      end
+    end
+  end
+
+  # ── INV-4 ─────────────────────────────────────────────────────────
+
+  describe "INV-4 a retired forecast draw meets no v6 rule" do
+    setup do
+      ensure_infrastructure_key()
+      %{fkey: create_api_key()}
+    end
+
+    test "INV-4 raw SQL on a retired (NULL, NULL) draw meets none of the v6 rules",
+         %{fkey: key} do
+      draw = put_retired_forecast_draw!(key, :awaiting_entropy)
+      [late | _] = missed_schedules()
+
+      # Insert: a copy already out of open, with a NULL pair, is refused:
+      # it would be a lock with no lock schema.
       assert try_sql(
                """
                INSERT INTO draws (id, status, winner_count, entry_count, api_key_id, operator_id,
@@ -524,33 +400,7 @@ defmodule WallopCore.Invariants.LockAndGuardTest do
                FROM draws WHERE id = $1
                """,
                [dump(draw.id), dump(Ecto.UUID.generate())]
-             ) == nil
-
-      # Lock: a raw lock long after any v6 deadline, with no v6 fields checked.
-      open = open_draw_with_entries(key)
-
-      assert try_sql(
-               "UPDATE draws SET status = 'awaiting_entropy', weather_time = $2, drand_round = 1, weather_station = 'anywhere' WHERE id = $1",
-               [dump(open.id), DateTime.to_naive(late.weather_time)]
-             ) == nil
-
-      # Receipt: anything not schema 6 goes in, as before.
-      assert try_sql(
-               """
-               INSERT INTO operator_receipts (id, operator_id, draw_id, sequence, commitment_hash,
-                 entry_hash, locked_at, signing_key_id, payload_jcs, signature, inserted_at)
-               VALUES ($1, $2, $3, $4, 'x', 'x', $5, 'k', $6, $7, $5)
-               """,
-               [
-                 dump(Ecto.UUID.generate()),
-                 dump(open.operator_id),
-                 dump(open.id),
-                 open.operator_sequence,
-                 NaiveDateTime.utc_now(),
-                 Jason.encode!(%{"schema_version" => "5", "drand_round" => 1}),
-                 :binary.copy(<<0>>, 64)
-               ]
-             ) == nil
+             ) == "a draw is created open"
 
       # Completion: any executed_at, no observation, no pub(R) rule.
       Repo.query!("UPDATE draws SET status = 'pending_entropy' WHERE id = $1", [dump(draw.id)])
@@ -560,7 +410,7 @@ defmodule WallopCore.Invariants.LockAndGuardTest do
                [dump(draw.id), DateTime.to_naive(late.weather_time)]
              ) == nil
 
-      # Execution receipt: anything not schema 5 goes in, as before.
+      # Execution receipt: anything not schema 5 goes in.
       for payload <- [Jason.encode!(%{"schema_version" => "4", "sequence" => 7.0}), "not json"] do
         assert insert_exec_receipt(payload, %{
                  draw_id: draw.id,
@@ -572,29 +422,27 @@ defmodule WallopCore.Invariants.LockAndGuardTest do
       end
 
       # Failing long after its round published (round 1, in 2023), from
-      # awaiting_entropy: as before.
-      locked = create_draw(key)
+      # awaiting_entropy: allowed, so a stranded retired draw can be failed.
+      stranded = put_retired_forecast_draw!(key, :awaiting_entropy)
 
-      with_triggers_off(fn ->
-        Repo.query!("UPDATE draws SET drand_round = 1 WHERE id = $1", [dump(locked.id)])
-      end)
-
-      assert try_sql("UPDATE draws SET status = 'failed' WHERE id = $1", [dump(locked.id)]) ==
+      assert try_sql("UPDATE draws SET status = 'failed' WHERE id = $1", [dump(stranded.id)]) ==
                nil
 
-      # Delete of a draw out of open, with no receipt: as before.
+      # Delete of a draw out of open, with no receipt.
       copy = Ecto.UUID.generate()
 
-      Repo.query!(
-        """
-        INSERT INTO draws (id, status, winner_count, entry_count, api_key_id, operator_id,
-          operator_sequence, stage_timestamps, inserted_at, updated_at)
-        SELECT $2, 'pending_entropy', winner_count, entry_count, api_key_id, operator_id,
-          operator_sequence + 200000, stage_timestamps, inserted_at, updated_at
-        FROM draws WHERE id = $1
-        """,
-        [dump(draw.id), dump(copy)]
-      )
+      with_triggers_off(fn ->
+        Repo.query!(
+          """
+          INSERT INTO draws (id, status, winner_count, entry_count, api_key_id, operator_id,
+            operator_sequence, stage_timestamps, inserted_at, updated_at)
+          SELECT $2, 'pending_entropy', winner_count, entry_count, api_key_id, operator_id,
+            operator_sequence + 200000, stage_timestamps, inserted_at, updated_at
+          FROM draws WHERE id = $1
+          """,
+          [dump(draw.id), dump(copy)]
+        )
+      end)
 
       assert try_sql("DELETE FROM draws WHERE id = $1", [dump(copy)]) == nil
     end
@@ -705,21 +553,6 @@ defmodule WallopCore.Invariants.LockAndGuardTest do
 
       assert_raise ArgumentError, ~r/entropy_composition/, fn ->
         Protocol.build_v6_lock_payload(Map.delete(@lock_input, :entropy_composition))
-      end
-    end
-
-    test "INV-5 (builders) the lock v5 / exec v4 builders refuse a v6 or unknown tag" do
-      lock = %{@lock_input | weather_station: "middle-wallop"}
-      exec = %{@exec_input | weather_station: "middle-wallop", weather_value: "102500"}
-
-      for tag <- [LandObs.tag(), "drand-quicknet+metoffice-landobs-v2", ""] do
-        assert_raise ArgumentError, ~r/entropy_composition/, fn ->
-          Protocol.build_receipt_payload(%{lock | entropy_composition: tag})
-        end
-
-        assert_raise ArgumentError, ~r/entropy_composition/, fn ->
-          Protocol.build_execution_receipt_payload(%{exec | entropy_composition: tag})
-        end
       end
     end
 

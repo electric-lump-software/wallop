@@ -5,8 +5,38 @@ defmodule WallopCore.Resources.OperatorDrawProtocolTest do
   alias Ash.Resource.Info
   alias WallopCore.Resources.Operator
 
-  test "new operators are on the forecast protocol" do
-    assert create_operator().draw_protocol == :forecast
+  test "new operators are on the observation protocol" do
+    assert create_operator().draw_protocol == :observation
+  end
+
+  test "an operator row written without a protocol gets observation from the database" do
+    id = Ecto.UUID.generate()
+
+    WallopCore.Repo.query!(
+      "INSERT INTO operators (id, slug, name, inserted_at, updated_at) VALUES ($1, $2, $3, now(), now())",
+      [Ecto.UUID.dump!(id), "op-default-#{System.unique_integer([:positive])}", "Default"]
+    )
+
+    assert Ash.get!(Operator, id, authorize?: false).draw_protocol == :observation
+  end
+
+  test "the database refuses the retired forecast protocol, by insert or update" do
+    op = create_operator()
+
+    assert db_refused?("UPDATE operators SET draw_protocol = 'forecast' WHERE id = $1", [
+             Ecto.UUID.dump!(op.id)
+           ])
+
+    assert db_refused?(
+             "INSERT INTO operators (id, slug, name, draw_protocol, inserted_at, updated_at) VALUES ($1, $2, $3, 'forecast', now(), now())",
+             [
+               Ecto.UUID.dump!(Ecto.UUID.generate()),
+               "op-forecast-#{System.unique_integer([:positive])}",
+               "Forecast"
+             ]
+           )
+
+    assert Ash.get!(Operator, op.id, authorize?: false).draw_protocol == :observation
   end
 
   test "the admin action switches the protocol and is audited" do
@@ -14,10 +44,10 @@ defmodule WallopCore.Resources.OperatorDrawProtocolTest do
 
     {:ok, op} =
       op
-      |> Ash.Changeset.for_update(:set_draw_protocol, %{draw_protocol: :observation})
+      |> Ash.Changeset.for_update(:set_draw_protocol, %{draw_protocol: :frequency})
       |> Ash.update(authorize?: false)
 
-    assert op.draw_protocol == :observation
+    assert op.draw_protocol == :frequency
 
     versions =
       Operator.Version
@@ -46,15 +76,15 @@ defmodule WallopCore.Resources.OperatorDrawProtocolTest do
              |> Ash.update()
   end
 
-  test "forecast, observation and frequency are accepted; nothing else" do
-    for ok <- [:forecast, :observation, :frequency] do
+  test "observation and frequency are accepted; nothing else" do
+    for ok <- [:observation, :frequency] do
       assert {:ok, %{draw_protocol: ^ok}} =
                create_operator()
                |> Ash.Changeset.for_update(:set_draw_protocol, %{draw_protocol: ok})
                |> Ash.update(authorize?: false)
     end
 
-    for bad <- [:v6, :v5, :freq, :drand, :other] do
+    for bad <- [:forecast, :v6, :v5, :freq, :drand, :other] do
       assert {:error, %Ash.Error.Invalid{}} =
                create_operator()
                |> Ash.Changeset.for_update(:set_draw_protocol, %{draw_protocol: bad})
@@ -75,7 +105,7 @@ defmodule WallopCore.Resources.OperatorDrawProtocolTest do
                |> Ash.update()
     end
 
-    assert Ash.get!(Operator, op.id, authorize?: false).draw_protocol == :forecast
+    assert Ash.get!(Operator, op.id, authorize?: false).draw_protocol == :observation
   end
 
   test "create_freq_operator/0 gives a frequency operator and its key" do

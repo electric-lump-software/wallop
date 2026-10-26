@@ -6,7 +6,8 @@ defmodule WallopWeb.HomeLiveTest do
   describe "home page" do
     test "loads successfully and shows headline", %{conn: conn} do
       {:ok, _view, html} = live(conn, "/")
-      assert html =~ "Run a draw nobody"
+      assert html =~ "Random isn&#39;t enough"
+      assert html =~ "fair, and provably fair. Wallop! does both."
     end
 
     test "shows open source badge", %{conn: conn} do
@@ -139,6 +140,63 @@ defmodule WallopWeb.HomeLiveTest do
         |> render_submit()
 
       assert html =~ "valid email"
+    end
+  end
+
+  # Public copy about randomness: never says or implies that every draw
+  # uses the weather, and never claims nobody (wallop included) can
+  # influence a result.
+  describe "public claims about the randomness" do
+    @overclaims [
+      "two independent sources",
+      "two completely independent",
+      "every draw comes",
+      "nobody (including us)",
+      "Neither is predictable",
+      "impossible",
+      "guarantee",
+      "Open-Meteo",
+      "Wittering",
+      "can question",
+      "rests on"
+    ]
+
+    test "the home page, both tabs, makes none of the old overclaims", %{conn: conn} do
+      {:ok, view, plain} = live(conn, "/")
+      crypto = render_click(view, "switch_tab", %{"tab" => "crypto"})
+
+      for html <- [plain, crypto], phrase <- @overclaims do
+        refute html =~ phrase, "home page still says #{inspect(phrase)}"
+      end
+
+      assert plain =~ "at worst to drand on its own"
+
+      for html <- [plain, crypto] do
+        refute html =~ ~r/forecast/i
+        refute html =~ ~r/collud|ganging/i
+      end
+    end
+
+    test "how verification works names the fallbacks and what is trusted", %{conn: conn} do
+      {:ok, _view, html} = live(conn, "/how-verification-works")
+
+      for phrase <- @overclaims do
+        refute html =~ phrase, "how-verification-works still says #{inspect(phrase)}"
+      end
+
+      assert html =~ "The National Grid"
+      assert html =~ "drand does it alone"
+      assert html =~ "Proven, and trusted."
+      assert html =~ "can cancel a draw only before then, and visibly"
+      assert html =~ "within tolerance after that"
+      refute html =~ "not even we can UPDATE"
+      refute html =~ ~r/forecast/i
+
+      # The drand collusion caveat lives only in the small print's list.
+      [body, small_print] = String.split(html, ~s(id="small-print"), parts: 2)
+      refute body =~ ~r/collud|ganging/i
+      assert small_print =~ "fewer than drand&#39;s threshold of nodes collude"
+      assert html =~ "the drand beacon is"
     end
   end
 end

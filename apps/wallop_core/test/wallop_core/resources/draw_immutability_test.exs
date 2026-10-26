@@ -23,7 +23,11 @@ defmodule WallopCore.Resources.DrawImmutabilityTest do
       end
     end
 
-    test "cannot DELETE a completed draw via raw SQL", %{draw: draw} do
+    # A v6 draw's own guard refuses this first; the generic trigger is
+    # checked on a draw with no lock schema (a retired forecast draw).
+    test "cannot DELETE a completed draw via raw SQL" do
+      draw = put_retired_forecast_draw!(create_api_key(), :completed)
+
       assert_raise Postgrex.Error, ~r/Cannot delete a completed draw/, fn ->
         SQL.query!(
           WallopCore.Repo,
@@ -90,9 +94,11 @@ defmodule WallopCore.Resources.DrawImmutabilityTest do
       end
     end
 
-    test "can DELETE a locked draw (cancellation) after removing dependent receipts", %{
-      draw: draw
-    } do
+    # A v6 draw can't be deleted once it has left open; a retired forecast
+    # draw (no lock schema) still can, once its receipt is gone.
+    test "can DELETE a retired locked draw (cancellation) after removing dependent receipts" do
+      draw = put_retired_forecast_draw!(create_api_key(), :awaiting_entropy)
+
       # Must remove dependent receipts first (FK constraint)
       SQL.query!(
         WallopCore.Repo,
