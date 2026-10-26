@@ -4,8 +4,11 @@ defmodule WallopCore.Weather.LandObsGrammarTest do
 
   alias WallopCore.Weather.LandObsGrammar, as: G
 
-  @row_1900 ~s({"temperature": 14.11, "visibility": 24320.0, "weather_code": 8, "datetime": "2026-10-14T19:00:00Z", "humidity": 85, "mslp": 1025, "wind_gust": 6.9, "wind_speed": 4.0, "pressure_tendency": "F", "wind_direction": "S"})
-  @row_1200 ~s({"datetime": "2026-10-15T12:00:00Z", "humidity": 76, "mslp": 1020, "pressure_tendency": "R", "temperature": 19.59, "visibility": 60230.0, "weather_code": 8, "wind_direction": "SW", "wind_gust": 9.9, "wind_speed": 5.5})
+  # Synthetic rows in the format the Met Office Weather DataHub documents for
+  # Land Observations (same field names, number formatting and datetime
+  # format). Neither is a real observation.
+  @row_1900 ~s({"temperature": 12.34, "visibility": 34500.0, "weather_code": 7, "datetime": "2026-10-14T19:00:00Z", "humidity": 67, "mslp": 1012, "wind_gust": 7.4, "wind_speed": 3.6, "pressure_tendency": "S", "wind_direction": "SSW"})
+  @row_1200 ~s({"datetime": "2026-10-15T12:00:00Z", "humidity": 72, "mslp": 1017, "pressure_tendency": "F", "temperature": 17.25, "visibility": 52370.0, "weather_code": 3, "wind_direction": "W", "wind_gust": 10.8, "wind_speed": 6.1})
 
   defp row(json) do
     {:ok, r} = G.decode(json)
@@ -28,15 +31,16 @@ defmodule WallopCore.Weather.LandObsGrammarTest do
 
   test "numbers keep their JSON text" do
     assert %{
-             "temperature" => {:number, "19.59"},
-             "visibility" => {:number, "60230.0"},
-             "wind_direction" => "SW"
+             "temperature" => {:number, "17.25"},
+             "visibility" => {:number, "52370.0"},
+             "wind_direction" => "W"
            } = row(@row_1200)
   end
 
-  test "canonicalises real rows" do
-    assert {:ok, "141;1025;85;2432"} = G.canonical_value(row(@row_1900))
-    assert {:ok, "196;1020;76;6023"} = G.canonical_value(row(@row_1200))
+  test "canonicalises rows in the documented format" do
+    assert {:ok, "123;1012;67;3450"} = G.canonical_value(row(@row_1900))
+    # 17.25 rounds half away from zero to 173.
+    assert {:ok, "173;1017;72;5237"} = G.canonical_value(row(@row_1200))
   end
 
   test "temperature rounds half away from zero from the decimal text" do
@@ -276,7 +280,7 @@ defmodule WallopCore.Weather.LandObsGrammarTest do
 
   test "valid_value?/1 is the published grammar with the bounds" do
     for ok <- [
-          "196;1020;76;6023",
+          "173;1017;72;5237",
           "-900;850;0;0",
           "600;1100;100;10000",
           "0;1000;50;0",
@@ -286,20 +290,20 @@ defmodule WallopCore.Weather.LandObsGrammarTest do
         do: assert(G.valid_value?(ok), ok)
 
     for bad <- [
-          "-0;1020;76;6023",
-          "0196;1020;76;6023",
-          "196;1020;76",
-          "196;-1020;76;6023",
-          "196;1020;76;6023;1",
-          " 196;1020;76;6023",
-          "196;1020;76;6023 ",
-          "196;1020;76;6023\n",
-          "601;1020;76;6023",
-          "-901;1020;76;6023",
-          "196;849;76;6023",
-          "196;1101;76;6023",
-          "196;1020;101;6023",
-          "196;1020;76;10001",
+          "-0;1017;72;5237",
+          "0173;1017;72;5237",
+          "173;1017;72",
+          "173;-1017;72;5237",
+          "173;1017;72;5237;1",
+          " 173;1017;72;5237",
+          "173;1017;72;5237 ",
+          "173;1017;72;5237\n",
+          "601;1017;72;5237",
+          "-901;1017;72;5237",
+          "173;849;72;5237",
+          "173;1101;72;5237",
+          "173;1017;101;5237",
+          "173;1017;72;10001",
           "",
           ";;;",
           "+184;1021;51;4114",
@@ -315,7 +319,7 @@ defmodule WallopCore.Weather.LandObsGrammarTest do
           "184;1021;51;-0",
           "184;;51;4114",
           nil,
-          196
+          173
         ] do
       refute G.valid_value?(bad), inspect(bad)
     end

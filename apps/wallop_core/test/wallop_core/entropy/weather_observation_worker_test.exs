@@ -59,7 +59,7 @@ defmodule WallopCore.Entropy.WeatherObservationWorkerTest do
   defp row(wt, t) do
     stamp = Calendar.strftime(WindowedLandObsClient.floor_hour(wt), "%Y-%m-%dT%H:%M:%SZ")
 
-    ~s([{"datetime": "#{stamp}", "temperature": #{t}, "mslp": 1025, "humidity": 85, "visibility": 24320.0}])
+    ~s([{"datetime": "#{stamp}", "temperature": #{t}, "mslp": 1012, "humidity": 67, "visibility": 34500.0}])
   end
 
   defp run(wt),
@@ -80,13 +80,13 @@ defmodule WallopCore.Entropy.WeatherObservationWorkerTest do
   describe "storing" do
     test "stores the primary reading once for the hour, shared by every pending draw" do
       {wt, draws} = v6_draws(-6 * 60, 3)
-      stub_primary(row(wt, 14.11))
+      stub_primary(row(wt, 12.34))
       ref = attach([@poll, @stored])
 
       assert :ok = run(wt)
 
       for d <- draws do
-        assert %{station: @primary, value: "141;1025;85;2432"} = Observations.for_draw(d.id)
+        assert %{station: @primary, value: "123;1012;67;3450"} = Observations.for_draw(d.id)
       end
 
       assert Observations.pending_draw_ids(wt) == []
@@ -115,9 +115,9 @@ defmodule WallopCore.Entropy.WeatherObservationWorkerTest do
 
     test "each poll fetches Middle Wallop once, so an hour costs at most 26 calls" do
       {wt, [d]} = v6_draws(-(@w - 5 * 60), 1)
-      stub_primary(row(wt, 14.11))
+      stub_primary(row(wt, 12.34))
       assert :ok = run(wt)
-      assert %{station: @primary, value: "141;1025;85;2432"} = Observations.for_draw(d.id)
+      assert %{station: @primary, value: "123;1012;67;3450"} = Observations.for_draw(d.id)
 
       assert_receive {:fetched, "gcnfur"}
       refute_receive {:fetched, _}, 50
@@ -137,7 +137,7 @@ defmodule WallopCore.Entropy.WeatherObservationWorkerTest do
 
     test "after F it stops without fetching or storing" do
       {wt, [d]} = v6_draws(-(@w + 60), 1)
-      stub_primary(row(wt, 14.11))
+      stub_primary(row(wt, 12.34))
       assert :ok = run(wt)
       assert Observations.for_draw(d.id) == nil
       refute_received {:fetched, _}
@@ -147,11 +147,11 @@ defmodule WallopCore.Entropy.WeatherObservationWorkerTest do
       {wt, [d]} = v6_draws(-6 * 60, 1)
 
       {:ok, _} =
-        Observations.store(@primary, %{value: "150;1025;85;2432", raw: "[]", observation_time: wt})
+        Observations.store(@primary, %{value: "150;1012;67;3450", raw: "[]", observation_time: wt})
 
-      stub_primary(row(wt, 14.11))
+      stub_primary(row(wt, 12.34))
       assert :ok = run(wt)
-      assert %{value: "150;1025;85;2432"} = Observations.for_draw(d.id)
+      assert %{value: "150;1012;67;3450"} = Observations.for_draw(d.id)
       refute_received {:fetched, _}
     end
 
@@ -164,18 +164,18 @@ defmodule WallopCore.Entropy.WeatherObservationWorkerTest do
         if String.ends_with?(conn.request_path, "gcnfur") do
           {:ok, _} =
             Observations.store(@primary, %{
-              value: "150;1025;85;2432",
+              value: "150;1012;67;3450",
               raw: "[]",
               observation_time: wt
             })
         end
 
-        Plug.Conn.send_resp(conn, 200, row(wt, 14.11))
+        Plug.Conn.send_resp(conn, 200, row(wt, 12.34))
       end)
 
       log = capture_log(fn -> assert :ok = run(wt) end)
 
-      assert %{value: "150;1025;85;2432"} = Observations.for_draw(d.id)
+      assert %{value: "150;1012;67;3450"} = Observations.for_draw(d.id)
       refute_received {@stored, ^ref, _, _}
       refute_received {@store_refused, ^ref, _, _}
       refute log =~ "refused"
@@ -183,7 +183,7 @@ defmodule WallopCore.Entropy.WeatherObservationWorkerTest do
 
     test "any other refused store is reported and the job polls again" do
       {wt, [d]} = v6_draws(-6 * 60, 1)
-      stub_primary(row(wt, 14.11))
+      stub_primary(row(wt, 12.34))
       ref = attach([@store_refused])
 
       # The store refuses to run inside a caller's transaction.
@@ -199,7 +199,7 @@ defmodule WallopCore.Entropy.WeatherObservationWorkerTest do
 
     test "nothing pending for the hour: done, without fetching" do
       wt = DateTime.utc_now() |> DateTime.add(-6 * 60) |> DateTime.truncate(:second)
-      stub_primary(row(wt, 14.11))
+      stub_primary(row(wt, 12.34))
       assert :ok = run(wt)
       refute_received {:fetched, _}
     end
@@ -215,7 +215,7 @@ defmodule WallopCore.Entropy.WeatherObservationWorkerTest do
         ])
       end)
 
-      stub_primary(row(wt, 14.11))
+      stub_primary(row(wt, 12.34))
       assert :ok = run(wt)
       assert Observations.for_hour(wt) == nil
       refute_received {:fetched, _}
@@ -240,7 +240,7 @@ defmodule WallopCore.Entropy.WeatherObservationWorkerTest do
       hour = ~U[2026-10-14 01:00:00Z]
 
       Req.Test.stub(LandObsClient, fn conn ->
-        Plug.Conn.send_resp(conn, 200, row(hour, 14.11))
+        Plug.Conn.send_resp(conn, 200, row(hour, 12.34))
       end)
 
       for station <- Stations.all() do

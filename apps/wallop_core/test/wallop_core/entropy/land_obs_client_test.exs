@@ -54,8 +54,8 @@ defmodule WallopCore.Entropy.LandObsClientTest do
              LandObsClient.fetch_hour("gcnfur", hour)
 
     assert LandObsGrammar.valid_value?(value)
-    # 9.84 C, 1029 hPa, 92 %, 19190.0 m
-    assert value == "98;1029;92;1919"
+    # 8.72 C, 1016 hPa, 88 %, 21430.0 m
+    assert value == "87;1016;88;2143"
   end
 
   test "picks the requested hour, not the first or the latest row" do
@@ -63,7 +63,8 @@ defmodule WallopCore.Entropy.LandObsClientTest do
     serve(body)
     hour = hour_at("gcnfur.json", 2)
 
-    assert {:ok, %{value: "83;1029;95;1806", raw: ^body, observation_time: ^hour}} =
+    # 7.45 C rounds half away from zero to 75; 16285 m rounds to 1629 dam.
+    assert {:ok, %{value: "75;1015;91;1629", raw: ^body, observation_time: ^hour}} =
              LandObsClient.fetch_hour("gcnfur", hour)
   end
 
