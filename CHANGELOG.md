@@ -7,10 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Secrets can come from Infisical
+### Secrets can come from Infisical; a wrong vault key stops the boot
 
 **ADDED.**
 
+- **A boot check that proves the vault key.** For each configured cipher (`VAULT_KEY`, plus `VAULT_KEY_OLD` when set), wallop_core decrypts one stored signing key carrying that cipher's tag and checks it against the row's public key and `key_id`. A key that can't decrypt it, or a row that doesn't match itself, stops the boot before Oban starts, so a node on the wrong key never runs a job. A tag no row carries (a fresh install) is skipped. Every app that starts wallop_core runs it; `config :wallop_core, :vault_key_check, false` turns it off (the test config does). The log and error name the table, `key_id`, tag and reason, never key material.
 - **Docker image: secrets from Infisical at start.** When `INFISICAL_UNIVERSAL_AUTH_CLIENT_ID`, `INFISICAL_UNIVERSAL_AUTH_CLIENT_SECRET`, `INFISICAL_PROJECT_ID` and `INFISICAL_ENV` are all set, the start script signs in and restarts itself under `infisical run`, whose values replace variables of the same name. Setting only some of them refuses to start. `INFISICAL_PATHS` (space-separated, default `/`) picks the folders to read; a folder that can't be read stops the start. Values are taken literally (no `${…}` expansion), and secrets are never watched for changes. The names, not values, of any `INFISICAL_CANARY_*` variables are logged at start. The Infisical CLI (v0.44.9) is pinned by checksum for amd64 and arm64. With none of the four set, nothing changes.
 
 ### Added: observation weather (lock schema 6 / execution schema 5), per operator

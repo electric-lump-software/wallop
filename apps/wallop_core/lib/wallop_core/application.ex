@@ -20,10 +20,15 @@ defmodule WallopCore.Application do
     OpentelemetryOban.setup(plugin: :disabled)
     EctoHandler.setup([:wallop_core, :repo])
 
-    children =
+    opts = [strategy: :one_for_one, name: WallopCore.Supervisor]
+    Supervisor.start_link(children(), opts)
+  end
+
+  @doc false
+  def children do
+    [WallopCore.Repo, WallopCore.Vault] ++
+      vault_key_check() ++
       [
-        WallopCore.Repo,
-        WallopCore.Vault,
         pubsub_child_spec(),
         {Oban, Application.fetch_env!(:wallop_core, Oban)},
         # Records whether this node can fetch Land Observations readings,
@@ -33,9 +38,13 @@ defmodule WallopCore.Application do
           id: :observation_readiness_boot
         )
       ] ++ prepared_transactions_check()
+  end
 
-    opts = [strategy: :one_for_one, name: WallopCore.Supervisor]
-    Supervisor.start_link(children, opts)
+  # Off in the test config, which tests the check directly; on everywhere else.
+  defp vault_key_check do
+    if Application.get_env(:wallop_core, :vault_key_check, true),
+      do: [WallopCore.VaultKeyCheck],
+      else: []
   end
 
   # Off in the test config; on everywhere else.
