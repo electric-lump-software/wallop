@@ -1,0 +1,44 @@
+{
+  "bounds_mhz": [
+    47000,
+    52999
+  ],
+  "cases": [
+    {
+      "drand_round": 33068212,
+      "fetch_deadline": "2026-10-14T19:59:45.000000Z",
+      "freq_start": "2026-10-14T19:54:00.000000Z",
+      "latest_lock_at": "2026-10-14T19:53:00.000000Z",
+      "published_at": "2026-10-14T20:00:00.000000Z"
+    },
+    {
+      "drand_round": 33068211,
+      "fetch_deadline": "2026-10-14T19:59:30.000000Z",
+      "freq_start": "2026-10-14T19:53:45.000000Z",
+      "latest_lock_at": "2026-10-14T19:52:45.000000Z",
+      "published_at": "2026-10-14T19:59:57.000000Z"
+    },
+    {
+      "drand_round": 33068213,
+      "fetch_deadline": "2026-10-14T19:59:45.000000Z",
+      "freq_start": "2026-10-14T19:54:00.000000Z",
+      "latest_lock_at": "2026-10-14T19:53:00.000000Z",
+      "published_at": "2026-10-14T20:00:03.000000Z"
+    },
+    {
+      "drand_round": 33068217,
+      "fetch_deadline": "2026-10-14T20:00:00.000000Z",
+      "freq_start": "2026-10-14T19:54:15.000000Z",
+      "latest_lock_at": "2026-10-14T19:53:15.000000Z",
+      "published_at": "2026-10-14T20:00:15.000000Z"
+    }
+  ],
+  "description": "drand-quicknet+elexon-freq-v1: the draw schedule. For a quicknet round, freq_start (T) is the latest 15 s grid point with T + 105 s + w_freq_secs + margin_secs <= published_at; fetch_deadline is T + 105 s + w_freq_secs; latest_lock_at is T - lock_gap_secs. Cases: 33068212 (T exactly at the bound), the round before (one step earlier), +3 s (same T) and +15 s (the next T).",
+  "entropy_composition": "drand-quicknet+elexon-freq-v1",
+  "lock_gap_secs": 60,
+  "margin_secs": 15,
+  "readings": 8,
+  "spacing_secs": 15,
+  "stuck_run": 6,
+  "w_freq_secs": 240
+}

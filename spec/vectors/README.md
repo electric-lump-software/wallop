@@ -20,6 +20,8 @@ submodule pin before their next release. Corrective vector changes
 means the consumer's tests pass but the implementation may not match
 the current protocol.
 
+2026-10-26: `lock-receipt*.json`, `cross-receipt-linkage*.json` and `proof-bundle*.json` were regenerated (corrective) so every committed `drand_round` publishes after `locked_at`, and proof bundles carry real quicknet beacons. Consumers must bump their pin.
+
 ## Files
 
 ### Algorithm and canonicalisation
@@ -50,8 +52,40 @@ the current protocol.
 ### End-to-end
 
 - `end-to-end.json` — full pipeline: entries → hash → seed → winners
-- `proof-bundle.json` — full public proof bundle shape (the `/proof/:id.json` envelope)
-- `proof-bundle-drand-only.json` — proof bundle for the drand-only path (no `weather_value`)
+- `proof-bundle.json` — full public proof bundle shape (the `/proof/:id.json` envelope): lock receipt schema 5, execution receipt schema 4, on quicknet round 33068202 with its real beacon. No inline keys: the receipts are signed by the deterministic vector keys (seeds `sha256("wallop-vector-operator-key")` and `sha256("wallop-vector-infrastructure-key")`, the keys listed in the v6 bundle vectors), resolved by `signing_key_id`. The weather value is not a real reading.
+- `proof-bundle-drand-only.json` — the same for the drand-only path (no `weather_value`)
+
+### Observation weather (lock v6 / exec v5, `drand-quicknet+metoffice-landobs-v1`)
+
+Under this tag an execution receipt is in exactly one of three states, and the seed follows the state it signs:
+
+| State | `weather_value`, `weather_observation_time` | `weather_fallback_reason` | `freq_value` | `freq_fallback_reason` | Seed |
+|---|---|---|---|---|---|
+| (a) weather | set | null | null | null | `compute_seed(entry_hash, drand_randomness, weather_value)` |
+| (b) grid frequency | null | `no_observation_by_deadline` | set | null | `compute_freq_seed(entry_hash, drand_randomness, freq_value)` |
+| (c) drand only | null | `no_observation_by_deadline` | null | `no_frequency_by_deadline` | `compute_seed(entry_hash, drand_randomness)` |
+
+`weather_station` is `wmo-03749` (Middle Wallop) in all three. The vectors pin how a verifier checks a receipt in each state. Which state a real draw ends in depends on what wallop had stored by the deadlines; that is a trust assumption, and no vector can prove an observation or a window was unavailable. Files whose name contains `-freq-window` are this tag's state (b), not the grid-frequency tag. Each file's `description` starts with the tag and, for receipts and bundles, the state.
+
+- `weather-schedule-landobs-v1.json` — the draw schedule. Shape: `{description, entropy_composition, stations, w_secs, publish_margin_secs, lock_offset_secs, cases: [{drand_round, published_at, weather_time, latest_lock_at, freq_start}]}`. Cases: the round exactly at the bound (`published_at` = `weather_time` + `w_secs` + `publish_margin_secs`), the round before it, mid-hour rounds, and a round whose `weather_time` differs between W = 30 min and W = 40 min. Timestamps are canonical (six fractional digits).
+- `weather-value-landobs-v1.json` — the `weather_value` grammar and bounds, and how a Land Observations row becomes a value. Shape: `{description, bounds, valid: [{value, t, mslp, rh, vis}], invalid: [{value, reason}], from_row: [{row, expected_value} | {row, expected_error: true}]}`. Each `row` keeps its numbers' exact JSON text (`60.0` and `60`, exponents, `1e400` in a field the grammar never reads), so read this file with a parser that keeps number text; a float-based JSON parser does not test the grammar, and some refuse the file. The rows are synthetic, in the documented Land Observations format.
+- `lock-receipt-v6.json` — the lock receipt, schema 6, 20 fields. Shape: `{description, expected_field_count, expected_schema_version, expected_payload_sha256, payload_jcs, input}`; `input` is the builder input.
+- `execution-receipt-v5.json`, `execution-receipt-freq-window-v5.json`, `execution-receipt-fallback-v5.json` — the execution receipt, schema 5, 28 fields, in states (a), (b) and (c). Same shape.
+- `proof-bundle-v6.json`, `proof-bundle-v6-freq-window.json`, `proof-bundle-v6-fallback.json` — passing proof bundles for states (a), (b) and (c), built from the receipt vectors on quicknet round 33068212 with its real beacon. Shape: `{description, bundle, keys, expected_passed: true}`; `bundle` is the bundle's JCS text and `keys` is `[{key_id, public_key_hex, key_class, inserted_at}]`. Every verifier step must pass.
+
+### Grid frequency (lock v6 / exec v5, `drand-quicknet+elexon-freq-v1`)
+
+- `frequency-schedule-elexon-v1.json` — the draw schedule. Shape: `{description, entropy_composition, readings, spacing_secs, w_freq_secs, margin_secs, lock_gap_secs, stuck_run, bounds_mhz, cases: [{drand_round, published_at, freq_start, fetch_deadline, latest_lock_at}]}`.
+- `frequency-value-elexon-v1.json` — the `freq_value` grammar, the reading rule and the window rule. Shape: `{description, bounds_mhz, stuck_run, valid, invalid: [{value, reason}], readings: [{text, expected_mhz} | {text, expected_error: true}], from_rows: [{freq_start, rows: [[measurementTime, frequency_text]], expected_value} | {freq_start, rows, expected_error: true}]}`. `text` and `frequency_text` are raw JSON text. `valid` and `from_rows` pin the stuck-run threshold from both sides.
+- `lock-receipt-v6-freq.json` — the lock receipt, schema 6, 20 fields; `weather_station` and `weather_time` null.
+- `execution-receipt-v5-freq.json`, `execution-receipt-fallback-v5-freq.json` — the execution receipt, schema 5, 28 fields, with a `freq_value`, and with `freq_fallback_reason` `no_frequency_by_deadline`. Every weather field is null.
+- `proof-bundle-v6-freq.json`, `proof-bundle-v6-freq-fallback.json` — passing proof bundles for both, same shape as the observation-weather bundles. Every verifier step must pass.
+
+Contains BMRS data © Elexon Limited copyright and database right 2026.
+
+### Negative bundles (both v6 tags)
+
+- `proof-bundle-v6-negative.json` — lock v6 / execution v5 bundles that must fail. Shape: `{description, keys, cases: [{name, bundle, expected_failing_steps}]}`. Each case changes signed fields of a passing bundle and signs again with the vector keys (a changed lock also gets a recomputed, re-signed `lock_receipt_hash`), and the seed, results and unsigned `entropy` are rebuilt from the changed execution receipt, so only the semantic checks can refuse it. `expected_failing_steps` is the exact set of steps that fail (snake_case step names, order-insensitive); every other step passes or is skipped. For a tag pair with no seed rule (mismatched or unknown tags), the seed and winner steps are skipped, never passed. The cases cover both tags: schedule and lock-time rules, stations, the three-state table (every single-field step away from each state), value grammars, tags and schemas, inline keys and drand timing.
 
 ### Tampering
 
@@ -74,3 +108,13 @@ the current protocol.
 ### Key rotation
 
 - `key-rotation-bidirectional.json` — operator key rotation (§4.2.4): two deterministic keypairs with non-overlapping active windows, two lock-receipt v5 payloads each signed by its corresponding key, and four cross-key verification cases (historical-receipt-with-original-key passes; new-receipt-with-new-key passes; both wrong-key cases fail). Pins `key_id` derivation byte-for-byte across implementations.
+
+## Third-party data
+
+Some vectors embed real readings or public randomness.
+
+- Contains BMRS data © Elexon Limited copyright and database right 2026.
+- Met Office rows in these vectors are synthetic, in the format documented by the Met Office Weather DataHub. Real sample data: https://datahub.metoffice.gov.uk/docs/o/category/observations/type/land-observations/sample-data
+- drand beacons are public randomness published by the League of Entropy; no licence is claimed.
+
+Values are reproduced unaltered except for dropped fields. Provided as test data only; no endorsement by the Met Office or Elexon is implied.

@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Shared vectors for lock v6 / execution v5; older receipt vectors and bundles regenerated on real drand rounds
+
+**ADDED.** `spec/vectors` now freezes both lock v6 / execution v5 entropy tags: the observation-weather tag in all three of its execution states (observation, grid-frequency window, drand only) and the grid-frequency tag. Each tag gets its schedule, its value grammar, its receipts and passing proof bundles, and `proof-bundle-v6-negative.json` holds the bundles that must fail, each with the exact set of verifier steps that fail. The vectors README gains a "Third-party data" section: Elexon BMRS attribution, a note that the Met Office rows are synthetic (with a link to the real sample data), and a note on the drand beacons.
+
+**CHANGED (corrective).** `lock-receipt.json`, `lock-receipt-v5.json`, `cross-receipt-linkage.json` and `cross-receipt-linkage-v5.json` now commit to real quicknet rounds published after their `locked_at`; only `drand_round` and the expected hashes changed. `proof-bundle.json` and `proof-bundle-drand-only.json` are rebuilt as lock 5 / execution 4 bundles on a real quicknet beacon, signed by the deterministic vector keys and carrying no inline keys. Consumers of `spec/vectors` must bump their pin.
+
+**Operator note.** No protocol change and no change to signed bytes for live draws. `ProofBundle.assemble/1` is the pure half of `ProofBundle.build/1`; the live `/proof/:id.json` bytes are unchanged.
+
 ### drand signatures are checked on observation-weather draws; building wallop_core needs Rust
 
 **CHANGED.** For observation-weather draws, core now checks each drand beacon's BLS signature against quicknet's public key before using it. It also checks that the chain is quicknet, that the round is the one asked for, and that the randomness is sha256 of the signature. A relay that serves a forged or malformed beacon is treated like any other bad relay: the next relay is asked. If every relay fails, it is a transient failure that retries, and the draw is never marked failed. Forecast draws are unchanged in this release.

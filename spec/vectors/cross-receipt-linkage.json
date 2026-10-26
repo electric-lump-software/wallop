@@ -1,10 +1,10 @@
 {
   "description": "Lock receipt → SHA-256 → lock_receipt_hash chain. Verifiers check this linkage.",
-  "expected_lock_payload_sha256": "3fbacc9e2aa7e80593edcec4b64c89c791b776a9e3371af5e34bc8cdd4138fa3",
+  "expected_lock_payload_sha256": "d39a81500c490508c121f1e8879deaa47e92ffda6a99d64a83be0ec9c6f21781",
   "lock_receipt_input": {
     "commitment_hash": "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789",
     "drand_chain": "52db9ba70e0cc0f6eaf7803dd07447a1f5477735fd3f661792ba94600c84e971",
-    "drand_round": 12345,
+    "drand_round": 27644402,
     "draw_id": "22222222-2222-2222-2222-222222222222",
     "entry_hash": "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789",
     "fair_pick_version": "0.2.1",

@@ -1,10 +1,10 @@
 {
   "description": "Cross-receipt linkage at schema v5 lock + v4 execution. The lock receipt's SHA-256 is bound into the execution receipt's lock_receipt_hash field; verifiers reject any mismatch.",
-  "expected_lock_payload_sha256": "54713e34d3bc84f6f60d59d428b0981816641201cd537dba44faa43be877be52",
+  "expected_lock_payload_sha256": "10095e8ac49dd86f4ccb3d1a411223574588054f48a9b44988a4a4da7a1adaa3",
   "lock_receipt_input": {
     "commitment_hash": "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789",
     "drand_chain": "52db9ba70e0cc0f6eaf7803dd07447a1f5477735fd3f661792ba94600c84e971",
-    "drand_round": 12345,
+    "drand_round": 27644402,
     "draw_id": "22222222-2222-2222-2222-222222222222",
     "entry_hash": "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789",
     "fair_pick_version": "0.2.1",

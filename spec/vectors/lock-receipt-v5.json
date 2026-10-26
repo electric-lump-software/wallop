@@ -1,12 +1,12 @@
 {
   "description": "Lock receipt JCS payload (schema v5) — byte-identical field set to v4; schema_version is the only difference. Producers MUST omit operator_public_key_hex from the bundle wrapper (resolver-driven verification).",
   "expected_field_count": 19,
-  "expected_payload_sha256": "36427205d9e43e3207bba207c628fbb8a1b292bd3572e62c33cd5d08fe7cf517",
+  "expected_payload_sha256": "c73eee498ef38f13e71d86413c875a876cb97f9a70be3ea52c6d6da324e06ccd",
   "expected_schema_version": "5",
   "input": {
     "commitment_hash": "abc",
     "drand_chain": "quicknet-chain-hash",
-    "drand_round": 12345,
+    "drand_round": 27587802,
     "draw_id": "22222222-2222-2222-2222-222222222222",
     "entry_hash": "abc",
     "fair_pick_version": "0.2.1",

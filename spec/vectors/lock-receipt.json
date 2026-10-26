@@ -1,12 +1,12 @@
 {
   "description": "Lock receipt JCS payload (schema v3), 16 fields",
   "expected_field_count": 19,
-  "expected_payload_sha256": "8beb350be89858ab6307fb67f4917e824e9d36b87fb1be7f966f57b699b756bc",
+  "expected_payload_sha256": "eb8053a6fa76395bd4f62815d7b2f0d13debd5983091b5911ca64249773e9ede",
   "expected_schema_version": "4",
   "input": {
     "commitment_hash": "abc",
     "drand_chain": "quicknet-chain-hash",
-    "drand_round": 12345,
+    "drand_round": 27587802,
     "draw_id": "22222222-2222-2222-2222-222222222222",
     "entry_hash": "abc",
     "fair_pick_version": "0.2.1",
