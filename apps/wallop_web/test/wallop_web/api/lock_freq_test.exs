@@ -79,14 +79,18 @@ defmodule WallopWeb.Api.LockFreqTest do
       assert attrs |> Map.keys() |> Enum.sort() == draw_attribute_keys()
     end
 
-    test "weather_time is refused, pointing at weather_time", %{key: key, draw: draw} do
+    test "weather_time is refused as an unknown input, pointing at weather_time", %{
+      key: key,
+      draw: draw
+    } do
       [error] =
         lock(key, draw, %{"weather_time" => DateTime.to_iso8601(minute_after(3600))}, 400)[
           "errors"
         ]
 
+      # weather_time is no longer a lock input: the body is refused.
       assert error["source"]["pointer"] == "/data/attributes/weather_time"
-      assert error["detail"] == "can't be set for this operator; send draw_at instead"
+      assert error["code"] == "invalid_body"
     end
   end
 
@@ -121,7 +125,7 @@ defmodule WallopWeb.Api.LockFreqTest do
     end
   end
 
-  # Every draw's JSON attributes: the same set a forecast lock returns.
+  # Every draw's JSON attributes, whatever its protocol.
   defp draw_attribute_keys,
     do: ~w(callback_url check_url drand_chain drand_randomness drand_response drand_round
            drand_signature entry_canonical entry_count entry_hash executed_at

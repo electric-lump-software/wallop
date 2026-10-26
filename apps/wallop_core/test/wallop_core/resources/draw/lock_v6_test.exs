@@ -6,7 +6,6 @@ defmodule WallopCore.Resources.Draw.LockV6Test do
   alias WallopCore.Drand.Quicknet
 
   alias WallopCore.Entropy.{
-    EntropyWorker,
     FrequencyWindowWorker,
     ObservationDrawWorker,
     WeatherObservationWorker
@@ -86,8 +85,6 @@ defmodule WallopCore.Resources.Draw.LockV6Test do
       args: %{freq_start: FrequencyWindowWorker.start_arg(locked.freq_start)},
       scheduled_at: DateTime.add(locked.freq_start, 135)
     )
-
-    refute_enqueued(worker: EntropyWorker, args: %{draw_id: locked.id})
   end
 
   test "locked_at is taken once: the signed value, the receipt column and the stage timestamp agree" do
@@ -118,7 +115,6 @@ defmodule WallopCore.Resources.Draw.LockV6Test do
 
     assert locked.drand_round in defaults
     assert_enqueued(worker: ObservationDrawWorker, args: %{draw_id: locked.id})
-    refute_enqueued(worker: EntropyWorker, args: %{draw_id: locked.id})
   end
 
   test "two draws of the same hour share one fetch job" do
@@ -158,7 +154,6 @@ defmodule WallopCore.Resources.Draw.LockV6Test do
     assert open.status == :open
     assert {open.lock_schema_version, open.entropy_composition, open.receipt} == {nil, nil, nil}
     refute_enqueued(worker: ObservationDrawWorker, args: %{draw_id: draw.id})
-    refute_enqueued(worker: EntropyWorker, args: %{draw_id: draw.id})
 
     refute_enqueued(
       worker: WeatherObservationWorker,
@@ -175,102 +170,48 @@ defmodule WallopCore.Resources.Draw.LockV6Test do
     changeset =
       Ash.Changeset.for_update(draw, :lock, %{draw_at: next_hour_draw_at(3)}, actor: key)
 
-    set_protocol!(op, :forecast)
+    set_protocol!(op, :frequency)
     assert {:error, %Ash.Error.Invalid{}} = Ash.update(changeset)
 
     assert reload(draw).status == :open
     refute_enqueued(worker: ObservationDrawWorker, args: %{draw_id: draw.id})
-    refute_enqueued(worker: EntropyWorker, args: %{draw_id: draw.id})
   end
 
-  test "forecast operators: a plain lock is unchanged (schema 5, no v6 fields)" do
-    key = create_api_key()
-    {:ok, locked} = lock(open_draw_with_entries(key), key, %{})
-    locked = Ash.load!(locked, [:expected_result_at, :receipt], authorize?: false)
-    assert locked.lock_schema_version == nil
-    assert locked.entropy_composition == nil
-    assert locked.expected_result_at == nil
-    assert locked.weather_station == "middle-wallop"
-    payload = Jason.decode!(locked.receipt.payload_jcs)
-    assert payload["schema_version"] == "5"
-    assert payload["entropy_composition"] == "drand-quicknet+openmeteo-v1"
-    assert_enqueued(worker: EntropyWorker, args: %{draw_id: locked.id})
-    refute_enqueued(worker: ObservationDrawWorker, args: %{draw_id: locked.id})
-
-    # No fetch job for any hour this lock could have touched. Scoped by hour:
-    # the test database is shared.
-    hour = DateTime.utc_now() |> DateTime.truncate(:second) |> then(&%{&1 | minute: 0, second: 0})
-
-    for h <- -1..3 do
-      refute_enqueued(
-        worker: WeatherObservationWorker,
-        args: %{weather_time: WeatherObservationWorker.hour_arg(DateTime.add(hour, h * 3600))}
-      )
-    end
-
-    assert Map.keys(locked.stage_timestamps) -- ["opened_at"] == [
-             "entropy_declared_at",
-             "locked_at"
-           ]
-  end
-
-  test "forecast operators: the signed bytes are the lock v5 builder's, from the same inputs" do
+  test "a plain lock of a new operator is an observation-weather lock" do
+    put_observation_readiness!(true)
     key = create_api_key()
     {:ok, locked} = lock(open_draw_with_entries(key), key, %{})
     locked = reload(locked)
-    receipt = locked.receipt
-    operator = Ash.get!(WallopCore.Resources.Operator, locked.operator_id, authorize?: false)
-
-    rebuilt =
-      WallopCore.Protocol.build_receipt_payload(%{
-        operator_id: operator.id,
-        operator_slug: operator.slug,
-        sequence: locked.operator_sequence,
-        draw_id: locked.id,
-        commitment_hash: locked.entry_hash,
-        entry_hash: locked.entry_hash,
-        locked_at: receipt.locked_at,
-        signing_key_id: receipt.signing_key_id,
-        winner_count: locked.winner_count,
-        drand_chain: locked.drand_chain,
-        drand_round: locked.drand_round,
-        weather_station: locked.weather_station,
-        weather_time: locked.weather_time,
-        wallop_core_version: to_string(Application.spec(:wallop_core, :vsn)),
-        fair_pick_version: to_string(Application.spec(:fair_pick, :vsn))
-      })
-
-    assert receipt.payload_jcs == rebuilt
+    assert locked.lock_schema_version == "6"
+    assert locked.entropy_composition == LandObs.tag()
+    assert Jason.decode!(locked.receipt.payload_jcs)["schema_version"] == "6"
+    assert_enqueued(worker: ObservationDrawWorker, args: %{draw_id: locked.id})
   end
 
-  test "forecast operators: weather_time is still honoured" do
-    key = create_api_key()
+  test "a lock that sends weather_time is refused; the draw stays open" do
+    {_op, key} = create_v6_operator()
+    draw = open_draw_with_entries(key)
     wt = DateTime.utc_now() |> DateTime.add(600) |> DateTime.truncate(:second)
-    {:ok, locked} = lock(open_draw_with_entries(key), key, %{weather_time: wt})
-    assert locked.lock_schema_version == nil
-    assert DateTime.compare(locked.weather_time, wt) == :eq
-    assert_enqueued(worker: EntropyWorker, args: %{draw_id: locked.id})
+
+    assert {:error, %Ash.Error.Invalid{}} = lock(draw, key, %{weather_time: wt})
+    assert reload(draw).status == :open
+    refute_enqueued(worker: ObservationDrawWorker, args: %{draw_id: draw.id})
   end
 
-  test "a forecast draw of an operator later switched to observation stays forecast" do
-    {op, key} = create_v6_operator()
-    set_protocol!(op, :forecast)
-    {:ok, locked} = lock(open_draw_with_entries(key), key, %{})
-    set_protocol!(op, :observation)
-    assert reload(locked).lock_schema_version == nil
-  end
-
-  test "a raw-SQL lock that leaves lock_schema_version NULL executes on the v5 path" do
-    # An older embedded core locks without knowing the flag.
+  test "a raw-SQL lock that leaves lock_schema_version NULL is refused by the database" do
+    # Older core code locks without knowing the flag; the database refuses it.
     {_op, key} = create_v6_operator()
     draw = open_draw_with_entries(key)
 
-    Repo.query!("UPDATE draws SET status = 'awaiting_entropy', weather_time = $2 WHERE id = $1", [
-      Ecto.UUID.dump!(draw.id),
-      DateTime.to_naive(DateTime.add(DateTime.utc_now(), 600))
-    ])
+    assert db_refused?(
+             "UPDATE draws SET status = 'awaiting_entropy', weather_time = $2 WHERE id = $1",
+             [
+               Ecto.UUID.dump!(draw.id),
+               DateTime.to_naive(DateTime.add(DateTime.utc_now(), 600))
+             ]
+           )
 
-    assert Ash.get!(Draw, draw.id, authorize?: false).lock_schema_version == nil
-    assert {:cancel, _} = perform_job(ObservationDrawWorker, %{draw_id: draw.id})
+    open = Ash.get!(Draw, draw.id, authorize?: false)
+    assert {open.status, open.lock_schema_version} == {:open, nil}
   end
 end

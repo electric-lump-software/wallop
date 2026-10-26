@@ -1,16 +1,12 @@
 defmodule WallopCore.Resources.Draw.Validations.DrawAt do
   @moduledoc """
-  The protocol-specific lock arguments.
+  The lock's `draw_at` argument.
 
   Runs after `ResolveLockSchema`, so the draw's lock schema is already
   recorded on the changeset.
 
-    * A forecast lock (no lock schema) may not send `draw_at`. Nothing else
-      about a forecast lock is checked here.
-    * A lock schema "6" lock (observation weather or grid frequency) may
-      not send `weather_time`: everything follows from `draw_at`.
-    * A schema 6 `draw_at`, when sent, is checked against the recorded
-      tag's schedule (`WallopCore.Weather.Schedule` for Land Observations,
+    * A `draw_at`, when sent, is checked against the recorded tag's
+      schedule (`WallopCore.Weather.Schedule` for Land Observations,
       `WallopCore.Frequency.Schedule` for grid frequency): second precision,
       drand quicknet's 3-second grid, the round cap (`within_cap?/2`), and
       the tag's latest lock time (the observation hour minus 46 minutes;
@@ -39,24 +35,13 @@ defmodule WallopCore.Resources.Draw.Validations.DrawAt do
     v6? = Ash.Changeset.get_attribute(changeset, :lock_schema_version) == "6"
     draw_at = Ash.Changeset.get_argument(changeset, :draw_at)
 
-    cond do
-      not v6? and not is_nil(draw_at) ->
-        error(
-          :draw_at,
-          "is only available to operators on the observation-weather or grid-frequency protocol"
-        )
-
-      v6? and not is_nil(Ash.Changeset.get_argument(changeset, :weather_time)) ->
-        error(:weather_time, "can't be set for this operator; send draw_at instead")
-
-      v6? and not is_nil(draw_at) ->
-        changeset
-        |> EntropyRulesAre.pair()
-        |> tag_rules()
-        |> check(draw_at, DateTime.utc_now())
-
-      true ->
-        :ok
+    if v6? and not is_nil(draw_at) do
+      changeset
+      |> EntropyRulesAre.pair()
+      |> tag_rules()
+      |> check(draw_at, DateTime.utc_now())
+    else
+      :ok
     end
   end
 

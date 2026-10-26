@@ -600,11 +600,15 @@ defmodule WallopCore.Resources.Draw do
       end
 
       statement :guard_v6_draw do
-        # Does nothing to a draw whose (lock_schema_version,
-        # entropy_composition) is (NULL, NULL) before and after, which is
-        # every forecast and historic draw: it returns early, after refusing
-        # the grid-frequency columns on such a row, and never reaches a tag
-        # arm. Setting the pair outside a lock is refused below.
+        # An open draw with a NULL lock_schema_version may only stay open or
+        # expire: every lock carries lock schema 6, so a lock from any code
+        # still writing the retired forecast shape (NULL, NULL) is refused
+        # here. Otherwise it does nothing to a draw whose
+        # (lock_schema_version, entropy_composition) is (NULL, NULL) before
+        # and after (an open or expired draw, or a retired forecast draw): it
+        # returns early, after refusing the grid-frequency columns on such a
+        # row, and never reaches a tag arm. Setting the pair outside a lock
+        # is refused below.
         # The Land Obs completion reads weather_observations by weather_time
         # and, with no reading, frequency_windows by freq_start: the three
         # states of the tag. The grid-frequency completion reads
@@ -652,11 +656,19 @@ defmodule WallopCore.Resources.Draw do
               RETURN OLD;
             END IF;
 
-            -- A draw with no lock schema before or after (every forecast and
-            -- historic draw) meets no tag rule: it returns here. It may never
-            -- carry the grid-frequency columns.
+            -- A draw with no lock schema before or after (a retired forecast
+            -- draw, or one that never locked) meets no tag rule: it returns
+            -- here. It may never carry the grid-frequency columns.
             IF OLD.lock_schema_version IS NULL AND OLD.entropy_composition IS NULL
                AND NEW.lock_schema_version IS NULL AND NEW.entropy_composition IS NULL THEN
+              -- Every lock is a lock schema 6 lock. An open draw with no lock
+              -- schema may only stay open or expire: whatever code runs the
+              -- UPDATE, it can't lock under the retired forecast method. (A
+              -- NULL lock_schema_version with a tag is an unknown pair,
+              -- refused below.)
+              IF OLD.status = 'open' AND NEW.status NOT IN ('open', 'expired') THEN
+                RAISE EXCEPTION 'a draw leaves open only by locking under lock schema 6, or by expiring';
+              END IF;
               IF NEW.freq_start IS NOT NULL OR NEW.freq_value IS NOT NULL
                  OR NEW.freq_fallback_reason IS NOT NULL THEN
                 RAISE EXCEPTION 'frequency fields are set only on lock schema 6 draws';
@@ -667,7 +679,8 @@ defmodule WallopCore.Resources.Draw do
             -- Every read of stored state below (the window or observation a
             -- completion must use, the lock receipt) must see what has
             -- committed, not a snapshot taken earlier in a REPEATABLE READ
-            -- or SERIALIZABLE transaction. Forecast draws returned above.
+            -- or SERIALIZABLE transaction. Draws with no lock schema returned
+            -- above.
             IF current_setting('transaction_isolation') IS DISTINCT FROM 'read committed' THEN
               RAISE EXCEPTION 'a v6 write must run under READ COMMITTED isolation';
             END IF;
@@ -1493,47 +1506,25 @@ defmodule WallopCore.Resources.Draw do
       require_atomic?(false)
       filter(expr(status == :open))
 
-      argument :weather_time, :utc_datetime_usec do
-        allow_nil?(true)
-
-        description(
-          "Forecast operators only: optional explicit weather time (UTC). When supplied, " <>
-            "the entropy worker will fire at this moment and the supplied " <>
-            "value is signed verbatim into the lock receipt. If omitted, " <>
-            "defaults to a jittered 3-5 minutes from lock-time. Must have " <>
-            "second precision (sub-second values rejected — what you supply " <>
-            "is what gets signed). Must be at least 60 seconds in the future " <>
-            "and within ~7 days. The drand round derivation flows from this " <>
-            "value; supplying a far-future weather_time correctly schedules " <>
-            "the drand reveal to align."
-        )
-      end
-
       argument :draw_at, :utc_datetime_usec do
         allow_nil?(true)
 
         description(
-          "Observation-weather and grid-frequency operators only; a forecast operator's lock is " <>
-            "refused if it sends draw_at. When the result should be produced (UTC, second " <>
+          "When the result should be produced (UTC, second " <>
             "precision, on drand quicknet's 3-second grid; any whole minute is). The lock must " <>
             "happen by the observation hour minus 46 minutes (observation weather) or, for grid " <>
             "frequency, 60 seconds before the first of the 8 grid-frequency readings (at least 7 " <>
             "minutes before the result); a later lock is refused with meta.latest_lock_at. Defaults to the " <>
-            "earliest allowed time. Can't be combined with weather_time."
+            "earliest allowed time."
         )
       end
 
-      # Records the operator's protocol on the draw (lock schema "6", or
-      # nothing for forecast). Every change below follows the recorded value.
+      # Records the operator's protocol on the draw (lock schema "6" and its
+      # tag). Every change below follows the recorded value.
       change({WallopCore.Resources.Draw.Changes.ResolveLockSchema, []})
-      validate({WallopCore.Resources.Draw.Validations.WeatherTime, []})
       validate({WallopCore.Resources.Draw.Validations.DrawAt, []})
 
       change({WallopCore.Resources.Draw.Changes.LockDraw, []})
-
-      change({WallopCore.Resources.Draw.Changes.DeclareEntropy, []},
-        where: [{WallopCore.Resources.Draw.Validations.LockSchemaIs, version: nil}]
-      )
 
       change({WallopCore.Resources.Draw.Changes.DeclareEntropyV6, []},
         where: [{WallopCore.Resources.Draw.Validations.EntropyRulesAre, rules: :landobs}]
@@ -1546,60 +1537,13 @@ defmodule WallopCore.Resources.Draw do
       change({WallopCore.Resources.Draw.Changes.RecordStageTimestamp, key: "locked_at"})
       change({WallopCore.Resources.Draw.Changes.RecordStageTimestamp, key: "entropy_declared_at"})
 
-      change({WallopCore.Resources.Draw.Changes.SignAndStoreReceipt, []},
-        where: [{WallopCore.Resources.Draw.Validations.LockSchemaIs, version: nil}]
-      )
-
-      change({WallopCore.Resources.Draw.Changes.SignAndStoreReceipt, version: "6"},
-        where: [{WallopCore.Resources.Draw.Validations.LockSchemaIs, version: "6"}]
-      )
+      change({WallopCore.Resources.Draw.Changes.SignAndStoreReceipt, []})
     end
 
     update :transition_to_pending do
       require_atomic?(false)
       filter(expr(status == :awaiting_entropy))
       change(set_attribute(:status, :pending_entropy))
-    end
-
-    update :execute_with_entropy do
-      require_atomic?(false)
-      filter(expr(status == :pending_entropy and is_nil(lock_schema_version)))
-
-      argument(:drand_randomness, :string, allow_nil?: false)
-      argument(:drand_signature, :string, allow_nil?: false)
-      argument(:drand_response, :string, allow_nil?: false)
-      argument(:weather_value, :string, allow_nil?: false)
-      argument(:weather_raw, :string, allow_nil?: false)
-      argument(:weather_observation_time, :utc_datetime_usec, allow_nil?: false)
-
-      validate match(:drand_randomness, ~r/^[0-9a-f]{64}$/) do
-        message("must be a 64-character lowercase hex string")
-      end
-
-      change({WallopCore.Resources.Draw.Changes.ExecuteWithEntropy, []})
-      change({WallopCore.Resources.Draw.Changes.SignAndStoreExecutionReceipt, []})
-      change({WallopCore.Resources.Draw.Changes.EnqueueWebhook, []})
-      change({WallopCore.Resources.Draw.Changes.BroadcastUpdate, []})
-    end
-
-    update :execute_drand_only do
-      require_atomic?(false)
-      filter(expr(status == :pending_entropy and is_nil(lock_schema_version)))
-
-      argument(:drand_randomness, :string, allow_nil?: false)
-      argument(:drand_signature, :string, allow_nil?: false)
-      argument(:drand_response, :string, allow_nil?: false)
-      argument(:weather_fallback_reason, :string, allow_nil?: false)
-
-      validate match(:drand_randomness, ~r/^[0-9a-f]{64}$/) do
-        message("must be a 64-character lowercase hex string")
-      end
-
-      change({WallopCore.Resources.Draw.Changes.ExecuteDrandOnly, []})
-      change({WallopCore.Resources.Draw.Changes.RecordStageTimestamp, key: "executed_at"})
-      change({WallopCore.Resources.Draw.Changes.SignAndStoreExecutionReceipt, []})
-      change({WallopCore.Resources.Draw.Changes.EnqueueWebhook, []})
-      change({WallopCore.Resources.Draw.Changes.BroadcastUpdate, []})
     end
 
     # Observation-weather draws. Reads the stored reading itself, under the
@@ -1619,7 +1563,7 @@ defmodule WallopCore.Resources.Draw do
 
       change({WallopCore.Resources.Draw.Changes.ExecuteV6, []})
       change({WallopCore.Resources.Draw.Changes.RecordStageTimestamp, key: "executed_at"})
-      change({WallopCore.Resources.Draw.Changes.SignAndStoreExecutionReceipt, version: "6"})
+      change({WallopCore.Resources.Draw.Changes.SignAndStoreExecutionReceipt, []})
       change({WallopCore.Resources.Draw.Changes.EnqueueWebhook, []})
       change({WallopCore.Resources.Draw.Changes.BroadcastUpdate, []})
     end
@@ -1687,15 +1631,13 @@ defmodule WallopCore.Resources.Draw do
       authorize_if(expr(api_key_id == ^actor(:id)))
     end
 
-    # Internal-only actions: called by EntropyWorker / ObservationDrawWorker /
-    # ExpiryWorker with authorize?: false. Forbidden for all authorized callers to prevent
+    # Internal-only actions: called by ObservationDrawWorker / ExpiryWorker
+    # with authorize?: false. Forbidden for all authorized callers to prevent
     # external actors from racing the workers (or, in :expire's case, from
     # burning operator sequence slots maliciously).
     policy action([
              :expire,
              :transition_to_pending,
-             :execute_with_entropy,
-             :execute_drand_only,
              :execute_v6,
              :mark_failed
            ]) do
@@ -1857,10 +1799,9 @@ defmodule WallopCore.Resources.Draw do
 
     attribute :weather_value, :string do
       description(
-        "The weather value that fed the seed, for Middle Wallop, Hampshire. Forecast draws: the " <>
-          "Met Office forecast mean sea-level pressure in pascals. Observation-weather draws: the " <>
-          "Met Office Land Observations reading as \"<t>;<mslp>;<rh>;<vis>\". Null when the draw " <>
-          "used no weather."
+        "The weather value that fed the seed, for Middle Wallop, Hampshire: the Met Office " <>
+          "Land Observations reading as \"<t>;<mslp>;<rh>;<vis>\". Null when the draw used no " <>
+          "weather."
       )
 
       allow_nil?(true)
@@ -1887,7 +1828,7 @@ defmodule WallopCore.Resources.Draw do
       description(
         "The time of the first of the 8 GB grid frequency readings (Elexon FREQ, 15 seconds " <>
           "apart). They feed the seed of a grid-frequency draw, and of an observation-weather " <>
-          "draw whose Middle Wallop reading was late. Null for forecast draws."
+          "draw whose Middle Wallop reading was late. Null until the draw locks under lock schema 6."
       )
 
       allow_nil?(true)
@@ -2015,9 +1956,8 @@ defmodule WallopCore.Resources.Draw do
               :utc_datetime_usec,
               WallopCore.Resources.Draw.Calculations.ExpectedResultAt do
       description(
-        "Observation-weather and grid-frequency draws: when the result is due (the publication " <>
-          "time of the committed drand round). Not signed; derived from drand_round. Null for " <>
-          "forecast draws."
+        "When the result is due: the publication time of the committed drand round. Not " <>
+          "signed; derived from drand_round. Null until the draw locks under lock schema 6."
       )
 
       public?(true)

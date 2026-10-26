@@ -110,8 +110,8 @@ defmodule WallopCore.Attacks.ForgedCompletionTest do
            end) == @refusal
   end
 
-  test "a forecast draw completed with no execution receipt is untouched by the check" do
-    forecast = create_draw(create_api_key())
+  test "a retired forecast draw completed with no execution receipt is untouched by the check" do
+    forecast = put_retired_forecast_draw!(create_api_key(), :awaiting_entropy)
 
     assert check_now(fn ->
              with_triggers_off(fn ->

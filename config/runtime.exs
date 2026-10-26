@@ -3,14 +3,10 @@ import Config
 if config_env() in [:dev, :test] do
   env = Dotenvy.source!([".env", System.get_env()])
 
-  if met_key = env["MET_OFFICE_API_KEY"] do
-    config :wallop_core, :met_office_api_key, met_key
-  end
-
   # Optional: only observation-weather draws use it. When it's missing (or
   # unusable), new observation-weather locks are refused, and draws already
-  # locked fall back by rule (visible in the receipt). Forecast and
-  # grid-frequency draws are unaffected.
+  # locked fall back by rule (visible in the receipt). Grid-frequency draws
+  # are unaffected.
   if obs_key = env["MET_OFFICE_OBS_API_KEY"] do
     config :wallop_core, :met_office_obs_api_key, obs_key
   end
@@ -89,16 +85,10 @@ if config_env() == :prod do
       raise "RATE_LIMIT_BACKEND must be ets or redis, got #{inspect(other)}"
   end
 
-  met_office_api_key =
-    System.get_env("MET_OFFICE_API_KEY") ||
-      raise "MET_OFFICE_API_KEY environment variable is not set"
-
-  config :wallop_core, :met_office_api_key, met_office_api_key
-
   # Optional: only observation-weather draws use it. When it's missing (or
   # unusable), new observation-weather locks are refused, and draws already
-  # locked fall back by rule (visible in the receipt). Forecast and
-  # grid-frequency draws are unaffected.
+  # locked fall back by rule (visible in the receipt). Grid-frequency draws
+  # are unaffected.
   if obs_key = System.get_env("MET_OFFICE_OBS_API_KEY") do
     config :wallop_core, :met_office_obs_api_key, obs_key
   end

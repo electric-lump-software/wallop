@@ -31,7 +31,7 @@ defmodule WallopCore.ProtocolKeyRotationTest do
   alias WallopCore.Protocol
 
   # Vector lives at the umbrella root. Same path-expansion pattern as
-  # `proof_bundle_generator.exs` and `protocol_pin_vector_test.exs`.
+  # `protocol_pin_vector_test.exs`.
   @vector_path Path.expand(
                  "../../../../spec/vectors/key-rotation-bidirectional.json",
                  __DIR__

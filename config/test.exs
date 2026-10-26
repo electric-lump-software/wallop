@@ -40,7 +40,6 @@ config :wallop_core, WallopCore.Vault,
        iv_length: 12}
   ]
 
-config :wallop_core, :met_office_api_key, "test-placeholder"
 config :wallop_core, :met_office_obs_api_key, "test-placeholder"
 
 # In-memory proof storage for tests (use a unique tmp dir per run)

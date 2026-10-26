@@ -75,23 +75,22 @@ defmodule WallopCore.Resources.ExecutionReceiptTest do
 
       decoded = Jason.decode!(receipt.payload_jcs)
 
-      # Receipt shape v4 — same 26 fields as v3; the bump is a coordination
-      # flag for resolver-driven verification (spec §4.2.4).
+      # Execution receipt schema 5, under the draw's Land Obs tag.
       assert decoded["draw_id"] == draw.id
       assert decoded["operator_id"] == draw.operator_id
       assert is_integer(decoded["sequence"])
-      assert decoded["schema_version"] == "4"
+      assert decoded["schema_version"] == "5"
       assert is_binary(decoded["signing_key_id"])
       refute Map.has_key?(decoded, "execution_schema_version")
       assert decoded["jcs_version"] == "sha256-jcs-v1"
       assert decoded["signature_algorithm"] == "ed25519"
-      assert decoded["entropy_composition"] == "drand-quicknet+openmeteo-v1"
+      assert decoded["entropy_composition"] == "drand-quicknet+metoffice-landobs-v1"
       assert decoded["drand_signature_algorithm"] == "bls12_381_g2"
       assert decoded["merkle_algorithm"] == "sha256-pairwise-v1"
 
       # Entropy fields
       assert decoded["drand_randomness"] == test_drand_randomness()
-      assert decoded["drand_signature"] == "test-signature"
+      assert decoded["drand_signature"] == test_drand_signature()
       assert is_binary(decoded["seed"])
       assert is_list(decoded["results"])
 
@@ -187,23 +186,13 @@ defmodule WallopCore.Resources.ExecutionReceiptTest do
       api_key = create_api_key_for_operator(operator)
       draw = create_draw(api_key)
 
-      # Transition to pending manually (bypassing execute_draw which auto-creates infra key)
-      draw =
-        draw
-        |> Ash.Changeset.for_update(:transition_to_pending, %{})
-        |> Ash.update!(domain: WallopCore.Domain, authorize?: false)
+      # Pending by hand (bypassing execute_draw, which creates an infra key)
+      draw = pending_for_execution!(draw)
 
       # No infra key bootstrapped — execution should fail
       assert {:error, _} =
                draw
-               |> Ash.Changeset.for_update(:execute_with_entropy, %{
-                 drand_randomness: test_drand_randomness(),
-                 drand_signature: "test-signature",
-                 drand_response: "{}",
-                 weather_value: "12.3",
-                 weather_raw: "{}",
-                 weather_observation_time: DateTime.add(draw.inserted_at, 1, :second)
-               })
+               |> Ash.Changeset.for_update(:execute_v6, test_drand_args())
                |> Ash.update(domain: WallopCore.Domain, authorize?: false)
     end
   end
@@ -374,21 +363,11 @@ defmodule WallopCore.Resources.ExecutionReceiptTest do
       api_key = create_api_key_for_operator(operator)
       draw = create_draw(api_key)
 
-      # Transition to pending
-      draw =
-        draw
-        |> Ash.Changeset.for_update(:transition_to_pending, %{})
-        |> Ash.update!(domain: WallopCore.Domain, authorize?: false)
-
-      # Execute drand-only (no weather)
+      # No reading and no grid-frequency window by the deadline: drand alone
       executed =
         draw
-        |> Ash.Changeset.for_update(:execute_drand_only, %{
-          drand_randomness: test_drand_randomness(),
-          drand_signature: "test-bls-sig",
-          drand_response: "{}",
-          weather_fallback_reason: "unreachable"
-        })
+        |> pending_for_execution!(observation: false)
+        |> Ash.Changeset.for_update(:execute_v6, test_drand_args())
         |> Ash.update!(domain: WallopCore.Domain, authorize?: false)
 
       [receipt] =
@@ -405,15 +384,17 @@ defmodule WallopCore.Resources.ExecutionReceiptTest do
       # Station is still declared at lock time (before fetch attempt)
       assert is_binary(decoded["weather_station"])
 
-      # Fallback reason should be present
-      assert decoded["weather_fallback_reason"] == "unreachable"
+      # Fallback reasons should be present
+      assert decoded["weather_fallback_reason"] == "no_observation_by_deadline"
+      assert decoded["freq_value"] == nil
+      assert is_binary(decoded["freq_fallback_reason"])
 
       # Drand fields should be populated
       assert decoded["drand_randomness"] == test_drand_randomness()
-      assert decoded["drand_signature"] == "test-bls-sig"
+      assert decoded["drand_signature"] == test_drand_signature()
 
       # Schema version
-      assert decoded["schema_version"] == "4"
+      assert decoded["schema_version"] == "5"
       assert is_binary(decoded["signing_key_id"])
       refute Map.has_key?(decoded, "execution_schema_version")
     end

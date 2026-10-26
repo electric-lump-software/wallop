@@ -14,7 +14,7 @@ defmodule WallopCore.Invariants.ObservationAndExecutionTest do
 
   alias Ecto.Adapters.SQL.Sandbox
   alias WallopCore.Drand.Quicknet
-  alias WallopCore.Entropy.{DrandClient, EntropyWorker, ObservationDrawWorker, StuckDrawRedriver}
+  alias WallopCore.Entropy.{DrandClient, ObservationDrawWorker, StuckDrawRedriver}
   alias WallopCore.Protocol.Tags.LandObs
   alias WallopCore.Resources.Draw
   alias WallopCore.Weather.{Observations, Schedule, Stations}
@@ -578,15 +578,6 @@ defmodule WallopCore.Invariants.ObservationAndExecutionTest do
       end
     end
 
-    test "INV-9 the forecast worker, handed a v6 draw, never fails it either" do
-      draw = v6_draw(-(@w + 60), -10)
-      break_entry_hash!(draw)
-
-      perform_job(EntropyWorker, %{draw_id: draw.id}, attempt: 10)
-      assert_fetched(draw)
-      assert reload(draw).status == :pending_entropy
-    end
-
     test "INV-9 drand failing on the last attempt after pub(R) never fails the draw" do
       # Attempt 1 fetches drand and rolls back (the database refuses the
       # completion); the last attempt then finds drand unavailable. Failing
@@ -601,7 +592,7 @@ defmodule WallopCore.Invariants.ObservationAndExecutionTest do
 
       # An error, never a cancel: Oban discards the job and the re-drive
       # brings the draw back once drand answers.
-      for worker <- [ObservationDrawWorker, EntropyWorker] do
+      for worker <- [ObservationDrawWorker] do
         assert {:error, reason} = perform_job(worker, %{draw_id: draw.id}, attempt: 10)
         assert reason =~ "drand unavailable after 10 attempts"
         assert reload(draw).status == :pending_entropy
@@ -634,9 +625,10 @@ defmodule WallopCore.Invariants.ObservationAndExecutionTest do
         assert reload(draw).status == draw.status
       end
 
-      # Positive control: a forecast draw with drand stored still fails as
-      # before; the backstop is a no-op without the v6 pair.
-      forecast = create_draw(create_api_key())
+      # Positive control: a retired forecast draw with drand stored still
+      # fails; the backstop is a no-op without the v6 pair (the drain gate
+      # relies on this).
+      forecast = put_retired_forecast_draw!(create_api_key(), :awaiting_entropy)
 
       with_triggers_off(fn ->
         Repo.query!(
@@ -761,7 +753,7 @@ defmodule WallopCore.Invariants.ObservationAndExecutionTest do
     end
 
     test "INV-9 re-drive never touches a draw with a job that can run it" do
-      for worker <- [ObservationDrawWorker, EntropyWorker], state <- redrive_live_states() do
+      for worker <- [ObservationDrawWorker], state <- redrive_live_states() do
         draw = v6_draw(-(@w + 3600), -20 * 60)
         delete_jobs_for!(draw)
         {:ok, job} = Oban.insert(worker.new(%{draw_id: draw.id}))
@@ -798,12 +790,9 @@ defmodule WallopCore.Invariants.ObservationAndExecutionTest do
       end
     end
 
-    test "INV-4 re-drive never acts on a forecast draw while the forecast flag is off" do
-      assert Application.fetch_env!(:wallop_core, :redrive_forecast_draws) == false
-      refute StuckDrawRedriver.forecast_enabled?()
-
-      # Stuck by the forecast rule: weather_time 20 minutes ago, no job.
-      draw = create_draw(create_api_key())
+    test "INV-4 re-drive never acts on a retired forecast draw" do
+      # Stuck by the old forecast rule: weather_time 20 minutes ago, no job.
+      draw = put_retired_forecast_draw!(create_api_key(), :awaiting_entropy)
 
       with_triggers_off(fn ->
         Repo.query!(
@@ -847,7 +836,7 @@ defmodule WallopCore.Invariants.ObservationAndExecutionTest do
       s = in_time_schedule()
       v6 = open_draw_with_entries(key)
       assert raw_lock(v6, s.weather_time, s.round) == nil
-      forecast = create_draw(create_api_key())
+      forecast = put_retired_forecast_draw!(create_api_key(), :awaiting_entropy)
       frozen = "lock_schema_version and entropy_composition are frozen once a draw has left open"
 
       for {draw, sql} <- [
@@ -862,7 +851,7 @@ defmodule WallopCore.Invariants.ObservationAndExecutionTest do
       end
     end
 
-    test "INV-10 a v6 draw stays v6 after its operator moves to forecast" do
+    test "INV-10 a v6 draw stays v6 after its operator moves to frequency" do
       ensure_infrastructure_key()
       {op, key} = create_v6_operator()
 
@@ -871,7 +860,7 @@ defmodule WallopCore.Invariants.ObservationAndExecutionTest do
 
       {:ok, locked} = lock_at(open_draw_with_entries(key), key, s.draw_at)
 
-      set_protocol!(op, :forecast)
+      set_protocol!(op, :frequency)
       after_flip = reload(locked)
 
       assert {after_flip.lock_schema_version, after_flip.entropy_composition} ==
@@ -879,22 +868,6 @@ defmodule WallopCore.Invariants.ObservationAndExecutionTest do
 
       assert {after_flip.drand_round, after_flip.weather_time, after_flip.weather_station} ==
                {s.round, s.weather_time, Stations.primary().id}
-    end
-
-    test "INV-10 a forecast draw stays forecast after its operator moves to observation" do
-      ensure_infrastructure_key()
-      {op, key} = create_v6_operator()
-      set_protocol!(op, :forecast)
-
-      {:ok, locked} =
-        open_draw_with_entries(key)
-        |> Ash.Changeset.for_update(:lock, %{}, actor: key)
-        |> Ash.update()
-
-      set_protocol!(op, :observation)
-      after_flip = reload(locked)
-      assert {after_flip.lock_schema_version, after_flip.entropy_composition} == {nil, nil}
-      assert after_flip.expected_result_at == nil
     end
   end
 
@@ -932,7 +905,7 @@ defmodule WallopCore.Invariants.ObservationAndExecutionTest do
       {:ok, locked} = lock_at(open_draw_with_entries(key), key, s.draw_at)
       assert reload(locked).expected_result_at == s.expected_result_at
 
-      set_protocol!(op, :forecast)
+      set_protocol!(op, :frequency)
       assert reload(locked).expected_result_at == s.expected_result_at
 
       locked

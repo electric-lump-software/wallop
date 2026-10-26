@@ -15,7 +15,7 @@ defmodule WallopCore.Entropy.FrequencyDrawExecutionTest do
   import WallopCore.TestHelpers
 
   alias WallopCore.Drand.Quicknet
-  alias WallopCore.Entropy.{DrandClient, EntropyWorker, ObservationDrawWorker, V6Rules}
+  alias WallopCore.Entropy.{DrandClient, ObservationDrawWorker, V6Rules}
   alias WallopCore.Frequency.Schedule
   alias WallopCore.ProofBundle
   alias WallopCore.Protocol
@@ -233,15 +233,6 @@ defmodule WallopCore.Entropy.FrequencyDrawExecutionTest do
     assert done.status == :completed
     assert done.freq_fallback_reason == Freq.fallback_reason()
     assert done.weather_fallback_reason == nil
-  end
-
-  test "EntropyWorker's safety net runs a frequency draw by the same rules" do
-    {_op, draw} = freq_draw()
-    put_frequency_window!(draw.freq_start, @value)
-    assert :ok = perform_job(EntropyWorker, %{draw_id: draw.id})
-    done = reload(draw)
-    assert done.status == :completed
-    assert done.freq_value == @value
   end
 
   test "the proof bundle carries freq_value in entropy, and no weather_value" do

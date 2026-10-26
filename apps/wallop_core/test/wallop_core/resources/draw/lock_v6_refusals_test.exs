@@ -4,7 +4,7 @@ defmodule WallopCore.Resources.Draw.LockV6RefusalsTest do
   import WallopCore.TestHelpers
 
   alias Ash.Error.Changes.InvalidArgument
-  alias WallopCore.Entropy.{EntropyWorker, ObservationDrawWorker, WeatherObservationWorker}
+  alias WallopCore.Entropy.{ObservationDrawWorker, WeatherObservationWorker}
   alias WallopCore.Resources.Draw
   alias WallopCore.Resources.Draw.Changes.SignAndStoreReceipt
   alias WallopCore.Weather.Schedule
@@ -25,7 +25,6 @@ defmodule WallopCore.Resources.Draw.LockV6RefusalsTest do
     assert open.status == :open
     assert {open.lock_schema_version, open.entropy_composition, open.receipt} == {nil, nil, nil}
     refute_enqueued(worker: ObservationDrawWorker, args: %{draw_id: draw.id})
-    refute_enqueued(worker: EntropyWorker, args: %{draw_id: draw.id})
   end
 
   defp idempotency_rows(draw) do
@@ -74,11 +73,13 @@ defmodule WallopCore.Resources.Draw.LockV6RefusalsTest do
     draw = open_draw_with_entries(key)
     ok = next_hour_draw_at(3)
 
+    # weather_time is no longer a lock input at all.
+    for args <- [%{weather_time: ok}, %{draw_at: ok, weather_time: ok}] do
+      assert {:error, %Ash.Error.Invalid{errors: [%Ash.Error.Invalid.NoSuchInput{}]}} =
+               lock(draw, key, args)
+    end
+
     for {args, field, message} <- [
-          {%{weather_time: ok}, :weather_time,
-           "can't be set for this operator; send draw_at instead"},
-          {%{draw_at: ok, weather_time: ok}, :weather_time,
-           "can't be set for this operator; send draw_at instead"},
           {%{draw_at: DateTime.add(ok, 1)}, :draw_at,
            "must fall on drand quicknet's 3-second grid (any whole minute does)"},
           {%{draw_at: %{ok | microsecond: {500_000, 6}}}, :draw_at, "must have second precision"},
@@ -103,26 +104,11 @@ defmodule WallopCore.Resources.Draw.LockV6RefusalsTest do
     assert locked.lock_schema_version == "6"
   end
 
-  test "forecast operators can't send draw_at; the draw stays open" do
-    key = create_api_key()
-    draw = open_draw_with_entries(key)
-
-    assert {:error, %Ash.Error.Invalid{errors: [%InvalidArgument{} = error]}} =
-             lock(draw, key, %{draw_at: next_hour_draw_at(3)})
-
-    assert error.field == :draw_at
-
-    assert error.message ==
-             "is only available to operators on the observation-weather or grid-frequency protocol"
-
-    assert_untouched(draw)
-  end
-
-  test "forecast operators: a nil draw_at is the same as none" do
-    key = create_api_key()
+  test "a nil draw_at is the same as none" do
+    {_op, key} = create_v6_operator()
     assert {:ok, locked} = lock(open_draw_with_entries(key), key, %{draw_at: nil})
-    assert locked.lock_schema_version == nil
-    assert_enqueued(worker: EntropyWorker, args: %{draw_id: locked.id})
+    assert locked.lock_schema_version == "6"
+    assert_enqueued(worker: ObservationDrawWorker, args: %{draw_id: locked.id})
   end
 
   # The validation passes, then the signer finds the lock late. Without a
@@ -236,12 +222,8 @@ defmodule WallopCore.Resources.Draw.LockV6RefusalsTest do
       assert locked.status == :awaiting_entropy
     end
 
-    test "forecast and grid-frequency locks don't read it" do
+    test "grid-frequency locks don't read it" do
       put_observation_readiness!(nil)
-      key = create_api_key()
-      assert {:ok, forecast} = lock(open_draw_with_entries(key), key, %{})
-      assert forecast.lock_schema_version == nil
-      assert_enqueued(worker: EntropyWorker, args: %{draw_id: forecast.id})
 
       {_op, freq_key} = create_freq_operator()
 

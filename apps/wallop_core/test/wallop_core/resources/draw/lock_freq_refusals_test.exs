@@ -4,8 +4,7 @@ defmodule WallopCore.Resources.Draw.LockFreqRefusalsTest do
   are not repeated here: a draw time already past ("a late draw_at is
   refused by validation with latest_lock_at") and the frequency schedule
   being the one checked ("a frequency draw_at is checked against the
-  frequency schedule, not the weather one"). The forecast refusal's wording
-  is pinned in `lock_v6_refusals_test.exs`.
+  frequency schedule, not the weather one").
   """
   use WallopCore.DataCase, async: false
   use Oban.Testing, repo: WallopCore.Repo
@@ -64,9 +63,10 @@ defmodule WallopCore.Resources.Draw.LockFreqRefusalsTest do
     d = open_draw_with_entries(key)
     ok = minute_after(3600)
 
+    # weather_time is no longer a lock input at all.
+    assert {:error, %Ash.Error.Invalid{}} = lock(d, key, %{weather_time: ok})
+
     for {args, field, message} <- [
-          {%{weather_time: ok}, :weather_time,
-           "can't be set for this operator; send draw_at instead"},
           {%{draw_at: %{ok | microsecond: {500_000, 6}}}, :draw_at, "must have second precision"},
           {%{draw_at: DateTime.add(ok, 1)}, :draw_at,
            "must fall on drand quicknet's 3-second grid (any whole minute does)"},
@@ -85,13 +85,11 @@ defmodule WallopCore.Resources.Draw.LockFreqRefusalsTest do
     refute_enqueued(worker: ObservationDrawWorker, args: %{draw_id: d.id})
   end
 
-  test "the draw_at description names both protocols' lock rules and the forecast refusal" do
+  test "the draw_at description names both protocols' lock rules" do
     %{description: text} =
       Enum.find(Info.action(Draw, :lock).arguments, &(&1.name == :draw_at))
 
     for phrase <- [
-          "Observation-weather and grid-frequency operators only",
-          "a forecast operator's lock is refused if it sends draw_at",
           "the observation hour minus 46 minutes (observation weather)",
           "60 seconds before the first of the 8 grid-frequency readings " <>
             "(at least 7 minutes before the result)",

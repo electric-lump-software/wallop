@@ -1,29 +1,13 @@
 defmodule WallopWeb.ProofPdfHTMLTest do
   # The PDF's HTML, before Gotenberg: its entropy section follows the
-  # signed execution receipt's state for lock schema 6 draws, and is
-  # labelled a forecast that you have our word for, for forecast draws.
+  # signed execution receipt's state.
   use WallopWeb.ConnCase, async: false
 
-  import WallopCore.TestHelpers
   import WallopWeb.SignedEntropyHelpers
 
   alias WallopCore.Weather.Schedule
 
   defp squash(html), do: String.replace(html, ~r/\s+/, " ")
-
-  test "forecast draw: labelled a forecast that you have our word for" do
-    api_key = create_api_key()
-    draw = create_draw(api_key, %{}) |> execute_draw(test_seed(), api_key)
-    html = draw |> pdf_html() |> squash()
-
-    assert html =~ "Forecast value"
-    assert html =~ "A forecast can't be re-fetched later, so for this value you have our word."
-    refute html =~ "Value (°C)"
-    refute html =~ "Fetch the Met Office Middle Wallop observation for"
-    assert html =~ "Combine entry hash, drand randomness, and weather value into a"
-    refute html =~ "The signed receipt says"
-    refute html =~ "BMRS"
-  end
 
   test "state (a): the four-part value, labelled, and a Land Observations recipe step" do
     html = :observed |> completed_signed!() |> pdf_html() |> squash()

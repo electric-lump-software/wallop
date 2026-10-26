@@ -8,7 +8,6 @@ defmodule WallopCore.Resources.Draw.LockFreqTest do
   alias WallopCore.Drand.Quicknet
 
   alias WallopCore.Entropy.{
-    EntropyWorker,
     FrequencyWindowWorker,
     ObservationDrawWorker,
     WeatherObservationWorker
@@ -57,7 +56,6 @@ defmodule WallopCore.Resources.Draw.LockFreqTest do
     assert reloaded.freq_start == nil
     assert reloaded.receipt == nil
     refute_enqueued(worker: ObservationDrawWorker, args: %{draw_id: draw.id})
-    refute_enqueued(worker: EntropyWorker, args: %{draw_id: draw.id})
   end
 
   # The lock v6 builder's bytes for a locked draw, rebuilt from the stored row.
@@ -128,8 +126,6 @@ defmodule WallopCore.Resources.Draw.LockFreqTest do
       scheduled_at: DateTime.add(s.expected_result_at, Schedule.execution_delay_seconds())
     )
 
-    refute_enqueued(worker: EntropyWorker, args: %{draw_id: locked.id})
-
     # No weather fetch job for any hour around the draw.
     for h <- -1..3 do
       hour =
@@ -178,8 +174,6 @@ defmodule WallopCore.Resources.Draw.LockFreqTest do
       worker: FrequencyWindowWorker,
       args: %{freq_start: FrequencyWindowWorker.start_arg(locked.freq_start)}
     )
-
-    refute_enqueued(worker: EntropyWorker, args: %{draw_id: locked.id})
   end
 
   test "two draws of the same window share one fetch job; each has its own execution job" do
@@ -200,7 +194,7 @@ defmodule WallopCore.Resources.Draw.LockFreqTest do
   end
 
   test "an operator flag flip between building and running the lock aborts it" do
-    for to <- [:forecast, :observation] do
+    for to <- [:observation] do
       {op, key} = create_freq_operator()
       draw = open_draw_with_entries(key)
       changeset = Ash.Changeset.for_update(draw, :lock, %{draw_at: draw_at_in(3600)}, actor: key)
@@ -230,7 +224,7 @@ defmodule WallopCore.Resources.Draw.LockFreqTest do
     {op, key} = create_freq_operator()
     {:ok, locked} = lock(open_draw_with_entries(key), key, %{draw_at: draw_at_in(3600)})
 
-    for to <- [:forecast, :observation] do
+    for to <- [:observation] do
       set_protocol!(op, to)
       reloaded = Ash.get!(Draw, locked.id, authorize?: false)
       assert {reloaded.lock_schema_version, reloaded.entropy_composition} == {"6", Freq.tag()}
@@ -408,14 +402,6 @@ defmodule WallopCore.Resources.Draw.LockFreqTest do
       end
     end
 
-    test "a forecast lock is announced as before" do
-      key = create_api_key()
-      draw = open_draw_with_entries(key)
-      subscribe(draw)
-      assert {:ok, _} = lock(draw, key, %{})
-      assert length(broadcasts(draw.id)) == 2
-    end
-
     defp v6_lock_setup({:freq, seconds}) do
       {_op, key} = create_freq_operator()
       {open_draw_with_entries(key), key, %{draw_at: draw_at_in(seconds)}}
@@ -427,7 +413,7 @@ defmodule WallopCore.Resources.Draw.LockFreqTest do
     end
   end
 
-  describe "the other protocols' locks are unchanged" do
+  describe "the other protocol's locks are unchanged" do
     test "an observation lock: the Land Obs receipt bytes, its round's freq_start, its own jobs" do
       {_op, key} = create_v6_operator()
       draw_at = next_hour_draw_at(3)
@@ -445,20 +431,6 @@ defmodule WallopCore.Resources.Draw.LockFreqTest do
       )
 
       assert_enqueued(worker: ObservationDrawWorker, args: %{draw_id: locked.id})
-      refute_enqueued(worker: EntropyWorker, args: %{draw_id: locked.id})
-    end
-
-    test "a forecast lock: schema 5, EntropyWorker only, no freq_start" do
-      key = create_api_key()
-      {:ok, locked} = lock(open_draw_with_entries(key), key, %{})
-      locked = reload(locked)
-
-      assert {locked.lock_schema_version, locked.entropy_composition, locked.freq_start} ==
-               {nil, nil, nil}
-
-      assert Jason.decode!(locked.receipt.payload_jcs)["schema_version"] == "5"
-      assert_enqueued(worker: EntropyWorker, args: %{draw_id: locked.id})
-      refute_enqueued(worker: ObservationDrawWorker, args: %{draw_id: locked.id})
     end
   end
 end

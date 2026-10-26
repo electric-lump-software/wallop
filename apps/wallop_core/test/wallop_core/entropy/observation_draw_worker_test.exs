@@ -9,7 +9,6 @@ defmodule WallopCore.Entropy.ObservationDrawWorkerTest do
 
   alias WallopCore.Entropy.{
     DrandClient,
-    EntropyWorker,
     FrequencyWindowWorker,
     LandObsClient,
     ObservationDrawWorker,
@@ -247,11 +246,11 @@ defmodule WallopCore.Entropy.ObservationDrawWorkerTest do
 
       {:ok, _} =
         op
-        |> Ash.Changeset.for_update(:set_draw_protocol, %{draw_protocol: :forecast})
+        |> Ash.Changeset.for_update(:set_draw_protocol, %{draw_protocol: :frequency})
         |> Ash.update(authorize?: false)
 
-      # EntropyWorker hands a v6 draw to the v6 executor.
-      assert :ok = perform_job(EntropyWorker, %{draw_id: draw.id})
+      # The draw is still run under its stored Land Obs tag.
+      assert :ok = perform_job(ObservationDrawWorker, %{draw_id: draw.id})
       done = reload(draw)
       assert done.status == :completed
       assert done.weather_fallback_reason == "no_observation_by_deadline"
@@ -483,8 +482,8 @@ defmodule WallopCore.Entropy.ObservationDrawWorkerTest do
   end
 
   describe "which draws it runs" do
-    test "a forecast draw is cancelled by the v6 worker, untouched" do
-      draw = create_draw(create_api_key())
+    test "a retired forecast draw is cancelled by the v6 worker, untouched" do
+      draw = put_retired_forecast_draw!(create_api_key(), :awaiting_entropy)
       assert draw.lock_schema_version == nil
       assert {:cancel, _} = perform_job(ObservationDrawWorker, %{draw_id: draw.id})
       assert reload(draw).status == :awaiting_entropy
@@ -810,7 +809,7 @@ defmodule WallopCore.Entropy.ObservationDrawWorkerTest do
         ])
       end)
 
-      for worker <- [ObservationDrawWorker, EntropyWorker] do
+      for worker <- [ObservationDrawWorker] do
         assert {:cancel, reason} = perform_job(worker, %{draw_id: draw.id}, attempt: 10)
         assert reason =~ "unknown lock_schema_version and entropy_composition pair: (6, #{other})"
         assert reload(draw).status == :awaiting_entropy

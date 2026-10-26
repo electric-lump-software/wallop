@@ -111,14 +111,8 @@ defmodule WallopCore.ProofBundleTest do
 
       executed =
         draw
-        |> Ash.Changeset.for_update(:transition_to_pending, %{})
-        |> Ash.update!(domain: WallopCore.Domain, authorize?: false)
-        |> Ash.Changeset.for_update(:execute_drand_only, %{
-          drand_randomness: test_drand_randomness(),
-          drand_signature: "test-signature",
-          drand_response: "{}",
-          weather_fallback_reason: "unreachable"
-        })
+        |> pending_for_execution!(observation: false)
+        |> Ash.Changeset.for_update(:execute_v6, test_drand_args())
         |> Ash.update!(domain: WallopCore.Domain, authorize?: false)
 
       {:ok, json} = ProofBundle.build(executed)

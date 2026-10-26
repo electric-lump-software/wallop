@@ -7,18 +7,14 @@ defmodule WallopCore.Attacks.QueueIsolationTest do
       queue. About 14 windows are live at once, and a network attacker who
       trickles Elexon bytes makes every poll take its full 8 s fetch cap, so
       Land Obs fetches queued behind Elexon. It now runs in `:frequency`.
-    * `ObservationDrawWorker` (schema 6 executions, both tags) once ran in
-      `:entropy`, the forecast `EntropyWorker`'s queue. A burst of
-      grid-frequency draws on one `draw_at`, with a slow drand relay, pushed
-      live forecast executions back. It now runs in `:v6_execution`.
+    * `ObservationDrawWorker` (schema 6 executions, both tags) runs in
+      `:v6_execution`, apart from both fetch queues.
 
-  Neither changed an outcome; the second changed the live forecast path's
-  behaviour, which must not happen.
+  The retired forecast worker's `:entropy` queue is gone.
   """
   use ExUnit.Case, async: true
 
   alias WallopCore.Entropy.{
-    EntropyWorker,
     FrequencyWindowWorker,
     ObservationDrawWorker,
     WeatherObservationWorker
@@ -33,17 +29,14 @@ defmodule WallopCore.Attacks.QueueIsolationTest do
     assert queue(FrequencyWindowWorker) == "frequency"
     assert queue(ObservationDrawWorker) == "v6_execution"
 
-    shared = [queue(EntropyWorker), queue(WeatherObservationWorker)]
-    assert shared == ["entropy", "weather"]
-    refute queue(FrequencyWindowWorker) in shared
-    refute queue(ObservationDrawWorker) in shared
+    assert queue(WeatherObservationWorker) == "weather"
+    refute queue(FrequencyWindowWorker) == "weather"
+    refute queue(ObservationDrawWorker) == "weather"
   end
 
-  test "the forecast and Land Obs queues are unchanged" do
-    assert queue(EntropyWorker) == "entropy"
-    assert queue(WeatherObservationWorker) == "weather"
-    assert configured_queues()[:entropy] == 10
+  test "the Land Obs queue is unchanged, and the forecast queue is gone" do
     assert configured_queues()[:weather] == 5
+    refute Keyword.has_key?(configured_queues(), :entropy)
   end
 
   test "the wallop service runs both new queues" do

@@ -7,7 +7,7 @@ defmodule WallopCore.Entropy.StuckDrawRedriverTest do
   import WallopCore.TestHelpers
 
   alias WallopCore.Drand.Quicknet
-  alias WallopCore.Entropy.{DrandClient, EntropyWorker, ObservationDrawWorker, StuckDrawRedriver}
+  alias WallopCore.Entropy.{DrandClient, ObservationDrawWorker, StuckDrawRedriver}
   alias WallopCore.Entropy.{FrequencyWindowWorker, WeatherObservationWorker}
   alias WallopCore.Frequency.Schedule, as: FreqSchedule
   alias WallopCore.Resources.Draw
@@ -18,12 +18,8 @@ defmodule WallopCore.Entropy.StuckDrawRedriverTest do
   # it is replaced, as are jobs that can't run soon (attacks/parked_job_test).
   @runnable_v6_states ~w(available scheduled executing retryable)
   @event [:wallop_core, :redrive, :reinserted]
-
-  setup do
-    original = Application.fetch_env!(:wallop_core, :redrive_forecast_draws)
-    on_exit(fn -> Application.put_env(:wallop_core, :redrive_forecast_draws, original) end)
-    :ok
-  end
+  # The retired forecast worker. Its module is gone; leftover rows may not be.
+  @forecast_worker "WallopCore.Entropy.EntropyWorker"
 
   defp round_at(offset), do: Quicknet.round_at_or_after(DateTime.add(DateTime.utc_now(), offset))
 
@@ -45,10 +41,24 @@ defmodule WallopCore.Entropy.StuckDrawRedriverTest do
     %{rows: rows} =
       Repo.query!(
         "SELECT state FROM oban_jobs WHERE worker = $1 AND args->>'draw_id' = $2",
-        [inspect(worker), id]
+        [worker_name(worker), id]
       )
 
     List.flatten(rows)
+  end
+
+  defp worker_name(worker) when is_binary(worker), do: worker
+  defp worker_name(worker), do: inspect(worker)
+
+  defp put_job!(worker, id, state) when is_binary(worker) do
+    Repo.query!(
+      """
+      INSERT INTO oban_jobs (state, queue, worker, args, max_attempts, scheduled_at, inserted_at)
+      VALUES ($1::oban_job_state, 'entropy', $2, $3, 10, timezone('UTC', now()),
+        timezone('UTC', now()))
+      """,
+      [state, worker, %{"draw_id" => id}]
+    )
   end
 
   defp put_job!(worker, id, state) do
@@ -67,10 +77,10 @@ defmodule WallopCore.Entropy.StuckDrawRedriverTest do
     draw
   end
 
-  # A forecast draw whose weather_time is `weather_offset` seconds from now,
-  # with the lock's EntropyWorker job gone.
-  defp stuck_forecast(weather_offset) do
-    draw = create_draw(create_api_key())
+  # A retired forecast draw (no lock schema) stranded in `status`, its
+  # weather_time `weather_offset` seconds from now.
+  defp stuck_forecast(status, weather_offset) do
+    draw = put_retired_forecast_draw!(create_api_key(), status)
     wt = DateTime.add(DateTime.utc_now(), weather_offset)
 
     with_triggers_off(fn ->
@@ -80,7 +90,6 @@ defmodule WallopCore.Entropy.StuckDrawRedriverTest do
       ])
     end)
 
-    delete_jobs_for!(draw.id)
     Ash.get!(Draw, draw.id, authorize?: false)
   end
 
@@ -93,8 +102,6 @@ defmodule WallopCore.Entropy.StuckDrawRedriverTest do
     end)
   end
 
-  defp forecast_on, do: Application.put_env(:wallop_core, :redrive_forecast_draws, true)
-
   describe "observation-weather draws" do
     test "past pub(R) + 15m with no job: the execution job comes back, reported" do
       ref = :telemetry_test.attach_event_handlers(self(), [@event])
@@ -102,7 +109,6 @@ defmodule WallopCore.Entropy.StuckDrawRedriverTest do
 
       assert draw.id in StuckDrawRedriver.redrive()
       assert_enqueued(worker: ObservationDrawWorker, args: %{draw_id: draw.id})
-      assert jobs_for(EntropyWorker, draw.id) == []
 
       id = draw.id
 
@@ -137,18 +143,24 @@ defmodule WallopCore.Entropy.StuckDrawRedriverTest do
       assert jobs_for(ObservationDrawWorker, draw.id) == ["available"]
     end
 
-    test "a runnable job of either worker, in any runnable state, means the draw is left alone" do
-      for worker <- [ObservationDrawWorker, EntropyWorker], state <- @runnable_v6_states do
+    test "a runnable job, in any runnable state, means the draw is left alone" do
+      for state <- @runnable_v6_states do
         draw = stuck_v6(-20 * 60)
-        put_job!(worker, draw.id, state)
+        put_job!(ObservationDrawWorker, draw.id, state)
 
-        refute draw.id in StuckDrawRedriver.redrive(), "#{inspect(worker)} #{state}"
+        refute draw.id in StuckDrawRedriver.redrive(), state
+        assert jobs_for(ObservationDrawWorker, draw.id) == [state]
+      end
+    end
 
-        assert jobs_for(ObservationDrawWorker, draw.id) ==
-                 if(worker == ObservationDrawWorker, do: [state], else: [])
+    test "a live job of the retired forecast worker doesn't count: the draw is re-driven" do
+      for state <- @live_states do
+        draw = stuck_v6(-20 * 60)
+        put_job!(@forecast_worker, draw.id, state)
 
-        assert jobs_for(EntropyWorker, draw.id) ==
-                 if(worker == EntropyWorker, do: [state], else: [])
+        assert draw.id in StuckDrawRedriver.redrive(), state
+        assert jobs_for(ObservationDrawWorker, draw.id) == ["available"]
+        assert jobs_for(@forecast_worker, draw.id) == [state]
       end
     end
 
@@ -334,91 +346,25 @@ defmodule WallopCore.Entropy.StuckDrawRedriverTest do
     end
   end
 
-  describe "forecast draws" do
-    test "off by default: a stuck forecast draw is untouched and not even reported" do
-      ref = :telemetry_test.attach_event_handlers(self(), [@event])
-      refute StuckDrawRedriver.forecast_enabled?()
-      draw = stuck_forecast(-20 * 60)
-      before = Repo.query!("SELECT * FROM draws WHERE id = $1", [Ecto.UUID.dump!(draw.id)])
+  describe "retired forecast draws" do
+    test "a stranded draw with no lock schema is never read, re-driven or reported" do
+      ref =
+        :telemetry_test.attach_event_handlers(self(), [@event, [:wallop_core, :v6, :overdue]])
 
-      refute draw.id in StuckDrawRedriver.redrive()
+      for status <- [:awaiting_entropy, :pending_entropy], job <- [nil, "cancelled"] do
+        draw = stuck_forecast(status, -3 * 3600)
+        if job, do: put_job!(@forecast_worker, draw.id, job)
+        before = Repo.query!("SELECT * FROM draws WHERE id = $1", [Ecto.UUID.dump!(draw.id)])
 
-      assert jobs_for(EntropyWorker, draw.id) == []
-      assert jobs_for(ObservationDrawWorker, draw.id) == []
+        refute draw.id in StuckDrawRedriver.redrive()
+        assert jobs_for(ObservationDrawWorker, draw.id) == []
 
-      assert Repo.query!("SELECT * FROM draws WHERE id = $1", [Ecto.UUID.dump!(draw.id)]) ==
-               before
+        assert Repo.query!("SELECT * FROM draws WHERE id = $1", [Ecto.UUID.dump!(draw.id)]) ==
+                 before
 
-      id = draw.id
-      refute_received {@event, ^ref, _, %{draw_id: ^id}}
-    end
-
-    test "on: past weather_time + 15m with no job, EntropyWorker comes back" do
-      forecast_on()
-      ref = :telemetry_test.attach_event_handlers(self(), [@event])
-      draw = stuck_forecast(-20 * 60)
-      id = draw.id
-
-      assert id in StuckDrawRedriver.redrive()
-      assert_enqueued(worker: EntropyWorker, args: %{draw_id: id})
-      assert jobs_for(ObservationDrawWorker, id) == []
-
-      assert_received {@event, ^ref, %{count: 1},
-                       %{kind: :execution, protocol: :forecast, draw_id: ^id}}
-
-      # Idempotent.
-      refute id in StuckDrawRedriver.redrive()
-      assert jobs_for(EntropyWorker, id) == ["available"]
-    end
-
-    test "on: a forecast draw's live job counts whatever its schedule or queue; no overdue report" do
-      forecast_on()
-      ref = :telemetry_test.attach_event_handlers(self(), [[:wallop_core, :v6, :overdue]])
-
-      for set <- [
-            "state = 'scheduled', scheduled_at = '2099-01-01 00:00:00'",
-            "queue = 'nowhere'",
-            "attempt = max_attempts"
-          ] do
-        draw = stuck_forecast(-20 * 60)
-        job = put_job!(EntropyWorker, draw.id, "scheduled")
-        Repo.query!("UPDATE oban_jobs SET #{set} WHERE id = $1", [job.id])
-
-        refute draw.id in StuckDrawRedriver.redrive(), set
-        assert jobs_for(EntropyWorker, draw.id) == ["scheduled"]
         id = draw.id
-        refute_received {[:wallop_core, :v6, :overdue], ^ref, _, %{draw_id: ^id}}
+        refute_received {_, ^ref, _, %{draw_id: ^id}}
       end
-    end
-
-    test "on: a live job blocks it, a finished one doesn't, and a cancelled v6 worker job is no marker" do
-      forecast_on()
-
-      for state <- @live_states do
-        draw = stuck_forecast(-20 * 60)
-        put_job!(EntropyWorker, draw.id, state)
-        refute draw.id in StuckDrawRedriver.redrive(), state
-        assert jobs_for(EntropyWorker, draw.id) == [state]
-      end
-
-      # EntropyWorker's own uniqueness counts a completed job; the re-drive
-      # counts only live ones.
-      for state <- ~w(completed discarded) do
-        draw = stuck_forecast(-20 * 60)
-        put_job!(EntropyWorker, draw.id, state)
-        assert draw.id in StuckDrawRedriver.redrive(), state
-      end
-
-      draw = stuck_forecast(-20 * 60)
-      put_job!(ObservationDrawWorker, draw.id, "cancelled")
-      assert draw.id in StuckDrawRedriver.redrive()
-    end
-
-    test "on: not yet past the threshold is left alone" do
-      forecast_on()
-      draw = stuck_forecast(-5 * 60)
-      refute draw.id in StuckDrawRedriver.redrive()
-      assert jobs_for(EntropyWorker, draw.id) == []
     end
   end
 
@@ -429,10 +375,6 @@ defmodule WallopCore.Entropy.StuckDrawRedriverTest do
         |> Enum.find(&match?({Oban.Plugins.Cron, _}, &1))
 
       assert {"*/10 * * * *", StuckDrawRedriver} in opts[:crontab]
-    end
-
-    test "the forecast flag is off in config" do
-      assert Application.fetch_env!(:wallop_core, :redrive_forecast_draws) == false
     end
 
     test "the job runs a re-drive and succeeds" do
@@ -490,7 +432,6 @@ defmodule WallopCore.Entropy.StuckDrawRedriverTest do
 
       assert id in StuckDrawRedriver.redrive()
       assert jobs_for(ObservationDrawWorker, id) == ["available"]
-      assert jobs_for(EntropyWorker, id) == []
 
       assert_received {@event, ^ref, %{count: 1},
                        %{kind: :execution, protocol: :frequency, draw_id: ^id}}

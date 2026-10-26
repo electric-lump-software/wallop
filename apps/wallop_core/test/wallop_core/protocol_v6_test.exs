@@ -109,73 +109,28 @@ defmodule WallopCore.ProtocolV6Test do
     end
   end
 
-  test "the landobs lock adds only freq_start to the lock 5 keys; exec adds only the freq fields" do
-    lock_v5 = Jason.decode!(Protocol.build_receipt_payload(v5_input(@lock)))
-    exec_v4 = Jason.decode!(Protocol.build_execution_receipt_payload(v5_input(@exec)))
+  # The field set lock schemas 2 to 6 and execution schemas 3 to 5 share.
+  @base_lock_keys ~w(commitment_hash draw_id drand_chain drand_round entropy_composition
+                     entry_hash fair_pick_version jcs_version locked_at operator_id
+                     operator_slug schema_version sequence signature_algorithm signing_key_id
+                     wallop_core_version weather_station weather_time winner_count)
+  @base_exec_keys ~w(draw_id drand_chain drand_randomness drand_round drand_signature
+                     drand_signature_algorithm entropy_composition entry_hash executed_at
+                     fair_pick_version jcs_version lock_receipt_hash merkle_algorithm operator_id
+                     operator_slug results schema_version seed sequence signature_algorithm
+                     signing_key_id wallop_core_version weather_fallback_reason
+                     weather_observation_time weather_station weather_value)
 
-    assert LandObs.lock_keys() == Enum.sort(["freq_start" | Map.keys(lock_v5)])
+  test "the landobs lock adds only freq_start to the base lock keys; exec adds only the freq fields" do
+    assert LandObs.lock_keys() == Enum.sort(["freq_start" | @base_lock_keys])
     assert length(LandObs.lock_keys()) == 20
     assert LandObs.lock_keys() == Freq.lock_keys()
 
     assert LandObs.exec_keys() ==
-             Enum.sort(["freq_fallback_reason", "freq_value" | Map.keys(exec_v4)])
+             Enum.sort(["freq_fallback_reason", "freq_value" | @base_exec_keys])
 
     assert length(LandObs.exec_keys()) == 28
     assert LandObs.exec_keys() == Freq.exec_keys()
-  end
-
-  # The same input, as the lock 5 / execution 4 builders take it: no tag,
-  # no freq_start, the old station and an old-style value.
-  defp v5_input(input) do
-    input
-    |> Map.drop([:entropy_composition, :freq_start, :freq_value, :freq_fallback_reason])
-    |> Map.put(:weather_station, "middle-wallop")
-    |> old_style_value()
-  end
-
-  defp old_style_value(%{weather_value: value} = input) when is_binary(value),
-    do: %{input | weather_value: "102500"}
-
-  defp old_style_value(input), do: input
-
-  describe "the lock 5 / execution 4 builders and the tag" do
-    test "no tag or the openmeteo tag keeps today's bytes" do
-      openmeteo = Protocol.entropy_composition()
-
-      for input <- [v5_input(@lock), Map.put(v5_input(@lock), :entropy_composition, openmeteo)] do
-        assert Protocol.build_receipt_payload(input) ==
-                 Protocol.build_receipt_payload(v5_input(@lock))
-      end
-
-      for input <- [v5_input(@exec), Map.put(v5_input(@exec), :entropy_composition, openmeteo)] do
-        assert Protocol.build_execution_receipt_payload(input) ==
-                 Protocol.build_execution_receipt_payload(v5_input(@exec))
-      end
-
-      decoded = Jason.decode!(Protocol.build_receipt_payload(v5_input(@lock)))
-      assert decoded["entropy_composition"] == "drand-quicknet+openmeteo-v1"
-      assert decoded["schema_version"] == "5"
-    end
-
-    test "any other tag is refused" do
-      for tag <- [
-            @landobs,
-            "drand-quicknet+elexon-freq-v1",
-            "drand-quicknet+metoffice-landobs-v2",
-            "",
-            nil
-          ] do
-        assert_raise ArgumentError, ~r/entropy_composition/, fn ->
-          Protocol.build_receipt_payload(Map.put(v5_input(@lock), :entropy_composition, tag))
-        end
-
-        assert_raise ArgumentError, ~r/entropy_composition/, fn ->
-          Protocol.build_execution_receipt_payload(
-            Map.put(v5_input(@exec), :entropy_composition, tag)
-          )
-        end
-      end
-    end
   end
 
   describe "the entropy tag" do
@@ -427,12 +382,6 @@ defmodule WallopCore.ProtocolV6Test do
           @exec
           | executed_at: ~U[2026-10-14 19:59:59.999999Z]
         })
-      end
-    end
-
-    test "v5 builders still refuse the landobs-only fallback reason" do
-      assert_raise ArgumentError, fn ->
-        Protocol.build_execution_receipt_payload(v5_input(@fallback))
       end
     end
 

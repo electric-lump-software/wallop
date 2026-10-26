@@ -3,7 +3,13 @@ defmodule WallopCore.Resources.Draw.Changes.ResolveLockSchema do
   Reads the operator's draw protocol at lock and records it on the draw:
   lock schema "6" with the Land Observations entropy composition for an
   observation operator, lock schema "6" with the grid-frequency entropy
-  composition for a frequency operator, nothing for a forecast one.
+  composition for a frequency operator.
+
+  Every lock is a lock schema 6 lock. An unreadable operator, or one on
+  any other protocol, is refused (an operator can't be on another one: the
+  database allows only these two, and refuses any lock without lock
+  schema 6). A draw with no operator is refused where its receipt would
+  be signed.
 
   Everything after this in the lock (the entropy declaration, the receipt,
   the jobs) follows the recorded value, never the operator's current flag.
@@ -11,14 +17,11 @@ defmodule WallopCore.Resources.Draw.Changes.ResolveLockSchema do
   execution and verification read it from the draw, never from the operator.
 
   The flag is read when the changeset is built, so the lock's `where:`
-  conditions can route on it. For a schema 6 lock it is read again inside
-  the lock transaction, with a share lock on the operator row, and the
-  lock is refused unless the operator is still on the protocol this lock
-  recorded (the caller can retry). So a draw is only ever locked under a
-  tag while its operator is on that tag's protocol. A forecast lock does
-  no second read: it
-  stays exactly as it was before schema 6 existed, and a forecast draw
-  locked while the flag moves is a valid forecast draw.
+  conditions can route on it. It is read again inside the lock
+  transaction, with a share lock on the operator row, and the lock is
+  refused unless the operator is still on the protocol this lock recorded
+  (the caller can retry). So a draw is only ever locked under a tag while
+  its operator is on that tag's protocol.
 
   An observation lock is refused unless the service that fetches Land
   Observations readings has recently said it holds a usable key
@@ -27,7 +30,7 @@ defmodule WallopCore.Resources.Draw.Changes.ResolveLockSchema do
   reading could be fetched, and every such draw would fall back by design.
   The refusal is an action-level `Ash.Error.Changes.InvalidArgument` (a
   JSON:API `400` `invalid_argument` with no pointer), and the draw stays
-  open. Forecast and grid-frequency locks don't depend on the key.
+  open. Grid-frequency locks don't depend on the key.
   """
   use Ash.Resource.Change
 
@@ -41,6 +44,7 @@ defmodule WallopCore.Resources.Draw.Changes.ResolveLockSchema do
   @impl true
   def change(changeset, _opts, _context) do
     case changeset.data.operator_id do
+      # Refused when the receipt is signed (SignAndStoreReceipt).
       nil ->
         changeset
 
@@ -61,7 +65,7 @@ defmodule WallopCore.Resources.Draw.Changes.ResolveLockSchema do
 
   defp protocol(%{draw_protocol: :observation}), do: :observation
   defp protocol(%{draw_protocol: :frequency}), do: :frequency
-  defp protocol(_), do: :forecast
+  defp protocol(_), do: :unknown
 
   defp record(changeset, protocol, operator_id) when protocol in [:observation, :frequency] do
     changeset
@@ -71,7 +75,14 @@ defmodule WallopCore.Resources.Draw.Changes.ResolveLockSchema do
     |> require_ready(protocol)
   end
 
-  defp record(changeset, :forecast, _operator_id), do: changeset
+  # Unreachable while the database allows only the two protocols above; a
+  # clean 400 rather than a database exception if it ever isn't.
+  defp record(changeset, :unknown, _operator_id) do
+    Ash.Changeset.add_error(
+      changeset,
+      InvalidArgument.exception(field: nil, message: "unknown draw protocol")
+    )
+  end
 
   # The lock is still recorded as schema 6, so the rest of the action
   # follows the schema 6 path; the error stops it before anything is written.

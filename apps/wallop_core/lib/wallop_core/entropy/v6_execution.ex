@@ -2,8 +2,7 @@ defmodule WallopCore.Entropy.V6Execution do
   @moduledoc """
   Runs a lock schema 6 draw (Met Office Land Observations or GB grid
   frequency) once its fetch window has closed and its drand round has
-  published. Shared by `ObservationDrawWorker` and
-  `EntropyWorker`, so a draw is executed under the rules of the
+  published. Run by `ObservationDrawWorker`. A draw is executed under the rules of the
   (lock_schema_version, entropy_composition) pair it was locked with
   (`WallopCore.Entropy.V6Rules`), whatever the operator's flag says now.
 
@@ -73,7 +72,7 @@ defmodule WallopCore.Entropy.V6Execution do
 
   alias WallopCore.DbClock
   alias WallopCore.Drand.Quicknet
-  alias WallopCore.Entropy.{DrandClient, EntropyWorker, V6Rules}
+  alias WallopCore.Entropy.{DrandClient, V6Rules}
 
   # The wait after a post-fetch V6NotYet is measured on this node's clock,
   # the clock execute_v6 checks executed_at on, plus a margin, and never
@@ -230,7 +229,7 @@ defmodule WallopCore.Entropy.V6Execution do
 
   defp execute_error(draw, error) do
     # Another attempt (or a Lifeline rescue) may have finished the draw.
-    case EntropyWorker.settle_after_error(draw.id, :not_settled) do
+    case settle_after_error(draw.id, :not_settled) do
       :ok ->
         :ok
 
@@ -333,4 +332,28 @@ defmodule WallopCore.Entropy.V6Execution do
   defp find_error(_error, _module), do: nil
 
   defp error_class(%{__struct__: module}), do: inspect(module)
+
+  # The draw finished while this attempt was running (another attempt, or a
+  # Lifeline rescue). Its outcome and webhook are already committed, so this
+  # attempt succeeded at nothing and must not retry or fail the draw.
+  # `:expired` is listed for completeness: only open draws expire, so a draw
+  # this module runs can't become expired.
+  @doc false
+  @spec settle_after_error(String.t(), term()) :: :ok | {:error, term()}
+  def settle_after_error(draw_id, reason) do
+    case Ash.get(WallopCore.Resources.Draw, draw_id,
+           domain: WallopCore.Domain,
+           authorize?: false
+         ) do
+      {:ok, %{status: status}} when status in [:completed, :failed, :expired] ->
+        Logger.info(
+          "V6Execution: draw #{Log.redact_id(draw_id)} already #{status}; nothing to do"
+        )
+
+        :ok
+
+      _ ->
+        {:error, reason}
+    end
+  end
 end

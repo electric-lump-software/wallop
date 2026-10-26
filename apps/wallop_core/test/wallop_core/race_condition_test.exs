@@ -14,7 +14,10 @@ defmodule WallopCore.RaceConditionTest do
 
   alias WallopCore.Resources.Draw
 
-  describe "concurrent lock attempts (real concurrency)" do
+  # A raw lock can't carry lock schema 6's checked fields, and the database
+  # refuses any other lock, so the state transition raced here is the
+  # other way out of open: expiry.
+  describe "concurrent transitions out of open (real concurrency)" do
     test "exactly one of two concurrent UPDATE ... WHERE status = open succeeds" do
       {:ok, conn1} = raw_connection()
       {:ok, conn2} = raw_connection()
@@ -50,7 +53,7 @@ defmodule WallopCore.RaceConditionTest do
         Task.async(fn ->
           Postgrex.query!(
             conn1,
-            "UPDATE draws SET status = 'awaiting_entropy' WHERE id = $1 AND status = 'open' RETURNING id",
+            "UPDATE draws SET status = 'expired' WHERE id = $1 AND status = 'open' RETURNING id",
             [draw_id_bin]
           )
         end)
@@ -59,7 +62,7 @@ defmodule WallopCore.RaceConditionTest do
         Task.async(fn ->
           Postgrex.query!(
             conn2,
-            "UPDATE draws SET status = 'awaiting_entropy' WHERE id = $1 AND status = 'open' RETURNING id",
+            "UPDATE draws SET status = 'expired' WHERE id = $1 AND status = 'open' RETURNING id",
             [draw_id_bin]
           )
         end)
@@ -70,10 +73,10 @@ defmodule WallopCore.RaceConditionTest do
       affected = r1.num_rows + r2.num_rows
       assert affected == 1, "expected 1 total affected row, got #{affected}"
 
-      # Cleanup
+      # Cleanup (an expired draw is immutable, so with triggers off)
+      Postgrex.query!(setup_conn, "SET session_replication_role = 'replica'", [])
       Postgrex.query!(setup_conn, "DELETE FROM draws WHERE id = $1", [draw_id_bin])
       Postgrex.query!(setup_conn, "DELETE FROM api_keys WHERE id = $1", [api_key_id_bin])
-      Postgrex.query!(setup_conn, "SET session_replication_role = 'replica'", [])
       Postgrex.query!(setup_conn, "DELETE FROM operators WHERE id = $1", [operator_id_bin])
       Postgrex.query!(setup_conn, "SET session_replication_role = 'origin'", [])
 

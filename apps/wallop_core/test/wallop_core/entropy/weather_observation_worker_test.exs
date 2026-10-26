@@ -238,9 +238,9 @@ defmodule WallopCore.Entropy.WeatherObservationWorkerTest do
       refute_received {:fetched, _}
     end
 
-    test "a forecast draw of the hour is never fetched for or stored" do
+    test "a retired forecast draw of the hour is never fetched for or stored" do
       wt = DateTime.utc_now() |> DateTime.add(-6 * 60) |> DateTime.truncate(:second)
-      forecast = create_draw(create_api_key())
+      forecast = put_retired_forecast_draw!(create_api_key(), :awaiting_entropy)
 
       with_triggers_off(fn ->
         Repo.query!("UPDATE draws SET weather_time = $2 WHERE id = $1", [

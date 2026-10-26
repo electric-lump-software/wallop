@@ -59,6 +59,8 @@ defmodule WallopCore.Invariants.TamperTest do
   @hour_us 3_600_000_000
   @mainnet "8990e7a9aaed2ffed73dbd7092123d6f289930540d7651336225dc172e51b2ce"
   @v2_tag "drand-quicknet+metoffice-landobs-v2"
+  # The retired forecast tag: never accepted by a schema 6 builder or guard.
+  @forecast_tag "drand-quicknet+openmeteo-v1"
   @other_hash String.duplicate("ab", 32)
 
   # Signed lock keys the receipt trigger binds to the draw row or the
@@ -252,8 +254,8 @@ defmodule WallopCore.Invariants.TamperTest do
        {:raise, chain_message(String.upcase(l.drand_chain))}},
       {"drand_chain nil", %{l | drand_chain: nil},
        {:raise, "lock v6 drand_chain must not be nil"}},
-      {"entropy_composition forecast", %{l | entropy_composition: Protocol.entropy_composition()},
-       {:raise, tag_message(Protocol.entropy_composition())}},
+      {"entropy_composition forecast", %{l | entropy_composition: @forecast_tag},
+       {:raise, tag_message(@forecast_tag)}},
       {"entropy_composition v2", %{l | entropy_composition: @v2_tag},
        {:raise, tag_message(@v2_tag)}},
       {"entropy_composition nil", %{l | entropy_composition: nil}, {:raise, tag_message(nil)}},
@@ -358,8 +360,8 @@ defmodule WallopCore.Invariants.TamperTest do
       {"drand_chain mainnet", %{e | drand_chain: @mainnet}, {:raise, chain_message(@mainnet)}},
       {"drand_chain nil", %{e | drand_chain: nil},
        {:raise, "exec v5 drand_chain must not be nil"}},
-      {"entropy_composition forecast", %{e | entropy_composition: Protocol.entropy_composition()},
-       {:raise, tag_message(Protocol.entropy_composition())}},
+      {"entropy_composition forecast", %{e | entropy_composition: @forecast_tag},
+       {:raise, tag_message(@forecast_tag)}},
       {"entropy_composition v2", %{e | entropy_composition: @v2_tag},
        {:raise, tag_message(@v2_tag)}},
       {"entropy_composition nil", %{e | entropy_composition: nil}, {:raise, tag_message(nil)}},
@@ -590,7 +592,7 @@ defmodule WallopCore.Invariants.TamperTest do
       exec = TamperVectors.exec_input(:observed, lock_jcs)
       assert is_binary(build_exec(exec))
 
-      for tag <- [Protocol.entropy_composition(), @v2_tag] do
+      for tag <- [@forecast_tag, @v2_tag] do
         assert_raise ArgumentError, tag_message(tag), fn ->
           build_exec(%{exec | entropy_composition: tag})
         end
@@ -902,12 +904,11 @@ defmodule WallopCore.Invariants.TamperTest do
       cols = x.cols
       pair = "a v6 execution receipt must be schema 5 and carry its draw's entropy_composition"
       before = rfc(DateTime.add(Quicknet.pub_time(x.round), -1, :microsecond))
-      forecast = create_draw(create_api_key())
+      forecast = put_retired_forecast_draw!(create_api_key(), :completed)
 
       for {label, tampered, tampered_cols, message} <- [
             {"schema 4", %{payload | "schema_version" => "4"}, cols, pair},
-            {"forecast tag", %{payload | "entropy_composition" => Protocol.entropy_composition()},
-             cols, pair},
+            {"forecast tag", %{payload | "entropy_composition" => @forecast_tag}, cols, pair},
             {"v2 tag", %{payload | "entropy_composition" => @v2_tag}, cols, pair},
             {"executed_at before pub(R)", %{payload | "executed_at" => before}, cols,
              exec_db_message("executed_at")},

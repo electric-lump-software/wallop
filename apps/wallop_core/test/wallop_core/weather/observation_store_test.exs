@@ -167,9 +167,9 @@ defmodule WallopCore.Weather.ObservationStoreTest do
     assert refused(store(@primary, other)) =~ @no_draw
   end
 
-  describe "forecast draws are untouched" do
-    test "an hour with only a forecast draw can't get an observation" do
-      draw = create_draw(create_api_key())
+  describe "retired forecast draws are untouched" do
+    test "an hour with only a retired forecast draw can't get an observation" do
+      draw = put_retired_forecast_draw!(create_api_key(), :awaiting_entropy)
       wt = wt_at(-5 * 60)
 
       with_triggers_off(fn ->
@@ -185,10 +185,10 @@ defmodule WallopCore.Weather.ObservationStoreTest do
                @no_draw
     end
 
-    test "a forecast draw never reads an observation, even one stored for its hour" do
+    test "a retired forecast draw never reads an observation, even one stored for its hour" do
       v6 = v6_draw_with_weather_time(-5 * 60)
       {:ok, _} = store(@primary, v6)
-      forecast = create_draw(create_api_key())
+      forecast = put_retired_forecast_draw!(create_api_key(), :awaiting_entropy)
 
       with_triggers_off(fn ->
         Repo.query!("UPDATE draws SET weather_time = $2 WHERE id = $1", [

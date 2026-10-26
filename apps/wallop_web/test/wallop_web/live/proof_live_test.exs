@@ -203,18 +203,6 @@ defmodule WallopWeb.ProofLiveTest do
                  Calendar.strftime(due, "%H:%M:%S UTC")
     end
 
-    test "a forecast draw awaiting entropy is as before", %{conn: conn} do
-      draw = create_draw(create_api_key(), %{})
-
-      {:ok, _view, html} = live(conn, "/live/proof/#{draw.id}")
-
-      assert html =~ "weather at #{Calendar.strftime(draw.weather_time, "%H:%M UTC")}"
-      assert html =~ "Entropy available in"
-      assert attr_values(html, "data-target") == [DateTime.to_iso8601(draw.weather_time)]
-      refute html =~ "Result due"
-      refute html =~ "Middle Wallop"
-    end
-
     test "state (a): Middle Wallop's reading, as the signed receipt says", %{conn: conn} do
       draw = completed_signed!(:observed)
       html = conn |> get("/proof/#{draw.id}") |> html_response(200) |> squash()
