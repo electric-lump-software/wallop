@@ -48,6 +48,16 @@ defmodule WallopWeb.VerifyCommandTest do
       refute html =~ "this instance"
     end
 
+    test "the browser check and the command name the same operator's keys", %{conn: conn} do
+      {operator, draw} = completed_draw()
+
+      html = conn |> get("/proof/#{draw.id}") |> html_response(200)
+
+      assert html =~ ~s(data-operator-keys-url="/operator/#{operator.slug}/keys")
+      assert html =~ ~s(data-infra-keys-url="/infrastructure/keys")
+      assert html =~ ~s(data-bundle-url="/proof/#{draw.id}/json")
+    end
+
     test "takes the base URL from endpoint config, not the Host header", %{conn: conn} do
       {_operator, draw} = completed_draw()
 

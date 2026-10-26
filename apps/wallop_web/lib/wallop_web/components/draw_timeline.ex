@@ -9,8 +9,13 @@ defmodule WallopWeb.Components.DrawTimeline do
 
   attr(:draw, :map, required: true)
 
+  attr(:weather, :map,
+    default: nil,
+    doc: "`WallopWeb.ProofWeather.summary/3` for lock schema 6 draws; nil otherwise"
+  )
+
   def draw_timeline(assigns) do
-    assigns = assign(assigns, :stages, build_stages(assigns.draw))
+    assigns = assign(assigns, :stages, build_stages(assigns.draw, assigns.weather))
 
     ~H"""
     <ul class="steps steps-vertical w-full">
@@ -21,7 +26,7 @@ defmodule WallopWeb.Components.DrawTimeline do
             <span :if={stage[:timestamp]} class="font-normal text-[10px] text-gray-400 ml-1">{stage.timestamp}</span>
           </div>
           <div :if={stage[:countdown_target]} class="text-xs text-[#555] mt-1">
-            <div>Entropy available in</div>
+            <div>{stage[:countdown_label] || "Entropy available in"}</div>
             <span
               id="entropy-countdown"
               class="countdown font-mono text-lg"
@@ -42,14 +47,14 @@ defmodule WallopWeb.Components.DrawTimeline do
     """
   end
 
-  defp build_stages(draw) do
+  defp build_stages(draw, weather) do
     status = draw.status
 
     [
       entries_open_stage(draw, status),
       entries_locked_stage(draw, status),
-      entropy_declared_stage(draw, status),
-      fetching_entropy_stage(draw, status),
+      entropy_declared_stage(draw, status, weather),
+      fetching_entropy_stage(draw, status, weather),
       computing_seed_stage(draw, status),
       winners_selected_stage(draw, status)
     ]
@@ -95,20 +100,13 @@ defmodule WallopWeb.Components.DrawTimeline do
     end
   end
 
-  defp entropy_declared_stage(draw, status) do
+  defp entropy_declared_stage(draw, status, weather) do
     ts = draw.stage_timestamps || %{}
 
     if status in [:open, :locked] do
       %{label: "Entropy Declared", detail: nil, state: :pending}
     else
-      round_text = if draw.drand_round, do: "drand round ##{draw.drand_round}", else: nil
-
-      weather_text =
-        if draw.weather_time,
-          do: "weather at #{Calendar.strftime(draw.weather_time, "%H:%M UTC")}",
-          else: nil
-
-      detail = [round_text, weather_text] |> Enum.reject(&is_nil/1) |> Enum.join(", ")
+      detail = declared_detail(draw, status, weather)
 
       %{
         label: "Entropy Declared",
@@ -119,32 +117,83 @@ defmodule WallopWeb.Components.DrawTimeline do
     end
   end
 
-  defp fetching_entropy_stage(draw, status) do
+  defp declared_detail(draw, status, weather) do
+    round_text = if draw.drand_round, do: "drand round ##{draw.drand_round}", else: nil
+
+    weather_text =
+      cond do
+        weather -> declared_text(weather, status)
+        draw.weather_time -> "weather at #{Calendar.strftime(draw.weather_time, "%H:%M UTC")}"
+        true -> nil
+      end
+
+    # "Declared: …" starts a sentence of its own.
+    separator =
+      if weather_text && String.starts_with?(weather_text, "Declared"), do: ". ", else: ", "
+
+    [round_text, weather_text] |> Enum.reject(&is_nil/1) |> Enum.join(separator)
+  end
+
+  # Lock schema 6: what was declared, from the signed lock receipt. Before
+  # the result, it may or may not turn up; after, it was only declared
+  # (the fetching stage names what was used).
+  defp declared_text(weather, status) when status in [:awaiting_entropy, :pending_entropy] do
+    "#{declared_source(weather)}, if it turns up. The result is due at " <>
+      Calendar.strftime(weather.expected_result_at, "%H:%M:%S UTC")
+  end
+
+  defp declared_text(weather, _status), do: "Declared: #{declared_source(weather)}"
+
+  defp declared_source(%{tag: :landobs, observation_hour: %DateTime{} = hour}),
+    do: "Middle Wallop's #{Calendar.strftime(hour, "%H:%M UTC")} weather reading"
+
+  defp declared_source(%{tag: :landobs}), do: "Middle Wallop's weather reading"
+
+  defp declared_source(%{tag: :freq, freq_start: %DateTime{} = t}),
+    do: "the National Grid's frequency from #{Calendar.strftime(t, "%H:%M:%S UTC")}"
+
+  defp declared_source(%{tag: :freq}), do: "the National Grid's frequency"
+
+  # Lock schema 6: the result is due when the drand round publishes.
+  defp awaiting_stage(_draw, %{} = weather) do
+    %{
+      label: "Fetching Entropy",
+      detail: nil,
+      state: :current,
+      countdown_target: weather.expected_result_at,
+      countdown_label: "Result due in"
+    }
+  end
+
+  defp awaiting_stage(draw, nil) do
+    %{
+      label: "Fetching Entropy",
+      detail: nil,
+      state: :current,
+      countdown_target: draw.weather_time
+    }
+  end
+
+  defp pending_detail(%{tag: :freq}), do: "waiting for drand round and grid frequency readings..."
+  defp pending_detail(_weather), do: "waiting for drand round and weather observation..."
+
+  defp fetching_entropy_stage(draw, status, weather) do
     case status do
       s when s in [:open, :locked] ->
         %{label: "Fetching Entropy", detail: nil, state: :pending}
 
       :awaiting_entropy ->
-        %{
-          label: "Fetching Entropy",
-          detail: nil,
-          state: :current,
-          countdown_target: draw.weather_time
-        }
+        awaiting_stage(draw, weather)
 
       :pending_entropy ->
-        %{
-          label: "Fetching Entropy",
-          detail: "waiting for drand round and weather observation...",
-          state: :current
-        }
+        %{label: "Fetching Entropy", detail: pending_detail(weather), state: :current}
 
       :completed ->
         ts = draw.stage_timestamps || %{}
 
         %{
           label: "Fetching Entropy",
-          detail: entropy_detail(draw),
+          detail: entropy_detail(draw, weather),
           state: :done,
           timestamp: format_timestamp(ts["executed_at"], draw.executed_at)
         }
@@ -204,7 +253,41 @@ defmodule WallopWeb.Components.DrawTimeline do
     end
   end
 
-  defp entropy_detail(draw) do
+  # Lock schema 6: the source is the signed receipt's, not the row's.
+  defp entropy_detail(draw, %{} = weather) do
+    source_part =
+      case {weather.source, weather.tag} do
+        {:weather, _} ->
+          "Middle Wallop reported #{weather.weather_value} at " <>
+            Calendar.strftime(weather.observed_at, "%H:%M UTC")
+
+        {:frequency, :landobs} ->
+          "the National Grid's hum instead of the weather"
+
+        {:frequency, :freq} ->
+          "the National Grid's hum"
+
+        {:drand_only, :landobs} ->
+          "drand alone, no weather or Grid"
+
+        {:drand_only, :freq} ->
+          "drand alone, no Grid"
+
+        {nil, _} ->
+          nil
+      end
+
+    [
+      if(draw.drand_randomness,
+        do: "a random number from drand: #{truncate_hash(draw.drand_randomness)}"
+      ),
+      source_part
+    ]
+    |> Enum.reject(&is_nil/1)
+    |> Enum.join(", ")
+  end
+
+  defp entropy_detail(draw, nil) do
     weather_part =
       cond do
         draw.weather_value ->

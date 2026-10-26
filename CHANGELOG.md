@@ -73,6 +73,14 @@ For operators who sell right up to the draw. Weather stays the default; forecast
 
 **Operator note.** No migration, no protocol change and no change to signed bytes. If you build your own image, add a Rust toolchain to the build stage; the runtime image needs nothing new.
 
+### Changed: the proof page's browser check runs the full verifier
+
+- **What it checks.** "Verify independently" now fetches the proof bundle from `/proof/:id/json` and the signing keys from `/operator/:slug/keys` and `/infrastructure/keys`, and runs the full verifier (`wallop_verifier` 0.17.0, attestable mode) over them in the browser.
+- **One source for the verdict.** Green, amber or red comes from that check alone. No line shows a tick unless it passed, and the page's own values must match what was published.
+- **The drand beacon.** A new line checks the beacon's signature from the signed execution receipt. The full check confirms it was published after the signed lock time.
+- **Honest about trust.** The keys come from the same site as the page, and the page says so. For a check that doesn't rely on wallop, use the CLI command shown beneath it.
+- **Fewer surprises.** A draw without signed receipts is amber, not green. A proof the site won't serve is red. A network failure says nothing was checked.
+
 ### The monthly quota is gone
 
 **BREAKING.** The monthly draw quota is removed:

@@ -9,6 +9,7 @@ defmodule WallopWeb.ProofController do
   require Ash.Query
 
   alias WallopCore.Proof
+  alias WallopWeb.Components.VerifyBlock
 
   # Rate-limit the public self-check when an `entry_id` path param is
   # present. The plug is a no-op on the plain `/proof/:id` view, so
@@ -74,7 +75,7 @@ defmodule WallopWeb.ProofController do
       check_result: check_result,
       checked_entry_id: entry_id,
       entries_json: entries_to_json(entries),
-      results_json: results_to_json(draw.results),
+      results_json: VerifyBlock.results_json(draw.results),
       operator: operator,
       receipt: receipt,
       execution_receipt: execution_receipt,
@@ -90,12 +91,6 @@ defmodule WallopWeb.ProofController do
       %{"uuid" => uuid, "weight" => weight}
     end)
     |> Jason.encode!()
-  end
-
-  defp results_to_json(nil), do: "[]"
-
-  defp results_to_json(results) do
-    Jason.encode!(results)
   end
 
   defp redirect_to_live(conn, id, nil) do
