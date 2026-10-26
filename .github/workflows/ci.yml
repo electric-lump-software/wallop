@@ -92,6 +92,10 @@ jobs:
 
           echo "OK: wallop_rs pins spec/vectors tree $PINNED_VECTORS_SHA (match)."
 
+      - name: Proof page browser check (verify_core.js against the vendored WASM)
+        # Node built-ins only, with the runner's preinstalled Node: no npm install.
+        run: node apps/wallop_web/assets/test/verify_core_test.mjs
+
       - uses: erlef/setup-beam@v1
         id: beam
         with:
@@ -138,6 +142,14 @@ jobs:
             wallop/_build
           key: ${{ runner.os }}-mix-${{ hashFiles('wallop/mix.lock') }}
           restore-keys: ${{ runner.os }}-mix-
+
+      - name: Rebuild wallop_core from source (and its drand BLS NIF)
+        # The cache above holds _build but not the NIF library Rustler writes
+        # under apps/wallop_core/priv, and its key only covers mix.lock. A
+        # restored build would otherwise skip the NIF and refuse to boot, or
+        # run an old one. Always compile wallop_core afresh.
+        working-directory: wallop
+        run: rm -rf _build/*/lib/wallop_core
 
       - name: Install dependencies
         run: mix deps.get

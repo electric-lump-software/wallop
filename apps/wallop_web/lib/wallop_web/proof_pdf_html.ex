@@ -31,9 +31,10 @@ defmodule WallopWeb.ProofPdfHTML do
         <.page_footer public_url={@public_url} generated_at={@generated_at} />
         <.certificate_page draw={@draw} operator={@operator} entries={@entries} />
         <.summary_page draw={@draw} winners={@winners} />
-        <.verification_chain_page draw={@draw} />
+        <.verification_chain_page draw={@draw} weather={@weather} />
+        <.signed_entropy_page :if={@weather} weather={@weather} />
         <.receipt_page operator={@operator} receipt={@receipt} :if={@receipt && @operator} />
-        <.verification_recipe_page draw={@draw} public_url={@public_url} />
+        <.verification_recipe_page draw={@draw} weather={@weather} public_url={@public_url} />
         <.entries_appendix entries={@entries} />
       </body>
     </html>
@@ -125,6 +126,7 @@ defmodule WallopWeb.ProofPdfHTML do
   end
 
   attr(:draw, :map, required: true)
+  attr(:weather, :map, default: nil)
 
   defp verification_chain_page(assigns) do
     ~H"""
@@ -151,8 +153,8 @@ defmodule WallopWeb.ProofPdfHTML do
         <dd class="mono wrap">{@draw.drand_signature || "—"}</dd>
       </dl>
 
-      <h3 :if={@draw.weather_value}>Weather entropy</h3>
-      <dl :if={@draw.weather_value}>
+      <h3 :if={!@weather and @draw.weather_value}>Weather entropy</h3>
+      <dl :if={!@weather and @draw.weather_value}>
         <dt>Station</dt>
         <dd>{@draw.weather_station || "—"}</dd>
         <dt>Observation time</dt>
@@ -167,7 +169,7 @@ defmodule WallopWeb.ProofPdfHTML do
         <dd class="mono">{@draw.weather_value}</dd>
       </dl>
 
-      <div :if={@draw.weather_fallback_reason} class="note">
+      <div :if={!@weather and @draw.weather_fallback_reason} class="note">
         <strong>Weather fallback:</strong>
         {@draw.weather_fallback_reason}. The seed was computed from drand entropy alone.
       </div>
@@ -181,6 +183,64 @@ defmodule WallopWeb.ProofPdfHTML do
         <dt>Canonical JSON</dt>
         <dd><pre class="mono preblock"><%= @draw.seed_json || "—" %></pre></dd>
       </dl>
+    </section>
+    """
+  end
+
+  attr(:weather, :map, required: true)
+
+  # Lock schema 6 draws: what the signed receipts say, by the execution
+  # receipt's state (`WallopWeb.ProofWeather`), never by the row's fields.
+  # A page of its own, so the chain page keeps clear of the fixed footer.
+  defp signed_entropy_page(assigns) do
+    ~H"""
+    <section class="page">
+      <h2>Entropy source</h2>
+
+      <p :if={@weather.source || @weather.observation_hour} class="hint">
+        <strong>The signed receipt says:</strong>
+      </p>
+
+      <p :if={@weather.observation_hour} class="hint">
+        Weather hour: {Calendar.strftime(@weather.observation_hour, "%Y-%m-%d %H:%M UTC")}.
+        Set by the draw's drand round, so nobody gets to pick it.
+      </p>
+
+      <h3 :if={@weather.source == :weather}>Weather entropy</h3>
+      <dl :if={@weather.source == :weather}>
+        <dt>Station</dt>
+        <dd>{@weather.station_label}</dd>
+        <dt>Observation time</dt>
+        <dd>{Calendar.strftime(@weather.observed_at, "%Y-%m-%d %H:%M:%S UTC")}</dd>
+        <dt>Value</dt>
+        <dd class="mono">{@weather.weather_value}</dd>
+        <dt>Value parts</dt>
+        <dd>temperature (°C × 10); pressure (hPa); humidity (%); visibility (m ÷ 10)</dd>
+      </dl>
+
+      <div :if={@weather.fallback_label} class="note">{@weather.fallback_label}</div>
+
+      <h3 :if={@weather.source == :frequency}>Grid frequency entropy</h3>
+      <dl :if={@weather.source == :frequency}>
+        <dt>Readings (millihertz)</dt>
+        <dd class="mono wrap">{@weather.freq_value}</dd>
+        <dt :if={@weather.freq_start}>Window start (T)</dt>
+        <dd :if={@weather.freq_start}>
+          {Calendar.strftime(@weather.freq_start, "%Y-%m-%d %H:%M:%S UTC")}, eight readings 15 seconds apart
+        </dd>
+      </dl>
+      <p :if={@weather.bmrs_line} class="hint">{@weather.bmrs_line}</p>
+
+      <p :if={@weather.check_line} class="hint">{@weather.check_line}</p>
+
+      <div :if={@weather.trust_lines != []} class="trust">
+        <p class="hint">What you're trusting here:</p>
+        <ul>
+          <li :for={line <- @weather.trust_lines}>{line}</li>
+        </ul>
+      </div>
+
+      <div :if={@weather.out_of_table} class="note">{@weather.out_of_table_text}</div>
     </section>
     """
   end
@@ -222,6 +282,7 @@ defmodule WallopWeb.ProofPdfHTML do
   end
 
   attr(:draw, :map, required: true)
+  attr(:weather, :map, default: nil)
   attr(:public_url, :string, required: true)
 
   defp verification_recipe_page(assigns) do
@@ -236,7 +297,21 @@ defmodule WallopWeb.ProofPdfHTML do
           from any drand relay (e.g. <span class="mono">https://api.drand.sh</span>).
           Confirm the randomness matches the value on the verification chain page.
         </li>
-        <li :if={@draw.weather_value}>
+        <li :if={@weather && @weather.source == :weather}>
+          Check that Middle Wallop's reading for
+          {Calendar.strftime(@weather.observed_at, "%Y-%m-%d %H:%M UTC")} gives the value on
+          the entropy source page (temperature, pressure, humidity and visibility). Within 48
+          hours: Met Office Land Observations (free DataHub key). After that: temperature and
+          pressure from a SYNOP mirror such as Ogimet, and every part from the Met Office MIDAS
+          hourly archive on CEDA, released each July for the year before. Or run
+          <span class="mono">wallop-verify weather-attest</span>
+          on the proof bundle, which does this for you.
+        </li>
+        <li :if={@weather && @weather.source == :frequency}>
+          Fetch Elexon's grid frequency readings (BMRS dataset FREQ) for T to T + 105 seconds,
+          and confirm they match the readings on the verification chain page.
+        </li>
+        <li :if={!@weather and @draw.weather_value}>
           Fetch the Met Office Middle Wallop observation for
           <%= if @draw.weather_observation_time do %>
             {Calendar.strftime(@draw.weather_observation_time, "%Y-%m-%d %H:%M UTC")}.
@@ -249,7 +324,10 @@ defmodule WallopWeb.ProofPdfHTML do
           Canonicalise the entries list via JCS (RFC 8785), SHA-256 the bytes,
           and confirm the hash matches the entry hash on the certificate page.
         </li>
-        <li>
+        <li :if={@weather}>
+          {seed_step(@weather.source)}
+        </li>
+        <li :if={!@weather}>
           Combine entry hash, drand randomness, and weather value into a
           JCS-canonical JSON object and SHA-256 the bytes. Confirm the result
           matches the published seed.
@@ -493,6 +571,12 @@ defmodule WallopWeb.ProofPdfHTML do
       max-width: 100%;
     }
 
+    .trust li {
+      font-size: 9.5pt;
+      line-height: 1.45;
+      margin-bottom: 1.5mm;
+    }
+
     .note {
       background: #fff8e1;
       border-left: 3px solid #d4a017;
@@ -638,4 +722,25 @@ defmodule WallopWeb.ProofPdfHTML do
     }
     """
   end
+
+  defp seed_step(:weather),
+    do:
+      "Combine entry hash, drand randomness and the weather value into a JCS-canonical " <>
+        "JSON object and SHA-256 the bytes. Confirm the result matches the published seed."
+
+  defp seed_step(:frequency),
+    do:
+      "Combine entry hash, drand randomness and the grid frequency readings (freq_value) into " <>
+        "a JCS-canonical JSON object and SHA-256 the bytes. Confirm the result matches the " <>
+        "published seed."
+
+  defp seed_step(:drand_only),
+    do:
+      "Combine entry hash and drand randomness into a JCS-canonical JSON object and SHA-256 " <>
+        "the bytes. Confirm the result matches the published seed."
+
+  defp seed_step(nil),
+    do:
+      "The signed execution receipt names no seed source, so the seed can't be checked " <>
+        "against it."
 end
