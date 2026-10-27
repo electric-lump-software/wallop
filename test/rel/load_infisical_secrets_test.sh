@@ -234,6 +234,26 @@ status=$?
 check "a sentinel and token without the digest argument refuse to start" \
   '[ $status -ne 0 ] && grep -q "not re-run by this loader" "$work/err" && ! grep -q VAULT_KEY "$work/out" && [ ! -e "$work/calls" ]'
 
+mkdir "$work/broken_awk"
+printf '#!/bin/sh\nexit 1\n' > "$work/broken_awk/awk"
+chmod +x "$work/broken_awk/awk"
+
+# shellcheck disable=SC2086
+run_start $all_four "PATH=$work/broken_awk:$work/bin:$PATH"
+status=$?
+check "an awk that fails refuses to start, rather than compare two empty digests" \
+  'refused && grep -q "Could not take a digest of the environment" "$work/err"'
+
+(
+  cd "$work" || exit 1
+  PATH="$work/broken_awk:$PATH" INFISICAL_SECRETS_LOADED=1 INFISICAL_TOKEN=stub-token \
+    ./start --infisical-env-digest=e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855 \
+    > "$work/out" 2> "$work/err"
+)
+status=$?
+check "the re-run refuses the digest of an empty environment listing" \
+  '[ $status -ne 0 ] && grep -q "Could not take a digest of the environment" "$work/err" && ! grep -q VAULT_KEY "$work/out"'
+
 run_start INFISICAL_UNIVERSAL_AUTH_CLIENT_ID=id INFISICAL_PROJECT_ID=project
 status=$?
 check "partly configured refuses to start" \
