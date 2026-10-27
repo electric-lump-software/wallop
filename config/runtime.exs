@@ -42,6 +42,8 @@ if honeycomb_api_key = System.get_env("HONEYCOMB_API_KEY") do
     otlp_endpoint: "https://api.honeycomb.io",
     otlp_headers: [{"x-honeycomb-team", honeycomb_api_key}],
     otlp_protocol: :http_protobuf
+else
+  config :opentelemetry, traces_exporter: :none
 end
 
 if url = WallopWeb.ExampleProof.parse_env!(System.get_env("EXAMPLE_PROOF_URL")) do
