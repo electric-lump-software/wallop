@@ -10,6 +10,10 @@ defmodule WallopCore.Resources.Draw do
   - **completed** — seed applied, winners determined (terminal, immutable)
   - **failed** — entropy collection or execution failed (terminal, immutable)
   - **expired** — draw was never locked and has been abandoned (terminal, immutable)
+
+  `wallop_landobs_valid_value` and `wallop_freq_valid_value` back CHECK constraints, so their text is frozen and they call no other function: Postgres neither re-checks stored rows when a function is replaced nor records a dependency between functions.
+
+  The v6 guards read `clock_timestamp()` and check the lock and fetch deadlines again at COMMIT, so a transaction held open until the entropy is known can neither keep a late lock nor fail the draw after its deadline.
   """
   use Ash.Resource,
     otp_app: :wallop_core,

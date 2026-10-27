@@ -5,8 +5,8 @@ defmodule WallopCore.Protocol do
   Entry hashing (§2.1) and seed computation (§2.3) as defined in
   `spec/protocol.md`.
 
-  Timestamps in signed payloads must come from `WallopCore.Time.to_rfc3339_usec/1`; the
-  canonical-form assertion rejects anything else rather than signing it.
+  Timestamps in signed payloads go through `WallopCore.Time.to_rfc3339_usec/1`; the
+  canonical-form assertion raises on any timestamp not in that form rather than signing it.
   """
 
   alias WallopCore.Drand.Quicknet

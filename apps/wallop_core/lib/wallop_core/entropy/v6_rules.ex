@@ -11,6 +11,8 @@ defmodule WallopCore.Entropy.V6Rules do
   For an unknown pair `rules/1` returns `:error` and `rules!/1` raises
   `ArgumentError`; nothing falls through to another tag's rules. A new tag adds one clause to `rules/1` and one to each
   function below.
+
+  `receipt_input/2` recomputes the seed straight from `WallopCore.Protocol`, never through `seed/4`, so a wrong `seed/4` clause cannot vouch for its own output.
   """
 
   alias WallopCore.Drand.Quicknet

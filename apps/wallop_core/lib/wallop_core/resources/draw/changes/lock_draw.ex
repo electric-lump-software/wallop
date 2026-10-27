@@ -9,6 +9,8 @@ defmodule WallopCore.Resources.Draw.Changes.LockDraw do
   same-tx with the `:open -> :locked` state change: a crash between
   prune and lock-commit rolls both back atomically, so no draw can be
   observed in a state where idempotency rows outlive their open phase.
+
+  The draw row is locked `FOR UPDATE` before entries are read, so no entry insert can land between computing the entry hash and the lock.
   """
   use Ash.Resource.Change
 
