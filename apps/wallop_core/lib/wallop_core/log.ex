@@ -99,9 +99,6 @@ defmodule WallopCore.Log do
     end)
   end
 
-  # Matches "id", "*.id", "*_id" (case-sensitive; wallop keys are all
-  # lowercase snake_case). Keeps non-ID keys pass-through so a caller
-  # can hand in the whole attrs map without filtering first.
   defp id_key?(key) when is_binary(key) do
     key == "id" or
       String.ends_with?(key, "_id") or
@@ -111,9 +108,6 @@ defmodule WallopCore.Log do
   defp id_key?(key) when is_atom(key), do: id_key?(Atom.to_string(key))
   defp id_key?(_), do: false
 
-  # Fetches the per-VM salt. On first call, generates 32 random bytes,
-  # stores in :persistent_term, and emits a telemetry event. Subsequent
-  # calls are a single persistent_term lookup — no locks, no race.
   defp salt do
     case :persistent_term.get({__MODULE__, :salt}, :undefined) do
       :undefined ->

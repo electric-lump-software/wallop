@@ -21,12 +21,7 @@ defmodule WallopCore.Entropy.ElexonFreqClient do
 
   @base_url "https://data.elexon.co.uk/bmrs/api/v1/datasets/FREQ"
   @connect_timeout 5_000
-  # The receive timeout applies to each chunk, not the whole response, so a
-  # slow trickle can outlast it. It is not the fetch deadline: the window
-  # worker's 8 s Task.yield, then brutal_kill, bounds each fetch.
   @receive_timeout 10_000
-  # A window is 8 rows, well under 1 KiB; the cap leaves room for Elexon
-  # adding fields without letting a hostile response grow without bound.
   @max_body_bytes 262_144
 
   @type window :: %{value: String.t(), raw: binary(), freq_start: DateTime.t()}
@@ -108,8 +103,6 @@ defmodule WallopCore.Entropy.ElexonFreqClient do
   defp handle_response({:ok, %Req.Response{status: status}}),
     do: {:error, {:unexpected_status, status}}
 
-  # Only an atom reason from a transport error is passed on; any other
-  # reason could quote request details, so it is replaced.
   defp handle_response({:error, %Req.TransportError{reason: reason}}) when is_atom(reason),
     do: {:error, {:transport, reason}}
 
@@ -145,10 +138,6 @@ defmodule WallopCore.Entropy.ElexonFreqClient do
   defp config, do: Application.get_env(:wallop_core, __MODULE__, [])
 
   @doc false
-  # The effective Req options. Config may set only `:plug`,
-  # `req_options: [receive_timeout: ...]` and
-  # `req_options: [connect_options: [timeout: ...]]`; everything else is
-  # fixed here.
   @spec request_options() :: keyword()
   def request_options do
     overrides = Keyword.get(config(), :req_options, [])

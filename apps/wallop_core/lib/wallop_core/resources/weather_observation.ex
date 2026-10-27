@@ -31,10 +31,6 @@ defmodule WallopCore.Resources.WeatherObservation do
 
   alias WallopCore.Repo
 
-  # Limits on the store transaction, so it can't be left open. The commit-time
-  # check is what enforces F; these keep a stalled writer from holding the
-  # hour's draw rows and its index entry for long. Both are 5 s, the same as
-  # the grid-frequency store's.
   @statement_timeout "5s"
   @idle_in_transaction_timeout "5s"
 
@@ -54,14 +50,8 @@ defmodule WallopCore.Resources.WeatherObservation do
       )
     end
 
-    # SQL for the store. Every constant comes from a wallop_landobs_* function
-    # with an Elixir equality test. Comparisons that could meet a NULL are
-    # written so that NULL refuses (IS DISTINCT FROM, IS NOT TRUE).
     custom_statements do
       statement :wallop_landobs_observation_allowed do
-        # True when `station` may store a reading for `weather_time` at
-        # `now_utc`: Middle Wallop only, within [wt, F]. The insert trigger
-        # calls it with the DB clock; tests call it with exact instants.
         up("""
         CREATE OR REPLACE FUNCTION wallop_landobs_observation_allowed(
           station text, weather_time timestamp, now_utc timestamp)
@@ -79,17 +69,6 @@ defmodule WallopCore.Resources.WeatherObservation do
       end
 
       statement :guard_weather_observation_insert do
-        # One row per observation hour; the unique index on observation_time
-        # makes it the only row, so every draw of the hour gets the same
-        # station and value. Only Middle Wallop may store, within [wt, F].
-        # A concurrent insert for the hour waits on the index, then fails.
-        #
-        # The waiting draws of the hour are locked FOR SHARE, which is enough:
-        # it conflicts with the row lock a completion UPDATE takes, so a
-        # completion waits for this store to end and its guard then reads
-        # the store afresh, and a completion already under way makes this
-        # insert wait and then not count that draw. Two stores for the hour
-        # don't block each other here; the unique index decides between them.
         up("""
         DO $do$
         BEGIN
@@ -141,9 +120,6 @@ defmodule WallopCore.Resources.WeatherObservation do
       end
 
       statement :check_weather_observation_commit do
-        # Runs at COMMIT (a deferred constraint trigger), on the wall clock at
-        # that moment, not the statement's start: a row whose transaction
-        # reaches its commit after F is refused, and nothing is stored.
         up("""
         DO $do$
         BEGIN
@@ -239,17 +215,11 @@ defmodule WallopCore.Resources.WeatherObservation do
     attribute(:station, :string, allow_nil?: false)
     attribute(:observation_time, :utc_datetime_usec, allow_nil?: false)
     attribute(:value, :string, allow_nil?: false)
-    # The Land Observations response body, byte for byte: not trimmed (Ash
-    # trims a :string by default), so the stored bytes are exactly the ones
-    # received.
     attribute(:raw, :string, allow_nil?: false, constraints: [trim?: false, allow_empty?: true])
-    # Set by the insert trigger from the database clock.
     attribute(:stored_at, :utc_datetime_usec, allow_nil?: true)
   end
 
   identities do
-    # The hour's single reading. Its unique index is what makes every draw
-    # of the hour use the same station and value.
     identity(:one_per_hour, [:observation_time],
       message: "an observation is already stored for this hour"
     )

@@ -47,8 +47,6 @@ defmodule WallopCore.ProofBundleTest do
       assert first == second
       assert second == third
 
-      # The bundle sorts entries by uuid — byte-determinism depends on that
-      # ordering being stable regardless of DB return order.
       decoded = Jason.decode!(first)
       uuids = Enum.map(decoded["entries"], & &1["uuid"])
       assert uuids == Enum.sort(uuids)
@@ -63,11 +61,6 @@ defmodule WallopCore.ProofBundleTest do
     end
 
     test "bundle entries reproduce the committed entry_hash (public-verifier invariant)" do
-      # Durable invariant: anything a commitment hashes must be derivable
-      # from public bundle bytes alone. A third-party verifier reading the
-      # public ProofBundle and recomputing the canonical form MUST reproduce
-      # the entry_hash inside the signed lock receipt — otherwise the bundle
-      # is unverifiable by anyone outside wallop.
       _infra_key = create_infrastructure_key()
       operator = create_operator()
       api_key = create_api_key_for_operator(operator)
@@ -86,7 +79,6 @@ defmodule WallopCore.ProofBundleTest do
       {:ok, bundle_json} = ProofBundle.build(executed)
       bundle = Jason.decode!(bundle_json)
 
-      # Reconstruct the entry_hash input from the public bundle bytes only.
       bundle_entries =
         Enum.map(bundle["entries"], fn e ->
           %{uuid: e["uuid"], weight: e["weight"]}

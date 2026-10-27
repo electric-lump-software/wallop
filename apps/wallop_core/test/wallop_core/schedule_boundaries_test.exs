@@ -34,7 +34,6 @@ defmodule WallopCore.ScheduleBoundariesTest do
     DateTime.truncate(dt, :second)
   end
 
-  # Equal to the second, and a whole second, whatever the precision marker.
   defp assert_time(%DateTime{} = got, iso, label) do
     assert DateTime.to_unix(got, :microsecond) == DateTime.to_unix(time(iso), :microsecond),
            "#{label}: got #{DateTime.to_iso8601(got)}, expected #{iso}"
@@ -134,16 +133,12 @@ defmodule WallopCore.ScheduleBoundariesSqlTest do
   alias WallopCore.Weather.Stations
 
   setup do
-    # The windows include both UK clock changes: a session in UK time must
-    # still give the UTC answers.
     Repo.query!("SET LOCAL TIME ZONE 'Europe/London'")
     :ok
   end
 
   defp naive(iso), do: iso |> time() |> DateTime.to_naive()
 
-  # A case straddles a date when any of its times is on another UTC date
-  # than its draw_at.
   defp straddles?(c, keys) do
     day = time(c["draw_at"]) |> DateTime.to_date()
     Enum.any?(keys, &(DateTime.to_date(time(c[&1])) != day))
@@ -155,7 +150,6 @@ defmodule WallopCore.ScheduleBoundariesSqlTest do
     straddling = Enum.count(landobs_cases(), &straddles?(&1, landobs_keys))
     straddling_freq = Enum.count(freq_cases(), &straddles?(&1, freq_keys))
 
-    # Every case is checked below, so every straddling case is too.
     assert length(landobs_cases()) + length(freq_cases()) >= 200
     assert straddling > 0 and straddling_freq > 0
   end

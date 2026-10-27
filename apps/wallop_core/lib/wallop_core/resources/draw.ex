@@ -10,6 +10,10 @@ defmodule WallopCore.Resources.Draw do
   - **completed** — seed applied, winners determined (terminal, immutable)
   - **failed** — entropy collection or execution failed (terminal, immutable)
   - **expired** — draw was never locked and has been abandoned (terminal, immutable)
+
+  `wallop_landobs_valid_value` and `wallop_freq_valid_value` back CHECK constraints, so their text is frozen and they call no other function: Postgres neither re-checks stored rows when a function is replaced nor records a dependency between functions.
+
+  The v6 guards read `clock_timestamp()` and check the lock and fetch deadlines again at COMMIT, so a transaction held open until the entropy is known can neither keep a late lock nor fail the draw after its deadline.
   """
   use Ash.Resource,
     otp_app: :wallop_core,
@@ -21,8 +25,6 @@ defmodule WallopCore.Resources.Draw do
   json_api do
     type("draw")
 
-    # Every public attribute, plus expected_result_at. Calculations are not
-    # in the JSON by default, so listing the fields is how it gets there.
     default_fields([
       :id,
       :status,
@@ -67,21 +69,11 @@ defmodule WallopCore.Resources.Draw do
     repo(WallopCore.Repo)
 
     custom_indexes do
-      # GET /draws?status=... oldest first, per key. The existing
-      # (api_key_id, inserted_at DESC) index would scan the key's whole history.
       index([:api_key_id, :status, :inserted_at, :id],
         name: "draws_api_key_id_status_inserted_at_id_index"
       )
     end
 
-    # The SQL side of the observation-weather protocol. Every constant mirrors
-    # an Elixir one and has an equality test in sql_schedule_property_test.exs:
-    # WallopCore.Drand.Quicknet, WallopCore.Weather.Schedule,
-    # WallopCore.Weather.Stations (the one station) and
-    # WallopCore.Protocol.Tags.LandObs.
-    # Tag-specific functions are named after the source (wallop_landobs_*).
-    # Times are `timestamp` holding UTC; "now" is
-    # statement_timestamp() AT TIME ZONE 'UTC'; no timestamptz anywhere.
     custom_statements do
       statement :wallop_quicknet_chain_hash do
         up("""
@@ -95,11 +87,6 @@ defmodule WallopCore.Resources.Draw do
       end
 
       statement :wallop_quicknet_pub_time do
-        # pub(R) = genesis + (R - 1) * period, from a timestamp epoch plus an
-        # interval, so no timestamptz, and no session time zone, is involved.
-        # The factor is a whole number of seconds; PostgreSQL's interval * number
-        # takes it as float8, which holds every integer below 2^53 exactly, so
-        # the microsecond result is exact.
         up("""
         CREATE OR REPLACE FUNCTION wallop_quicknet_pub_time(drand_round bigint) RETURNS timestamp
         LANGUAGE sql IMMUTABLE STRICT AS $$
@@ -147,9 +134,6 @@ defmodule WallopCore.Resources.Draw do
       end
 
       statement :wallop_landobs_valid_value do
-        # WallopCore.Weather.LandObsGrammar.valid_value?/1: the grammar and the
-        # bounds frozen by the tag. The CASE keeps the casts from running on
-        # text the pattern rejected.
         up("""
         CREATE OR REPLACE FUNCTION wallop_landobs_valid_value(value text) RETURNS boolean
         LANGUAGE sql IMMUTABLE STRICT AS $$
@@ -177,7 +161,6 @@ defmodule WallopCore.Resources.Draw do
       end
 
       statement :wallop_landobs_weather_time do
-        # The latest whole UTC hour h with h + W + 60s <= pub(drand_round).
         up("""
         CREATE OR REPLACE FUNCTION wallop_landobs_weather_time(drand_round bigint) RETURNS timestamp
         LANGUAGE sql IMMUTABLE STRICT AS $$
@@ -190,8 +173,6 @@ defmodule WallopCore.Resources.Draw do
       end
 
       statement :wallop_landobs_lock_allowed do
-        # True when a lock at locked_at is in time for weather_time. The guards
-        # call it with the DB clock or the signed locked_at; tests with exact instants.
         up("""
         CREATE OR REPLACE FUNCTION wallop_landobs_lock_allowed(locked_at timestamp, weather_time timestamp)
         RETURNS boolean
@@ -204,11 +185,6 @@ defmodule WallopCore.Resources.Draw do
       end
 
       statement :wallop_parse_rfc3339_usec do
-        # The receipts' canonical UTC time string, YYYY-MM-DDTHH:MM:SS.ffffffZ,
-        # as a timestamp holding UTC. Anything else (an offset, missing
-        # microseconds, 24:00, a leap second, an impossible date) raises
-        # rather than be read some other way: the value must print back to
-        # exactly the same string.
         up("""
         CREATE OR REPLACE FUNCTION wallop_parse_rfc3339_usec(value text) RETURNS timestamp
         LANGUAGE plpgsql STABLE STRICT AS $$
@@ -239,11 +215,6 @@ defmodule WallopCore.Resources.Draw do
       end
 
       statement :wallop_receipt_integer do
-        # True when signed field `key` of a receipt is a canonical positive
-        # integer: a JSON number whose canonical text is ^[1-9][0-9]*$, and
-        # that text is what the signed bytes carry after the key. jsonb reads
-        # 7.0 as 7.0 (refused by the pattern) and 7e0 as 7, so the raw bytes
-        # are checked too. A missing key gives NULL, which callers refuse.
         up("""
         CREATE OR REPLACE FUNCTION wallop_receipt_integer(raw text, p jsonb, key text) RETURNS boolean
         LANGUAGE sql IMMUTABLE AS $$
@@ -257,11 +228,6 @@ defmodule WallopCore.Resources.Draw do
         down("DROP FUNCTION IF EXISTS wallop_receipt_integer(text, jsonb, text)")
       end
 
-      # The grid-frequency tag (drand-quicknet+elexon-freq-v1). Every constant
-      # mirrors WallopCore.Frequency.Schedule, WallopCore.Frequency.FreqGrammar
-      # or WallopCore.Protocol.Tags.Freq and has an equality test in
-      # sql_freq_property_test.exs. A LANGUAGE sql body is parsed when it is
-      # created, so each function here comes after the functions it calls.
       statement :wallop_freq_tag do
         up("""
         CREATE OR REPLACE FUNCTION wallop_freq_tag() RETURNS text
@@ -272,8 +238,6 @@ defmodule WallopCore.Resources.Draw do
       end
 
       statement :wallop_freq_fetch_window do
-        # W_freq = WallopCore.Frequency.Schedule.fetch_window_seconds/0.
-        # Final; no CHECK calls it.
         up("""
         CREATE OR REPLACE FUNCTION wallop_freq_fetch_window() RETURNS interval
         LANGUAGE sql IMMUTABLE AS $$ SELECT interval '240 seconds' $$
@@ -292,8 +256,6 @@ defmodule WallopCore.Resources.Draw do
       end
 
       statement :wallop_freq_margin do
-        # M = Frequency.Schedule.margin_seconds/0: F <= pub(R) - M, and the
-        # fallback waits until F + M.
         up("""
         CREATE OR REPLACE FUNCTION wallop_freq_margin() RETURNS interval
         LANGUAGE sql IMMUTABLE AS $$ SELECT interval '15 seconds' $$
@@ -312,9 +274,6 @@ defmodule WallopCore.Resources.Draw do
       end
 
       statement :wallop_freq_stuck_run do
-        # N = FreqGrammar.stuck_run/0, for code that isn't a CHECK. The
-        # frozen wallop_freq_valid_value writes the same N as a literal; the
-        # equality test ties them together.
         up("""
         CREATE OR REPLACE FUNCTION wallop_freq_stuck_run() RETURNS integer
         LANGUAGE sql IMMUTABLE AS $$ SELECT 6 $$
@@ -333,8 +292,6 @@ defmodule WallopCore.Resources.Draw do
       end
 
       statement :wallop_freq_start do
-        # T = floor15(pub(R) - span - W_freq - M), in whole seconds from the
-        # epoch, built like wallop_quicknet_pub_time: no timestamptz.
         up("""
         CREATE OR REPLACE FUNCTION wallop_freq_start(drand_round bigint) RETURNS timestamp
         LANGUAGE sql IMMUTABLE STRICT AS $$
@@ -349,7 +306,6 @@ defmodule WallopCore.Resources.Draw do
       end
 
       statement :wallop_freq_fetch_deadline do
-        # F = T + span + W_freq.
         up("""
         CREATE OR REPLACE FUNCTION wallop_freq_fetch_deadline(freq_start timestamp) RETURNS timestamp
         LANGUAGE sql IMMUTABLE STRICT AS $$
@@ -361,8 +317,6 @@ defmodule WallopCore.Resources.Draw do
       end
 
       statement :wallop_freq_lock_allowed do
-        # True when a lock at locked_at is in time for window start
-        # freq_start (locked_at <= T - 60 s, inclusive, to the microsecond).
         up("""
         CREATE OR REPLACE FUNCTION wallop_freq_lock_allowed(locked_at timestamp, freq_start timestamp)
         RETURNS boolean
@@ -375,10 +329,6 @@ defmodule WallopCore.Resources.Draw do
       end
 
       statement :wallop_freq_valid_value do
-        # FreqGrammar.valid_value?/1. A CHECK on frequency_windows calls this,
-        # so it is frozen: its text never changes. N (6) and the bounds are
-        # literals, frozen by the tag; it calls no other function, because
-        # Postgres would not record that dependency.
         up("""
         CREATE OR REPLACE FUNCTION wallop_freq_valid_value(v text) RETURNS boolean
         LANGUAGE plpgsql IMMUTABLE AS $$
@@ -414,8 +364,6 @@ defmodule WallopCore.Resources.Draw do
       end
 
       statement :wallop_v6_lock_keys do
-        # Tags.V6Keys.lock_keys/0: every key of a lock receipt schema 6,
-        # under either tag, sorted bytewise (COLLATE "C").
         up("""
         CREATE OR REPLACE FUNCTION wallop_v6_lock_keys() RETURNS text[]
         LANGUAGE sql IMMUTABLE AS $$
@@ -433,8 +381,6 @@ defmodule WallopCore.Resources.Draw do
       end
 
       statement :wallop_v6_exec_keys do
-        # Tags.V6Keys.exec_keys/0: every key of an execution receipt schema
-        # 5, under either tag, sorted bytewise (COLLATE "C").
         up("""
         CREATE OR REPLACE FUNCTION wallop_v6_exec_keys() RETURNS text[]
         LANGUAGE sql IMMUTABLE AS $$
@@ -455,9 +401,6 @@ defmodule WallopCore.Resources.Draw do
       end
 
       statement :wallop_v6_fetch_deadline do
-        # F for a v6 draw, chosen by its tag; NULL for any other tag, which
-        # every caller treats as a refusal. The SQL twin of
-        # WallopCore.Entropy.V6Rules.fetch_deadline/2.
         up("""
         CREATE OR REPLACE FUNCTION wallop_v6_fetch_deadline(
           entropy_composition text, weather_time timestamp, freq_start timestamp)
@@ -476,11 +419,6 @@ defmodule WallopCore.Resources.Draw do
       end
 
       statement :wallop_check_v6_lock_receipt do
-        # Raises unless receipt r is the lock receipt of v6 draw d: every
-        # signed field with a counterpart on the draw, the receipt row or the
-        # operator matches it, and the signed locked_at is in time. Called
-        # by both guards, so the result is the same whichever of the lock
-        # UPDATE and the receipt INSERT runs first.
         up("""
         CREATE OR REPLACE FUNCTION wallop_check_v6_lock_receipt(d draws, r operator_receipts)
         RETURNS void
@@ -600,42 +538,6 @@ defmodule WallopCore.Resources.Draw do
       end
 
       statement :guard_v6_draw do
-        # An open draw with a NULL lock_schema_version may only stay open or
-        # expire: every lock carries lock schema 6, so a lock from any code
-        # still writing the retired forecast shape (NULL, NULL) is refused
-        # here. Otherwise it does nothing to a draw whose
-        # (lock_schema_version, entropy_composition) is (NULL, NULL) before
-        # and after (an open or expired draw, or a retired forecast draw): it
-        # returns early, after refusing the grid-frequency columns on such a
-        # row, and never reaches a tag arm. Setting the pair outside a lock
-        # is refused below.
-        # The Land Obs completion reads weather_observations by weather_time
-        # and, with no reading, frequency_windows by freq_start: the three
-        # states of the tag. The grid-frequency completion reads
-        # frequency_windows by freq_start. PL/pgSQL resolves each table only
-        # when a draw of that tag completes. The draws row keeps the lock's
-        # weather_station (frozen); the reading's station is fixed by the
-        # hour's single row, and the execution receipt carries it.
-        #
-        # Once a v6 draw has left open it can't be deleted, and once the DB
-        # clock reaches its fetch deadline F it can't move to failed, from
-        # any status. F is chosen by tag (wallop_v6_fetch_deadline): for Land
-        # Obs it is weather_time + W, at least a minute before
-        # pub(drand_round); for grid frequency it is freq_start + span +
-        # W_freq, at least M = 15 s before pub(drand_round). Each is the same
-        # skew budget its store has, so a database clock lagging drand by
-        # less than that can't fail a draw whose round is already public.
-        # Failing before F stays allowed: a visible abort before anything is
-        # knowable.
-        #
-        # For both tags the lock's deadline is read on clock_timestamp(),
-        # after any wait for the row lock, not on the statement's start
-        # time; it is read again at commit (check_v6_draw_lock_commit).
-        #
-        # Each guard here is one statement holding its function and its
-        # trigger(s), as a DO block (a statement is one command). `down`
-        # drops the trigger before the function, so changing a guard
-        # regenerates as drop-then-create without tripping on the trigger.
         up("""
         DO $do$
         BEGIN
@@ -875,11 +777,6 @@ defmodule WallopCore.Resources.Draw do
       end
 
       statement :check_v6_draw_failed_commit do
-        # The same rule as guard_v6_draw's, F chosen by tag, at COMMIT on
-        # the wall clock then (clock_timestamp()): a v6 draw moved to failed
-        # before F in a transaction held open past F is refused at commit,
-        # so nobody can wait for the round and then choose to keep the
-        # failure.
         up("""
         DO $do$
         BEGIN
@@ -917,11 +814,6 @@ defmodule WallopCore.Resources.Draw do
       end
 
       statement :check_v6_draw_completed_commit do
-        # The draws guard checks a v6 completion's weather fields and
-        # executed_at but not its seed or winners (no FairPick in SQL); the
-        # execution receipt guard binds those to a signature. So a v6 draw
-        # that becomes completed must have its execution receipt by COMMIT.
-        # Execution inserts the receipt in the completion's transaction.
         up("""
         DO $do$
         BEGIN
@@ -957,11 +849,6 @@ defmodule WallopCore.Resources.Draw do
       end
 
       statement :check_v6_draw_lock_commit do
-        # The lock deadline again, at COMMIT on the wall clock then
-        # (clock_timestamp()): a v6 lock made in time in a transaction held
-        # open past its deadline (wt - 46m for Land Obs, freq_start - 60 s for
-        # grid frequency) is refused at commit, so nobody can hold a lock
-        # until the entropy is known and then choose to keep it.
         up("""
         DO $do$
         BEGIN
@@ -1007,10 +894,6 @@ defmodule WallopCore.Resources.Draw do
       end
 
       statement :guard_v6_lock_receipt do
-        # Fails closed. A draw with no lock schema (every forecast draw) takes
-        # any receipt that is not schema 6, exactly as before. A schema 6
-        # receipt needs a v6 draw, and a v6 draw's receipt must pass
-        # wallop_check_v6_lock_receipt.
         up("""
         DO $do$
         BEGIN
@@ -1054,9 +937,6 @@ defmodule WallopCore.Resources.Draw do
       end
 
       statement :guard_v6_draw_insert do
-        # A draw is created open, so it never starts with a lock schema, nor
-        # with any grid-frequency column, nor in any other status: a row
-        # inserted already out of open would be a lock with no lock schema.
         up("""
         DO $do$
         BEGIN
@@ -1093,15 +973,6 @@ defmodule WallopCore.Resources.Draw do
       end
 
       statement :guard_v6_execution_receipt do
-        # Fails closed. A draw with no lock schema (every forecast and
-        # historic draw) takes its execution receipt exactly as before, but
-        # never a schema 5 one. A v6 draw's receipt is bound field by field
-        # to the completed draw, its stored lock receipt, the operator, the
-        # infrastructure keyring and, by tag, the stored state: under Land
-        # Obs the hour's observation, else T's frequency window, else the
-        # drand-only fallback rule; under grid frequency T's window, else the
-        # fallback rule. The seed and the winners are bound to the draw's
-        # columns, never recomputed here.
         up("""
         DO $do$
         BEGIN
@@ -1394,7 +1265,6 @@ defmodule WallopCore.Resources.Draw do
   actions do
     defaults([:read])
 
-    # Many draws in one call. :read is unchanged; GET /draws moves here.
     read :list do
       description(
         "The caller's draws, oldest first, optionally filtered by status. Keyset-paginated; " <>
@@ -1404,7 +1274,6 @@ defmodule WallopCore.Resources.Draw do
 
       argument :status, :string do
         allow_nil?(true)
-        # Keep "" as "" (not nil) so `?status=` is rejected, not ignored.
         constraints(allow_empty?: true, trim?: false)
 
         description(
@@ -1438,9 +1307,6 @@ defmodule WallopCore.Resources.Draw do
       argument :entries, {:array, :map} do
         allow_nil?(false)
 
-        # Map shape is documented here so it surfaces in the generated
-        # OpenAPI schema rather than appearing as a bare "array of objects".
-        # ValidateEntries and AddEntries enforce the same rules at runtime.
         constraints(
           items: [
             fields: [
@@ -1523,8 +1389,6 @@ defmodule WallopCore.Resources.Draw do
         )
       end
 
-      # Records the operator's protocol on the draw (lock schema "6" and its
-      # tag). Every change below follows the recorded value.
       change({WallopCore.Resources.Draw.Changes.ResolveLockSchema, []})
       validate({WallopCore.Resources.Draw.Validations.DrawAt, []})
 
@@ -1550,9 +1414,6 @@ defmodule WallopCore.Resources.Draw do
       change(set_attribute(:status, :pending_entropy))
     end
 
-    # Observation-weather draws. Reads the stored reading itself, under the
-    # draw's row lock; the caller supplies only the drand beacon. With
-    # nothing stored by the fetch deadline the draw is drand-only, by rule.
     update :execute_v6 do
       require_atomic?(false)
       filter(expr(status == :pending_entropy and lock_schema_version == "6"))
@@ -1635,10 +1496,6 @@ defmodule WallopCore.Resources.Draw do
       authorize_if(expr(api_key_id == ^actor(:id)))
     end
 
-    # Internal-only actions: called by ObservationDrawWorker / ExpiryWorker
-    # with authorize?: false. Forbidden for all authorized callers to prevent
-    # external actors from racing the workers (or, in :expire's case, from
-    # burning operator sequence slots maliciously).
     policy action([
              :expire,
              :transition_to_pending,

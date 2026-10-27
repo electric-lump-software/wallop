@@ -127,16 +127,12 @@ defmodule WallopWeb.Components.DrawTimeline do
         true -> nil
       end
 
-    # "Declared: …" starts a sentence of its own.
     separator =
       if weather_text && String.starts_with?(weather_text, "Declared"), do: ". ", else: ", "
 
     [round_text, weather_text] |> Enum.reject(&is_nil/1) |> Enum.join(separator)
   end
 
-  # Lock schema 6: what was declared, from the signed lock receipt. Before
-  # the result, it may or may not turn up; after, it was only declared
-  # (the fetching stage names what was used).
   defp declared_text(weather, status) when status in [:awaiting_entropy, :pending_entropy] do
     "#{declared_source(weather)}, if it turns up. The result is due at " <>
       Calendar.strftime(weather.expected_result_at, "%H:%M:%S UTC")
@@ -154,7 +150,6 @@ defmodule WallopWeb.Components.DrawTimeline do
 
   defp declared_source(%{tag: :freq}), do: "the National Grid's frequency"
 
-  # Lock schema 6: the result is due when the drand round publishes.
   defp awaiting_stage(_draw, %{} = weather) do
     %{
       label: "Fetching Entropy",
@@ -165,8 +160,6 @@ defmodule WallopWeb.Components.DrawTimeline do
     }
   end
 
-  # No lock schema 6 summary (a draw the database would have refused): no
-  # countdown.
   defp awaiting_stage(_draw, nil) do
     %{label: "Fetching Entropy", detail: nil, state: :current}
   end
@@ -251,7 +244,6 @@ defmodule WallopWeb.Components.DrawTimeline do
     end
   end
 
-  # Lock schema 6: the source is the signed receipt's, not the row's.
   defp entropy_detail(draw, %{} = weather) do
     source_part =
       case {weather.source, weather.tag} do

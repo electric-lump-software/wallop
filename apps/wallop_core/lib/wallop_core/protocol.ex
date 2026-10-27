@@ -4,6 +4,9 @@ defmodule WallopCore.Protocol do
 
   Entry hashing (§2.1) and seed computation (§2.3) as defined in
   `spec/protocol.md`.
+
+  Timestamps in signed payloads go through `WallopCore.Time.to_rfc3339_usec/1`; the
+  canonical-form assertion raises on any timestamp not in that form rather than signing it.
   """
 
   alias WallopCore.Drand.Quicknet
@@ -66,7 +69,6 @@ defmodule WallopCore.Protocol do
     {hash, jcs_string}
   end
 
-  # lowercase, hyphenated, 36-char RFC 4122 (no braces, no URN prefix).
   @uuid_regex ~r/\A[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\z/
 
   defp validate_draw_id(draw_id) do
@@ -157,10 +159,6 @@ defmodule WallopCore.Protocol do
     {:crypto.hash(:sha256, jcs_string), jcs_string}
   end
 
-  # Algorithm identity tags. Embedded verbatim into every signed receipt
-  # so the cryptographic choices are forensically anchored at commitment
-  # time. Rotating any algorithm requires a new tag value plus a schema
-  # version bump — the tag is how verifiers decide which rules to apply.
   @jcs_version "sha256-jcs-v1"
   @signature_algorithm "ed25519"
   @drand_signature_algorithm "bls12_381_g2"
@@ -178,8 +176,6 @@ defmodule WallopCore.Protocol do
   @spec merkle_algorithm() :: String.t()
   def merkle_algorithm, do: @merkle_algorithm
 
-  # The lock receipt's base field map (the field set lock schemas 2 to 6
-  # share). A tag's extra fields are merged on top, never in here.
   defp lock_fields(
          %{
            operator_id: operator_id,
@@ -227,9 +223,6 @@ defmodule WallopCore.Protocol do
     payload
   end
 
-  # The execution receipt's base field map (the field set execution
-  # schemas 3 to 5 share). A tag's extra fields are merged on top, never in
-  # here.
   defp execution_fields(
          %{
            draw_id: draw_id,
@@ -290,21 +283,10 @@ defmodule WallopCore.Protocol do
     payload
   end
 
-  # ── Lock schema 6 / execution schema 5 ─────────────────────────────
-  #
-  # The base field maps are the shared lock / execution field sets. The
-  # input's `entropy_composition` picks a tag module from `@v6_tag_modules`;
-  # the module validates the input and returns the fields its tag adds,
-  # which are merged on top of the base map. A new tag is a new
-  # `WallopCore.Protocol.Tags.*` module plus one entry in the list.
-
   @v6_lock_schema_version "6"
   @v6_execution_schema_version "5"
   @v6_tag_modules [LandObs, Freq]
 
-  # Inputs every lock v6 / execution v5 receipt needs, whatever the tag.
-  # The weather inputs must be present but may be nil here: each tag
-  # decides whether its weather fields are set.
   @v6_lock_non_nil [
     :operator_id,
     :operator_slug,
@@ -446,8 +428,6 @@ defmodule WallopCore.Protocol do
     raise ArgumentError, "lock v6 / execution v5 input must carry :entropy_composition"
   end
 
-  # Missing or nil inputs raise ArgumentError naming the input, rather than
-  # a FunctionClauseError from deeper in the builder.
   defp require_inputs!(input, receipt, non_nil, nullable, datetimes) do
     Enum.each(non_nil ++ nullable, fn key ->
       unless Map.has_key?(input, key),
@@ -465,7 +445,6 @@ defmodule WallopCore.Protocol do
     end)
   end
 
-  # Every lock v6 / execution v5 tag is a drand quicknet tag.
   defp require_quicknet_chain!(%{drand_chain: chain}) do
     unless chain == Quicknet.chain_hash() do
       raise ArgumentError,
@@ -480,8 +459,6 @@ defmodule WallopCore.Protocol do
     raise ArgumentError, "lock v6 / execution v5 input must carry :drand_chain"
   end
 
-  # Signed timestamps a tag may add. Each one present goes through the same
-  # canonical-form tripwire as the base timestamps.
   @v6_tag_timestamp_keys ["freq_start"]
 
   defp assert_tag_timestamps!(payload) do
@@ -493,9 +470,6 @@ defmodule WallopCore.Protocol do
     payload
   end
 
-  # A tag may add fields, never replace a base field. Keys must be strings,
-  # like the base keys, so an atom key can't slip past the clash check and
-  # then encode as a duplicate.
   defp merge_tag_fields!(base, extra) do
     case Enum.reject(Map.keys(extra), &is_binary/1) do
       [] -> :ok
@@ -508,13 +482,6 @@ defmodule WallopCore.Protocol do
     end
   end
 
-  # Defence-in-depth: assert that every timestamp field in a signed payload
-  # matches the canonical RFC 3339 form pinned in `spec/protocol.md` §4.2.1.
-  # `to_rfc3339_usec/1` is the only path timestamps should take to get here —
-  # this check is a tripwire for a future refactor that accidentally inlines
-  # `DateTime.to_iso8601/1` at a call site and produces non-canonical bytes.
-  # Also catches years outside 0..9999 where the ISO-8601 string grows a
-  # fifth digit or a leading `-` sign and silently breaks the regex.
   defp assert_canonical_timestamps!(payload, keys) do
     Enum.each(keys, fn key ->
       case WallopCore.Time.validate_rfc3339_usec(Map.fetch!(payload, key)) do

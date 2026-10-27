@@ -113,9 +113,6 @@ defmodule WallopCore.VaultKeyCheck do
     end
   end
 
-  # Cloak's AES-GCM returns `{:ok, :error}` when authentication fails, and
-  # Cloak can raise a MatchError carrying the ciphertext on a malformed
-  # value. Both are a failed decrypt; neither error term is kept.
   defp verify(vault, row) do
     case decrypt(vault, row.private_key) do
       {:ok, seed} when is_binary(seed) -> consistent(row, seed)

@@ -8,7 +8,6 @@ defmodule WallopCore.Repo.Migrations.RemoveEntriesJsonbColumn do
   use Ecto.Migration
 
   def up do
-    # Update immutability trigger — remove entries column from committed fields check
     execute """
     CREATE OR REPLACE FUNCTION prevent_draw_mutation()
     RETURNS TRIGGER AS $$

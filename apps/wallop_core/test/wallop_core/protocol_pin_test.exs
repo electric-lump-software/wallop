@@ -22,7 +22,6 @@ defmodule WallopCore.ProtocolPinTest do
     }
   ]
 
-  # Deterministic test keypair. NOT a real wallop infrastructure key.
   setup_all do
     private_key = :crypto.hash(:sha256, "wallop-pin-test-private-seed")
     {public_key, ^private_key} = :crypto.generate_key(:eddsa, :ed25519, private_key)
@@ -144,8 +143,6 @@ defmodule WallopCore.ProtocolPinTest do
     test "produces byte-identical JCS for the same input regardless of map order" do
       same_keys_diff_order =
         Enum.map(@keys, fn k ->
-          # Reverse map literal key order — Elixir maps don't preserve
-          # but JCS must canonicalise anyway.
           %{public_key: k.public_key, key_id: k.key_id}
         end)
 
@@ -230,9 +227,6 @@ defmodule WallopCore.ProtocolPinTest do
 
       sig = Pin.sign(jcs, private_key)
 
-      # Verify against the raw JCS WITHOUT the domain separator using
-      # crypto directly. Should fail because sign() prepended the
-      # separator.
       refute :crypto.verify(:eddsa, :none, jcs, sig, [public_key, :ed25519])
     end
   end
@@ -253,7 +247,6 @@ defmodule WallopCore.ProtocolPinTest do
       assert String.match?(wire["infrastructure_signature"], ~r/^[0-9a-f]{128}$/)
       assert byte_size(wire["infrastructure_signature"]) == 128
 
-      # The other four members are exactly the pre-image fields.
       assert Map.delete(wire, "infrastructure_signature") == envelope
     end
   end
@@ -271,8 +264,6 @@ defmodule WallopCore.ProtocolPinTest do
       sig = Pin.sign(jcs, private_key)
       wire = Pin.build_envelope(envelope, sig)
 
-      # Round-trip through JSON to mimic a verifier parsing the wire
-      # bytes, then reconstruct the pre-image per spec §4.2.4.
       parsed = wire |> Jason.encode!() |> Jason.decode!()
       reconstructed = Map.delete(parsed, "infrastructure_signature") |> Jcs.encode()
 

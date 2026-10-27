@@ -50,15 +50,12 @@ defmodule WallopCore.Resources.Operator do
 
   @max_name_length 80
 
-  # Entropy protocols an operator's new locks can use. Adding one is a
-  # one-line change here and in the check constraint below.
   @draw_protocols [:observation, :frequency]
 
   postgres do
     table("operators")
     repo(WallopCore.Repo)
 
-    # The retired forecast protocol can't come back through a direct write.
     check_constraints do
       check_constraint(:draw_protocol, "operators_draw_protocol_known",
         check: "draw_protocol IN ('observation', 'frequency')",
@@ -102,9 +99,6 @@ defmodule WallopCore.Resources.Operator do
       end)
     end
 
-    # Which weather protocol new locks use. Set only by the platform's
-    # admin path (authorize?: false); draws already locked keep the protocol
-    # they were locked with.
     update :set_draw_protocol do
       accept([:draw_protocol])
       require_atomic?(false)
@@ -112,29 +106,19 @@ defmodule WallopCore.Resources.Operator do
   end
 
   policies do
-    # Operators are public identities — anyone can read them.
     policy action(:read) do
       authorize_if(always())
     end
 
-    # Operator creation is admin-only — must go through `mix wallop.gen.operator`
-    # or another bootstrap path with `authorize?: false`. Without this policy,
-    # anyone could squat slugs or create rogue operators.
     policy action(:create) do
       forbid_if(always())
     end
 
-    # Only an api_key belonging to an operator can rename that operator. Other
-    # admin paths must use `authorize?: false`. Without this policy, anyone
-    # could rename any operator.
     policy action(:update_name) do
       forbid_unless(actor_present())
       authorize_if(expr(id == ^actor(:operator_id)))
     end
 
-    # The draw protocol is platform-controlled. No actor, including the
-    # operator's own api_key, may change it; the admin path uses
-    # `authorize?: false`.
     policy action(:set_draw_protocol) do
       forbid_if(always())
     end
@@ -230,17 +214,8 @@ defmodule WallopCore.Resources.Operator do
     end
   end
 
-  # Reject anything that lets a display name be invisible, ambiguous, or
-  # spoof another operator's name visually.
   defp contains_disallowed_chars?(name) do
     Enum.any?(String.to_charlist(name), fn cp ->
-      # ASCII soft hyphen
-      # Zero-width space, ZWNJ, ZWJ
-      # Line/paragraph separators
-      # Bidi formatting (LRE, RLE, PDF, LRO, RLO)
-      # Bidi isolates (LRI, RLI, FSI, PDI)
-      # Byte order mark / zero-width no-break space
-      # Tag block — used in some homograph attacks
       cp < 0x20 or
         cp == 0x7F or
         cp == 0x00AD or

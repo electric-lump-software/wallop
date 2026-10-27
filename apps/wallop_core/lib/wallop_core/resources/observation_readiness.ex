@@ -34,8 +34,6 @@ defmodule WallopCore.Resources.ObservationReadiness do
   actions do
     defaults([:read])
 
-    # One statement: INSERT ... ON CONFLICT (singleton) DO UPDATE, with
-    # checked_at taken from the database clock in that statement.
     create :record do
       transaction?(false)
       accept([:ready])

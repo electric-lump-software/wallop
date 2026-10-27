@@ -6,7 +6,6 @@ defmodule WallopWeb.ProofPdfControllerTest do
   alias WallopWeb.ProofStorage
 
   setup do
-    # Each test gets a fresh tmp dir
     root = Path.join(System.tmp_dir!(), "pdf_ctrl_#{System.unique_integer([:positive])}")
     File.mkdir_p!(root)
 
@@ -49,12 +48,6 @@ defmodule WallopWeb.ProofPdfControllerTest do
       api_key = create_api_key()
       draw = create_draw(api_key)
 
-      # Force the draw into a terminal state via direct SQL. The
-      # immutability trigger forbids awaiting_entropy → completed
-      # directly, so we bypass the trigger with session_replication_role
-      # = replica for this one test-only UPDATE. session_replication_role
-      # is a session-level setting, so both statements must run on the
-      # same connection — wrapping in a transaction guarantees that.
       WallopCore.Repo.transaction(fn ->
         WallopCore.Repo.query!("SET LOCAL session_replication_role = 'replica'")
 
@@ -64,7 +57,6 @@ defmodule WallopWeb.ProofPdfControllerTest do
         )
       end)
 
-      # Pre-populate the cache so the controller doesn't need to call ChromicPDF
       :ok = ProofStorage.put(draw.id, "%PDF-1.4 fake bytes")
 
       conn = get(conn, "/proof/#{draw.id}/pdf")

@@ -75,8 +75,6 @@ defmodule WallopCore.Attacks.LockStraddleTest do
            end) == "a draw leaves open only by locking under lock schema 6, or by expiring"
   end
 
-  # Runs `fun` in a savepoint, then fires the deferred lock check at once.
-  # nil when accepted, or the refusal's message. Always rolled back.
   defp check_now(fun) do
     {:error, :accepted} =
       Repo.transaction(fn ->

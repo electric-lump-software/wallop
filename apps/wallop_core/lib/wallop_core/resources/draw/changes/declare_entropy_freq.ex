@@ -51,7 +51,6 @@ defmodule WallopCore.Resources.Draw.Changes.DeclareEntropyFreq do
         |> Ash.Changeset.after_action(fn _changeset, draw -> enqueue(draw) end)
         |> Ash.Changeset.after_transaction(&announce/2)
 
-      # Never lock without a schedule.
       {:error, reason} ->
         Ash.Changeset.add_error(changeset,
           field: :draw_at,
@@ -73,8 +72,6 @@ defmodule WallopCore.Resources.Draw.Changes.DeclareEntropyFreq do
     end
   end
 
-  # The lock is announced once it has committed: a lock that rolls back,
-  # at any step, is never announced.
   defp announce(_changeset, {:ok, draw} = result) do
     WallopCore.DrawPubSub.broadcast(draw)
     result

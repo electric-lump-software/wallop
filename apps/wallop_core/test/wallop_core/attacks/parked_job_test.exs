@@ -44,8 +44,6 @@ defmodule WallopCore.Attacks.ParkedJobTest do
     %{ref: :telemetry_test.attach_event_handlers(self(), [@reinserted, @overdue])}
   end
 
-  # A grid-frequency draw whose round published `ago` seconds ago, with its
-  # jobs removed.
   defp freq_draw(ago \\ 20 * 60) do
     {_op, key} = create_freq_operator()
     round = Quicknet.round_at_or_after(DateTime.add(DateTime.utc_now(), -ago))
@@ -68,7 +66,6 @@ defmodule WallopCore.Attacks.ParkedJobTest do
     draw
   end
 
-  # The draw's execution job, then `set` (SQL) applied to it.
   defp job!(draw, set) do
     {:ok, job} = Oban.insert(ObservationDrawWorker.new(%{draw_id: draw.id}))
     if set, do: Repo.query!("UPDATE oban_jobs SET #{set} WHERE id = $1", [job.id])
@@ -123,11 +120,8 @@ defmodule WallopCore.Attacks.ParkedJobTest do
       job!(draw, "state = 'scheduled', scheduled_at = '2099-01-01 00:00:00'")
       assert draw.id in StuckDrawRedriver.redrive()
 
-      # The new job can run the draw: nothing to do.
       refute draw.id in StuckDrawRedriver.redrive()
 
-      # It is lost too (discarded): the re-drive's own cancelled row doesn't
-      # count as a refusal, so the draw is re-driven again.
       Repo.query!(
         "UPDATE oban_jobs SET state = 'discarded', discarded_at = now() " <>
           "WHERE args->>'draw_id' = $1 AND state = 'available'",

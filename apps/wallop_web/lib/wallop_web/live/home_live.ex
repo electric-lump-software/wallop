@@ -3,12 +3,6 @@ defmodule WallopWeb.HomeLive do
 
   @impl true
   def mount(_params, _session, socket) do
-    # `layout: false` — HomeLive's template is a full-page layout (its own
-    # nav + sections + footer); the root layout already wraps it in
-    # `<html>` per the router's `:put_root_layout`. Re-using `:root` as
-    # the inner layout here too renders the root template twice and
-    # produces the "Cannot bind multiple views to the same DOM element"
-    # error LiveSocket throws on connect.
     {:ok,
      socket
      |> assign(active_tab: "plain")

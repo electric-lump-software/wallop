@@ -89,11 +89,6 @@ defmodule WallopCore.VaultHealthCheck do
     end
   end
 
-  # Returns the ciphers configured on the vault, as a keyword list of
-  # `{label, {cipher_module, opts}}`. Reads from `Application.get_env/2`
-  # because the ETS-backed live config is only populated after
-  # `Vault.start_link/1` runs, and we want to be able to inspect the
-  # intended ciphers regardless of boot order.
   defp configured_ciphers(WallopCore.Vault) do
     Application.get_env(:wallop_core, WallopCore.Vault, []) |> Keyword.get(:ciphers, [])
   end

@@ -11,24 +11,13 @@ defmodule WallopWeb.ProofController do
   alias WallopCore.Proof
   alias WallopWeb.Components.VerifyBlock
 
-  # Rate-limit the public self-check when an `entry_id` path param is
-  # present. The plug is a no-op on the plain `/proof/:id` view, so
-  # legitimate proof page loads aren't throttled.
   plug(WallopWeb.Plugs.SelfCheckRateLimit when action in [:show])
 
-  # Rate-limit raw `/proof/:id` GETs when the draw is in `:open` status.
-  # Distinct ETS table from SelfCheckRateLimit (different threat model,
-  # different cap). Fires only on :open draws — terminal/in-progress
-  # draws have their own caching story (immutable Cache-Control / LiveView).
   plug(WallopWeb.Plugs.ProofPreLockRateLimit when action in [:show])
 
   @terminal_statuses [:completed, :failed, :expired]
   @default_entries_limit 100
   @max_entries_limit 1000
-  # Statuses where entry list is frozen and safe to expose publicly.
-  # `:open` is deliberately excluded — pre-lock, entries can still be added
-  # or removed and real-time scraping would leak competitive information
-  # to observers (weight distribution, count trends) before lock.
   @locked_or_terminal_statuses [
     :locked,
     :awaiting_entropy,
@@ -146,8 +135,6 @@ defmodule WallopWeb.ProofController do
        when status in @locked_or_terminal_statuses,
        do: :ok
 
-  # Treat open-draw entry queries as "not found" — the entry list is still
-  # in flux and is not yet a fixed public artefact.
   defp require_locked_or_terminal(_), do: {:error, :not_found}
 
   defp parse_limit(nil), do: {:ok, @default_entries_limit}
@@ -224,7 +211,6 @@ defmodule WallopWeb.ProofController do
     result
   end
 
-  # A retired forecast draw is not found, exactly like an unknown id.
   defp load_draw(id), do: WallopWeb.RetiredDraw.fetch(id)
 
   defp not_found(conn) do

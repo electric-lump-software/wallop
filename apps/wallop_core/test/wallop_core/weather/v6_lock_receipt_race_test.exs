@@ -28,7 +28,6 @@ defmodule WallopCore.Weather.V6LockReceiptRaceTest do
   WHERE id = $1
   """
 
-  # How long a blocked statement is given to show it is waiting.
   @blocked_ms 300
 
   setup do
@@ -85,9 +84,6 @@ defmodule WallopCore.Weather.V6LockReceiptRaceTest do
     assert final_state(draw) == {nil, nil, ["5"]}
   end
 
-  # Runs `statement` in a real transaction in a new process. Reports
-  # {:done_statement, pid} when the statement returns, then waits for
-  # :commit. Reports {:result, pid, :committed | {:refused, message}}.
   defp in_transaction(statement) do
     parent = self()
 
@@ -136,8 +132,6 @@ defmodule WallopCore.Weather.V6LockReceiptRaceTest do
     ])
   end
 
-  # A receipt as a forecast lock would write it: not schema 6, so a draw
-  # without a lock schema accepts it.
   defp insert_schema5_receipt!(draw, s) do
     {hash, _} = s.hashes
     locked_at = DateTime.utc_now()
@@ -168,7 +162,6 @@ defmodule WallopCore.Weather.V6LockReceiptRaceTest do
     )
   end
 
-  # {lock_schema_version, entropy_composition, [receipt schema_version]}
   defp final_state(draw) do
     unboxed(fn ->
       %{rows: [[schema, tag]]} =

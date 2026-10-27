@@ -1,16 +1,6 @@
 defmodule WallopCore.Drand.Bls.Native do
   @moduledoc false
-  # The drand BLS NIF, built from `native/drand_bls` at compile time.
-  # Call it through `WallopCore.Drand.Bls`, never directly.
-  #
-  # If the library fails to load, this module fails to load with it, and
-  # `WallopCore.Application` refuses to boot (see `WallopCore.Drand.Bls.self_test!/0`):
-  # a node that can't check drand signatures must not run draws.
 
-  # The crate is built only from its committed Cargo.lock. Rustler runs
-  # `cargo metadata` without `--locked`, which would quietly rewrite a stale
-  # lock file before the build, so the lock is checked here first. Rustler
-  # resolves the crate path against the app directory; so does this.
   @crate_dir "native/drand_bls"
 
   if is_nil(System.find_executable("cargo")) do
@@ -38,8 +28,6 @@ defmodule WallopCore.Drand.Bls.Native do
   use Rustler,
     otp_app: :wallop_core,
     crate: "drand_bls",
-    # `--locked`, a global cargo flag: the build itself also refuses to
-    # change the lock file.
     cargo: {:system, "--locked"}
 
   @doc false

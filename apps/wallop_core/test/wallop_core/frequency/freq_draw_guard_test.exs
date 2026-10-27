@@ -138,7 +138,6 @@ defmodule WallopCore.Frequency.FreqDrawGuardTest do
 
       Repo.query!("UPDATE draws SET status = 'pending_entropy' WHERE id = $1", [dump(d.id)])
 
-      # Nothing stored, and F + M is minutes away: the completion arm refuses.
       assert try_sql(
                "UPDATE draws SET status = 'completed', executed_at = $2, freq_fallback_reason = $3 WHERE id = $1",
                [
@@ -186,7 +185,6 @@ defmodule WallopCore.Frequency.FreqDrawGuardTest do
                col
       end
 
-      # Control: the same lock without a weather column is kept.
       assert raw_freq_lock(d, s) == nil
     end
 
@@ -214,7 +212,6 @@ defmodule WallopCore.Frequency.FreqDrawGuardTest do
       {_op, key} = create_freq_operator()
       round = Quicknet.round_at_or_after(DateTime.add(DateTime.utc_now(), 3600))
 
-      # Stored freq_start whose F was 5 s ago (put_freq_awaiting!/3 places it).
       past_f =
         DateTime.utc_now()
         |> DateTime.add(-(FreqSchedule.span_seconds() + FreqSchedule.fetch_window_seconds() + 5))

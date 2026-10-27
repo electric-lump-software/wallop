@@ -45,7 +45,6 @@
     />
   </form>
 
-  <%!-- Desktop: table --%>
   <div class="hidden md:block overflow-x-auto">
     <table class="table table-zebra">
       <thead>
@@ -86,9 +85,7 @@
     </table>
   </div>
 
-  <%!-- Mobile: stacked cards --%>
   <div class="md:hidden space-y-3">
-    <%!-- A retired forecast draw's proof is not served, so its card has no href. --%>
     <a
       :for={draw <- @draws}
       href={if !WallopWeb.RetiredDraw.retired?(draw), do: "/proof/#{draw.id}"}

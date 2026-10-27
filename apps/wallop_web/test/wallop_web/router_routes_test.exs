@@ -25,14 +25,7 @@ defmodule WallopWeb.RouterRoutesTest do
   """
   use ExUnit.Case, async: true
 
-  # Sorted alphabetically by (verb-string, path). Verb `*` is Phoenix's
-  # representation of `forward(...)` — a route that swallows any path under
-  # the matched scope. Wildcards here are deliberate; new ones are not.
   @expected_routes [
-    # AshJsonApi router for WallopCore.Domain — currently exposes Draw
-    # at /api/v1/draws. Adding `json_api do` to another resource in the
-    # domain extends what this wildcard covers; that addition MUST be
-    # accompanied by an explicit allowlist update on this test.
     {:*, "/api/v1"},
     {:get, "/"},
     {:get, "/api/docs"},
@@ -88,13 +81,6 @@ defmodule WallopWeb.RouterRoutesTest do
            """
   end
 
-  # AshJsonApi-served route surface — pinned as
-  # {resource module, action atom, HTTP method, path}. This is the
-  # structural data AshJsonApi's internal router dispatches on; format
-  # stable across AshJsonApi versions (unlike the formatted route
-  # strings). New `json_api do` blocks on resources extend THIS set
-  # without touching `WallopWeb.Router.__routes__/0`, so the Phoenix
-  # allowlist above does not catch them — this test does.
   @expected_ash_json_api_routes [
     {WallopCore.Resources.Draw, :list, :get, "/draws"},
     {WallopCore.Resources.Draw, :read, :get, "/draws/:id"},
@@ -105,10 +91,6 @@ defmodule WallopWeb.RouterRoutesTest do
   ]
 
   test "AshJsonApi resource/action/method set matches the explicit allowlist" do
-    # AshJsonApi exposes routes from two sources: resource-level
-    # (`json_api do { routes do ... end }` inside an Ash.Resource) and
-    # domain-level (`json_api do { routes do base_route ... end }` inside
-    # an Ash.Domain). Concatenate both to capture the full surface.
     domain_routes =
       WallopCore.Domain
       |> AshJsonApi.Domain.Info.routes()

@@ -29,7 +29,6 @@ defmodule WallopCore.Resources.Draw.ReportFailureTest do
     draw = create_draw(create_api_key())
     ref = :telemetry_test.attach_event_handlers(self(), [[:wallop_core, :draw, :failed]])
 
-    # A later hook in the same transaction fails, as a failed webhook insert would.
     log =
       capture_log(fn ->
         assert {:error, _} =

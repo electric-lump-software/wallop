@@ -46,8 +46,6 @@ defmodule WallopWeb.Plugs.KeyRateLimitTest do
     |> KeyRateLimit.call([])
   end
 
-  # Waits (generously) for exactly `n` messages for the key, then checks that
-  # no further one turns up.
   defp pressure(key, n) do
     id = key.id
 
@@ -118,7 +116,6 @@ defmodule WallopWeb.Plugs.KeyRateLimitTest do
     for _ <- 1..8, do: call(key)
 
     assert kinds(key, 2) == [:limited, :near_limit]
-    # Telemetry handlers run in the calling process, so these are already here.
     assert Enum.sort(telemetry_kinds(key)) == [:limited, :near_limit]
   end
 
@@ -130,8 +127,6 @@ defmodule WallopWeb.Plugs.KeyRateLimitTest do
 
   describe "when the counter store errors" do
     setup do
-      # The Redis backend is not started in tests, so every hit is a store
-      # error and fails open as {:allow, 0}.
       previous = Application.get_env(:wallop_web, RateLimiter, [])
       Application.put_env(:wallop_web, RateLimiter, Keyword.put(previous, :backend, :redis))
       on_exit(fn -> Application.put_env(:wallop_web, RateLimiter, previous) end)

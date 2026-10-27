@@ -16,8 +16,6 @@ defmodule WallopWeb.RetiredDrawTest do
 
   defp entry_id(draw), do: hd(WallopCore.Entries.load_for_draw(draw.id)).uuid
 
-  # Everything a client can see of a plain HTTP response, but the flash
-  # cookie, which carries a signing time.
   defp seen(conn) do
     %{
       status: conn.status,
@@ -55,7 +53,6 @@ defmodule WallopWeb.RetiredDrawTest do
        %{key: key, retired: retired} do
     for draw <- retired, do: assert(RetiredDraw.retired?(draw))
 
-    # Exact without a receipt: an old draw locked but never executed.
     for status <- [:locked, :awaiting_entropy, :pending_entropy, :completed, :failed] do
       assert RetiredDraw.retired?(%{lock_schema_version: nil, status: status})
     end
@@ -122,9 +119,6 @@ defmodule WallopWeb.RetiredDrawTest do
 
   test "the JSON bundle never reaches ProofBundle.build for a retired draw",
        %{retired: [completed | _]} do
-    # The retired draw has a lock receipt but no execution receipt. Were
-    # ProofBundle.build reached, it would refuse with
-    # missing_execution_receipt, a 500; the 404 shows it never runs.
     assert {:error, :missing_execution_receipt} = WallopCore.ProofBundle.build(completed)
     assert json_response(get(build_conn(), "/proof/#{completed.id}/json"), 404)
   end

@@ -31,34 +31,23 @@ defmodule WallopCore.FrozenVectorsTest do
     |> Jason.decode!()
   end
 
-  # ── Ed25519 keypair (from shared vectors) ──────────────────────────
-
   @ed25519 Jason.decode!(
              File.read!(Path.expand("../../../../spec/vectors/ed25519.json", __DIR__))
            )
   @test_private_key Base.decode16!(@ed25519["keypair"]["private_key_hex"], case: :mixed)
   @test_public_key Base.decode16!(@ed25519["keypair"]["public_key_hex"], case: :mixed)
 
-  # ── V-1: entry_hash ────────────────────────────────────────────────
-
   describe "V-1: entry_hash" do
     setup do
       %{vectors: load_vector("entry-hash.json")["vectors"]}
     end
 
-    # Zero-drift sentinel. This test pins the entry_hash byte output
-    # against the v0.15.0 baseline — any accidental change to the
-    # canonical form (sort order, JCS encoding, extra fields) breaks
-    # this test loudly rather than silently re-pinning. Do NOT regenerate
-    # entry-hash.json without a CHANGELOG BREAKING entry and a deliberate
-    # schema_version bump on every affected receipt.
     test "single-entry canonical form is byte-pinned (v0.15.0 baseline)" do
       entries = [%{uuid: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", weight: 1}]
       draw_id = "11111111-1111-4111-8111-111111111111"
 
       {hash, _jcs} = Protocol.entry_hash({draw_id, entries})
 
-      # Frozen against the v0.15.0 vector set.
       assert hash == "d6ab8f4c63c05739f87a3cdb0d9235c09b59f4fca558a1394022e673059087e0"
     end
 
@@ -117,8 +106,6 @@ defmodule WallopCore.FrozenVectorsTest do
     end
   end
 
-  # ── V-2: compute_seed ──────────────────────────────────────────────
-
   describe "V-2: compute_seed" do
     setup do
       %{vectors: load_vector("compute-seed.json")["vectors"]}
@@ -160,8 +147,6 @@ defmodule WallopCore.FrozenVectorsTest do
       refute with_weather == drand_only
     end
   end
-
-  # ── V-3: FairPick.draw/3 ──────────────────────────────────────────
 
   describe "V-3: FairPick.draw" do
     setup do
@@ -214,7 +199,6 @@ defmodule WallopCore.FrozenVectorsTest do
       entries = Enum.map(v["entries"], fn e -> %{id: e["id"], weight: e["weight"]} end)
       seed = Base.decode16!(v["seed_hex"], case: :lower)
 
-      # Verify seed_hex matches seed_note derivation
       assert seed == :crypto.hash(:sha256, "large-pool-500-entries-mixed-weights")
 
       result = FairPick.draw(entries, seed, v["winner_count"])
@@ -227,7 +211,6 @@ defmodule WallopCore.FrozenVectorsTest do
       entries = Enum.map(v["entries"], fn e -> %{id: e["id"], weight: e["weight"]} end)
       seed = Base.decode16!(v["seed_hex"], case: :lower)
 
-      # Verify seed_hex matches seed_note derivation
       assert seed == :crypto.hash(:sha256, "large-pool-1000-entries-10-winners")
 
       result = FairPick.draw(entries, seed, v["winner_count"])
@@ -241,8 +224,6 @@ defmodule WallopCore.FrozenVectorsTest do
       assert FairPick.draw(entries, seed, 2) == FairPick.draw(entries, seed, 2)
     end
   end
-
-  # ── V-4: Ed25519 signing ──────────────────────────────────────────
 
   describe "V-4: Ed25519 sign + verify" do
     setup do
@@ -275,8 +256,6 @@ defmodule WallopCore.FrozenVectorsTest do
     end
   end
 
-  # ── V-5: Lock receipt payload ─────────────────────────────────────
-
   describe "V-7: end-to-end pipeline" do
     setup do
       %{vector: load_vector("end-to-end.json")}
@@ -308,8 +287,6 @@ defmodule WallopCore.FrozenVectorsTest do
     end
   end
 
-  # ── V-8: key_id ───────────────────────────────────────────────────
-
   describe "V-8: key_id" do
     setup do
       %{vectors: load_vector("key-id.json")["vectors"]}
@@ -322,8 +299,6 @@ defmodule WallopCore.FrozenVectorsTest do
       assert Protocol.key_id(pub) == v["expected_key_id"]
     end
   end
-
-  # ── V-9: merkle_root ──────────────────────────────────────────────
 
   describe "V-9: merkle_root" do
     setup do
@@ -349,8 +324,6 @@ defmodule WallopCore.FrozenVectorsTest do
     end
   end
 
-  # ── V-10: anchor combined root ────────────────────────────────────
-
   describe "V-10: anchor combined root" do
     setup do
       %{vectors: load_vector("anchor-root.json")["vectors"]}
@@ -373,17 +346,11 @@ defmodule WallopCore.FrozenVectorsTest do
     end
   end
 
-  # ── V-11: cross-receipt linkage ────────────────────────────────────
-
-  # ── Helpers ────────────────────────────────────────────────────────
-
   defp sha256_hex(data) do
     :crypto.hash(:sha256, data) |> Base.encode16(case: :lower)
   end
 
   defp parse_datetime!(str), do: DateTime.from_iso8601(str) |> elem(1)
-
-  # ── Lock v6 / execution v5: observation weather and grid frequency ──
 
   @landobs_tag "drand-quicknet+metoffice-landobs-v1"
   @freq_tag "drand-quicknet+elexon-freq-v1"
@@ -413,12 +380,10 @@ defmodule WallopCore.FrozenVectorsTest do
     freq_executed_before_round_published freq_entropy_value_mismatch
   )
 
-  # The verifier's step names, in their snake_case wire form.
   @step_names ~w(bundle_shape lock_signature exec_signature weather_observation_window
                  receipt_field_consistency drand_bls_signature entry_hash seed_recomputation
                  winner_selection)
 
-  # {file, tag, landobs state or nil}
   @v6_receipt_vectors [
     {"lock-receipt-v6.json", @landobs_tag, nil},
     {"execution-receipt-v5.json", @landobs_tag, "a"},
@@ -429,7 +394,6 @@ defmodule WallopCore.FrozenVectorsTest do
     {"execution-receipt-fallback-v5-freq.json", @freq_tag, nil}
   ]
 
-  # {file, tag, landobs state or nil, lock receipt vector, exec receipt vector}
   @v6_bundle_vectors [
     {"proof-bundle-v6.json", @landobs_tag, "a", "lock-receipt-v6.json",
      "execution-receipt-v5.json"},
@@ -467,7 +431,6 @@ defmodule WallopCore.FrozenVectorsTest do
                inspect(c)
       end
 
-      # A round exactly at the bound (pub = h + W + 60 s) and the round before it.
       at_bound =
         Enum.find(v["cases"], fn c ->
           {:ok, pub, 0} = DateTime.from_iso8601(c["published_at"])
@@ -483,8 +446,6 @@ defmodule WallopCore.FrozenVectorsTest do
 
     test "weather-value-landobs-v1.json matches the grammar" do
       alias WallopCore.Weather.LandObsGrammar, as: G
-      # Read with the grammar's own decoder so the from_row numbers keep their
-      # text: a float-based JSON reader would turn 60.0 into 60 and refuse 1e400.
       {:ok, v} = G.decode(File.read!(vector_path("weather-value-landobs-v1.json")))
       b = G.bounds()
 
@@ -701,8 +662,6 @@ defmodule WallopCore.FrozenVectorsTest do
 
   defp vector_path(filename), do: Path.join(@vectors_dir, filename)
 
-  # The value vector holds number text a float-based reader refuses (1e400),
-  # so it is read with the grammar's own decoder.
   defp description("weather-value-landobs-v1.json" = file) do
     {:ok, v} = LandObsGrammar.decode(File.read!(vector_path(file)))
     v["description"]
@@ -718,7 +677,6 @@ defmodule WallopCore.FrozenVectorsTest do
 
   @receipt_timestamps ~w(locked_at weather_time freq_start executed_at weather_observation_time)
 
-  # A receipt vector's `input` as builder input: atom keys, timestamps as DateTimes.
   defp atomize_receipt_input(map) do
     Map.new(map, fn {k, v} ->
       v = if k in @receipt_timestamps and is_binary(v), do: parse_datetime!(v), else: v
@@ -741,9 +699,6 @@ defmodule WallopCore.FrozenVectorsTest do
     assert Jason.decode!(payload)["schema_version"] == schema, file
   end
 
-  # A positive bundle vector: its receipts are the receipt vectors', signed
-  # by the vector keys, with no inline keys; the beacon is real; the seed is
-  # the one the signed state calls for; the results and entropy follow.
   defp assert_bundle_vector(file, lock_file, exec_file, state) do
     v = load_vector(file)
     assert v["expected_passed"] == true, file
@@ -826,7 +781,6 @@ defmodule WallopCore.FrozenVectorsTest do
     end
   end
 
-  # quicknet randomness is SHA-256 of the signature.
   defp assert_real_beacon(entropy, name) do
     assert entropy["drand_chain_hash"] == Quicknet.chain_hash(), name
 

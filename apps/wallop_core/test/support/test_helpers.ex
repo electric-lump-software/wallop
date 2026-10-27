@@ -26,10 +26,6 @@ defmodule WallopCore.TestHelpers do
   def create_api_key(attrs) when is_map(attrs) do
     attrs = Map.put_new(attrs, :name, "test-key")
 
-    # All API keys must have an operator (draws require it for the proof protocol).
-    # Auto-create one if not provided. A new operator is on observation
-    # weather, whose locks need a fresh readiness record, as a working
-    # fetcher would keep it.
     operator =
       Map.get_lazy(attrs, :operator, fn ->
         put_observation_readiness!(true)
@@ -57,7 +53,6 @@ defmodule WallopCore.TestHelpers do
   """
   def create_draw(api_key, attrs \\ %{}) do
     {entries, params} = Map.pop(attrs, :entries, nil)
-    # Strip legacy flags if present
     {_, params} = Map.pop(params, :entropy)
     {_, params} = Map.pop(params, :skip_entropy)
 
@@ -88,7 +83,6 @@ defmodule WallopCore.TestHelpers do
 
     put_observation_readiness!(true)
 
-    # Lock computes hash and declares entropy
     draw
     |> Ash.Changeset.for_update(:lock, %{}, actor: api_key)
     |> Ash.update!()
@@ -151,8 +145,6 @@ defmodule WallopCore.TestHelpers do
         ]
       )
 
-      # Re-signed with the key the lock used, read straight from its row, so
-      # a key revoked since the lock still signs (as it did at the lock).
       %{rows: [[key_id, private_key]]} =
         Repo.query!(
           """
@@ -564,9 +556,6 @@ defmodule WallopCore.TestHelpers do
     operator = Ash.get!(Operator, operator_id, authorize?: false)
     signed_wt = Schedule.weather_time_for_round(drand_round)
 
-    # Now, as a real lock would sign, unless that is already too late for
-    # the round: then the latest in-time instant (only put_v6_awaiting!/4,
-    # with triggers off, places a round that close).
     locked_at =
       Enum.min(
         [DateTime.truncate(now, :microsecond), Schedule.latest_lock_at(signed_wt)],

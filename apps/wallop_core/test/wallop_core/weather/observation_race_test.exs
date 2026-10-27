@@ -40,11 +40,8 @@ defmodule WallopCore.Weather.ObservationRaceTest do
     %{key: key}
   end
 
-  # A v6 draw in pending_entropy whose stored weather_time is `wt_offset`
-  # seconds from now, with a round published ten seconds ago.
   defp pending_draw(key, wt_offset) do
     unboxed(fn ->
-      # The entries first, so their set-up time doesn't eat a near window.
       open = open_draw_with_entries(key)
       wt = DateTime.utc_now() |> DateTime.add(wt_offset) |> DateTime.truncate(:second)
       round = Quicknet.round_at_or_after(DateTime.add(DateTime.utc_now(), -10))
@@ -92,8 +89,6 @@ defmodule WallopCore.Weather.ObservationRaceTest do
       send(t1, :commit)
       assert_receive {:result, ^t1, :committed}, 5_000
 
-      # Had the guard read the store before the lock, it would have found
-      # nothing and refused for the deadline instead.
       assert_receive {:result, ^t2,
                       {:refused, "v6 draw must complete with its stored observation"}},
                      5_000
@@ -139,10 +134,6 @@ defmodule WallopCore.Weather.ObservationRaceTest do
     {draw, t1, t2}
   end
 
-  # Runs `statement` in a real transaction in a new process. Reports
-  # {:done_statement, pid} when it returns, then waits for :commit or
-  # :rollback. Reports {:result, pid, :committed | :rolled_back |
-  # {:refused, message}}.
   defp in_transaction(statement) do
     parent = self()
 

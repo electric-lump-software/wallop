@@ -19,6 +19,10 @@ defmodule WallopWeb.DrawEntriesController do
     drop, and as the canonical source for building the ticket manifest
     Merkle tree at lock time.
 
+  The queries here run with `authorize?: false`, which is safe only because
+  `load_draw_owned/2` has already applied the draw's read policy; keep that
+  ownership check ahead of any query that moves out of this controller.
+
   Both routes are placed BEFORE the `AshJsonApiRouter` forward in the
   router so they take precedence over AshJsonApi's generic handlers for
   the same paths.
@@ -33,8 +37,6 @@ defmodule WallopWeb.DrawEntriesController do
   @max_limit 1000
 
   @uuid_regex ~r/\A[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\z/
-
-  # ── PATCH /api/v1/draws/:id/entries ────────────────────────────────
 
   def create(conn, %{"id" => id} = params) do
     actor = conn.assigns[:api_key]
@@ -66,7 +68,6 @@ defmodule WallopWeb.DrawEntriesController do
         not_found(conn)
 
       {:error, %Ash.Error.Invalid{errors: errors}} ->
-        # Idempotency conflict is a structured 409, not a generic 400.
         if Enum.any?(errors, &match?(%WallopCore.Errors.IdempotencyConflict{}, &1)) do
           conflict(conn, format_errors(errors))
         else
@@ -80,8 +81,6 @@ defmodule WallopWeb.DrawEntriesController do
         internal_error(conn, other)
     end
   end
-
-  # ── GET /api/v1/draws/:id/entries ──────────────────────────────────
 
   def index(conn, %{"id" => id} = params) do
     actor = conn.assigns[:api_key]
@@ -101,10 +100,6 @@ defmodule WallopWeb.DrawEntriesController do
     end
   end
 
-  # ── Helpers ────────────────────────────────────────────────────────
-
-  # Accept both JSON:API shape (the format AshJsonApi uses and the format
-  # existing operators send) and a flat convenience shape.
   defp parse_entries(%{"data" => %{"attributes" => %{"entries" => entries}}})
        when is_list(entries),
        do: {:ok, entries}
@@ -153,11 +148,6 @@ defmodule WallopWeb.DrawEntriesController do
 
   defp parse_after(_), do: {:error, :bad_after}
 
-  # `authorize?: false` is safe here ONLY because `load_draw_owned/2`
-  # already ran the Draw `:read` policy (api_key_id == actor.id). The
-  # filter `draw_id == ^draw_id` inherits that ownership. Do not hoist
-  # these helpers out of this controller without preserving the
-  # upstream ownership check.
   defp list_entries(draw_id, nil, limit) do
     Entry
     |> Ash.Query.filter(draw_id == ^draw_id)
@@ -233,10 +223,6 @@ defmodule WallopWeb.DrawEntriesController do
 
   defp internal_error(conn, reason) do
     require Logger
-    # Don't inspect raw Ash error structs — they carry UUIDs and field
-    # values. Log only the type/class so the failure is debuggable
-    # through structured error tracking without bleeding per-draw
-    # identifiers into the log stream (spec §4.3).
     Logger.error("DrawEntriesController internal error: #{error_tag(reason)}")
 
     conn

@@ -1,18 +1,15 @@
 <div class="min-h-screen bg-cream font-sans text-[#1a1a1a]">
 
-  <%!-- NAV --%>
   <nav class={["sticky top-0 z-50 relative flex items-center justify-between px-6 md:px-12 py-3.5 bg-cream border-b", if(@menu_open, do: "border-transparent", else: "border-cream-border")]}>
     <a href={~p"/"} class="absolute bottom-0 left-6 md:left-12 translate-y-[35%] z-20">
       <img src={~p"/images/logo.png"} alt="Wallop!" width="1024" height="1024" class="h-32 w-auto" />
     </a>
     <div class="w-36"></div>
-    <%!-- Desktop links --%>
     <div class="hidden md:flex items-center gap-7">
       <span class="text-sm text-[#ccc] cursor-default">Results</span>
       <span class="text-sm text-[#ccc] cursor-default">Pricing</span>
       <a href="#waitlist" class="btn btn-neutral btn-sm rounded-lg text-xs font-semibold">Join waitlist</a>
     </div>
-    <%!-- Hamburger button --%>
     <button phx-click="toggle_menu" class="md:hidden p-2 -mr-2 text-[#555]" aria-label="Toggle menu">
       <svg xmlns="http://www.w3.org/2000/svg" class="w-6 h-6 transition-transform duration-200" style={if(@menu_open, do: "transform: rotate(90deg)", else: "")} fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
         <%= if @menu_open do %>
@@ -23,7 +20,6 @@
       </svg>
     </button>
   </nav>
-  <%!-- Mobile menu --%>
   <div
     :if={@menu_open}
     class="md:hidden sticky top-[53px] z-40 flex flex-col items-end gap-4 px-6 py-5 bg-cream border-b border-cream-border animate-slide-down"
@@ -34,7 +30,6 @@
   </div>
 
   <main>
-  <%!-- HERO --%>
   <div class="px-12 pt-20 pb-18">
   <div class="mx-auto max-w-[860px]">
     <div class="flex items-start gap-12">
@@ -60,23 +55,9 @@
     </div>
 
 
-    <%!-- FAKE LIVE TICKER — placeholder, wire to real data later
-    <div class="mt-12 flex items-start gap-3 p-4 bg-white border border-cream-border rounded-xl">
-      <span class="mt-1 w-2 h-2 rounded-full bg-green-500 shrink-0 animate-pulse"></span>
-      <div>
-        <p class="text-xs font-semibold mb-1">Live draws</p>
-        <div class="flex flex-wrap gap-2">
-          <span class="text-xs bg-cream-dark text-[#555] px-3 py-0.5 rounded-full">St Mary&#39;s PTA raffle · 2 min ago</span>
-          <span class="text-xs bg-cream-dark text-[#555] px-3 py-0.5 rounded-full">Acme Corp Q1 prize draw · 11 min ago</span>
-          <span class="text-xs bg-cream-dark text-[#555] px-3 py-0.5 rounded-full">Riverside FC kit giveaway · 34 min ago</span>
-        </div>
-      </div>
-    </div>
-    --%>
   </div>
   </div>
 
-  <%!-- WHY PROVABLE --%>
   <section class="bg-white py-18 px-12">
     <div class="mx-auto max-w-[860px]">
       <p class="text-xs font-bold tracking-[3px] uppercase text-[#666] mb-4">Why it matters</p>
@@ -112,7 +93,6 @@
     </div>
   </section>
 
-  <%!-- FOR ORGANISERS + DEVELOPERS --%>
   <section class="bg-cream py-18 px-12">
     <div class="mx-auto max-w-[860px]">
       <p class="text-xs font-bold tracking-[3px] uppercase text-[#666] mb-4">Who it&#39;s for</p>
@@ -171,7 +151,6 @@
     </div>
   </section>
 
-  <%!-- HOW IT WORKS --%>
   <section id="how-it-works" class="bg-white py-18 px-12">
     <div class="mx-auto max-w-[860px]">
       <p class="text-xs font-bold tracking-[3px] uppercase text-[#666] mb-4">The protocol</p>
@@ -184,7 +163,6 @@
         <a href="/how-verification-works" class="underline decoration-[#ccc] hover:decoration-[#1a1a1a]">full explanation</a>.
       </p>
 
-      <%!-- TABS --%>
       <div class="flex gap-0 mt-10 border-b-2 border-cream-border">
         <button
           phx-click="switch_tab"
@@ -210,7 +188,6 @@
         </button>
       </div>
 
-      <%!-- PLAIN ENGLISH TAB --%>
       <div :if={@active_tab == "plain"} class="mt-0">
         <div class="flex gap-6 py-6 border-b border-[#f0ebe4]">
           <div class="w-9 h-9 rounded-full bg-[#1a1a1a] text-white flex items-center justify-center text-sm font-bold shrink-0">1</div>
@@ -249,7 +226,6 @@
         </div>
       </div>
 
-      <%!-- CRYPTO TAB --%>
       <div :if={@active_tab == "crypto"} class="mt-0">
         <div class="flex gap-6 py-6 border-b border-[#f0ebe4]">
           <div class="w-9 h-9 rounded-full bg-[#1a1a1a] text-white flex items-center justify-center text-sm font-bold shrink-0">1</div>
@@ -295,7 +271,6 @@
     </div>
   </section>
 
-  <%!-- WHY TRUST US --%>
   <section class="bg-cream py-18 px-12">
     <div class="mx-auto max-w-[860px]">
       <p class="text-xs font-bold tracking-[3px] uppercase text-[#666] mb-4">Why should I trust you?</p>
@@ -418,7 +393,6 @@
     </div>
   </section>
 
-  <%!-- ORIGIN STORY --%>
   <section class="bg-white py-18 px-12">
     <div class="mx-auto max-w-[860px]">
       <p class="text-xs font-bold tracking-[3px] uppercase text-[#666] mb-4">The name</p>
@@ -455,7 +429,6 @@
     </div>
   </section>
 
-  <%!-- FAQ --%>
   <section class="bg-cream py-18 px-12">
     <div class="mx-auto max-w-[860px]">
       <p class="text-xs font-bold tracking-[3px] uppercase text-[#666] mb-4">Questions</p>
@@ -555,7 +528,6 @@
     </div>
   </section>
 
-  <%!-- WAITLIST CTA --%>
   <section id="waitlist" class="bg-[#1a1a1a] text-white py-18 px-12 text-center">
     <h2 class="text-3xl font-extrabold tracking-tight mb-3">Be first to know when we launch.</h2>
     <p class="text-[#999] text-base mb-8">We&#39;re onboarding early users now. Drop your email and we&#39;ll be in touch.</p>
@@ -582,7 +554,6 @@
 
   </main>
 
-  <%!-- FOOTER --%>
   <footer class="px-6 md:px-12 py-10 border-t border-cream-border bg-cream">
     <div class="grid grid-cols-2 md:grid-cols-3 gap-8 md:gap-12 mb-8">
       <div>
@@ -614,4 +585,4 @@
     </p>
   </footer>
 
-</div><%!-- end root wrapper --%>
+</div>

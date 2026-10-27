@@ -19,14 +19,6 @@ defmodule WallopCore.Repo.Migrations.DbLevelImmutabilityHardening do
   use Ecto.Migration
 
   def up do
-    # ----- 1. operator_signing_keys append-only -----
-    #
-    # Reject all UPDATE and DELETE on operator_signing_keys. The table is
-    # documented as append-only by the resource (rotation creates a new
-    # row with a later valid_from), but the only thing enforcing it was
-    # the absence of an Ash update action. Direct SQL could silently
-    # mutate or remove a row, breaking the "old receipts verify forever"
-    # guarantee for any signature that referenced the modified key.
 
     execute("""
     CREATE OR REPLACE FUNCTION prevent_signing_key_mutation()
@@ -49,13 +41,6 @@ defmodule WallopCore.Repo.Migrations.DbLevelImmutabilityHardening do
     FOR EACH ROW EXECUTE FUNCTION prevent_signing_key_mutation();
     """)
 
-    # ----- 2. operators.slug immutability -----
-    #
-    # Reject any UPDATE that changes the `slug` column. The slug is
-    # embedded in every signed operator receipt as `operator_slug`, so
-    # changing it after publication would silently break verification
-    # for every existing receipt that references the operator. Other
-    # columns on the row (e.g. `name`) remain mutable.
 
     execute("""
     CREATE OR REPLACE FUNCTION prevent_operator_slug_change()
@@ -75,19 +60,6 @@ defmodule WallopCore.Repo.Migrations.DbLevelImmutabilityHardening do
     FOR EACH ROW EXECUTE FUNCTION prevent_operator_slug_change();
     """)
 
-    # ----- 3. api_keys.key_hash CHECK constraint -----
-    #
-    # Constrain the bcrypt hash format. Without this, an attacker with
-    # direct SQL access could replace a row's hash with garbage; bcrypt
-    # verification of malformed input is library-dependent. The regex
-    # matches the canonical bcrypt format: $2a$/$2b$/$2y$ prefix, two-
-    # digit cost factor, then 22-char salt + 31-char hash = 53 chars.
-    #
-    # NOT VALID is intentional: it skips validation of pre-existing rows
-    # so the migration can't break in environments that have unusual
-    # historical data. New writes are always validated; old rows remain
-    # tolerated until the next standalone validation step (which is a
-    # follow-up if needed).
 
     execute("""
     ALTER TABLE api_keys

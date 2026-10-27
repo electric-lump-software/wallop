@@ -87,8 +87,6 @@ defmodule WallopCore.Repo.Migrations.AllowWinnerCountUpdatePreLock do
   end
 
   def down do
-    # Reverts to the pre-2026-05-06 trigger that blocked winner_count
-    # changes unconditionally.
     execute("""
     CREATE OR REPLACE FUNCTION prevent_draw_mutation()
     RETURNS TRIGGER AS $$

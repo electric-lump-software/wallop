@@ -22,7 +22,6 @@ defmodule WallopCore.Invariants.FrequencyTest do
   import WallopCore.UnboxedHelpers
 
   @value "50012;50018;50012;49983;49980;49953;49912;49883"
-  # The draws guard's refusal, and its commit-time twin's, from F on.
   @no_fail_after_f "a v6 draw can't fail once its fetch deadline has passed"
   @other "50012;50018;50012;49983;49980;49953;49912;49884"
 
@@ -44,7 +43,6 @@ defmodule WallopCore.Invariants.FrequencyTest do
 
   test "INV-F1 one write-once window per T; every draw of T completes with it or the fallback" do
     {_op, key} = create_freq_operator()
-    # T's window is open now (now - T in [165, 180)).
     t = aligned_freq_start(-(FreqSchedule.span_seconds() + 60))
     [a, b, c] = for _ <- 1..3, do: freq_pending(key, t, 3600)
 
@@ -76,7 +74,7 @@ defmodule WallopCore.Invariants.FrequencyTest do
 
   test "INV-F2 completion equals the stored window or the fallback rule, and executed_at >= pub(R)" do
     {_op, key} = create_freq_operator()
-    # F + M passed a minute ago.
+
     late =
       aligned_freq_start(
         -(FreqSchedule.span_seconds() + FreqSchedule.fetch_window_seconds() + 15 + 60)
@@ -106,7 +104,7 @@ defmodule WallopCore.Invariants.FrequencyTest do
 
   test "INV-F3 no fallback until F + M, and no fail from F" do
     {_op, key} = create_freq_operator()
-    # A stored freq_start whose F was 5 s ago: past F, not yet past F + M.
+
     t =
       DateTime.utc_now()
       |> DateTime.add(-(FreqSchedule.span_seconds() + FreqSchedule.fetch_window_seconds() + 5))
@@ -123,7 +121,6 @@ defmodule WallopCore.Invariants.FrequencyTest do
            ]) ==
              "a v6 draw can't fail once its fetch deadline has passed"
 
-    # Before F, failing is still a visible abort and is allowed.
     early = freq_pending(key, aligned_freq_start(-(FreqSchedule.span_seconds() + 60)), 3600)
 
     assert try_sql("UPDATE draws SET status = 'failed', failed_at = $2 WHERE id = $1", [
@@ -137,8 +134,6 @@ defmodule WallopCore.Invariants.FrequencyTest do
     {operator, key} = unboxed(fn -> create_freq_operator() end)
     on_exit(fn -> unboxed(fn -> delete_operator!(operator.id) end) end)
 
-    # F is 6 to 21 s away: the lead covers the fixture's set-up on a loaded
-    # machine, so the insert still runs before F.
     now = DateTime.to_unix(DateTime.utc_now())
     lead = FreqSchedule.span_seconds() + FreqSchedule.fetch_window_seconds() - 6
 
@@ -150,7 +145,6 @@ defmodule WallopCore.Invariants.FrequencyTest do
     outcome =
       unboxed(fn ->
         try do
-          # F is up to 21 s away, past the default 15 s transaction timeout.
           {:ok, _} =
             Repo.transaction(
               fn ->
@@ -260,7 +254,6 @@ defmodule WallopCore.Invariants.FrequencyTest do
   test "INV-F6 an unknown (schema, tag) pair is refused everywhere; frequency never falls through to Land Obs" do
     unknown = "drand-quicknet+elexon-freq-v2"
 
-    # Builders.
     lock = %{
       entropy_composition: unknown,
       operator_id: Ecto.UUID.generate(),
@@ -283,7 +276,6 @@ defmodule WallopCore.Invariants.FrequencyTest do
 
     assert_raise ArgumentError, fn -> Protocol.build_v6_lock_payload(lock) end
 
-    # Execution rules: nothing falls through.
     for {schema, tag} = pair <- [{"6", unknown}, {"5", Freq.tag()}, {nil, Freq.tag()}] do
       assert V6Rules.rules(%{lock_schema_version: schema, entropy_composition: tag}) == :error,
              inspect(pair)
@@ -295,14 +287,11 @@ defmodule WallopCore.Invariants.FrequencyTest do
     assert V6Rules.rules(%{lock_schema_version: "6", entropy_composition: LandObs.tag()}) ==
              {:ok, :landobs}
 
-    # Triggers: the draws guard refuses the pair at lock.
     {_op, key} = create_freq_operator()
 
     assert raw_freq_lock(open_draw_with_entries(key), in_time_freq_schedule(), tag: unknown) ==
              "unknown lock_schema_version and entropy_composition pair: (6, #{unknown})"
 
-    # Execution: a draw stored under the pair (triggers off) is refused and
-    # cancelled, never run.
     ensure_infrastructure_key()
     draw = open_draw_with_entries(key)
     round = Quicknet.round_at_or_after(DateTime.add(DateTime.utc_now(), -60))
@@ -349,13 +338,10 @@ defmodule WallopCore.Invariants.FrequencyTest do
         round
       )
 
-    # The worker: drand down on the last attempt is an error for the
-    # re-drive, never a failure.
     assert {:error, _} = perform_job(ObservationDrawWorker, %{draw_id: draw.id}, attempt: 10)
     status = Ash.get!(Draw, draw.id, authorize?: false).status
     assert status in [:awaiting_entropy, :pending_entropy]
 
-    # The database: failing it now is refused, by any path.
     assert try_sql("UPDATE draws SET status = 'failed', failed_at = $2 WHERE id = $1", [
              dump(draw.id),
              NaiveDateTime.utc_now()
@@ -370,10 +356,6 @@ defmodule WallopCore.Invariants.FrequencyTest do
     assert error_text(error) =~ @no_fail_after_f
   end
 
-  # The commit-time half: a fail whose statement runs before F passes the
-  # statement check; its commit waits until F has passed and the deferred
-  # check (which reads F by tag) refuses it. Real commits, outside the
-  # sandbox, on fixtures this test deletes.
   @tag :slow
   test "INV-F7 a grid-frequency fail made before F but committed after it is refused at commit" do
     draw = unboxed_freq_draw(7)
@@ -393,28 +375,17 @@ defmodule WallopCore.Invariants.FrequencyTest do
 
   @tag :slow
   test "INV-F7 a grid-frequency fail committed before F is kept" do
-    # Positive control: same path, F five minutes ahead, commit at once.
     draw = unboxed_freq_draw(300)
 
     assert fail_and_commit(draw, fn -> :ok end) == :committed
     assert unboxed(fn -> Ash.get!(Draw, draw.id, authorize?: false).status end) == :failed
   end
 
-  # A grid-frequency draw committed outside the sandbox, whose stored F is
-  # `f_in` seconds from now, for its own operator, deleted on exit.
-  #
-  # The stored freq_start is deliberately not the round's window start: the
-  # round publishes an hour from now, so F derived from the round would be
-  # far ahead. Only F read from the stored freq_start (as the guard and its
-  # commit-time twin do, through wallop_v6_fetch_deadline) is a few seconds
-  # away, so the straddle tells "F from freq_start" apart from "F from the
-  # round".
   defp unboxed_freq_draw(f_in) do
     {operator, key} = unboxed(fn -> create_freq_operator() end)
     on_exit(fn -> unboxed(fn -> delete_operator!(operator.id) end) end)
 
     unboxed(fn ->
-      # The entries first, so their set-up time doesn't eat a near F.
       open = open_draw_with_entries(key)
 
       t =
@@ -427,8 +398,6 @@ defmodule WallopCore.Invariants.FrequencyTest do
     end)
   end
 
-  # Fails the draw in a real transaction, runs `before_commit` inside it,
-  # then commits. :committed, or {:refused, message}.
   defp fail_and_commit(draw, before_commit) do
     unboxed(fn ->
       {:ok, _} =

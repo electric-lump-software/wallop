@@ -38,14 +38,10 @@ defmodule WallopCore.Resources.OperatorSigningKey do
   end
 
   policies do
-    # Public keys are read freely — verifiers need them to check signatures
     policy action(:read) do
       authorize_if(always())
     end
 
-    # Creation must go through internal bootstrap code (mix wallop.gen.operator,
-    # admin endpoints) with `authorize?: false`. Without this policy, any
-    # caller could substitute an operator's signing key.
     policy action(:create) do
       forbid_if(always())
     end

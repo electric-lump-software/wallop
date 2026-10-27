@@ -37,7 +37,6 @@ defmodule WallopCore.Entropy.ElexonFreqClientTest do
     assert conn.host == "data.elexon.co.uk"
     assert conn.request_path == "/bmrs/api/v1/datasets/FREQ"
 
-    # Exactly the window's 105 s, so a request never spans more than a day.
     assert params == %{
              "measurementDateTimeFrom" => "2026-10-14T19:54:15Z",
              "measurementDateTimeTo" => "2026-10-14T19:56:00Z",
@@ -50,10 +49,6 @@ defmodule WallopCore.Entropy.ElexonFreqClientTest do
     refute List.keymember?(headers, "apikey", 0)
   end
 
-  # Real responses for 00:45 to 01:15 UTC on the two UK clock-change days.
-  # The window T = 00:59:00 runs to 01:00:45 UTC, straddling the changeover.
-  # Values are worked out by hand from the fixture readings (49.86 is
-  # 49860 once padded to three decimals).
   @clock_changes [
     {"2026-03-29", ~U[2026-03-29 00:59:00.000000Z],
      "49926;49933;49931;49936;49866;49888;49862;49860"},

@@ -147,8 +147,6 @@ defmodule WallopCore.Resources.DrawOpenTest do
         |> Ash.Changeset.for_create(:create, %{winner_count: 1}, actor: api_key)
         |> Ash.create!()
 
-      # Give each submitted entry a unique weight so we can verify that the
-      # returned UUID at position i corresponds to the i-th submission.
       submitted = for w <- [1, 7, 3, 4, 2], do: %{"weight" => w}
 
       draw =
@@ -166,8 +164,6 @@ defmodule WallopCore.Resources.DrawOpenTest do
       assert length(uuids) == length(submitted)
       assert Enum.all?(uuids, &String.match?(&1, ~r/^[0-9a-f-]{36}$/))
 
-      # Cross-check: load the actual rows by UUID and verify weight at each
-      # submission position matches what was submitted at that position.
       rows = WallopCore.Entries.load_for_draw(draw.id)
       by_uuid = Map.new(rows, &{&1.uuid, &1.weight})
 
@@ -230,10 +226,6 @@ defmodule WallopCore.Resources.DrawOpenTest do
     end
 
     test "enforces 10K entry limit across multiple batches against the same draw struct" do
-      # Regression: validate_total_count used to read draw.entry_count from
-      # the in-memory struct instead of the DB. Multiple add_entries calls
-      # against the same un-reloaded draw all saw entry_count = 0 and
-      # silently bypassed the cap.
       api_key = create_api_key()
 
       draw =
@@ -241,9 +233,6 @@ defmodule WallopCore.Resources.DrawOpenTest do
         |> Ash.Changeset.for_create(:create, %{winner_count: 1}, actor: api_key)
         |> Ash.create!()
 
-      # Build a batch of 5,000 entries with weight 1 each. Two batches put
-      # us at the 10K cap; a third (using the same un-reloaded draw struct)
-      # must reject.
       batch = for _ <- 1..5_000, do: %{"weight" => 1}
 
       draw

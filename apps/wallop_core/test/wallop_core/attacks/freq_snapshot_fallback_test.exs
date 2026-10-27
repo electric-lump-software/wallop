@@ -53,7 +53,6 @@ defmodule WallopCore.Attacks.FreqSnapshotFallbackTest do
     %{own: own}
   end
 
-  # Runs `statement` in a real transaction at `level`, then rolls back.
   defp at_level(level, statement) do
     unboxed(fn ->
       Repo.transaction(fn ->
@@ -83,8 +82,6 @@ defmodule WallopCore.Attacks.FreqSnapshotFallbackTest do
     )
   end
 
-  # A T on the 15 s grid whose F is 12 to 27 s away, so the store is open now
-  # and stays open through the fixture set-up.
   defp t_closing_soon do
     now = DateTime.to_unix(DateTime.utc_now())
     lead = Schedule.span_seconds() + Schedule.fetch_window_seconds() - 12
@@ -118,8 +115,6 @@ defmodule WallopCore.Attacks.FreqSnapshotFallbackTest do
     Repo.rollback(fallback_completion(draw_id))
   end
 
-  # Holds a REPEATABLE READ transaction: takes its snapshot, waits for :go,
-  # runs the fallback completion, reports, then rolls back.
   defp stale_snapshot_completion(draw_id) do
     parent = self()
 
@@ -150,7 +145,6 @@ defmodule WallopCore.Attacks.FreqSnapshotFallbackTest do
     pid = stale_snapshot_completion(d.id)
     assert_receive {:snapshot, ^pid}, 5_000
 
-    # The honest store, committed in time.
     unboxed(fn ->
       Repo.query!(
         "INSERT INTO frequency_windows (id, freq_start, value, raw) " <>
@@ -165,7 +159,6 @@ defmodule WallopCore.Attacks.FreqSnapshotFallbackTest do
              ]).rows
            end) == [[1]]
 
-    # Past F + M: drand's round is public from here.
     unboxed(fn ->
       wait_until_db_clock_after(
         DateTime.add(Schedule.fetch_deadline(t), Schedule.margin_seconds())
@@ -195,7 +188,6 @@ defmodule WallopCore.Attacks.FreqSnapshotFallbackTest do
                level
       end
 
-      # Control: the same update under READ COMMITTED passes the guard.
       assert at_level("READ COMMITTED", fn ->
                Repo.query!("UPDATE draws SET status = 'pending_entropy' WHERE id = $1", [
                  dump(d.id)
@@ -213,7 +205,6 @@ defmodule WallopCore.Attacks.FreqSnapshotFallbackTest do
       end
 
       for level <- @levels, do: assert(at_level(level, insert) == {:refused, @isolation}, level)
-      # Control: the store's own rules decide under READ COMMITTED.
       assert at_level("READ COMMITTED", insert) == :passed
     end
 
@@ -231,7 +222,6 @@ defmodule WallopCore.Attacks.FreqSnapshotFallbackTest do
     setup %{own: own} do
       {_operator, key} = own.(unboxed(fn -> create_v6_operator() end))
       {:ok, s} = WeatherSchedule.schedule(WeatherSchedule.default_draw_at(DateTime.utc_now()))
-      # Five minutes ago: "now" is inside the primary's store window.
       wt = DateTime.utc_now() |> DateTime.add(-5 * 60) |> DateTime.truncate(:second)
       %{draw: unboxed(fn -> put_v6_awaiting!(open_draw_with_entries(key), wt, s.round) end)}
     end
@@ -284,8 +274,6 @@ defmodule WallopCore.Attacks.FreqSnapshotFallbackTest do
                end) == :passed,
                level
 
-        # The v6 guard returns early for a forecast draw; whatever else
-        # refuses this placeholder receipt, it isn't the isolation rule.
         case at_level(level, fn -> receipt_insert(d) end) do
           :passed -> :ok
           {:refused, message} -> refute message == @isolation, level

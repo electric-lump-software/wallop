@@ -37,7 +37,6 @@ defmodule WallopCore.Attacks.DrandRelayTest do
     on_exit(fn -> Application.delete_env(:wallop_core, DrandClient) end)
   end
 
-  # The first relay answers with `hostile`; every other relay is honest.
   defp first_relay_hostile(hostile) do
     Req.Test.stub(DrandClient, fn conn ->
       if conn.host == @first_relay do
@@ -64,8 +63,6 @@ defmodule WallopCore.Attacks.DrandRelayTest do
   defp reload(d), do: Ash.get!(Draw, d.id, authorize?: false)
 
   describe "one bad relay does not stall a v6 draw when the others have the round" do
-    # A 200 whose body is a JSON array, null, or a non-JSON page is a
-    # malformed body, never a crash, so the next relay is tried.
     for {label, respond} <- [
           {"a JSON array", quote(do: fn conn -> Req.Test.json(conn, []) end)},
           {"JSON null", quote(do: fn conn -> Req.Test.json(conn, nil) end)},
@@ -87,7 +84,6 @@ defmodule WallopCore.Attacks.DrandRelayTest do
       end
     end
 
-    # A 404 after pub(R) is a lie or a lagging relay: ask the next one.
     test "a 404 from the first relay after pub(R)" do
       draw = v6_draw_ready()
       first_relay_hostile(fn conn -> Plug.Conn.send_resp(conn, 404, "") end)
@@ -96,8 +92,6 @@ defmodule WallopCore.Attacks.DrandRelayTest do
       assert reload(draw).status == :completed
     end
 
-    # The public relays take no credentials, so one relay's 401/403 says
-    # nothing about the others.
     test "a 403 from the first relay" do
       draw = v6_draw_ready()
       first_relay_hostile(fn conn -> Plug.Conn.send_resp(conn, 403, "") end)
@@ -177,7 +171,6 @@ defmodule WallopCore.Attacks.DrandRelayTest do
 
       refute response =~ "hostile relay"
 
-      # The relay that padded its body is refused, v5 or v6.
       assert {:error, :malformed_body} =
                DrandClient.fetch(Quicknet.chain_hash(), round, "https://" <> @first_relay)
     end
@@ -294,8 +287,6 @@ defmodule WallopCore.Attacks.DrandRelayTest do
     end
 
     test "a 503 with Retry-After: 30 moves straight on, with no sleep" do
-      # Req's own retries left on in config, as they are outside tests:
-      # the bounded fetch turns them off for each relay.
       put_config(req_options: [plug: {Req.Test, DrandClient}])
 
       first_relay_hostile(fn conn ->
@@ -335,7 +326,6 @@ defmodule WallopCore.Attacks.DrandRelayTest do
     end
 
     test "the worst case attempt fits well inside the job timeout" do
-      # Every relay at its full deadline, plus the skew check's cap.
       worst = length(DrandClient.relays()) * DrandClient.relay_deadline_ms() + 3_000
       job_timeout = ObservationDrawWorker.timeout(%Oban.Job{})
 

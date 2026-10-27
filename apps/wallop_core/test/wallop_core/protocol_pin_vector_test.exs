@@ -26,8 +26,6 @@ defmodule WallopCore.ProtocolPinVectorTest do
 
   alias WallopCore.Protocol.Pin
 
-  # Vector lives at the umbrella root. Same path-expansion pattern as
-  # `protocol_key_rotation_test.exs`.
   @vector_path Path.expand("../../../../spec/vectors/pin/v1/valid.json", __DIR__)
 
   setup_all do
@@ -104,9 +102,6 @@ defmodule WallopCore.ProtocolPinVectorTest do
        %{vector: vector} do
     wrong = find_vector(vector, "wrong key rejects")
 
-    # Sanity: vector targets the recorded infrastructure public key, not
-    # the wrong keypair's. The wrong sig was produced by a *different*
-    # private key, so verification against this public key MUST fail.
     public_key = Base.decode16!(wrong["verify_against_public_key_hex"], case: :lower)
     preimage = Base.decode16!(wrong["preimage_jcs_hex"], case: :lower)
     sig = Base.decode16!(wrong["signature_hex"], case: :lower)
@@ -118,24 +113,17 @@ defmodule WallopCore.ProtocolPinVectorTest do
   end
 
   test "negative vector: domain-separator-omitted signature does NOT verify", %{vector: vector} do
-    # Catches the most likely cross-language bug — implementer reads
-    # "Ed25519(payload)" and forgets to prepend the 14-byte domain
-    # separator before signing.
     omitted = find_vector(vector, "domain-separator-omitted rejects")
 
     public_key = Base.decode16!(vector["infrastructure_keypair"]["public_key_hex"], case: :lower)
     preimage = Base.decode16!(omitted["preimage_jcs_hex"], case: :lower)
     sig = Base.decode16!(omitted["signature_hex"], case: :lower)
 
-    # Pin.verify prepends the domain separator and MUST reject the
-    # signature that was produced over the raw JCS without it.
     refute Pin.verify(preimage, sig, public_key)
   end
 
   test "sort normalisation: building a payload from reversed input yields byte-identical JCS",
        %{vector: vector} do
-    # The producer MUST sort `keys[]` ascending by `key_id` regardless of
-    # input order. Catches a Rust producer that forgets to normalise.
     sort_case = find_vector(vector, "reversed-input key sort normalised by producer")
 
     expected = Base.decode16!(sort_case["expected_preimage_jcs_hex"], case: :lower)

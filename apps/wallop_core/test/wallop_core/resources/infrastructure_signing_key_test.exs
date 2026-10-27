@@ -86,11 +86,6 @@ defmodule WallopCore.Resources.InfrastructureSigningKeyTest do
     test "multiple keys ordered by valid_from desc gives current key first" do
       now = DateTime.utc_now()
 
-      # Offsets must stay inside the ±60 second window from inserted_at
-      # (the keyring temporal binding CHECK constraint). The constraint
-      # means production rotation cadence can never insert historical keys
-      # with arbitrary valid_from anyway — this test is exercising the
-      # query pattern, not the insertion semantics.
       for offset <- [-45, -15, 0] do
         {pub, priv} = :crypto.generate_key(:eddsa, :ed25519)
         {:ok, encrypted} = WallopCore.Vault.encrypt(priv)
@@ -113,12 +108,10 @@ defmodule WallopCore.Resources.InfrastructureSigningKeyTest do
 
       assert length(keys) == 3
 
-      # Most recent valid_from should be first
       [newest | _] = keys
       valid_froms = Enum.map(keys, & &1.valid_from)
       assert valid_froms == Enum.sort(valid_froms, {:desc, DateTime})
 
-      # The 0-offset key should be the "current" key
       assert newest.valid_from == DateTime.truncate(now, :microsecond)
     end
   end

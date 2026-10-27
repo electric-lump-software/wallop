@@ -1,5 +1,4 @@
 defmodule WallopWeb.Plugs.EdgeGuardTest do
-  # Not async: tests change the application env the plug reads.
   use ExUnit.Case, async: false
 
   import Plug.Conn

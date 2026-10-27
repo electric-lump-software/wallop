@@ -22,13 +22,6 @@ defmodule WallopWeb.HomeLiveTest do
       assert html =~ "Join waitlist"
     end
 
-    # Ticker commented out — re-enable when wired to real data
-    # test "shows live draws ticker", %{conn: conn} do
-    #   {:ok, _view, html} = live(conn, "/")
-    #   assert html =~ "Live draws"
-    #   assert html =~ "PTA"
-    # end
-
     test "shows why provable section", %{conn: conn} do
       {:ok, _view, html} = live(conn, "/")
       assert html =~ "Why it matters"
@@ -115,12 +108,10 @@ defmodule WallopWeb.HomeLiveTest do
     test "duplicate email shows same confirmation", %{conn: conn} do
       {:ok, view, _html} = live(conn, "/")
 
-      # Submit once
       view
       |> form("#waitlist form", %{email: "dup@example.com"})
       |> render_submit()
 
-      # Submit again with a fresh view (form is gone after first submit)
       {:ok, view2, _html} = live(conn, "/")
 
       html =
@@ -143,9 +134,6 @@ defmodule WallopWeb.HomeLiveTest do
     end
   end
 
-  # Public copy about randomness: never says or implies that every draw
-  # uses the weather, and never claims nobody (wallop included) can
-  # influence a result.
   describe "public claims about the randomness" do
     @overclaims [
       "two independent sources",
@@ -192,7 +180,6 @@ defmodule WallopWeb.HomeLiveTest do
       refute html =~ "not even we can UPDATE"
       refute html =~ ~r/forecast/i
 
-      # The drand collusion caveat lives only in the small print's list.
       [body, small_print] = String.split(html, ~s(id="small-print"), parts: 2)
       refute body =~ ~r/collud|ganging/i
       assert small_print =~ "fewer than drand&#39;s threshold of nodes collude"

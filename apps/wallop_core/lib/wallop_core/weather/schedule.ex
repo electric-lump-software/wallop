@@ -24,8 +24,6 @@ defmodule WallopCore.Weather.Schedule do
   alias WallopCore.Drand.Quicknet
   alias WallopCore.Frequency.Schedule, as: FreqSchedule
 
-  # W, the observation fetch window. W is 30 minutes, final.
-  # Mirrored by the SQL function wallop_landobs_fetch_window().
   @fetch_window_seconds 30 * 60
   @lock_offset_seconds 46 * 60
   @observation_slack_seconds 60
@@ -117,11 +115,6 @@ defmodule WallopCore.Weather.Schedule do
   """
   @spec default_draw_at(DateTime.t()) :: DateTime.t()
   def default_draw_at(%DateTime{} = now) do
-    # The 30-second margin is load-bearing, not slack. DateTime.to_unix/1
-    # drops the microseconds of `now`, and the lock itself happens a little
-    # after `now` (request latency, the lock's own work). Without the margin
-    # the default could already be past its latest lock time when the lock
-    # runs. Do not remove it.
     earliest = DateTime.to_unix(now) + @lock_offset_seconds + @default_margin_seconds
     hour = earliest + Integer.mod(-earliest, 3600)
     target = from_unix(hour + @fetch_window_seconds + @observation_slack_seconds)

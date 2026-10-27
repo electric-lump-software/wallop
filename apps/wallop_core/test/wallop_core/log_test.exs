@@ -4,8 +4,6 @@ defmodule WallopCore.LogTest do
   alias WallopCore.Log
 
   setup do
-    # Isolate the salt across tests. A test that mutated the salt would
-    # silently decohere other tests' redaction expectations.
     previous_salt = :persistent_term.get({Log, :salt}, :undefined)
     :persistent_term.erase({Log, :salt})
 
@@ -51,8 +49,6 @@ defmodule WallopCore.LogTest do
 
       second = Log.redact_id(id)
 
-      # Overwhelmingly likely to differ (2^-40 false-match). If this
-      # flakes, we have a bigger problem.
       refute first == second
     end
 
@@ -112,7 +108,6 @@ defmodule WallopCore.LogTest do
       assert out["duration_ms"] == 42
       assert out["status"] == "completed"
       assert out["drand_round"] == 12_345
-      # draw_id still redacted
       assert byte_size(out["draw_id"]) == 10
     end
 
@@ -132,9 +127,6 @@ defmodule WallopCore.LogTest do
       attrs = %{"draw_id" => 42, "entry_id" => nil}
       out = Log.span_attrs(attrs)
 
-      # Values that aren't binaries pass through unchanged — we only
-      # redact strings, not ints or nils that happen to sit under an
-      # id-shaped key.
       assert out["draw_id"] == 42
       assert out["entry_id"] == nil
     end
@@ -142,7 +134,6 @@ defmodule WallopCore.LogTest do
 
   describe "salt lifecycle" do
     test "salt is generated once per VM run and cached" do
-      # First call creates the salt; subsequent calls reuse it.
       _ = Log.redact_id("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa")
       salt_1 = :persistent_term.get({Log, :salt})
 

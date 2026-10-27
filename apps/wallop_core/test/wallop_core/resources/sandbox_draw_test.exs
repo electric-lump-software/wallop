@@ -191,9 +191,6 @@ defmodule WallopCore.Resources.SandboxDrawTest do
     end
 
     test "frozen test vector: known entries produce known results" do
-      # If this test fails, someone changed the sandbox seed, the entry
-      # sort order, or fair_pick's behaviour for this seed. All three
-      # would break determinism — refuse the change at review time.
       api_key = create_api_key()
 
       entries = [
@@ -213,10 +210,6 @@ defmodule WallopCore.Resources.SandboxDrawTest do
         )
         |> Ash.create!()
 
-      # Actual winners are computed fresh the first time this test runs;
-      # once they are committed here they become the frozen baseline.
-      # Any future change to seed derivation, sort order, or fair_pick
-      # semantics will break this assertion loudly.
       assert length(sandbox.results) == 3
       assert Enum.map(sandbox.results, & &1["position"]) == [1, 2, 3]
 
@@ -224,7 +217,6 @@ defmodule WallopCore.Resources.SandboxDrawTest do
                r["entry_id"] in ~w(alpha bravo charlie delta echo)
              end)
 
-      # Pin the seed as well — if this changes, @seed_input was tampered with.
       assert sandbox.seed ==
                "f3c5f1bc419eaaf3624e958a5aed289336ef5085260773e87f6a615cea443652"
     end

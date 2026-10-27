@@ -50,9 +50,6 @@ defmodule WallopWeb.ProofPreLockViewVectorTest do
         draw = build_draw(v["draw_input"])
         operator = build_operator(v["operator_input"])
 
-        # Use inspect/1 — captures every field on the struct, including
-        # any nested maps. More forensically thorough than Jason.encode
-        # (which would skip non-encodable values).
         rendered = ProofPreLockView.from_draw(draw, operator) |> inspect(limit: :infinity)
 
         for forbidden <- v["forensic_strings_that_must_not_appear_in_view"] || [] do
@@ -109,8 +106,6 @@ defmodule WallopWeb.ProofPreLockViewVectorTest do
     end
   end
 
-  # JSON decodes everything as strings; the live struct uses atom keys
-  # for status. Coerce status string → atom for the comparison.
   defp build_draw(json_map) do
     json_map
     |> Map.new(fn
@@ -126,9 +121,6 @@ defmodule WallopWeb.ProofPreLockViewVectorTest do
     Map.new(json_map, fn {k, v} -> {String.to_atom(k), v} end)
   end
 
-  # Normalise both sides of the comparison: turn the struct into a map,
-  # convert status atom back to string for direct comparison with the
-  # JSON-loaded expected_view, and stringify keys.
   defp normalise_for_compare(%ProofPreLockView{} = view) do
     view
     |> Map.from_struct()

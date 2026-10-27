@@ -60,10 +60,6 @@ defmodule WallopCore.Resources.Draw.Changes.CheckIdempotency do
     end
   end
 
-  # Try to insert the idempotency row with empty entry_ids. If the
-  # insert wins, the action proceeds and AddEntries fills the row
-  # at the end. If it conflicts, a row already exists — look it up,
-  # compare payload_digest, and either flag replay or 409.
   defp do_insert_or_lookup(changeset, draw_id, client_ref_digest, payload_digest) do
     attempt_insert(draw_id, client_ref_digest, payload_digest)
     |> handle_insert_result(changeset, draw_id, client_ref_digest, payload_digest)
@@ -72,12 +68,6 @@ defmodule WallopCore.Resources.Draw.Changes.CheckIdempotency do
   defp attempt_insert(draw_id, client_ref_digest, payload_digest) do
     now = DateTime.utc_now()
 
-    # `on_conflict: :nothing` with the unique-index conflict_target gives
-    # atomic dedup under READ COMMITTED: a second concurrent inserter
-    # blocks on the row lock from the in-flight tx, then on commit sees
-    # the conflict and skips (returns 0 rows). If isolation is ever
-    # raised to REPEATABLE READ, the second tx will get a serialization
-    # failure on conflict — adapt the retry strategy if so.
     Repo.insert_all(
       AddEntriesIdempotency,
       [
@@ -119,10 +109,6 @@ defmodule WallopCore.Resources.Draw.Changes.CheckIdempotency do
        ) do
     case lookup_existing(draw_id, client_ref_digest) do
       nil ->
-        # Race: row was deleted between conflict and lookup. Treat as
-        # internal — should not be possible while the draw is :open
-        # (only the lock action prunes; lock changes status away from
-        # :open and the action filter would have already rejected).
         Ash.Changeset.add_error(changeset,
           field: :client_ref,
           message: "internal: idempotency row vanished after conflict"

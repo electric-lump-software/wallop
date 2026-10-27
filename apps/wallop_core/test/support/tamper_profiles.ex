@@ -69,7 +69,6 @@ defmodule WallopCore.TamperProfiles.LandObs do
   @impl true
   def exec_keys, do: LandObs.exec_keys()
   @impl true
-  # Published name; internally the kind stays :freq_fallback (state b).
   def base_name(:freq_fallback), do: "freq_window"
   def base_name(kind), do: Atom.to_string(kind)
   @impl true
@@ -98,7 +97,6 @@ defmodule WallopCore.TamperProfiles.LandObs do
     }
   end
 
-  # State (b): no reading by F; the round's grid-frequency window.
   def exec_fields(:freq_fallback) do
     %{
       weather_station: Stations.primary().id,
@@ -110,7 +108,6 @@ defmodule WallopCore.TamperProfiles.LandObs do
     }
   end
 
-  # State (c): no reading and no window, so drand alone.
   def exec_fields(:fallback) do
     %{
       weather_station: Stations.primary().id,
@@ -145,7 +142,6 @@ defmodule WallopCore.TamperProfiles.LandObs do
     next_hour_round = V.round() + 1200
 
     [
-      # ── Lock receipt ──────────────────────────────────────────────
       {"lock_drand_round_plus_one", :observed, :lock, "drand_round", V.round() + 1,
        "+1 round (same observation hour)", ~w(receipt_field_consistency)},
       {"lock_drand_round_minus_one", :observed, :lock, "drand_round", V.round() - 1,
@@ -235,8 +231,6 @@ defmodule WallopCore.TamperProfiles.LandObs do
       {"lock_commitment_hash_upper_case", :observed, :lock, "commitment_hash",
        String.upcase(V.entry_hash()), "the entry_hash in upper case",
        ~w(lock_receipt_entry_hash)},
-
-      # ── Execution receipt ─────────────────────────────────────────
       {"exec_drand_round_plus_one", :observed, :exec, "drand_round", V.round() + 1, "+1 round",
        ~w(drand_bls_signature receipt_field_consistency)},
       {"exec_drand_round_minus_one", :observed, :exec, "drand_round", V.round() - 1, "-1 round",
@@ -352,8 +346,6 @@ defmodule WallopCore.TamperProfiles.LandObs do
        "another released version than the lock's", ~w(receipt_field_consistency)},
       {"exec_operator_slug_other", :observed, :exec, "operator_slug", "someone-else",
        "another slug than the lock's", ~w(receipt_field_consistency)},
-
-      # ── Both receipts ─────────────────────────────────────────────
       {"both_fair_pick_version_unreleased", :observed, :both, "fair_pick_version", "0.2.1",
        "a fair_pick version never released, on both receipts", ~w(receipt_field_consistency)},
       {"both_fair_pick_version_unknown", :fallback, :both, "fair_pick_version", "9.9.9",
@@ -363,7 +355,6 @@ defmodule WallopCore.TamperProfiles.LandObs do
 
   defp rfc(dt), do: WallopCore.Time.to_rfc3339_usec(dt)
 
-  # The same instant written with a +0h:00 offset instead of Z.
   defp offset(dt, h),
     do: dt |> DateTime.add(h * 3600) |> rfc() |> String.replace_suffix("Z", "+0#{h}:00")
 
@@ -397,7 +388,6 @@ defmodule WallopCore.TamperProfiles.Freq do
   @value "50012;50018;50012;49983;49980;49953;49912;49883"
   @locked_at ~U[2026-10-14 19:50:00.123456Z]
 
-  # Land Obs cases whose field both tags sign with the same rule.
   @generic ~w(lock_draw_id_other lock_operator_id_other lock_sequence_plus_one
               lock_sequence_string lock_sequence_float lock_entry_hash_other
               lock_winner_count_plus_one lock_winner_count_float lock_signing_key_id_other
@@ -506,7 +496,6 @@ defmodule WallopCore.TamperProfiles.Freq do
     weather = "no_observation_by_deadline"
 
     [
-      # ── Lock receipt ──────────────────────────────────────────────
       {"freq_lock_freq_start_plus_15s", :observed, :lock, "freq_start", rfc(add_s(t, 15)),
        "+15 s (another window start)", ~w(weather_observation_window)},
       {"freq_lock_freq_start_minus_15s", :observed, :lock, "freq_start", rfc(add_s(t, -15)),
@@ -559,8 +548,6 @@ defmodule WallopCore.TamperProfiles.Freq do
       {"freq_lock_schema_version_5", :observed, :lock, "schema_version", "5",
        "a different schema",
        ~w(bundle_shape lock_signature receipt_field_consistency weather_observation_window)},
-
-      # ── Execution receipt ─────────────────────────────────────────
       {"freq_exec_freq_value_plus_one", :observed, :exec, "freq_value", bumped,
        "first reading +1 mHz", ~w(drand_bls_signature seed_recomputation)},
       {"freq_exec_freq_value_stuck", :observed, :exec, "freq_value", stuck, "a stuck run of 6",
@@ -585,10 +572,6 @@ defmodule WallopCore.TamperProfiles.Freq do
        rfc(hour), "a weather hour", ~w(bundle_shape)},
       {"freq_exec_weather_fallback_reason_set", :observed, :exec, "weather_fallback_reason",
        weather, "the weather reason beside a frequency value", ~w(bundle_shape)},
-      # The exec signature verifies: the harness re-signs the mutated bytes,
-      # and the receipt still parses because both tags share one exec key
-      # set. Rejection comes from bundle_shape, receipt_field_consistency
-      # and weather_observation_window.
       {"freq_exec_entropy_composition_landobs", :observed, :exec, "entropy_composition",
        LandObs.tag(), "the Land Obs tag (a frequency lock with a Land Obs exec)",
        ~w(bundle_shape receipt_field_consistency weather_observation_window)},
@@ -597,8 +580,6 @@ defmodule WallopCore.TamperProfiles.Freq do
       {"freq_exec_schema_version_4", :observed, :exec, "schema_version", "4",
        "a different schema",
        ~w(bundle_shape exec_signature receipt_field_consistency weather_observation_window)},
-
-      # ── Fallback ──────────────────────────────────────────────────
       {"freq_fallback_reason_null", :fallback, :exec, "freq_fallback_reason", nil,
        "nil on a fallback", ~w(weather_observation_window)},
       {"freq_fallback_reason_weather", :fallback, :exec, "freq_fallback_reason", weather,

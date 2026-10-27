@@ -168,9 +168,6 @@ defmodule WallopWeb.ProofPdfHTML do
 
   attr(:weather, :map, required: true)
 
-  # Lock schema 6 draws: what the signed receipts say, by the execution
-  # receipt's state (`WallopWeb.ProofWeather`), never by the row's fields.
-  # A page of its own, so the chain page keeps clear of the fixed footer.
   defp signed_entropy_page(assigns) do
     ~H"""
     <section class="page">
@@ -364,14 +361,9 @@ defmodule WallopWeb.ProofPdfHTML do
     """
   end
 
-  # Helpers -------------------------------------------------------------
-
   defp winner_word(1), do: "winner"
   defp winner_word(_), do: "winners"
 
-  # Extract the operator-supplied check_url from draw.metadata. Returns
-  # Operator-supplied check_url, validated at Draw.create. Purely a
-  # render-time lookup.
   defp check_url(%{check_url: url}) when is_binary(url), do: url
   defp check_url(_), do: nil
 

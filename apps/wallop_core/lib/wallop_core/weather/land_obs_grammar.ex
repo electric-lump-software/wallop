@@ -68,11 +68,8 @@ defmodule WallopCore.Weather.LandObsGrammar do
   """
   @spec decode(binary()) :: {:ok, term()} | {:error, :too_deep | :duplicate_key | term()}
   def decode(body) when is_binary(body) do
-    # Decimals, so that a valid number too large for a float (in a field
-    # nobody reads) does not reject the whole body.
     with :ok <- within_depth(body, 0),
          {:ok, _} <- Jason.decode(body, floats: :decimals) do
-      # Deliberate crash on a validator/token-reader inconsistency; not reachable from input.
       {term, []} = @token |> Regex.scan(body) |> List.flatten() |> parse_value()
       {:ok, term}
     end
@@ -143,8 +140,6 @@ defmodule WallopCore.Weather.LandObsGrammar do
     end
   end
 
-  # Only temperature may be negative. In the other fields any leading `-`
-  # (even on zero) makes the field invalid.
   defp field(row, key, shift, exact?, sign) do
     case Map.get(row, key) do
       nil -> {:error, {:missing, key}}
@@ -165,10 +160,6 @@ defmodule WallopCore.Weather.LandObsGrammar do
   defp in_bounds(key, n, range),
     do: if(n in range, do: :ok, else: {:error, {:out_of_bounds, key}})
 
-  # A bound on how bodies are handled in core, not a protocol rule: the
-  # verifier's `row_to_value` takes a field getter and never sees a body.
-  # Land Observations responses are an array of flat objects (depth 2).
-  # Brackets inside strings are ignored; malformed input is left to Jason.
   defp within_depth(<<>>, _depth), do: :ok
   defp within_depth(<<?", rest::binary>>, depth), do: skip_string(rest, depth)
 
@@ -186,8 +177,6 @@ defmodule WallopCore.Weather.LandObsGrammar do
   defp skip_string(<<?", rest::binary>>, depth), do: within_depth(rest, depth)
   defp skip_string(<<_, rest::binary>>, depth), do: skip_string(rest, depth)
 
-  # A tiny recursive-descent reader over tokens of JSON that Jason has
-  # already validated. It differs from Jason only in keeping number text.
   defp parse_value(["{" | rest]), do: parse_object(rest, %{})
   defp parse_value(["[" | rest]), do: parse_array(rest, [])
   defp parse_value([~s(") <> _ = s | rest]), do: {Jason.decode!(s), rest}

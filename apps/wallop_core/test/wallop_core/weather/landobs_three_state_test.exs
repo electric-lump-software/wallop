@@ -23,7 +23,6 @@ defmodule WallopCore.Weather.LandObsThreeStateTest do
   @no_obs "no_observation_by_deadline"
   @no_freq "no_frequency_by_deadline"
   @wt ~U[2026-10-14 19:00:00.000000Z]
-  # A real quicknet beacon: the randomness is sha256 of the signature.
   @randomness "140117383b03a0c0c7a899a32b8cbd2ffff9e2569504037c358ee8c7c2efe2fd"
   @signature "b6541e41bb68ff318e8bd74b9f6e168ae6424476c432241420c38427df58c6ef33fe009ce202a7101120ab481702fddf"
 
@@ -110,7 +109,6 @@ defmodule WallopCore.Weather.LandObsThreeStateTest do
 
   test "(b) and (c) from stored state, with the right seeds" do
     {_op, key} = create_v6_operator()
-    # Two hours back, so this hour has no stored reading from other tests.
     round = Quicknet.round_at_or_after(DateTime.add(DateTime.utc_now(), -7200))
     wt = Schedule.weather_time_for_round(round)
     b = put_v6_awaiting!(open_draw_with_entries(key), wt, round)
@@ -149,7 +147,6 @@ defmodule WallopCore.Weather.LandObsThreeStateTest do
     assert %{station: nil, fallback?: true, source: :frequency} =
              V6Rules.report_meta(:landobs, b)
 
-    # (c): another hour, with nothing stored for it or its window.
     round = Quicknet.round_at_or_after(DateTime.add(DateTime.utc_now(), -10_800))
 
     c =
@@ -169,7 +166,6 @@ defmodule WallopCore.Weather.LandObsThreeStateTest do
         req_options: [plug: {Req.Test, DrandClient}, retry: false]
       )
 
-      # Echoes the requested round, so the client's round check passes.
       Req.Test.stub(DrandClient, fn conn ->
         round = conn.path_info |> List.last() |> String.to_integer()
 
@@ -183,8 +179,6 @@ defmodule WallopCore.Weather.LandObsThreeStateTest do
       on_exit(fn -> Application.delete_env(:wallop_core, DrandClient) end)
     end
 
-    # A weather-tag draw whose round published `ago` seconds ago, so every
-    # deadline has passed. Each state uses a different hour and window.
     defp executed(key, ago, store) do
       round = Quicknet.round_at_or_after(DateTime.add(DateTime.utc_now(), -ago))
       wt = Schedule.weather_time_for_round(round)
@@ -250,17 +244,14 @@ defmodule WallopCore.Weather.LandObsThreeStateTest do
     test "the proof bundle's entropy carries the value that fed the seed" do
       {_op, key} = create_v6_operator()
 
-      # (a) entropy has weather_value and no freq_value.
       a = entropy(executed(key, 10, :weather))
       assert a["weather_value"] == @value
       refute Map.has_key?(a, "freq_value")
 
-      # (b) entropy has freq_value and no weather_value.
       b = entropy(executed(key, 3610, :frequency))
       assert b["freq_value"] == @freq
       refute Map.has_key?(b, "weather_value")
 
-      # (c) entropy has neither.
       c = entropy(executed(key, 7210, :none))
       refute Map.has_key?(c, "weather_value")
       refute Map.has_key?(c, "freq_value")
@@ -270,7 +261,6 @@ defmodule WallopCore.Weather.LandObsThreeStateTest do
       {_op, key} = create_v6_operator()
       a = executed(key, 10, :weather)
 
-      # Stored state the draws guard refuses: a window beside a reading.
       InvariantCase.with_triggers_off(fn ->
         Repo.query!("UPDATE draws SET freq_value = $2 WHERE id = $1", [
           Ecto.UUID.dump!(a.id),

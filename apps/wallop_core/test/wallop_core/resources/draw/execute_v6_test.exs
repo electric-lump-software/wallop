@@ -12,7 +12,6 @@ defmodule WallopCore.Resources.Draw.ExecuteV6Test do
   @w Schedule.fetch_window_seconds()
   @value "141;1025;85;2432"
   @args %{
-    # A real quicknet beacon: drand_randomness is sha256 of the signature.
     drand_randomness: "140117383b03a0c0c7a899a32b8cbd2ffff9e2569504037c358ee8c7c2efe2fd",
     drand_signature:
       "b6541e41bb68ff318e8bd74b9f6e168ae6424476c432241420c38427df58c6ef33fe009ce202a7101120ab481702fddf",

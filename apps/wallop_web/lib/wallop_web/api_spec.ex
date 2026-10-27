@@ -52,10 +52,6 @@ defmodule WallopWeb.ApiSpec do
     |> type_v6_datetimes()
   end
 
-  # AshJsonApi leaves microsecond UTC datetimes untyped. Type the v6
-  # fields: the lock's `draw_at` argument and the draw's
-  # `expected_result_at` and grid-frequency `freq_start`. Other datetime
-  # fields are left as they are.
   defp type_v6_datetimes(spec) do
     attributes = [Access.key(:properties), Access.key(:attributes), Access.key(:properties)]
 
@@ -86,9 +82,6 @@ defmodule WallopWeb.ApiSpec do
       description: description
     }
 
-  # AshJsonApi describes keyset paging generically (limit/offset wording,
-  # before/count, no max) and its 200 schema forbids `links`. GET /draws is
-  # keyset-only, capped at 100, and returns `links.next`.
   defp tidy_list_draws(spec) do
     update_in(spec, [Access.key(:paths), Access.key("/draws"), Access.key(:get)], fn op ->
       %{op | parameters: Enum.map(op.parameters, &tidy_parameter/1)}

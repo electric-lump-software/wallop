@@ -79,7 +79,6 @@ defmodule WallopCore.Entropy.V6RulesTest do
            }
   end
 
-  # A completed Land Obs drand-only draw (state (c)) as the signer sees it.
   defp landobs_fallback(overrides \\ %{}) do
     hash = String.duplicate("ab", 32)
     r = String.duplicate("c", 64)
@@ -149,7 +148,6 @@ defmodule WallopCore.Entropy.V6RulesTest do
     assert V6Rules.seed(:landobs, hash, r, %{station: "wmo-03749", value: "1;1000;1;1"}) ==
              Protocol.compute_seed(hash, r, "1;1000;1;1")
 
-    # No reading: the round's grid-frequency window, with the frequency seed.
     assert V6Rules.seed(:landobs, hash, r, %{freq_start: ~U[2026-10-15 12:54:00Z], value: "x"}) ==
              Protocol.compute_freq_seed(hash, r, "x")
   end
@@ -161,7 +159,6 @@ defmodule WallopCore.Entropy.V6RulesTest do
 
     defp hex({bytes, _json}), do: Base.encode16(bytes, case: :lower)
 
-    # A completed fallback draw as the signer sees it.
     defp freq_fallback(overrides \\ %{}) do
       Map.merge(
         %{

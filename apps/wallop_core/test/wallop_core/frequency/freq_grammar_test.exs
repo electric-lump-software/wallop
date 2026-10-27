@@ -10,7 +10,6 @@ defmodule WallopCore.Frequency.FreqGrammarTest do
   @vectors @vectors_path |> File.read!() |> Jason.decode!()
 
   @t ~U[2026-10-14 19:54:15.000000Z]
-  # The real Elexon readings for 2026-10-14 19:54:15..19:56:00 UTC.
   @real ~w(50.018 50.012 49.983 49.98 49.953 49.912 49.883 49.887)
   @real_value "50018;50012;49983;49980;49953;49912;49883;49887"
 
@@ -21,7 +20,6 @@ defmodule WallopCore.Frequency.FreqGrammarTest do
 
   defp indexed(texts), do: Enum.with_index(texts, fn text, i -> {i, text} end)
 
-  # Elexon lists rows newest first.
   defp body(readings, extra \\ []) do
     rows =
       readings
@@ -36,7 +34,6 @@ defmodule WallopCore.Frequency.FreqGrammarTest do
     rows
   end
 
-  # The shortest JSON number text for a reading in mHz: 49980 is "49.98".
   defp minimal_text(mhz) do
     int = Integer.to_string(div(mhz, 1000))
 

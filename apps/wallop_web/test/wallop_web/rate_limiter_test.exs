@@ -47,7 +47,6 @@ defmodule WallopWeb.RateLimiterTest do
   end
 
   test "a store error allows the request and emits telemetry" do
-    # The Redis limiter isn't started in this test, so every call errors.
     ref =
       :telemetry_test.attach_event_handlers(self(), [
         [:wallop_web, :rate_limiter, :backend_error]
@@ -66,8 +65,6 @@ defmodule WallopWeb.RateLimiterTest do
     {:ok, port} = :inet.port(listener)
     test_pid = self()
 
-    # Accept the connection (Redix sends no handshake without auth or a db),
-    # then hold it open and never reply to any command.
     acceptor =
       spawn_link(fn ->
         {:ok, socket} = :gen_tcp.accept(listener)
@@ -85,12 +82,9 @@ defmodule WallopWeb.RateLimiterTest do
       RateLimiter.child_spec(backend: :redis, redis_url: "redis://127.0.0.1:#{port}")
     )
 
-    # Wait for an established connection, so the stall is a command timeout
-    # and not an immediate "not connected" error.
     assert_receive :connected, 2_000
     Process.sleep(100)
 
-    # The error log is throttled per node; clear it so we can see the reason.
     :persistent_term.erase({RateLimiter, :last_error_log})
 
     log =
@@ -133,7 +127,6 @@ defmodule WallopWeb.RateLimiterTest do
     end
 
     test "is false every time when the store errors" do
-      # The Redis backend is not started in tests, so every hit is a store error.
       k = id()
       refute RateLimiter.first_this_window?("once", k, :redis)
       refute RateLimiter.first_this_window?("once", k, :redis)

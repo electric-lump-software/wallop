@@ -54,14 +54,10 @@ defmodule WallopCore.Resources.TransparencyAnchor do
   end
 
   policies do
-    # The transparency log is the public attestation — anyone can read.
     policy action(:read) do
       authorize_if(always())
     end
 
-    # AnchorWorker (cron) creates anchors via `authorize?: false`.
-    # Without this policy, any unauthenticated caller could pollute the
-    # transparency log with garbage anchors and undermine its trust story.
     policy action(:create) do
       forbid_if(always())
     end

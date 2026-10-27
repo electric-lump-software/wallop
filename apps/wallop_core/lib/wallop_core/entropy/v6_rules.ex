@@ -11,6 +11,8 @@ defmodule WallopCore.Entropy.V6Rules do
   For an unknown pair `rules/1` returns `:error` and `rules!/1` raises
   `ArgumentError`; nothing falls through to another tag's rules. A new tag adds one clause to `rules/1` and one to each
   function below.
+
+  `receipt_input/2` recomputes the seed straight from `WallopCore.Protocol`, never through `seed/4`, so a wrong `seed/4` clause cannot vouch for its own output.
   """
 
   alias WallopCore.Drand.Quicknet
@@ -92,7 +94,6 @@ defmodule WallopCore.Entropy.V6Rules do
   def reading(:landobs, draw) do
     case Observations.for_draw(draw) do
       nil ->
-        # No reading for the hour: the round's grid-frequency window, if stored.
         with %{} = window <- Windows.for_draw(draw),
              do: Map.take(window, [:value, :raw, :freq_start])
 
@@ -230,9 +231,6 @@ defmodule WallopCore.Entropy.V6Rules do
     end
   end
 
-  # The signer's re-check: the value it signs is the one stored for T, under
-  # either tag. On a fallback there is nothing to compare; the draws guard
-  # allowed it only past F + M with nothing stored.
   defp receipt_window(%{freq_value: nil}), do: :ok
 
   defp receipt_window(draw) do
@@ -242,9 +240,6 @@ defmodule WallopCore.Entropy.V6Rules do
     end
   end
 
-  # The signer's seed re-check: the seed it signs is the tag's seed of the
-  # signed inputs, computed here straight from Protocol rather than through
-  # seed/4, so a wrong seed clause can't sign its own output.
   defp receipt_seed(:landobs, draw) do
     cond do
       draw.weather_value ->

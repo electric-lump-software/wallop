@@ -14,11 +14,8 @@ defmodule WallopCore.Entropy.StuckDrawRedriverTest do
   alias WallopCore.Weather.{Schedule, Stations}
 
   @live_states ~w(available scheduled executing retryable suspended)
-  # For a schema 6 draw a suspended job doesn't count (nothing resumes one):
-  # it is replaced, as are jobs that can't run soon (attacks/parked_job_test).
   @runnable_v6_states ~w(available scheduled executing retryable)
   @event [:wallop_core, :redrive, :reinserted]
-  # The retired forecast worker. Its module is gone; leftover rows may not be.
   @forecast_worker "WallopCore.Entropy.EntropyWorker"
 
   defp round_at(offset), do: Quicknet.round_at_or_after(DateTime.add(DateTime.utc_now(), offset))
@@ -33,7 +30,6 @@ defmodule WallopCore.Entropy.StuckDrawRedriverTest do
     end
   end
 
-  # The test DB is shared: only this test's own rows are touched.
   defp delete_jobs_for!(id),
     do: Repo.query!("DELETE FROM oban_jobs WHERE args->>'draw_id' = $1", [id])
 
@@ -67,8 +63,6 @@ defmodule WallopCore.Entropy.StuckDrawRedriverTest do
     job
   end
 
-  # A v6 draw whose round published `pub_offset` seconds from now, with its
-  # stored hour well past F, and no job.
   defp stuck_v6(pub_offset) do
     {_op, key} = create_v6_operator()
     wt = DateTime.utc_now() |> DateTime.add(-3 * 3600) |> DateTime.truncate(:second)
@@ -77,8 +71,6 @@ defmodule WallopCore.Entropy.StuckDrawRedriverTest do
     draw
   end
 
-  # A retired forecast draw (no lock schema) stranded in `status`, its
-  # weather_time `weather_offset` seconds from now.
   defp stuck_forecast(status, weather_offset) do
     draw = put_retired_forecast_draw!(create_api_key(), status)
     wt = DateTime.add(DateTime.utc_now(), weather_offset)
@@ -137,7 +129,6 @@ defmodule WallopCore.Entropy.StuckDrawRedriverTest do
       assert jobs_for(ObservationDrawWorker, draw.id) == ["cancelled"]
       refute_received {@event, ^ref, _, %{draw_id: _}}
 
-      # The Pruner removes the row: one more re-drive.
       Repo.query!("DELETE FROM oban_jobs WHERE id = $1", [cancelled.id])
       assert draw.id in StuckDrawRedriver.redrive()
       assert jobs_for(ObservationDrawWorker, draw.id) == ["available"]
@@ -184,7 +175,6 @@ defmodule WallopCore.Entropy.StuckDrawRedriverTest do
     end
 
     test "the threshold is 15 minutes after pub(R), from the draw's rules" do
-      # Just inside and just outside, a few seconds either side.
       inside = stuck_v6(-15 * 60 + 30)
       outside = stuck_v6(-15 * 60 - 30)
       redriven = StuckDrawRedriver.redrive()
@@ -226,7 +216,6 @@ defmodule WallopCore.Entropy.StuckDrawRedriverTest do
       ref = :telemetry_test.attach_event_handlers(self(), [@event])
       {_op, key} = create_v6_operator()
 
-      # T's window is open now: the round publishes in a minute.
       open_round = round_at(60)
 
       open =
@@ -236,7 +225,6 @@ defmodule WallopCore.Entropy.StuckDrawRedriverTest do
           open_round
         )
 
-      # Stuck: past pub(R) + 15 min, so its execution job comes back.
       stuck = stuck_v6(-20 * 60)
 
       Repo.query!("DELETE FROM oban_jobs WHERE worker = $1", [inspect(FrequencyWindowWorker)])
@@ -257,8 +245,6 @@ defmodule WallopCore.Entropy.StuckDrawRedriverTest do
   end
 
   describe "fetch jobs" do
-    # A v6 draw for the next whole hour (F still ahead), with its hour's
-    # fetch job gone.
     defp pending_next_hour do
       {_op, key} = create_v6_operator()
       now = DateTime.utc_now()
@@ -386,7 +372,6 @@ defmodule WallopCore.Entropy.StuckDrawRedriverTest do
 
   describe "grid-frequency draws" do
     @freq_value "50012;50018;50012;49983;49980;49953;49912;49883"
-    # A real quicknet beacon: the randomness is sha256 of the signature.
     @randomness "140117383b03a0c0c7a899a32b8cbd2ffff9e2569504037c358ee8c7c2efe2fd"
     @signature "b6541e41bb68ff318e8bd74b9f6e168ae6424476c432241420c38427df58c6ef33fe009ce202a7101120ab481702fddf"
 
@@ -436,7 +421,6 @@ defmodule WallopCore.Entropy.StuckDrawRedriverTest do
       assert_received {@event, ^ref, %{count: 1},
                        %{kind: :execution, protocol: :frequency, draw_id: ^id}}
 
-      # Idempotent: the new job is live.
       refute id in StuckDrawRedriver.redrive()
       assert jobs_for(ObservationDrawWorker, id) == ["available"]
     end
@@ -489,10 +473,8 @@ defmodule WallopCore.Entropy.StuckDrawRedriverTest do
           Ecto.UUID.dump!(draw.id)
         ])
 
-      # The re-drive itself wrote nothing to the draw.
       assert before.rows == [["awaiting_entropy", nil, nil]]
 
-      # The job it put back runs by the same rules: the stored window.
       assert :ok = perform_job(ObservationDrawWorker, %{draw_id: draw.id})
       done = Ash.get!(Draw, draw.id, authorize?: false)
 

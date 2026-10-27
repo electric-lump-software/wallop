@@ -22,7 +22,6 @@ defmodule WallopWeb.Plugs.SelfCheckRateLimitTest do
     end
 
     test "no-op for proof page GET with no entry_id", %{conn: conn} do
-      # Same IP, many requests — none carrying an entry_id. Must not rate-limit.
       for _ <- 1..100 do
         result = SelfCheckRateLimit.call(conn, [])
         refute result.halted
@@ -58,7 +57,6 @@ defmodule WallopWeb.Plugs.SelfCheckRateLimitTest do
 
       for _ <- 1..60, do: SelfCheckRateLimit.call(a, [])
 
-      # a is at the limit; b should still be allowed
       refute SelfCheckRateLimit.call(b, []).halted
       assert SelfCheckRateLimit.call(a, []).halted
     end

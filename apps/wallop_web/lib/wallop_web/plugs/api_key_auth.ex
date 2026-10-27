@@ -27,8 +27,6 @@ defmodule WallopWeb.Plugs.ApiKeyAuth do
   alias WallopWeb.IpAuthLimit
   alias WallopWeb.RateLimitResponse
 
-  # `GenerateKey` uses Base.encode64(32 bytes, padding: false): 43 characters
-  # of the standard alphabet.
   @key_format ~r/\Awallop_[A-Za-z0-9+\/]{43}\z/
   @dummy_key "wallop_" <> String.duplicate("A", 43)
 
@@ -59,8 +57,6 @@ defmodule WallopWeb.Plugs.ApiKeyAuth do
   end
 
   defp find_key("wallop_" <> rest) do
-    # Auth-time lookup runs without an actor (we're determining who the actor
-    # IS), so it bypasses the read policy. The digest check is the auth check.
     case ApiKey
          |> Ash.Query.for_read(:read)
          |> Ash.Query.filter_input(%{key_prefix: binary_part(rest, 0, 8), active: true})
@@ -74,10 +70,6 @@ defmodule WallopWeb.Plugs.ApiKeyAuth do
     if Plug.Crypto.secure_compare(Digest.compute(raw_key), digest), do: :ok, else: :error
   end
 
-  # No digest yet: bcrypt is expensive, so the attempt is counted against the
-  # IP before it runs (one atomic increment-and-compare) and an IP over its
-  # limit is refused without running it. A bcrypt failure is not counted again
-  # (`:counted_error`); a success keeps its slot.
   defp verify(conn, raw_key, %ApiKey{} = api_key) do
     with :ok <- IpAuthLimit.record_failure(conn.remote_ip) do
       if Bcrypt.verify_pass(raw_key, api_key.key_hash) do
@@ -112,9 +104,6 @@ defmodule WallopWeb.Plugs.ApiKeyAuth do
     )
   end
 
-  # Never changes the authentication result, which bcrypt already decided.
-  # A concurrent first request recording the digest first (StaleRecord) is a
-  # normal race and counts as success. Exposed for tests only.
   @doc false
   def record_digest(api_key, raw_key) do
     api_key
@@ -129,7 +118,6 @@ defmodule WallopWeb.Plugs.ApiKeyAuth do
           Logger.info("ApiKeyAuth: digest already recorded for key #{Log.redact_id(api_key.id)}")
           digest_recorded(:already_recorded)
         else
-          # Error classes only: a leaf error's value could carry the digest.
           Logger.warning(
             "ApiKeyAuth: digest not recorded for key #{Log.redact_id(api_key.id)}: #{error_classes(error)}"
           )

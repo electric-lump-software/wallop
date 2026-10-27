@@ -20,8 +20,6 @@ defmodule WallopCore.Weather.ObservationStoreTest do
   defp wt_at(offset_seconds),
     do: DateTime.utc_now() |> DateTime.add(offset_seconds) |> DateTime.truncate(:second)
 
-  # weather_time need not be a whole hour here: the trigger keys on the
-  # stored weather_time, so tests can place "now" anywhere in the window.
   defp v6_draw_with_weather_time(offset_seconds_from_now, key \\ nil) do
     key = key || elem(create_v6_operator(), 1)
     put_v6_awaiting!(open_draw_with_entries(key), wt_at(offset_seconds_from_now), round())
@@ -127,8 +125,6 @@ defmodule WallopCore.Weather.ObservationStoreTest do
              bad
     end
 
-    # The insert trigger refuses an unknown station first (it has no window);
-    # the CHECK refuses it too, even with every trigger off.
     assert refused(store("wmo-99999", draw)) =~ "wmo-99999 observation outside its window"
 
     for station <- ["wmo-99999", @wittering] do
@@ -140,7 +136,6 @@ defmodule WallopCore.Weather.ObservationStoreTest do
       end
     end
 
-    # Nothing above was stored: the hour still takes its reading.
     assert {:ok, _} = store(@primary, draw)
   end
 
@@ -217,9 +212,6 @@ defmodule WallopCore.Weather.ObservationStoreTest do
 
     assert db_refused?("DELETE FROM weather_observations WHERE observation_time = $1", [wt])
 
-    # The sandbox never commits, so the deferred commit-time check is still
-    # queued; run it now (before F, so it passes) and TRUNCATE then meets the
-    # write-once trigger, as it would after a real commit.
     Repo.query!("SET CONSTRAINTS weather_observations_commit_deadline IMMEDIATE")
 
     assert_raise Postgrex.Error, ~r/weather observations are write-once/, fn ->
@@ -252,8 +244,6 @@ defmodule WallopCore.Weather.ObservationStoreTest do
     end
 
     test "it sets short statement and idle-in-transaction timeouts" do
-      # In the sandbox the store's transaction is a savepoint, so its SET
-      # LOCAL settings are still visible after it returns.
       assert {:ok, _} = store(@primary, v6_draw_with_weather_time(-5 * 60))
       assert Repo.query!("SHOW statement_timeout").rows == [["5s"]]
       assert Repo.query!("SHOW idle_in_transaction_session_timeout").rows == [["5s"]]

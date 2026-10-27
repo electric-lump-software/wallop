@@ -10,8 +10,6 @@ defmodule Mix.Tasks.Wallop.ExportInfraAnchorTest do
   require Ash.Query
 
   setup do
-    # Each test runs against an empty infra keyring; mint deterministically
-    # in the test body to control ordering.
     InfrastructureSigningKey
     |> Ash.read!(authorize?: false)
     |> Enum.each(&Ash.destroy!(&1, authorize?: false))
@@ -35,16 +33,11 @@ defmodule Mix.Tasks.Wallop.ExportInfraAnchorTest do
       assert record["revoked_at"] == nil
       assert record["inserted_at"] =~ ~r/\A\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{6}Z\z/
 
-      # Private key MUST NOT appear in the output.
       refute output =~ Base.encode16(key.private_key, case: :lower)
       refute output =~ "private"
     end
 
     test "emits multiple records sorted ascending by inserted_at" do
-      # The keyring's `valid_from`/`inserted_at` CHECK constraint forces
-      # them within ±60s of each other, so we can't backdate. Create
-      # three keys in sequence — `inserted_at` is microsecond-precision
-      # so each row gets a strictly later timestamp than the previous.
       _k1 = create_infrastructure_key()
       _k2 = create_infrastructure_key()
       _k3 = create_infrastructure_key()
@@ -59,7 +52,6 @@ defmodule Mix.Tasks.Wallop.ExportInfraAnchorTest do
 
       timestamps = Enum.map(records, & &1["inserted_at"])
       assert timestamps == Enum.sort(timestamps)
-      # Strictly ascending — every row has a different inserted_at.
       assert Enum.uniq(timestamps) == timestamps
     end
 
@@ -114,7 +106,6 @@ defmodule Mix.Tasks.Wallop.ExportInfraAnchorTest do
 
   describe "empty keyring" do
     test "exits with error and a clear message when no keys exist" do
-      # `setup` already cleared the keyring.
       result =
         try do
           capture_io(:stderr, fn ->

@@ -103,8 +103,7 @@ defmodule WallopWeb.Plugs.ApiKeyAuthTest do
     test "a key with a digest authenticates without bcrypt" do
       api_key = create_api_key()
       raw = api_key.__metadata__.raw_key
-      # Replace the bcrypt hash with one for a different secret: success now
-      # proves bcrypt wasn't consulted.
+
       SQL.query!(
         WallopCore.Repo,
         "UPDATE api_keys SET key_hash = $1 WHERE id = $2",
@@ -119,8 +118,6 @@ defmodule WallopWeb.Plugs.ApiKeyAuthTest do
     test "a wrong key with a matching prefix is refused and bcrypt is not consulted" do
       api_key = create_api_key()
       "wallop_" <> rest = api_key.__metadata__.raw_key
-      # Make bcrypt accept this exact wrong key: if the plug consulted bcrypt,
-      # the request would succeed.
       wrong = "wallop_" <> binary_part(rest, 0, 8) <> String.duplicate("A", 35)
 
       SQL.query!(
@@ -219,7 +216,6 @@ defmodule WallopWeb.Plugs.ApiKeyAuthTest do
       api_key = create_api_key()
       raw = api_key.__metadata__.raw_key
       null_digest!(api_key)
-      # Read while the digest is nil, then let another request record it first.
       stale = Ash.get!(ApiKey, api_key.id, authorize?: false)
       assert stale.key_digest == nil
       assert :ok = ApiKeyAuth.record_digest(stale, raw)

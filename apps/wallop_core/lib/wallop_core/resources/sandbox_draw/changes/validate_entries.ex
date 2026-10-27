@@ -22,8 +22,6 @@ defmodule WallopCore.Resources.SandboxDraw.Changes.ValidateEntries do
   @max_weight 1_000
   @max_total_weight 100_000
 
-  # Alphanumeric, hyphens, underscores, dots, colons, equals (for base64).
-  # No @, no spaces, no slashes — blocks emails, phone numbers, most PII.
   @valid_entry_id_pattern ~r/^[a-zA-Z0-9_\-:.=]+$/
 
   @impl true

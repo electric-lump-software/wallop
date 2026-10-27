@@ -92,12 +92,6 @@ defmodule Mix.Tasks.Wallop.ExportInfraAnchor do
   end
 
   defp to_anchor_record(row) do
-    # `revoked_at` is intentionally always nil/absent: the keyring
-    # schema has no `revoked_at` column in 1.x. Emitting the field
-    # explicitly (rather than omitting it) keeps the JSON shape
-    # consistent with the verifier-side anchor record schema, which
-    # MUST be either an RFC 3339 timestamp or absent — and "absent"
-    # serialises cleanly as null.
     %{
       key_id: row.key_id,
       public_key_hex: Base.encode16(row.public_key, case: :lower),

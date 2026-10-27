@@ -107,8 +107,6 @@ defmodule WallopCore.Resources.Draw.Changes.SignAndStoreReceipt do
     end
   end
 
-  # The refusal points at draw_at only when the operator sent one; a lock
-  # on the default draw time is refused at the action level.
   defp lock_time_error(locked_at, changeset) do
     field = if Ash.Changeset.get_argument(changeset, :draw_at), do: :draw_at
     pair = EntropyRulesAre.pair(changeset)
@@ -128,7 +126,6 @@ defmodule WallopCore.Resources.Draw.Changes.SignAndStoreReceipt do
           field
         )
 
-      # ResolveLockSchema records only known pairs; never sign under another.
       :error ->
         InvalidArgument.exception(
           field: nil,
@@ -139,12 +136,6 @@ defmodule WallopCore.Resources.Draw.Changes.SignAndStoreReceipt do
   end
 
   @doc false
-  # Lock schema 6: a lock at `locked_at` must be no later than the draw's
-  # latest lock time (weather_time - 46 minutes). nil when it is in time,
-  # else the refusal, on `field` (default `draw_at`; nil for an action-level
-  # error) with `latest_lock_at` as a whole-second RFC 3339 string. Used on
-  # the signed `locked_at` here and on the request time by the `DrawAt`
-  # validation.
   @spec v6_lock_time_error(DateTime.t(), DateTime.t(), :draw_at | nil) :: Exception.t() | nil
   def v6_lock_time_error(locked_at, weather_time, field \\ :draw_at) do
     if Schedule.lock_allowed?(locked_at, weather_time) do
@@ -159,10 +150,6 @@ defmodule WallopCore.Resources.Draw.Changes.SignAndStoreReceipt do
   end
 
   @doc false
-  # Lock schema 6 under the grid-frequency tag: a lock at `locked_at` must
-  # be no later than freq_start - 60 s. nil when it is in time, else the
-  # refusal, shaped exactly like v6_lock_time_error/3's. T - 60 s is always
-  # a whole second.
   @spec freq_lock_time_error(DateTime.t(), DateTime.t(), :draw_at | nil) ::
           Exception.t() | nil
   def freq_lock_time_error(locked_at, freq_start, field \\ :draw_at) do
@@ -177,8 +164,6 @@ defmodule WallopCore.Resources.Draw.Changes.SignAndStoreReceipt do
     end
   end
 
-  # weather_time is a whole hour and freq_start a whole multiple of 15 s,
-  # so latest_lock_at is a whole second.
   defp whole_second(dt), do: dt |> DateTime.truncate(:second) |> DateTime.to_iso8601()
 
   defp build_payload(input, changeset) do
@@ -187,13 +172,10 @@ defmodule WallopCore.Resources.Draw.Changes.SignAndStoreReceipt do
       :entropy_composition,
       Ash.Changeset.get_attribute(changeset, :entropy_composition)
     )
-    # Both lock schema 6 tags sign it.
     |> Map.put(:freq_start, Ash.Changeset.get_attribute(changeset, :freq_start))
     |> Protocol.build_v6_lock_payload()
   end
 
-  # The draw's locked_at stage timestamp is the signed value, not a second
-  # reading of the clock.
   defp record_locked_at(changeset, locked_at) do
     stages = Ash.Changeset.get_attribute(changeset, :stage_timestamps) || %{}
 

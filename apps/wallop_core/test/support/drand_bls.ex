@@ -13,8 +13,6 @@ defmodule WallopCore.Test.DrandBls do
 
   alias WallopCore.Drand.Bls
 
-  # Quicknet round 33068212's signature (its randomness is
-  # 140117383b03a0c0c7a899a32b8cbd2ffff9e2569504037c358ee8c7c2efe2fd).
   @stand_in "b6541e41bb68ff318e8bd74b9f6e168ae6424476c432241420c38427df58c6ef33fe009ce202a7101120ab481702fddf"
 
   @doc "The one signature accepted at any round."

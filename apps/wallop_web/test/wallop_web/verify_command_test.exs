@@ -39,7 +39,6 @@ defmodule WallopWeb.VerifyCommandTest do
       assert html =~ "--wallop-base-url #{base_url}"
       assert html =~ "--pin-from-url #{base_url}/operator/#{operator.slug}/keyring-pin.json"
       assert html =~ "#{draw.id}.json</pre>"
-      # The binary is behind the `cli` feature; without it cargo installs nothing.
       assert html =~ "cargo install wallop_verifier --features cli"
 
       refute html =~ "--infra-key-pin"
@@ -80,7 +79,6 @@ defmodule WallopWeb.VerifyCommandTest do
       conn: conn
     } do
       {_operator, draw} = completed_draw()
-      # A second key, so a draw executed before a rotation still verifies.
       create_infrastructure_key()
 
       published = conn |> get("/infrastructure/keys") |> json_response(200)

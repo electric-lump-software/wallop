@@ -81,10 +81,6 @@ defmodule WallopWeb.ProofEntriesControllerTest do
     end
 
     test "open draw (not yet locked) returns 404", %{conn: conn, api_key: api_key} do
-      # Open-draw entry scraping is blocked to prevent real-time observers
-      # from gaining competitive intelligence on entry count/weight
-      # distribution pre-lock. The endpoint is only meaningful post-lock
-      # when entries are frozen.
       {:ok, open_draw} =
         Ash.Changeset.for_create(WallopCore.Resources.Draw, :create, %{winner_count: 1},
           actor: api_key
@@ -128,10 +124,6 @@ defmodule WallopWeb.ProofEntriesControllerTest do
 
     test "pagination round-trip reproduces ProofBundle.entries_for/1 bytes (invariant)",
          %{conn: conn, draw: draw} do
-      # Invariant: the paginated public endpoint MUST produce the
-      # same canonical entry list as ProofBundle.entries_for/1. A verifier
-      # fetching all pages + concatenating + re-sorting by uuid must be
-      # able to reproduce the inlined bundle entries byte-for-byte.
       inline_entries =
         draw.id
         |> WallopCore.Entries.load_for_draw()
@@ -153,7 +145,6 @@ defmodule WallopWeb.ProofEntriesControllerTest do
     test "limit is capped at 1000", %{conn: conn, draw: draw} do
       conn = get(conn, "/proof/#{draw.id}/entries?limit=999999")
       body = json_response(conn, 200)
-      # With 25 entries, cap doesn't affect this response — we just verify it doesn't crash
       assert length(body["entries"]) == 25
     end
 

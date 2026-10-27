@@ -51,8 +51,6 @@ defmodule WallopCore.Entropy.FrequencyDrawExecutionTest do
 
   defp round_at(offset), do: Quicknet.round_at_or_after(DateTime.add(DateTime.utc_now(), offset))
 
-  # A grid-frequency draw as a real lock leaves it: freq_start is the
-  # round's own window start.
   defp freq_draw(pub_offset \\ -10) do
     {op, key} = create_freq_operator()
     round = round_at(pub_offset)
@@ -207,8 +205,6 @@ defmodule WallopCore.Entropy.FrequencyDrawExecutionTest do
     {_op, draw} = freq_draw()
     put_frequency_window!(draw.freq_start, @value)
 
-    # Stored state no path can reach (the draws guard refuses it): the
-    # draw's freq_value differs from T's window.
     with_triggers_off(fn ->
       Repo.query!("UPDATE draws SET freq_value = $2 WHERE id = $1", [
         Ecto.UUID.dump!(draw.id),
@@ -250,7 +246,6 @@ defmodule WallopCore.Entropy.FrequencyDrawExecutionTest do
     {_op, draw} = freq_draw()
     :ok = perform_job(ObservationDrawWorker, %{draw_id: draw.id})
 
-    # Stored state the draws guard refuses: a weather value on a frequency draw.
     with_triggers_off(fn ->
       Repo.query!("UPDATE draws SET weather_value = '141;1025;85;2432' WHERE id = $1", [
         Ecto.UUID.dump!(draw.id)

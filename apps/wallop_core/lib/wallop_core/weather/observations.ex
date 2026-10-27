@@ -67,7 +67,6 @@ defmodule WallopCore.Weather.Observations do
       |> Ash.create(authorize?: false)
     end
   rescue
-    # A refusal at COMMIT (the fetch-deadline check) surfaces here.
     e in Postgrex.Error -> {:error, e}
   end
 

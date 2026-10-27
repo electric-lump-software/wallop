@@ -43,7 +43,6 @@ defmodule WallopWeb.RevealDemoLive do
     metadata: nil
   }
 
-  # Completed version for the final state after animation
   @fake_draw_completed %{
     id: "demo-00000000-0000-0000-0000-000000000000",
     status: :completed,

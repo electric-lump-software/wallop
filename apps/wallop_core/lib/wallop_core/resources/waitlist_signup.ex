@@ -19,7 +19,6 @@ defmodule WallopCore.Resources.WaitlistSignup do
   end
 
   policies do
-    # Public signup form — anonymous create is intentional and explicit.
     policy action(:create) do
       authorize_if(always())
     end

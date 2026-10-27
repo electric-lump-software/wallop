@@ -4,7 +4,6 @@ defmodule WallopWeb.ExampleProofTest do
   import Phoenix.LiveViewTest
 
   @url "https://example.test/proof/11111111-1111-4111-8111-111111111111"
-  # The schema 1 forecast draw the pages once linked to.
   @old "286838f2-c6d7-49a8-acdb-7b60bce69f35"
 
   setup do
@@ -23,7 +22,6 @@ defmodule WallopWeb.ExampleProofTest do
     html
   end
 
-  # The home page with each "how it works" tab open in turn.
   defp home_tabs(conn) do
     {:ok, view, plain} = live(conn, "/")
     crypto = render_click(view, "switch_tab", %{"tab" => "crypto"})
@@ -36,7 +34,6 @@ defmodule WallopWeb.ExampleProofTest do
     Application.put_env(:wallop_web, :example_proof_url, @url)
     {plain, crypto} = home_tabs(conn)
 
-    # Two on the plain tab (organisers list, step 5); the crypto tab's one.
     assert count(plain, ~s(href="#{@url}")) == 2
     assert count(crypto, ~s(href="#{@url}")) == 2
     assert crypto =~ ~r/<a[^>]*href="#{Regex.escape(@url)}"[^>]*>full proof record<\/a>/

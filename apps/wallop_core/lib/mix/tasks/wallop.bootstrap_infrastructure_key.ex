@@ -24,7 +24,6 @@ defmodule Mix.Tasks.Wallop.BootstrapInfrastructureKey do
   def run(_args) do
     Mix.Task.run("app.start")
 
-    # Check if a key already exists
     case InfrastructureSigningKey
          |> Ash.Query.sort(valid_from: :desc)
          |> Ash.Query.limit(1)

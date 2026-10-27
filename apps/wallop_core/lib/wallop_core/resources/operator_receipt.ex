@@ -41,14 +41,10 @@ defmodule WallopCore.Resources.OperatorReceipt do
   end
 
   policies do
-    # Receipts are the public verification artefact — anyone can read them.
     policy action(:read) do
       authorize_if(always())
     end
 
-    # Creation must go through SignAndStoreReceipt with `authorize?: false`.
-    # Without this policy, any caller could forge receipts or DoS in-flight
-    # draws by preempting the unique-draw insert.
     policy action(:create) do
       forbid_if(always())
     end

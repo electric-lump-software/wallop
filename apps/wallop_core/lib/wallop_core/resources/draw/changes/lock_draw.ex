@@ -9,6 +9,8 @@ defmodule WallopCore.Resources.Draw.Changes.LockDraw do
   same-tx with the `:open -> :locked` state change: a crash between
   prune and lock-commit rolls both back atomically, so no draw can be
   observed in a state where idempotency rows outlive their open phase.
+
+  The draw row is locked `FOR UPDATE` before entries are read, so no entry insert can land between computing the entry hash and the lock.
   """
   use Ash.Resource.Change
 
@@ -34,10 +36,6 @@ defmodule WallopCore.Resources.Draw.Changes.LockDraw do
         )
 
       true ->
-        # Acquire row lock on the draw BEFORE reading entries. This
-        # serializes with the entries trigger's own FOR UPDATE on the
-        # draw row, closing the TOCTOU window where an entry insert
-        # could sneak in between hash computation and the draw UPDATE.
         WallopCore.Repo.query!(
           "SELECT id FROM draws WHERE id = $1 FOR UPDATE",
           [Ecto.UUID.dump!(draw.id)]
@@ -46,8 +44,6 @@ defmodule WallopCore.Resources.Draw.Changes.LockDraw do
         entries = WallopCore.Entries.load_for_draw(draw.id)
         {hash, canonical} = WallopCore.Protocol.entry_hash({draw.id, entries})
 
-        # Prune idempotency rows for this draw — same transaction as
-        # the :open -> :locked state change.
         :ok = prune_idempotency_rows(draw.id)
 
         changeset
@@ -57,8 +53,6 @@ defmodule WallopCore.Resources.Draw.Changes.LockDraw do
     end
   end
 
-  # A lock schema 6 lock is announced after commit by its DeclareEntropyV6
-  # or DeclareEntropyFreq change instead; every other lock as before.
   defp announce(%{lock_schema_version: "6"} = draw), do: {:ok, draw}
 
   defp announce(draw) do

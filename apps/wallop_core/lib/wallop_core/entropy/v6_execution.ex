@@ -74,12 +74,8 @@ defmodule WallopCore.Entropy.V6Execution do
   alias WallopCore.Drand.Quicknet
   alias WallopCore.Entropy.{DrandClient, V6Rules}
 
-  # The wait after a post-fetch V6NotYet is measured on this node's clock,
-  # the clock execute_v6 checks executed_at on, plus a margin, and never
-  # shorter than the floor: a lagging app clock can't cause a tight loop.
   @not_yet_margin_seconds 2
   @not_yet_floor_seconds 5
-  # The clock skew check: report beyond this, and never wait longer for it.
   @skew_alarm_ms 5_000
   @skew_check_timeout_ms 3_000
   alias WallopCore.Errors.{V6ExecRefused, V6NotYet}
@@ -115,14 +111,11 @@ defmodule WallopCore.Entropy.V6Execution do
   defp wait(until, now), do: max(DateTime.diff(until, now) + 1, 1)
 
   @doc false
-  # Seconds to wait after execute_v6 said "not yet" for `retry_at`.
   @spec not_yet_wait(DateTime.t(), DateTime.t()) :: pos_integer()
   def not_yet_wait(retry_at, now),
     do: max(DateTime.diff(retry_at, now) + @not_yet_margin_seconds, @not_yet_floor_seconds)
 
   defp fetch_and_execute(draw, attempt, max_attempts) do
-    # One relay's invalid response must not end the attempt: try the next.
-    # If every relay fails, that is transient like any other outage.
     case fetch_drand(draw) do
       {:ok, drand} ->
         check_clock_skew(draw)
@@ -133,9 +126,6 @@ defmodule WallopCore.Entropy.V6Execution do
     end
   end
 
-  # A fetch that raises or exits is a transient drand failure like any other.
-  # The beacon's BLS signature is checked against quicknet's key: a relay
-  # that forges a round is just a relay with an invalid response.
   defp fetch_drand(draw) do
     DrandClient.fetch_with_failover(draw.drand_chain, draw.drand_round,
       on_invalid: :next,
@@ -147,7 +137,6 @@ defmodule WallopCore.Entropy.V6Execution do
     :exit, _ -> {:error, :fetch_exited}
   end
 
-  # Telemetry only: never changes the outcome, never waits long.
   defp check_clock_skew(draw) do
     task =
       Task.async(fn ->
@@ -183,8 +172,6 @@ defmodule WallopCore.Entropy.V6Execution do
     :exit, _ -> :ok
   end
 
-  # The beacon itself, re-encoded: the relay's own bytes (and anything it
-  # added to them) are never stored.
   defp beacon_json(drand) do
     Jason.encode!(%{
       "randomness" => drand.randomness,
@@ -193,7 +180,6 @@ defmodule WallopCore.Entropy.V6Execution do
     })
   end
 
-  # drand is known from here on: never mark the draw failed.
   defp execute(draw, drand) do
     draw
     |> Ash.Changeset.for_update(:execute_v6, %{
@@ -228,7 +214,6 @@ defmodule WallopCore.Entropy.V6Execution do
   end
 
   defp execute_error(draw, error) do
-    # Another attempt (or a Lifeline rescue) may have finished the draw.
     case settle_after_error(draw.id, :not_settled) do
       :ok ->
         :ok
@@ -266,10 +251,6 @@ defmodule WallopCore.Entropy.V6Execution do
     )
   end
 
-  # Only after pub(R): never fails the draw, and never cancels the job. A
-  # drand failure is transient however long it lasts: on the last attempt
-  # it is reported and returned as an error, so Oban discards the job and
-  # the re-drive inserts a new one once the draw is stuck.
   defp drand_failed(draw, reason, attempt, max_attempts) do
     if attempt >= max_attempts do
       message = "drand unavailable after #{attempt} attempts (#{drand_error(reason)})"
@@ -323,7 +304,6 @@ defmodule WallopCore.Entropy.V6Execution do
 
   defp to_pending(draw), do: draw
 
-  # The first error of `module` anywhere in an Ash error class, or nil.
   defp find_error(%{__struct__: module} = error, module), do: error
 
   defp find_error(%{errors: errors}, module) when is_list(errors),
@@ -333,11 +313,6 @@ defmodule WallopCore.Entropy.V6Execution do
 
   defp error_class(%{__struct__: module}), do: inspect(module)
 
-  # The draw finished while this attempt was running (another attempt, or a
-  # Lifeline rescue). Its outcome and webhook are already committed, so this
-  # attempt succeeded at nothing and must not retry or fail the draw.
-  # `:expired` is listed for completeness: only open draws expire, so a draw
-  # this module runs can't become expired.
   @doc false
   @spec settle_after_error(String.t(), term()) :: :ok | {:error, term()}
   def settle_after_error(draw_id, reason) do

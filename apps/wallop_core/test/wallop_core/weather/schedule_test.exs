@@ -64,7 +64,6 @@ defmodule WallopCore.Weather.ScheduleTest do
   end
 
   describe "weather_time boundary, pinned to W" do
-    # Derived from fetch_window_seconds/0 so the tests follow any change to W.
     setup do
       h = ~U[2026-10-14 19:00:00.000000Z]
       %{h: h, boundary: DateTime.add(h, Schedule.fetch_window_seconds() + 60)}

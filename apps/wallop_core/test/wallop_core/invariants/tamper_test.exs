@@ -59,26 +59,17 @@ defmodule WallopCore.Invariants.TamperTest do
   @hour_us 3_600_000_000
   @mainnet "8990e7a9aaed2ffed73dbd7092123d6f289930540d7651336225dc172e51b2ce"
   @v2_tag "drand-quicknet+metoffice-landobs-v2"
-  # The retired forecast tag: never accepted by a schema 6 builder or guard.
   @forecast_tag "drand-quicknet+openmeteo-v1"
   @other_hash String.duplicate("ab", 32)
 
-  # Signed lock keys the receipt trigger binds to the draw row or the
-  # receipt columns (see INV-2 in Group A).
   @db_bound ~w(commitment_hash drand_chain drand_round draw_id entropy_composition entry_hash
                freq_start locked_at operator_id operator_slug schema_version sequence
                signing_key_id weather_station weather_time winner_count)
 
-  # Execution fields that only the producer can know: another valid value
-  # is indistinguishable offline. The execution receipt trigger binds both.
   @producer_only ~w(executed_at)
 
-  # Mutations no layer refuses today. Reported as findings. A change that
-  # adds a check moves a field out of here.
   @no_layer_refuses %{lock: ~w(wallop_core_version), exec: ~w(wallop_core_version)}
 
-  # Signed fields the Rust verifier does not check, so the tamper vector
-  # can't carry a refusing case for them (a re-signed change passes).
   @verifier_blind %{lock: ~w(wallop_core_version), exec: ~w(wallop_core_version)}
 
   defp us(dt, n), do: DateTime.add(dt, n, :microsecond)
@@ -89,8 +80,6 @@ defmodule WallopCore.Invariants.TamperTest do
 
   defp same_window?(round, t),
     do: DateTime.compare(FreqSchedule.freq_start_for_round(round), t) == :eq
-
-  # ── Generators ─────────────────────────────────────────────────────
 
   defp weather_value do
     gen all(
@@ -103,9 +92,6 @@ defmodule WallopCore.Invariants.TamperTest do
     end
   end
 
-  # A valid lock v6 / execution v5 input pair: any round, `locked_at` at or
-  # before the limit, `executed_at` at or after pub(R), in any of the three
-  # execution states.
   defp v6_inputs do
     gen all(
           round <- integer(1_000_000..90_000_000),
@@ -154,8 +140,6 @@ defmodule WallopCore.Invariants.TamperTest do
     end
   end
 
-  # ── Mutation tables ────────────────────────────────────────────────
-
   defp tag_message(tag),
     do:
       "unknown entropy_composition for lock v6 / execution v5: #{inspect(tag)}; " <>
@@ -166,7 +150,6 @@ defmodule WallopCore.Invariants.TamperTest do
       "lock v6 / execution v5 drand_chain must be the quicknet chain " <>
         "#{Quicknet.chain_hash()}, got: #{inspect(chain)}"
 
-  # `{label, mutated_input, expected}` for every lock mutation of `c`.
   defp lock_mutations(%{lock: l, round: r, wt: wt, lock_back: back}) do
     obs_hour = &"lock v6 weather_time is not the observation hour for drand round #{&1}"
     late = "lock v6 locked_at is later than weather_time minus 46 minutes"
@@ -176,8 +159,6 @@ defmodule WallopCore.Invariants.TamperTest do
     window = &"lock v6 freq_start is not the window start for drand round #{&1}"
     t = l.freq_start
 
-    # A round n steps on must keep both its observation hour and its
-    # grid-frequency window, or the builder refuses it.
     round_step = fn n ->
       cond do
         not same_hour?(r + n, wt) -> {:raise, obs_hour.(r + n)}
@@ -265,12 +246,9 @@ defmodule WallopCore.Invariants.TamperTest do
        {:no_layer, "wallop_core_version"}},
       {"fair_pick_version other", %{l | fair_pick_version: "9.9.9"},
        {:verifier, "fair_pick_version"}},
-      # Floats: JCS renders a whole float as an integer, so the signed
-      # bytes are unchanged; the round is refused outright.
       {"sequence 7.0", %{l | sequence: l.sequence * 1.0}, :same_bytes},
       {"winner_count float", %{l | winner_count: l.winner_count * 1.0}, :same_bytes},
       {"drand_round float", %{l | drand_round: r * 1.0}, {:raise, positive}},
-      # Pairs that must agree.
       {"drand_round +1h with weather_time +1h",
        %{l | drand_round: r + 1200, weather_time: hours(wt, 1)}, {:raise, window.(r + 1200)}},
       {"drand_round -1h with weather_time -1h",
@@ -298,15 +276,12 @@ defmodule WallopCore.Invariants.TamperTest do
     ] ++ invisible ++ nils
   end
 
-  # `{label, mutated_input, expected}` for every execution mutation of `c`.
   defp exec_mutations(%{exec: e, kind: kind, round: r, wt: wt, exec_after: after_us}) do
     obs_hour = &exec_obs_hour/1
     before = &exec_before/1
     station = "exec v5 weather_station must be #{Stations.primary().id}"
     observed? = kind == :observed
 
-    # A round n steps on: the observation hour must still match (observed),
-    # and executed_at must not precede the new round's publication.
     round_step = fn n ->
       cond do
         observed? and not same_hour?(r + n, wt) -> {:raise, obs_hour.(r + n)}
@@ -473,14 +448,11 @@ defmodule WallopCore.Invariants.TamperTest do
     ]
   end
 
-  # The window with its first reading 1 mHz higher: still on grammar.
   defp bump_first_reading(window) do
     [first | rest] = String.split(window, ";")
     Enum.join([Integer.to_string(String.to_integer(first) + 1) | rest], ";")
   end
 
-  # The same instant as the UTC `dt`, as a Europe/London DateTime with a
-  # `h`-hour offset (0 in winter, 1 in summer).
   defp london(%DateTime{time_zone: "Etc/UTC"} = dt, h) do
     %{
       DateTime.add(dt, h * 3600)
@@ -494,7 +466,6 @@ defmodule WallopCore.Invariants.TamperTest do
   defp build_lock(input), do: Protocol.build_v6_lock_payload(input)
   defp build_exec(input), do: Protocol.build_v6_execution_payload(input)
 
-  # Asserts the builder outcome of one mutation; returns the payload when built.
   defp assert_builder(builder, base_jcs, {label, input, expected}, layer_fields) do
     base_payload = Jason.decode!(base_jcs)
 
@@ -527,8 +498,6 @@ defmodule WallopCore.Invariants.TamperTest do
         uniq: true,
         do: field
   end
-
-  # ── Builders ───────────────────────────────────────────────────────
 
   describe "INV-2 the builders refuse every one-step lock and execution mutation they can see" do
     property "INV-2 (tamper, lock builder) each mutation is refused, or left to the database" do
@@ -577,9 +546,6 @@ defmodule WallopCore.Invariants.TamperTest do
         uk = london(Map.fetch!(input, field), h)
         assert DateTime.compare(uk, Map.fetch!(input, field)) == :eq
 
-        # Refused either by the schedule arithmetic (core runs with the
-        # UTC-only time zone database) or, failing that, by the canonical
-        # serialiser's non-UTC check. Never signed.
         assert_raise ArgumentError,
                      ~r/non-UTC DateTime|Calendar\.UTCOnlyTimeZoneDatabase/,
                      fn -> builder.(Map.put(input, field, uk)) end
@@ -604,15 +570,11 @@ defmodule WallopCore.Invariants.TamperTest do
     end
   end
 
-  # ── Database ───────────────────────────────────────────────────────
-
   @mismatch "v6 lock receipt field ~s does not match the draw"
 
   defp db_message("locked_at"), do: "receipt locked_at must equal the signed locked_at"
   defp db_message(field), do: :io_lib.format(@mismatch, [field]) |> IO.iodata_to_binary()
 
-  # Builder input and receipt columns for `draw`, locked under `s`, signed
-  # at `locked_at`, exactly as `valid_receipt/3` builds them.
   defp db_inputs(draw, s, locked_at) do
     {payload, cols} = valid_receipt(draw, s, locked_at)
 
@@ -648,8 +610,6 @@ defmodule WallopCore.Invariants.TamperTest do
   describe "INV-2 the receipt trigger refuses every lock mutation the builder can't see" do
     setup do
       {operator, key} = create_v6_operator()
-      # The operator's key is in the keyring from here: every generated
-      # locked_at is at or after this instant.
       %{key: key, operator: operator, t0: DateTime.utc_now(), s: in_time_schedule()}
     end
 
@@ -675,7 +635,6 @@ defmodule WallopCore.Invariants.TamperTest do
           lock_back: DateTime.diff(s.latest_lock_at, locked_at, :microsecond)
         }
 
-        # Positive control: the real builder's receipt is accepted.
         assert insert_receipt(Jason.decode!(build_lock(lock)), cols) == nil
 
         for {label, input, expected} <- lock_mutations(c) do
@@ -685,7 +644,6 @@ defmodule WallopCore.Invariants.TamperTest do
                      label
 
             {layer, field} when layer in [:no_layer, :verifier] ->
-              # Unbound in the database: the build constants.
               assert field in (@no_layer_refuses.lock ++ vector_fields(:lock))
               assert insert_receipt(Jason.decode!(build_lock(input)), cols) == nil, label
 
@@ -775,8 +733,6 @@ defmodule WallopCore.Invariants.TamperTest do
     end
   end
 
-  # A signed integer written another way in the bytes: a whole float, or
-  # an exponent (which jsonb reads back as the plain integer).
   @non_canonical [".0", ".00", "e0", "E0"]
 
   defp retype(json, field, n, form) do
@@ -791,11 +747,6 @@ defmodule WallopCore.Invariants.TamperTest do
       %{key: key, s: in_time_schedule()}
     end
 
-    # jsonb compares 7.0 equal to 7, so the triggers type the signed
-    # integers: a JSON number whose text is a canonical positive integer,
-    # in the bytes too. The builder never signs anything else (JCS renders
-    # a whole float as an integer) and the verifier refuses it (the tamper
-    # vector's *_float cases).
     test "INV-2 (tamper, database) a lock receipt integer written as a float or an exponent is refused",
          %{key: key, s: s} do
       d = open_draw_with_entries(key)
@@ -829,13 +780,9 @@ defmodule WallopCore.Invariants.TamperTest do
     end
   end
 
-  # ── Database: the execution receipt ───────────────────────────────
-
-  # Fields the trigger checks against the stored reading or window.
   @exec_stored ~w(weather_station weather_value weather_observation_time weather_fallback_reason
                   freq_value freq_fallback_reason)
 
-  # The vector state's name in `completed_v6_receipt_input/2`.
   defp db_kind(:freq_fallback), do: :frequency
   defp db_kind(kind), do: kind
 
@@ -844,7 +791,6 @@ defmodule WallopCore.Invariants.TamperTest do
 
   defp exec_db_message(field), do: "v6 execution receipt field #{field} does not match the draw"
 
-  # Signed execution fields the trigger leaves alone: informational only.
   @exec_db_unbound ~w(wallop_core_version)
 
   describe "INV-2 the execution receipt trigger refuses every execution mutation the builder can't see" do
@@ -860,10 +806,7 @@ defmodule WallopCore.Invariants.TamperTest do
               value <- weather_value(),
               max_runs: 6
             ) do
-        # Every run completes one draw per state: a reading, the grid
-        # window, drand alone.
         for kind <- TamperProfiles.LandObs.kinds() do
-          # An hour of its own for each draw: one reading per hour.
           hours_ago = 24 + System.unique_integer([:positive, :monotonic])
 
           x =
@@ -876,7 +819,6 @@ defmodule WallopCore.Invariants.TamperTest do
 
           c = %{exec: x.input, kind: kind, round: x.round, wt: x.wt, exec_after: x.exec_after}
 
-          # Positive control: the real builder's receipt for the draw.
           assert insert_exec_receipt(build_exec(x.input), x.cols) == nil, "#{kind}"
 
           for {label, input, expected} <- exec_mutations(c) do
@@ -956,8 +898,6 @@ defmodule WallopCore.Invariants.TamperTest do
     end
   end
 
-  # ── Raw SQL attack sequences ──────────────────────────────────────
-
   @needs_lock "a schema 6 lock receipt needs a draw locked under schema 6"
   @duplicate ~s(duplicate key value violates unique constraint "operator_receipts_operator_id_sequence_index")
   @declared "Cannot modify declared entropy fields"
@@ -970,7 +910,6 @@ defmodule WallopCore.Invariants.TamperTest do
   @attacks ~w(receipt2 update_round update_weather_time update_station update_chain
               update_pair reopen delete_receipt delete_draw truncate_receipts)a
 
-  # Runs `sql` in a savepoint, kept when accepted. Returns nil or the refusal.
   defp keep_sql(sql, params) do
     Repo.transaction(fn -> Repo.query!(sql, params) end)
     nil
@@ -1000,7 +939,6 @@ defmodule WallopCore.Invariants.TamperTest do
     )
   end
 
-  # Runs one step against `d` and returns `{refusal | nil, expected, state}`.
   defp step(:lock, d, ctx, st) do
     {raw_lock(d, ctx.s.weather_time, ctx.s.round), nil, %{st | locked: st.exists}}
   end
@@ -1056,8 +994,6 @@ defmodule WallopCore.Invariants.TamperTest do
   end
 
   defp step(:delete_draw, d, _ctx, st) do
-    # A v6 draw that has left open can't be deleted, with or without its
-    # receipt; the receipt's foreign key RESTRICT is behind that.
     {expected, st} =
       if st.locked,
         do: {@no_delete, st},
@@ -1196,8 +1132,6 @@ defmodule WallopCore.Invariants.TamperTest do
     end
   end
 
-  # ── The tamper vectors ─────────────────────────────────────────────
-
   defp vector(profile),
     do: profile |> TamperVectors.path() |> File.read!() |> Jason.decode!()
 
@@ -1208,7 +1142,6 @@ defmodule WallopCore.Invariants.TamperTest do
      Jason.decode!(b["execution_receipt"]["payload_jcs"])}
   end
 
-  # Strict, so 7.0 in place of 7 counts as a change.
   defp changed(a, b), do: for({k, v} <- a, b[k] !== v, do: k) |> Enum.sort()
 
   defp verified?(wrapper, key_hex) do
@@ -1313,9 +1246,6 @@ defmodule WallopCore.Invariants.TamperTest do
         end
       end
 
-      # A verifier-blind lock field is refused by the database or listed
-      # as refused by no layer. On the execution receipt the only one is
-      # wallop_core_version, which the database leaves alone too.
       for key <- @verifier_blind.lock,
           do: assert(key in @db_bound or key in @no_layer_refuses.lock, key)
 

@@ -8,9 +8,6 @@ defmodule Mix.Tasks.Wallop.Vault.VerifyRotationTest do
 
   require Ash.Query
 
-  # DataCase wraps each test in a Repo sandbox transaction that rolls
-  # back at teardown — no per-test cleanup needed.
-
   describe "happy path" do
     test "returns :ok and reports tags when every row carries the current tag" do
       create_infrastructure_key()
@@ -48,8 +45,6 @@ defmodule Mix.Tasks.Wallop.Vault.VerifyRotationTest do
         |> String.split("\n")
         |> Enum.filter(&String.contains?(&1, "infrastructure_signing_keys.private_key"))
 
-      # Layout: ... current previous unknown total
-      #          0       1        0       1
       assert infra_line =~ ~r/\s0\s+1\s+0\s+1\s*$/
     end
 
@@ -79,10 +74,7 @@ defmodule Mix.Tasks.Wallop.Vault.VerifyRotationTest do
     end
   end
 
-  # Runs `inspect_and_report/0` while capturing both stdout and stderr.
-  # Returns `{return_value, combined_stdout_output}`.
   defp run_and_capture do
-    # with_io/1 returns {function_result, captured_output}.
     {{return_value, stdout}, _stderr} =
       with_io(:standard_error, fn ->
         with_io(fn -> VerifyRotation.inspect_and_report() end)
@@ -105,9 +97,6 @@ defmodule Mix.Tasks.Wallop.Vault.VerifyRotationTest do
     |> Ash.create!(authorize?: false)
   end
 
-  # A byte-accurate fake of a Cloak ciphertext encoded under the previous
-  # tag. The verify task only inspects the tag prefix — it never decrypts
-  # — so we don't need a real V0 cipher, just a well-formed TLV envelope.
   defp synthetic_previous_tag_blob do
     tag = "AES.GCM.V0"
     <<1, byte_size(tag)>> <> tag <> :crypto.strong_rand_bytes(48)

@@ -74,9 +74,6 @@ defmodule WallopWeb.ProofPdf.FingerprintTest do
       fp = Fingerprint.build(sample_draw(), sample_operator(), sample_receipt(), fixed_now())
       encoded = Fingerprint.encode(fp)
 
-      # Frozen test vector. If this changes, every previously-issued
-      # fingerprint becomes incompatible — bump schema_version when
-      # the shape changes deliberately, never silently.
       assert encoded ==
                ~s|{"drand_chain":"chain-hash","drand_randomness":"randomness-hex","drand_round":12345,"draw_id":"00000000-0000-0000-0000-000000000001","entry_hash":"entry-hash-hex","generated_at":"2026-04-08T12:00:00.000000Z","operator_id":"00000000-0000-0000-0000-000000000002","operator_sequence":42,"operator_slug":"acme-prizes","receipt":{"locked_at":"2026-04-01T10:00:00.000000Z","payload_jcs_b64":"cGF5bG9hZC1qY3MtYnl0ZXM=","sequence":7,"signature_b64":"c2lnbmF0dXJlLWJ5dGVz","signing_key_id":"abcd1234"},"schema_version":"1","seed":"seed-hex","template_revision":"1","weather_observation_time":"2026-04-08T11:00:00.000000Z","weather_value":"12.3","winners":[{"entry_id":"ticket-47","position":1},{"entry_id":"ticket-12","position":2}]}|
     end
@@ -190,8 +187,6 @@ defmodule WallopWeb.ProofPdf.FingerprintTest do
       assert {:error, {:fingerprint_mismatch, ["receipt"]}} = Fingerprint.compare(fp1, fp2)
     end
   end
-
-  # Fixtures ------------------------------------------------------------
 
   defp sample_draw do
     %{

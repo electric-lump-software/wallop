@@ -59,9 +59,6 @@ defmodule WallopCore.Resources.AddEntriesIdempotency do
       allow_nil?(false)
     end
 
-    # Ordered array of Entry UUIDs (submission order). For HTTP response
-    # replay only — never an input to receipt construction (entry_hash,
-    # seed, signing).
     attribute :entry_ids, {:array, :uuid} do
       allow_nil?(false)
     end

@@ -17,17 +17,12 @@ defmodule WallopWeb.EndpointRemoteIpTest do
   use WallopWeb.ConnCase, async: true
 
   test "CF-Connecting-IP rewrites conn.remote_ip" do
-    # /health is the simplest existing endpoint; hits the full plug
-    # pipeline including RemoteIp.
     conn =
       build_conn()
       |> Map.put(:remote_ip, {10, 0, 0, 1})
       |> put_req_header("cf-connecting-ip", "203.0.113.42")
       |> get("/health")
 
-    # The HealthController doesn't expose remote_ip, but RemoteIp runs
-    # in the endpoint pipeline before the controller. We can read it
-    # off the conn that comes back.
     assert conn.remote_ip == {203, 0, 113, 42}
   end
 
@@ -51,9 +46,6 @@ defmodule WallopWeb.EndpointRemoteIpTest do
   end
 
   test "malformed CF-Connecting-IP leaves conn.remote_ip as the TCP source" do
-    # Defensive: RemoteIp ignores values it can't parse rather than
-    # raising, so a malformed header from a misbehaving upstream is a
-    # logged anomaly, not a 500.
     conn =
       build_conn()
       |> Map.put(:remote_ip, {10, 0, 0, 1})

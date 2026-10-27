@@ -16,11 +16,8 @@ defmodule WallopCore.Frequency.WindowStoreTest do
     put_freq_awaiting!(open_draw_with_entries(key), t, round)
   end
 
-  # now - T is in [165, 180): inside [T + 105 s, F].
   defp inside, do: aligned_freq_start(-(Schedule.span_seconds() + 60))
 
-  # Straight to the action, past Windows.store/3's raw check, so the
-  # triggers and CHECKs are what is tested.
   defp db_store(t, value),
     do:
       FrequencyWindow
@@ -29,7 +26,6 @@ defmodule WallopCore.Frequency.WindowStoreTest do
 
   defp message({:error, error}), do: Exception.message(error)
 
-  # The name of the CHECK a refused store broke.
   defp constraint({:error, %Ash.Error.Invalid{errors: [%{private_vars: vars}]}}),
     do: vars[:constraint]
 
@@ -162,8 +158,6 @@ defmodule WallopCore.Frequency.WindowStoreTest do
     assert Windows.for_draw(a.id).value == @value
   end
 
-  # Each case gets its own T inside its window (now - T in [135, 330)), so
-  # one stored window never decides another case.
   defp case_start(i), do: aligned_freq_start(-(135 + 15 * i))
 
   defp set_status!(draw, status) do

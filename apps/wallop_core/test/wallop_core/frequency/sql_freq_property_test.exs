@@ -125,7 +125,6 @@ defmodule WallopCore.Frequency.SqlFreqPropertyTest do
     assert src =~ "IF run >= #{n} THEN"
     refute src =~ "wallop_freq_stuck_run"
 
-    # Behaviour on both sides of N, built from n so a mismatch fails here.
     run_of = fn k ->
       List.duplicate("50000", k) ++ Enum.map(1..(8 - k), &Integer.to_string(50_000 + &1))
     end

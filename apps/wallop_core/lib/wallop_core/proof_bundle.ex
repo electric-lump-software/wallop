@@ -17,13 +17,6 @@ defmodule WallopCore.ProofBundle do
 
   @bundle_version 1
 
-  # Lock-receipt schema versions whose bundle wrapper MUST carry an inline
-  # `operator_public_key_hex` for self-consistency verification. v5 omits
-  # the inline key — verifiers resolve operator keys via `KeyResolver`
-  # against `/operator/:slug/keys` or an operator-published pin per
-  # spec §4.2.4. The verifier's `BundleShape` step rejects any mismatch
-  # (v5 + inline key as downgrade-relabel; legacy + missing key as
-  # upgrade-spoof).
   @inline_lock_key_schemas ~w(4)
   @inline_exec_key_schemas ~w(2 3)
 
@@ -129,10 +122,6 @@ defmodule WallopCore.ProofBundle do
     if is_nil(key_hex), do: base, else: Map.put(base, key_field, key_hex)
   end
 
-  # Pulls schema_version off a JCS-encoded receipt payload without
-  # re-implementing the parser. Returns nil if the payload is malformed —
-  # callers treat that as "no inline-key requirement" which fails any
-  # downstream signature check anyway.
   defp receipt_schema_version(payload_jcs) when is_binary(payload_jcs) do
     case Jason.decode(payload_jcs) do
       {:ok, %{"schema_version" => v}} when is_binary(v) -> v
@@ -140,10 +129,6 @@ defmodule WallopCore.ProofBundle do
     end
   end
 
-  # Entries are sorted by uuid for deterministic bundle bytes. Entries.load_for_draw/1
-  # has no ORDER BY, so two calls for the same draw could return different orders,
-  # which would produce different JCS-encoded bundle bytes for the same logical
-  # draw. Third-party verifiers caching bundle hashes depend on byte stability.
   defp entries_for(draw) do
     draw.id
     |> WallopCore.Entries.load_for_draw()
@@ -151,10 +136,6 @@ defmodule WallopCore.ProofBundle do
     |> Enum.map(fn e -> %{"uuid" => e.uuid, "weight" => e.weight} end)
   end
 
-  # Results are sorted by position defensively. The execution receipt's results
-  # are stored in position order, but PostgreSQL JSONB does not strictly guarantee
-  # array order preservation across all operations — sorting here is cheap
-  # insurance and matches the canonical "winners in position order" contract.
   defp results_for(draw) do
     (draw.results || [])
     |> Enum.sort_by(& &1["position"])
@@ -169,10 +150,6 @@ defmodule WallopCore.ProofBundle do
       "drand_chain_hash" => draw.drand_chain
     }
 
-    # The unsigned copy of the value that fed the seed: the weather reading,
-    # or, if there was none, the grid-frequency window. The verifier binds
-    # it to the signed execution receipt. At most one is set. A
-    # grid-frequency draw never serves a weather value, whatever is stored.
     freq_tag? = draw.entropy_composition == Protocol.freq_entropy_composition()
 
     cond do

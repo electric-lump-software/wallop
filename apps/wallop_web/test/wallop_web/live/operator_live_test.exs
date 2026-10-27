@@ -46,8 +46,6 @@ defmodule WallopWeb.OperatorLiveTest do
         |> Ash.Changeset.for_create(:create, %{winner_count: 2}, actor: api_key)
         |> Ash.create()
 
-      # Sanity: both draws have a sequence (assigned at create), but only
-      # the helper-produced one has been locked and transitioned out of :open.
       assert is_integer(locked.operator_sequence)
       assert is_integer(open_draw.operator_sequence)
       assert open_draw.status == :open
@@ -78,7 +76,6 @@ defmodule WallopWeb.OperatorLiveTest do
 
       send(live.pid, {:draw_updated, open_draw})
 
-      # Allow the LiveView process to handle the message.
       _ = :sys.get_state(live.pid)
 
       html = render(live)

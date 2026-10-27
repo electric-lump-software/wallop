@@ -59,9 +59,6 @@ defmodule WallopWeb.DrawEntriesControllerTest do
       assert length(uuids) == 3
       assert Enum.all?(uuids, &String.match?(&1, ~r/^[0-9a-f-]{36}$/))
 
-      # Cross-check via Entries.load_for_draw — weight at position i in
-      # the response's inserted_entries must match weight at position i
-      # of the submitted body.
       rows = WallopCore.Entries.load_for_draw(draw.id)
       by_uuid = Map.new(rows, &{&1.uuid, &1.weight})
 
@@ -98,9 +95,6 @@ defmodule WallopWeb.DrawEntriesControllerTest do
         |> Ash.Changeset.for_create(:create, %{winner_count: 1}, actor: other_key)
         |> Ash.create!()
 
-      # Using conn still carries the *first* operator's auth — attempting
-      # to patch the other operator's draw should be scoped to the caller
-      # and return 404 (don't leak existence).
       conn =
         patch(conn, "/api/v1/draws/#{other_draw.id}/entries", %{
           entries: [%{weight: 1}],
@@ -113,7 +107,6 @@ defmodule WallopWeb.DrawEntriesControllerTest do
 
   describe "GET /api/v1/draws/:id/entries" do
     setup %{conn: conn, draw: draw} do
-      # Seed 5 entries via the same path so uuids exist in the DB.
       conn =
         patch(conn, "/api/v1/draws/#{draw.id}/entries", %{
           entries: for(w <- 1..5, do: %{weight: w}),
@@ -144,19 +137,16 @@ defmodule WallopWeb.DrawEntriesControllerTest do
     end
 
     test "keyset pagination via ?limit and ?after", %{conn: conn, draw: draw} do
-      # Page 1 — limit 3
       conn1 = get(conn, "/api/v1/draws/#{draw.id}/entries?limit=3")
       resp1 = json_response(conn1, 200)
       assert length(resp1["entries"]) == 3
       assert is_binary(resp1["next_after"])
 
-      # Page 2 — remaining
       conn2 = get(conn, "/api/v1/draws/#{draw.id}/entries?after=#{resp1["next_after"]}&limit=3")
       resp2 = json_response(conn2, 200)
       assert length(resp2["entries"]) == 2
       refute Map.has_key?(resp2, "next_after")
 
-      # Combined pages equal the full list
       all_uuids =
         (resp1["entries"] ++ resp2["entries"])
         |> Enum.map(& &1["uuid"])
@@ -176,7 +166,6 @@ defmodule WallopWeb.DrawEntriesControllerTest do
     end
 
     test "works on open draw (not just locked)", %{conn: conn, draw: draw} do
-      # Draw is still :open from setup — endpoint must serve it.
       conn = get(conn, "/api/v1/draws/#{draw.id}/entries")
       assert json_response(conn, 200)
     end
@@ -196,8 +185,6 @@ defmodule WallopWeb.DrawEntriesControllerTest do
 
   describe "AshJsonApi fallback for other /api/v1/draws routes" do
     test "GET /api/v1/draws still works (not intercepted)", %{conn: conn} do
-      # Our custom controller handles /draws/:id/entries but must leave
-      # other AshJsonApi routes (like the index) alone.
       conn =
         conn
         |> put_req_header("content-type", "application/vnd.api+json")

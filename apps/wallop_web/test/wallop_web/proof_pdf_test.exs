@@ -53,11 +53,6 @@ defmodule WallopWeb.ProofPdfTest do
   end
 
   describe "Fingerprint.compare/2 regeneration invariant" do
-    # The actual regen check is invoked from inside ProofPdf.generate_and_store/1
-    # which also calls qpdf and Gotenberg. We unit-test the invariant
-    # behaviour here via Fingerprint.compare directly — the integration
-    # test for the full pipeline lives in the integration suite.
-
     test "same fingerprint passes" do
       fp = sample_fingerprint()
       assert :ok = Fingerprint.compare(fp, fp)

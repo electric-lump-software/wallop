@@ -96,7 +96,6 @@ defmodule WallopCore.Protocol.Tags.Freq do
   @impl true
   @spec validate_exec!(map()) :: :ok
   def validate_exec!(%{drand_round: round, executed_at: executed_at} = input) do
-    # Present on every input, like the base keys; nil only where the rules allow it.
     require_keys!(input, "exec v5", [:freq_value, :freq_fallback_reason])
 
     Enum.each(@exec_weather_keys, fn key ->

@@ -2,7 +2,6 @@ defmodule WallopWeb.Api.DrawsTest do
   use WallopWeb.ConnCase, async: true
 
   defp create_key_with_raw(name \\ "test key") do
-    # All API keys must have an operator for the proof protocol
     operator = create_operator()
 
     {:ok, api_key} =
@@ -55,7 +54,6 @@ defmodule WallopWeb.Api.DrawsTest do
       assert data["attributes"]["status"] == "open"
       assert data["attributes"]["winner_count"] == 2
       assert data["id"]
-      # Open draws have no entry_hash or entropy until locked
       assert data["attributes"]["entry_hash"] == nil
       assert data["attributes"]["drand_chain"] == nil
       assert data["attributes"]["drand_round"] == nil
@@ -85,7 +83,6 @@ defmodule WallopWeb.Api.DrawsTest do
       assert data["type"] == "draw"
       assert data["attributes"]["status"] == "awaiting_entropy"
 
-      # When the result is due: pub(drand_round).
       assert {:ok, _, 0} = DateTime.from_iso8601(data["attributes"]["expected_result_at"])
       refute Map.has_key?(data["attributes"], "lock_schema_version")
       refute Map.has_key?(data["attributes"], "entropy_composition")
@@ -96,7 +93,6 @@ defmodule WallopWeb.Api.DrawsTest do
     test "adds entries to an open draw", %{conn: conn} do
       {_api_key, raw_key} = create_key_with_raw()
 
-      # Create open draw
       create_resp =
         conn
         |> auth_conn(raw_key)
@@ -105,7 +101,6 @@ defmodule WallopWeb.Api.DrawsTest do
 
       draw_id = create_resp["data"]["id"]
 
-      # Add entries
       entries_payload = %{
         "data" => %{
           "type" => "draw",
@@ -135,7 +130,6 @@ defmodule WallopWeb.Api.DrawsTest do
     test "locks an open draw with entries", %{conn: conn} do
       {_api_key, raw_key} = create_key_with_raw()
 
-      # Create open draw
       create_resp =
         conn
         |> auth_conn(raw_key)
@@ -144,7 +138,6 @@ defmodule WallopWeb.Api.DrawsTest do
 
       draw_id = create_resp["data"]["id"]
 
-      # Add entries
       entries_payload = %{
         "data" => %{
           "type" => "draw",
@@ -165,7 +158,6 @@ defmodule WallopWeb.Api.DrawsTest do
       |> patch("/api/v1/draws/#{draw_id}/entries", entries_payload)
       |> json_response(200)
 
-      # Lock the draw
       lock_payload = %{
         "data" => %{
           "type" => "draw",

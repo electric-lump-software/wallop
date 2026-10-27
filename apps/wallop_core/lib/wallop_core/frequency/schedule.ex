@@ -22,15 +22,7 @@ defmodule WallopCore.Frequency.Schedule do
 
   alias WallopCore.Drand.Quicknet
 
-  # W_freq, the frequency fetch window. Final. The rule (max observed batch
-  # publication latency, measured from T + 105 s, + 40 s, at most 240 s) is
-  # capped: the cap binds. Samples arriving later fall back to drand only
-  # (no_frequency_by_deadline). Mirrored by the
-  # SQL function wallop_freq_fetch_window() and the verifier's W_FREQ_SECS.
   @fetch_window_seconds 240
-  # M, the margin between the fetch deadline F and pub(R): F <= pub(R) - M.
-  # With the commit-time check it only has to cover clock skew between the
-  # database and drand. Mirrored by wallop_freq_margin() and MARGIN_SECS.
   @margin_seconds 15
   @readings 8
   @spacing_seconds 15
@@ -134,8 +126,6 @@ defmodule WallopCore.Frequency.Schedule do
   """
   @spec default_draw_at(DateTime.t()) :: DateTime.t()
   def default_draw_at(%DateTime{} = now) do
-    # The 30-second margin is load-bearing: to_unix/1 drops the microseconds
-    # of `now`, and the lock itself happens a little after `now`.
     earliest = DateTime.to_unix(now) + @lock_gap_seconds + @default_margin_seconds
     t = earliest + Integer.mod(-earliest, @spacing_seconds)
     target = from_unix(t + @span_seconds + @fetch_window_seconds + @margin_seconds)

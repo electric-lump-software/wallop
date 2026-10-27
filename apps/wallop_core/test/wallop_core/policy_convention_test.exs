@@ -15,10 +15,6 @@ defmodule WallopCore.PolicyConventionTest do
   """
   use ExUnit.Case, async: true
 
-  # AshPaperTrail generates version resources at compile time and they
-  # don't accept the standard `authorizers:` option directly. Exempt with
-  # this allowlist so the convention test still catches every other
-  # resource.
   @paper_trail_exempt [
     WallopCore.Resources.Operator.Version
   ]

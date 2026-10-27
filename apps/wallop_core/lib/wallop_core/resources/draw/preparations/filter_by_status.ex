@@ -35,13 +35,10 @@ defmodule WallopCore.Resources.Draw.Preparations.FilterByStatus do
         end
 
       _ ->
-        # nil, or a value Ash has already recorded a cast error for.
         query
     end
   end
 
-  # Read at runtime: reading Draw's attributes at compile time here would
-  # make Draw and this module depend on each other.
   defp statuses do
     Draw
     |> Info.attribute(:status)

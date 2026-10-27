@@ -29,8 +29,6 @@ defmodule WallopCore.UnboxedHelpers do
 
       result =
         try do
-          # A caller may hold the transaction open until a deadline up to
-          # about 20 s away, past the default 15 s transaction timeout.
           unboxed(fn ->
             Repo.transaction(
               fn ->
@@ -84,7 +82,6 @@ defmodule WallopCore.UnboxedHelpers do
     Repo.transaction(fn ->
       Repo.query!("SET LOCAL session_replication_role = replica")
 
-      # The stores' tables may not exist yet on an older schema.
       for {table, sql} <- [
             {"weather_observations",
              "DELETE FROM weather_observations WHERE observation_time IN " <>
@@ -100,7 +97,6 @@ defmodule WallopCore.UnboxedHelpers do
 
       for sql <- [
             "DELETE FROM oban_jobs WHERE args->>'draw_id' IN (SELECT id::text FROM draws WHERE operator_id = $1)",
-            # By instant, not by one text form of it.
             "DELETE FROM oban_jobs j WHERE j.args ? 'freq_start' AND EXISTS " <>
               "(SELECT 1 FROM draws d WHERE d.operator_id = $1 " <>
               "AND (j.args->>'freq_start')::timestamptz = d.freq_start AT TIME ZONE 'UTC')",

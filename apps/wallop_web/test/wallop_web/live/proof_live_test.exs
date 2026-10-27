@@ -61,16 +61,9 @@ defmodule WallopWeb.ProofLiveTest do
       conn = get(conn, "/proof/#{draw.id}")
       html = html_response(conn, 200)
 
-      # The browser gate runs in attestable mode: keys come from the
-      # site's own key endpoints, not the bundle, and are not pinned.
-      # The disclosure must say so plainly.
       assert html =~ "Mode: checked against published keys"
       refute html =~ "Mode: local self-check only"
 
-      # The §4.2.4 caveat must be honestly disclosed: the browser-side
-      # check trusts the keys this site serves, so a copied page with
-      # swapped proof and keys would pass it, and the user is pointed at
-      # the CLI as the tier-1 path.
       assert String.replace(html, ~r/\s+/, " ") =~
                "if someone copied this page and swapped in their own proof and keys"
 
@@ -122,8 +115,6 @@ defmodule WallopWeb.ProofLiveTest do
       draw = create_draw(api_key, %{})
       draw = execute_draw(draw, test_seed(), api_key)
 
-      # Receipts are append-only; step round the trigger for this one row,
-      # inside the test's own transaction, as the sandbox migration does.
       WallopCore.Repo.query!("SET LOCAL session_replication_role = 'replica'")
 
       WallopCore.Repo.query!(
@@ -135,17 +126,11 @@ defmodule WallopWeb.ProofLiveTest do
 
       html = conn |> get("/proof/#{draw.id}") |> html_response(200)
 
-      # The page has partial receipts: a lock receipt, no execution receipt.
       assert attr_values(html, "data-lock-receipt-jcs") != []
       assert attr_values(html, "data-execution-receipt-jcs") == []
 
-      # It still names the bundle and both key lists, so the browser check
-      # (which fetches whenever there is any receipt data) asks for them.
       assert_verify_urls(html, draw, operator_slug(draw))
 
-      # The site refuses the bundle. The browser check shows its red
-      # "couldn't produce a complete proof" for a refused bundle; that
-      # branch is covered in assets/test/verify_core_test.mjs.
       assert %{"error" => "proof_chain_incomplete"} =
                build_conn() |> get("/proof/#{draw.id}/json") |> json_response(500)
     end
@@ -183,7 +168,6 @@ defmodule WallopWeb.ProofLiveTest do
       {_operator, api_key} = create_v6_operator()
       round = Quicknet.round_at_or_after(DateTime.add(DateTime.utc_now(), 3 * 3600))
       wt = Schedule.weather_time_for_round(round)
-      # The row's weather_time is another hour: the page follows the signed receipt.
       draw = put_v6_awaiting!(open_draw_with_entries(api_key), DateTime.add(wt, -3600), round)
       due = Quicknet.pub_time(round)
 
@@ -276,7 +260,6 @@ defmodule WallopWeb.ProofLiveTest do
     end
 
     test "a receipt outside the three states gets no source and says so", %{conn: conn} do
-      # State (a) plus a freq_value: the row still holds a weather value.
       draw =
         completed_signed!(:observed, fn signed ->
           Map.put(signed, "freq_value", "50012;50018;50012;49983;49980;49953;49912;49883")
@@ -295,7 +278,6 @@ defmodule WallopWeb.ProofLiveTest do
       refute html =~ "drand did this one on its own"
       refute html =~ "seed = SHA-256"
       refute html =~ "BMRS"
-      # The page still hands the browser check the receipt it must refuse.
       assert html =~ "data-execution-receipt-jcs"
     end
   end
@@ -518,7 +500,6 @@ defmodule WallopWeb.ProofLiveTest do
       html = html_response(conn, 200)
 
       assert html =~ "in the winner list"
-      # check_url is a fallback for non-winners — not shown for winners
       refute html =~ "https://operator.example/check"
     end
   end
@@ -578,17 +559,6 @@ defmodule WallopWeb.ProofLiveTest do
     end
 
     test "LiveView mounts and renders without crashing for an :open draw", %{conn: conn} do
-      # Regression: ProofPreLockView ships only a 9-field allowlist
-      # (id, name, status, winner_count, entry_count, opened_at,
-      # check_url, operator_sequence, operator). Components that
-      # render the :open branch must NOT bind to fields outside that
-      # set. Specifically: the timeline component used in :open must
-      # not try to read stage_timestamps, entry_hash, drand_round,
-      # weather_time, etc. — none of those exist on the pre-lock view.
-      #
-      # The pre-existing "redirects open draw to LiveView" test above
-      # only verified the HTTP redirect; it did not actually mount
-      # the LiveView. This one does.
       api_key = create_api_key()
 
       draw =
@@ -599,9 +569,6 @@ defmodule WallopWeb.ProofLiveTest do
       {:ok, _view, html} = live(conn, "/live/proof/#{draw.id}")
 
       assert html =~ "Draw Open"
-      # Every step in the timeline must render. If a downstream
-      # component reaches into a field outside the pre-lock allowlist,
-      # the live mount itself raises and this assertion never runs.
       assert html =~ "Entries Open"
       assert html =~ "Entries Locked"
       assert html =~ "Entropy Declared"
@@ -611,11 +578,6 @@ defmodule WallopWeb.ProofLiveTest do
     end
 
     test "LiveView render is stable under PubSub update on an :open draw", %{conn: conn} do
-      # Symmetric guard for the handle_info path: when a PubSub
-      # broadcast arrives for an :open draw and the status is still
-      # :open afterwards, the re-render must not raise. Catches the
-      # case where `open_view_for/2` falls back to the full Draw
-      # struct or vice versa.
       api_key = create_api_key()
 
       draw =
@@ -655,17 +617,14 @@ defmodule WallopWeb.ProofLiveTest do
 
       {:ok, view, _html} = live(%{conn | remote_ip: {198, 51, 100, 7}}, "/live/proof/#{draw.id}")
 
-      # The live check takes the last token in the client's bucket...
       render_hook(view, "check_entry", %{"entry_id" => Ecto.UUID.generate()})
       assert SelfCheckRateLimit.check_rate(client) == :rate_limited
 
-      # ...and further checks say they were refused, not that the entry lost.
       html = render_hook(view, "check_entry", %{"entry_id" => Ecto.UUID.generate()})
       refute html =~ "is a winner"
       refute html =~ "Not a winner this time"
       assert html =~ "Too many checks from your connection"
 
-      # Neither the proxy bucket ("unknown") nor another client was touched.
       assert SelfCheckRateLimit.check_rate(other) == :ok
       assert SelfCheckRateLimit.check_rate("unknown") == :ok
     end
@@ -689,7 +648,6 @@ defmodule WallopWeb.ProofLiveTest do
       draw = execute_draw(create_draw(api_key, %{}), test_seed(), api_key)
       winning_id = List.first(draw.results)["entry_id"]
 
-      # A completed draw, a check result from a refused (rate-limited) lookup.
       html =
         render_component(&EntryCheck.entry_check/1,
           check_result: %{rate_limited: true},

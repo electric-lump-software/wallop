@@ -73,9 +73,6 @@ defmodule WallopCore.Time do
   def validate_rfc3339_usec(other),
     do: {:error, "timestamp must be a string or nil; got: #{inspect(other)}"}
 
-  # DateTime.to_iso8601/1 on a UTC DateTime already emits `Z`, but
-  # be defensive — normalise any `+00:00` suffix a future OTP version
-  # might switch to.
   defp normalise_suffix(iso) do
     cond do
       String.ends_with?(iso, "Z") -> iso

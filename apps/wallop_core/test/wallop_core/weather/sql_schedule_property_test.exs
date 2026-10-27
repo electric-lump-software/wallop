@@ -11,7 +11,6 @@ defmodule WallopCore.Weather.SqlSchedulePropertyTest do
   alias WallopCore.Weather.{Schedule, Stations}
 
   setup do
-    # Any session time zone must give the same answers as UTC.
     Repo.query!("SET LOCAL TIME ZONE 'Asia/Kolkata'")
     :ok
   end

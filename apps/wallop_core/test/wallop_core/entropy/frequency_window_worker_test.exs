@@ -45,7 +45,6 @@ defmodule WallopCore.Entropy.FrequencyWindowWorkerTest do
 
   defp status(draw), do: Ash.get!(Draw, draw.id, authorize?: false).status
 
-  # now - T is in [165, 180): the window is open and the first poll is due.
   defp inside, do: aligned_freq_start(-(Schedule.span_seconds() + 60))
 
   describe "new_for_start/1" do
@@ -109,7 +108,6 @@ defmodule WallopCore.Entropy.FrequencyWindowWorkerTest do
       elexon(t, "50012;50018;00000;49983;49980;49953;49912;49883")
 
       assert {:snooze, secs} = run(t)
-      # F is minutes away, so the next poll is a full interval on.
       assert secs == Schedule.poll_interval_seconds()
       assert Windows.for_start(t) == nil
       assert status(d) == :awaiting_entropy
@@ -132,8 +130,6 @@ defmodule WallopCore.Entropy.FrequencyWindowWorkerTest do
     end
 
     test "the last poll is made at least 2 s before F" do
-      # now - T is in [325, 340): F (T + 345 s) is 5 to 20 s away, so the
-      # deadline, not the poll interval, sets the snooze.
       t = aligned_freq_start(-(Schedule.span_seconds() + Schedule.fetch_window_seconds() - 20))
       f = Schedule.fetch_deadline(t)
       freq_draws(t, 1)
@@ -191,7 +187,6 @@ defmodule WallopCore.Entropy.FrequencyWindowWorkerTest do
       other = "50000;50001;50000;50001;50000;50001;50000;50001"
       ref = attach([@stored, @store_refused])
 
-      # The other run stores while this one is fetching.
       Req.Test.stub(ElexonFreqClient, fn conn ->
         {:ok, _} = Windows.store(t, other, elexon_body(t, other))
         Plug.Conn.send_resp(conn, 200, elexon_body(t, @value))
@@ -228,8 +223,6 @@ defmodule WallopCore.Entropy.FrequencyWindowWorkerTest do
       [d] = freq_draws(t, 1)
       ref = attach([@store_refused])
 
-      # While the fetch runs, the draw stops waiting, so the store trigger
-      # refuses the insert (no waiting draw of T).
       Req.Test.stub(ElexonFreqClient, fn conn ->
         with_triggers_off(fn ->
           Repo.query!("UPDATE draws SET status = 'completed' WHERE id = $1", [
@@ -295,7 +288,6 @@ defmodule WallopCore.Entropy.FrequencyWindowWorkerTest do
 
       meta = %{freq_start: t, ok?: false, error: :poll_timeout}
       assert_received {@poll, ^ref, %{count: 1}, ^meta}
-      # The fetch was killed, not left running.
       refute_receive :fetch_finished, 5_000
     end
 
@@ -303,8 +295,6 @@ defmodule WallopCore.Entropy.FrequencyWindowWorkerTest do
       t = aligned_freq_start(-3600)
       ref = attach([@poll_error])
 
-      # Every query in an aborted transaction fails, so the first clock read
-      # raises and so does the read after the failure.
       log =
         capture_log(fn ->
           result =

@@ -26,10 +26,6 @@ defmodule WallopCore.ProtocolTest do
     end
 
     test "extra keys on entries are ignored" do
-      # The canonical entry_hash depends only on `uuid` and `weight`.
-      # Any additional keys callers happen to pass in are discarded before
-      # hashing — the public ProofBundle must be reproducible from
-      # `{uuid, weight}` alone.
       without_extras = [%{uuid: @uuid_a, weight: 1}]
       with_extras = [%{uuid: @uuid_a, weight: 1, anything: "ignored"}]
 

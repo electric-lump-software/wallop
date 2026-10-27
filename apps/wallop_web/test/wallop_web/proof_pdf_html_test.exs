@@ -1,6 +1,4 @@
 defmodule WallopWeb.ProofPdfHTMLTest do
-  # The PDF's HTML, before Gotenberg: its entropy section follows the
-  # signed execution receipt's state.
   use WallopWeb.ConnCase, async: false
 
   import WallopWeb.SignedEntropyHelpers

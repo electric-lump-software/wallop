@@ -13,10 +13,6 @@ defmodule WallopCore.Drand.Quicknet do
   @period 3
   @max_round_delta 201_600
 
-  # Quicknet's group public key: a 96-byte compressed G2 point (scheme
-  # bls-unchained-g1-rfc9380). From the chain info at
-  # https://api.drand.sh/52db9ba70e0cc0f6eaf7803dd07447a1f5477735fd3f661792ba94600c84e971/info
-  # (`public_key`); the wallop_rs verifier pins the same value.
   @public_key Base.decode16!(
                 "83cf0f2896adee7eb8b5f01fcad3912212c437e0073e911fb90022d3e760183c" <>
                   "8c4b450b6a0a6c3ac6a5776a2d1064510d1fec758c921cc22b0e17e63aaf4bcb" <>

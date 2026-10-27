@@ -22,8 +22,6 @@ defmodule WallopCore.Drand.Bls do
 
   @max_round 0xFFFF_FFFF_FFFF_FFFF
 
-  # Quicknet round 1000, from
-  # https://api.drand.sh/52db9ba70e0cc0f6eaf7803dd07447a1f5477735fd3f661792ba94600c84e971/public/1000
   @self_test_round 1000
   @self_test_signature "b44679b9a59af2ec876b1a6b1ad52ea9b1615fc3982b19576350f93447cb1125e342b73a8dd2bacbe47e4b6b63ed5e39"
 
@@ -70,7 +68,6 @@ defmodule WallopCore.Drand.Bls do
     end
   end
 
-  # A NIF that isn't loaded raises here; that is a wrong answer, not a crash.
   defp answer(native, round) do
     native.verify_g1(Quicknet.public_key(), round, sig())
   rescue

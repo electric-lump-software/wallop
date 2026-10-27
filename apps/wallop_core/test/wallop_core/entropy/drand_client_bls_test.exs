@@ -34,8 +34,6 @@ defmodule WallopCore.Entropy.DrandClientBlsTest do
   defp beacon(round, sig_hex),
     do: %{"round" => round, "signature" => sig_hex, "randomness" => randomness(sig_hex)}
 
-  # The randomness a beacon with this signature would carry, so that only
-  # the signature check can refuse it.
   defp randomness(sig_hex) do
     case Base.decode16(sig_hex, case: :mixed) do
       {:ok, bytes} -> :crypto.hash(:sha256, bytes) |> Base.encode16(case: :lower)
@@ -68,7 +66,6 @@ defmodule WallopCore.Entropy.DrandClientBlsTest do
 
   @r33068212_sig "b6541e41bb68ff318e8bd74b9f6e168ae6424476c432241420c38427df58c6ef33fe009ce202a7101120ab481702fddf"
 
-  # {case, requested round, chain, served beacon, logged failure kind}
   @cases [
     {"one bit flipped", 1000, nil, :flip, :bad_signature},
     {"round + 1", 1001, nil, {1001, :r1000}, :bad_signature},
@@ -125,7 +122,6 @@ defmodule WallopCore.Entropy.DrandClientBlsTest do
     end
 
     test "the stand-in signature tests use for rounds near now is refused for real at its own round's neighbours" do
-      # WallopCore.Test.DrandBls accepts it at any round; the real check doesn't.
       refute Bls.verify_quicknet(33_068_213, @r33068212_sig)
       assert Bls.verify_quicknet(33_068_212, @r33068212_sig)
     end

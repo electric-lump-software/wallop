@@ -28,16 +28,8 @@ defmodule WallopWeb.Endpoint do
 
   plug(Plug.RequestId)
 
-  # Refuse requests that bypassed the edge, before trusting its headers.
-  # See WallopWeb.Plugs.EdgeGuard; inactive unless EDGE_SHARED_SECRET is set.
   plug(WallopWeb.Plugs.EdgeGuard)
 
-  # Rewrite `conn.remote_ip` from the edge's client-IP header. Safe only
-  # while requests that bypass the edge are refused (EdgeGuard above, or
-  # a platform-level restriction on who can reach the origin). Trust
-  # assumption: if neither holds, any caller can forge this header and pick
-  # its own per-IP rate-limit bucket (WallopWeb.Application warns at boot in
-  # prod when EDGE_SHARED_SECRET is unset).
   plug(RemoteIp, headers: ~w(cf-connecting-ip))
 
   plug(Plug.Telemetry, event_prefix: [:phoenix, :endpoint])
@@ -46,11 +38,6 @@ defmodule WallopWeb.Endpoint do
     parsers: [:urlencoded, :multipart, :json],
     pass: ["*/*"],
     json_decoder: Jason,
-    # 1 MB ceiling on user-supplied request bodies. The largest legitimate
-    # body is `add_entries` at the per-draw entry cap (10 000 entries × ~80
-    # bytes ≈ 800 KB). Default Plug.Parsers limit is 8 MB, which lets a
-    # single legitimate api key wedge a worker on parse cost alone before
-    # any business validator fires.
     length: 1_048_576
   )
 

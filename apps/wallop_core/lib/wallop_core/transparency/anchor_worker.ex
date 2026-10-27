@@ -34,9 +34,6 @@ defmodule WallopCore.Transparency.AnchorWorker do
 
   alias WallopCore.Vault
 
-  # Domain separation prefix for the combined anchor root.
-  # Distinct from <<0>> (leaf) and <<1>> (internal node) to avoid
-  # structural ambiguity with the Merkle tree's own node hashes.
   @anchor_root_prefix "wallop-anchor-v1"
 
   @impl true
@@ -92,7 +89,6 @@ defmodule WallopCore.Transparency.AnchorWorker do
   end
 
   defp anchor(op_receipts, exec_receipts) do
-    # Build separate sub-tree roots with length-prefixed leaves
     op_root = build_sub_tree(op_receipts)
     exec_root = build_sub_tree(exec_receipts)
 
@@ -104,7 +100,6 @@ defmodule WallopCore.Transparency.AnchorWorker do
         :error -> {nil, nil}
       end
 
-    # Sign the combined root with the infrastructure key — fail if missing
     case sign_root(root) do
       {:ok, signature, key_id} ->
         create_anchor(%{
@@ -127,8 +122,6 @@ defmodule WallopCore.Transparency.AnchorWorker do
   defp build_sub_tree(receipts) do
     leaves =
       Enum.map(receipts, fn r ->
-        # Length-prefix payload_jcs so the boundary with signature is
-        # unambiguous regardless of signing algorithm.
         payload_len = byte_size(r.payload_jcs)
         <<payload_len::32>> <> r.payload_jcs <> r.signature
       end)
@@ -152,8 +145,6 @@ defmodule WallopCore.Transparency.AnchorWorker do
     first = List.first(sorted)
     last = List.last(sorted)
 
-    # Use the latest receipt's inserted_at as anchored_at to close
-    # clock-drift gaps between Elixir and Postgres timestamps.
     anchored_at = last.inserted_at
 
     {:ok, anchor} =

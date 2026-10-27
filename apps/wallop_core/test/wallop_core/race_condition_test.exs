@@ -14,9 +14,6 @@ defmodule WallopCore.RaceConditionTest do
 
   alias WallopCore.Resources.Draw
 
-  # A raw lock can't carry lock schema 6's checked fields, and the database
-  # refuses any other lock, so the state transition raced here is the
-  # other way out of open: expiry.
   describe "concurrent transitions out of open (real concurrency)" do
     test "exactly one of two concurrent UPDATE ... WHERE status = open succeeds" do
       {:ok, conn1} = raw_connection()
@@ -30,7 +27,6 @@ defmodule WallopCore.RaceConditionTest do
       api_key_id_bin = Ecto.UUID.dump!(api_key_id)
       operator_id_bin = Ecto.UUID.dump!(operator_id)
 
-      # Create minimal operator, api_key, and draw via raw SQL
       Postgrex.query!(
         setup_conn,
         "INSERT INTO operators (id, slug, name, inserted_at, updated_at) VALUES ($1, $2, 'Race Op', NOW(), NOW())",
@@ -73,7 +69,6 @@ defmodule WallopCore.RaceConditionTest do
       affected = r1.num_rows + r2.num_rows
       assert affected == 1, "expected 1 total affected row, got #{affected}"
 
-      # Cleanup (an expired draw is immutable, so with triggers off)
       Postgrex.query!(setup_conn, "SET session_replication_role = 'replica'", [])
       Postgrex.query!(setup_conn, "DELETE FROM draws WHERE id = $1", [draw_id_bin])
       Postgrex.query!(setup_conn, "DELETE FROM api_keys WHERE id = $1", [api_key_id_bin])
@@ -115,7 +110,6 @@ defmodule WallopCore.RaceConditionTest do
         [draw_id_bin, api_key_id_bin, operator_id_bin]
       )
 
-      # A draw is created open; it is placed in pending_entropy directly.
       Postgrex.query!(setup_conn, "SET session_replication_role = 'replica'", [])
 
       Postgrex.query!(setup_conn, "UPDATE draws SET status = 'pending_entropy' WHERE id = $1", [
@@ -153,7 +147,6 @@ defmodule WallopCore.RaceConditionTest do
 
       assert status in ["completed", "failed"]
 
-      # Cleanup — bypass trigger for terminal state delete
       Postgrex.query!(setup_conn, "SET session_replication_role = 'replica'", [])
       Postgrex.query!(setup_conn, "DELETE FROM draws WHERE id = $1", [draw_id_bin])
       Postgrex.query!(setup_conn, "DELETE FROM api_keys WHERE id = $1", [api_key_id_bin])

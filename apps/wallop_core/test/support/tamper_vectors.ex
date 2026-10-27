@@ -47,9 +47,6 @@ defmodule WallopCore.TamperVectors do
   @dir Path.expand("../../../../spec/vectors", __DIR__)
   @profiles [TamperProfiles.LandObs, TamperProfiles.Freq]
 
-  # A real quicknet beacon, published 2026-10-14T20:00:00Z; the same round
-  # the v6 builder tests use. Its observation hour is 19:00; its
-  # grid-frequency window starts at 19:54:00.
   @round 33_068_212
   @randomness "140117383b03a0c0c7a899a32b8cbd2ffff9e2569504037c358ee8c7c2efe2fd"
   @signature "b6541e41bb68ff318e8bd74b9f6e168ae6424476c432241420c38427df58c6ef33fe009ce202a7101120ab481702fddf"

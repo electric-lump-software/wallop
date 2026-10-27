@@ -3,10 +3,6 @@ import Config
 if config_env() in [:dev, :test] do
   env = Dotenvy.source!([".env", System.get_env()])
 
-  # Optional: only observation-weather draws use it. When it's missing (or
-  # unusable), new observation-weather locks are refused, and draws already
-  # locked fall back by rule (visible in the receipt). Grid-frequency draws
-  # are unaffected.
   if obs_key = env["MET_OFFICE_OBS_API_KEY"] do
     config :wallop_core, :met_office_obs_api_key, obs_key
   end
@@ -27,12 +23,6 @@ if config_env() in [:dev, :test] do
         mix phx.gen.secret, which produces a double-encoded value).
         """
 
-    # Optional retired-key slot for dual-key rotation. When
-    # `VAULT_KEY_OLD` is supplied, rows encrypted under the old key
-    # remain decryptable while new writes go to the default cipher.
-    # When unset (current production state), the cipher list is
-    # identical to the previous single-key configuration — no
-    # observable behaviour change.
     vault_key_old = env["VAULT_KEY_OLD"]
 
     config :wallop_core, WallopCore.Vault,
@@ -40,10 +30,6 @@ if config_env() in [:dev, :test] do
   end
 end
 
-# Daily cap on Land Observations calls: a whole number from 1 to 900,
-# default 800. Anything else stops the boot. Logger isn't configured yet, so
-# WallopCore.Application logs the warning for a cap below a full day of
-# polling. See WallopCore.Weather.LandObsBudget.
 config :wallop_core,
        :land_obs_daily_cap,
        WallopCore.Weather.LandObsBudget.parse_cap!(System.get_env("LAND_OBS_DAILY_CAP"))
@@ -58,9 +44,6 @@ if honeycomb_api_key = System.get_env("HONEYCOMB_API_KEY") do
     otlp_protocol: :http_protobuf
 end
 
-# The draw that "view an example proof" links on the home page and the
-# verification explainer point at. Unset, those links are left out.
-# Set and not https://, the boot stops.
 if url = WallopWeb.ExampleProof.parse_env!(System.get_env("EXAMPLE_PROOF_URL")) do
   config :wallop_web, :example_proof_url, url
 end
@@ -75,8 +58,6 @@ if config_env() == :prod do
 
   config :wallop_web, WallopWeb.Plugs.EdgeGuard, secret: edge_shared_secret
 
-  # Logger isn't configured yet while runtime.exs runs, so only set a flag;
-  # WallopWeb.Application logs the warning at start.
   config :wallop_web, :warn_edge_secret_unset, is_nil(edge_shared_secret)
 
   case System.get_env("RATE_LIMIT_BACKEND", "ets") do
@@ -92,10 +73,6 @@ if config_env() == :prod do
       raise "RATE_LIMIT_BACKEND must be ets or redis, got #{inspect(other)}"
   end
 
-  # Optional: only observation-weather draws use it. When it's missing (or
-  # unusable), new observation-weather locks are refused, and draws already
-  # locked fall back by rule (visible in the receipt). Grid-frequency draws
-  # are unaffected.
   if obs_key = System.get_env("MET_OFFICE_OBS_API_KEY") do
     config :wallop_core, :met_office_obs_api_key, obs_key
   end
@@ -108,9 +85,6 @@ if config_env() == :prod do
     System.get_env("VAULT_KEY") ||
       raise "VAULT_KEY environment variable is not set"
 
-  # Optional retired-key slot for dual-key rotation. Unset in
-  # current production — `build_ciphers/2` then returns the same single-
-  # cipher list that was hardcoded here previously.
   vault_key_old = System.get_env("VAULT_KEY_OLD")
 
   config :wallop_core, WallopCore.Vault,
@@ -129,8 +103,6 @@ if config_env() == :prod do
 
   host = System.get_env("PHX_HOST") || "localhost"
 
-  # "self" for deployments whose infrastructure keys are not in the
-  # released verifier's bundled anchor set. Unset means "bundled".
   case System.get_env("VERIFY_BLOCK_ANCHOR_MODE") do
     nil -> :ok
     "bundled" -> config :wallop_web, :verify_block_anchor_mode, :bundled
@@ -145,11 +117,6 @@ if config_env() == :prod do
     http: [
       ip: {0, 0, 0, 0, 0, 0, 0, 0},
       port: port,
-      # Bandit / Thousand Island read timeout. Bandit defaults to 60 s of
-      # idle tolerance on a partial request body (slowloris); 10 s is the
-      # smallest figure that still leaves headroom for a slow legitimate
-      # uploader at the 1 MB body cap (Plug.Parsers limit) on a 100 kbps
-      # link. Defence-in-depth alongside per-IP rate limiting.
       thousand_island_options: [read_timeout: 10_000]
     ],
     secret_key_base: secret_key_base
@@ -158,17 +125,10 @@ if config_env() == :prod do
     config :wallop_web, :gotenberg_url, gotenberg_url
   end
 
-  # Caching is normally on (immutable PDFs cached forever). Set
-  # PROOF_PDF_CACHE_ENABLED=false during a design iteration phase to
-  # bypass storage and serve a freshly-rendered PDF on every request,
-  # with no-store cache headers.
   config :wallop_web,
          :proof_pdf_cache_enabled?,
          System.get_env("PROOF_PDF_CACHE_ENABLED", "true") == "true"
 
-  # Proof PDF storage. If AWS_S3_BUCKET_NAME is set we use the S3
-  # backend, otherwise fall back to the local filesystem (useful for
-  # self-hosters). Env-var name follows the AWS convention.
   if bucket = System.get_env("AWS_S3_BUCKET_NAME") do
     config :wallop_web, :proof_storage,
       backend: WallopWeb.ProofStorage.S3,
@@ -185,9 +145,6 @@ if config_env() == :prod do
       secret_access_key: System.get_env("AWS_SECRET_ACCESS_KEY"),
       region: region
 
-    # Some S3-compatible providers expose the endpoint as a full URL
-    # (e.g. https://bucket.region.provider.example:443). ex_aws wants
-    # it split into scheme + host + port, so parse it.
     endpoint_url =
       System.get_env("AWS_ENDPOINT_URL") || System.get_env("AWS_S3_ENDPOINT")
 

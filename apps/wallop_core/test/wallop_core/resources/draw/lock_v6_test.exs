@@ -108,8 +108,6 @@ defmodule WallopCore.Resources.Draw.LockV6Test do
     assert DateTime.diff(locked.weather_time, before) >= 46 * 60
     assert DateTime.diff(locked.weather_time, before) < 46 * 60 + 3600 + 60
 
-    # The lock reads the clock once, between `before` and `later`; the
-    # default moves on at hh:13:30, which may fall between the two.
     defaults =
       for now <- [before, later], do: Quicknet.round_at_or_after(Schedule.default_draw_at(now))
 
@@ -131,12 +129,9 @@ defmodule WallopCore.Resources.Draw.LockV6Test do
     end
   end
 
-  # Refused by the DrawAt validation before the lock runs; the same check on
-  # the signed locked_at is unit-tested in LockV6RefusalsTest.
   test "a late draw_at is refused; the draw stays open and nothing is enqueued" do
     {_op, key} = create_v6_operator()
     draw = open_draw_with_entries(key)
-    # The latest observation hour whose lock time has passed.
     latest = DateTime.to_unix(DateTime.utc_now()) + Schedule.lock_offset_seconds() - 1
     wt = DateTime.from_unix!((latest - Integer.mod(latest, 3600)) * 1_000_000, :microsecond)
     round = Quicknet.round_at_or_after(DateTime.add(wt, Schedule.fetch_window_seconds() + 60))
@@ -199,7 +194,6 @@ defmodule WallopCore.Resources.Draw.LockV6Test do
   end
 
   test "a raw-SQL lock that leaves lock_schema_version NULL is refused by the database" do
-    # Older core code locks without knowing the flag; the database refuses it.
     {_op, key} = create_v6_operator()
     draw = open_draw_with_entries(key)
 
