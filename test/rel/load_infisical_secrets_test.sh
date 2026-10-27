@@ -162,8 +162,15 @@ for raw in "[]" "null" ""; do
   # shellcheck disable=SC2086
   run_start $all_four "STUB_RAW_EXPORT=$raw"
   status=$?
-  check "an empty folder ('$raw') passes" '[ $status -eq 0 ] && [ ! -s "$work/err" ]'
+  check "an empty folder ('$raw') refuses to start, as a folder the identity may not read" \
+    'refused && grep -qxF "Infisical folder / returned no secrets; check the folder, environment and the identity'"'"'s role." "$work/err"'
 done
+
+# shellcheck disable=SC2086
+run_start $all_four "INFISICAL_PATHS=/shared /core" STUB_NAMES_PATH=/core "STUB_RAW_EXPORT=[]"
+status=$?
+check "one empty folder among several refuses to start, naming that folder" \
+  'refused && grep -q "Infisical folder /core returned no secrets" "$work/err" && ! grep -q "folder /shared" "$work/err"'
 
 # shellcheck disable=SC2086
 run_start $all_four "INFISICAL_PATHS=/*"
