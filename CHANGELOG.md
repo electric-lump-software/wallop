@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed: a paused observation lock has its own error code
+
+An observation-weather lock refused because Land Observations readings can't be fetched now returns `code` `observation_paused` instead of `invalid_argument`. The status (`400`), `detail`, empty `meta` and missing `source.pointer` are unchanged. Clients that matched `invalid_argument` with this `detail` should match the new code.
+
 ### Secrets can come from Infisical; a wrong vault key stops the boot
 
 **BREAKING (self-hosters).** `CLOAK_KEY` is no longer read. If your deployment sets only `CLOAK_KEY`, set `VAULT_KEY` to the same value before upgrading; otherwise the release refuses to boot with "VAULT_KEY environment variable is not set".

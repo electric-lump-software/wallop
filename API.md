@@ -145,14 +145,14 @@ The platform sets the draw protocol per operator; it is `observation` unless the
 
 Pick a later `draw_at` (or send none) and lock again. Without `draw_at` the error has no `source.pointer`. Match on `code` and `meta`, not on `detail`.
 
-**An observation-weather lock while wallop can't fetch Land Observations readings** is refused with `400` `invalid_argument`, with no `source.pointer` and an empty `meta`, and the draw stays open. That is when the service that fetches the readings hasn't said, in the last 30 minutes, that it holds a usable key. Such a draw would always fall back, so wallop says so now rather than at the result. Grid-frequency locks are unaffected. Other keys omitted:
+**An observation-weather lock while wallop can't fetch Land Observations readings** is refused with `400` `observation_paused`, with no `source.pointer` and an empty `meta`, and the draw stays open. That is when the service that fetches the readings hasn't said, in the last 30 minutes, that it holds a usable key. Such a draw would always fall back, so wallop says so now rather than at the result. Grid-frequency locks are unaffected. Other keys omitted:
 
 ```json
 {
   "errors": [
     {
       "status": "400",
-      "code": "invalid_argument",
+      "code": "observation_paused",
       "detail": "observation-weather draws are paused here: Land Observations readings can't be fetched right now"
     }
   ]
