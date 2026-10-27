@@ -1,6 +1,6 @@
 # Execution Receipt Design
 
-> **Status:** Approved, 2026-04-09. Colin sign-off received with two
+> **Status:** Approved, 2026-04-09. Sign-off received with two
 > adjustments (both incorporated below).
 >
 > **Implements:** Finding C from the receipt completeness audit.
@@ -18,7 +18,7 @@ A verifier who only trusts signed bytes can confirm the **commitment** half
 of the trust story but not the **execution** half. The claim "verify without
 trusting wallop" is half-true.
 
-## 2. Design decisions (confirmed by Colin)
+## 2. Design decisions (confirmed in review)
 
 ### 2.1 Maximalist signed surface
 
@@ -40,7 +40,7 @@ to reconstruct and verify the outcome without hitting external services:
 | `weather_observation_time` | ISO 8601, nullable | Actual observation time |
 | `weather_value` | string, nullable | Normalised reading (integer hectopascals as string) |
 | `weather_fallback_reason` | string, nullable | Why weather was unavailable (if drand-only) |
-| `entry_hash` | string (64-char hex SHA-256) | Redundant with lock receipt but makes seed recomputation self-contained from a single artefact (Colin review addition) |
+| `entry_hash` | string (64-char hex SHA-256) | Redundant with lock receipt but makes seed recomputation self-contained from a single artefact (review addition) |
 | `wallop_core_version` | string | Version of wallop_core that ran the execution (e.g. `"0.12.0"`) |
 | `fair_pick_version` | string | Version of the fair_pick dep used (e.g. `"0.2.1"`) — carried separately because `mix deps.update fair_pick` can change it without touching wallop_core |
 | `seed` | string (64-char hex) | The derived seed |
@@ -48,7 +48,7 @@ to reconstruct and verify the outcome without hitting external services:
 | `executed_at` | ISO 8601 | When execution happened |
 | `execution_schema_version` | string | Version of this payload format (starts at `"1"`) |
 
-**Excluded from the signed payload** (per Colin):
+**Excluded from the signed payload** (per review):
 - `weather_raw` — the raw Met Office API response. Normalisation inputs
   only; if this were signed, any Met Office response format change would
   break byte-exact verification. Keep as public auxiliary data on the
@@ -70,7 +70,7 @@ Properties:
 - Survives transparency log compromise as a separate layer
 - A verifier can fetch and verify either receipt without the other
 
-### 2.3 Phase-separated keys (Colin: non-negotiable)
+### 2.3 Phase-separated keys (non-negotiable)
 
 | Receipt type | Signed by | Rationale |
 |---|---|---|
@@ -123,7 +123,7 @@ closing the "who signs the log?" question.
 3. Publish an incident notice on the transparency page
 4. Lock-time receipts (operator-signed) are completely unaffected
 
-**No re-signing of affected draws** (Colin review adjustment). Re-signing
+**No re-signing of affected draws** (review adjustment). Re-signing
 would insert a second execution receipt for the same draw, violating the
 `unique_draw` identity constraint and the append-only semantics. The old
 receipt is still independently verifiable under the old key — verifiers
@@ -235,7 +235,7 @@ Mirrors `SignAndStoreReceipt` in structure:
 
 Added to the end of `ExecuteWithEntropy` and `ExecuteDrandOnly` change lists.
 
-**Critical constraint from Colin:** `results` and `seed` in the signed
+**Critical constraint:** `results` and `seed` in the signed
 payload must be the **exact canonical form from FairPick's output** with
 zero intermediate Ash/Ecto transformations. Any re-serialisation between
 algorithm output and signed bytes is a place where verifier re-runs can
@@ -262,7 +262,7 @@ time of this draw.
 `AnchorWorker` is extended:
 
 1. The daily Merkle root now covers **both** `operator_receipts` AND
-   `execution_receipts` as **separate sub-trees** (Colin review adjustment —
+   `execution_receipts` as **separate sub-trees** (review adjustment —
    pinned now, not at implementation time). The anchor's Merkle root is:
 
    ```

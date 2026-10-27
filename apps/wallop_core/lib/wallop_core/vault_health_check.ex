@@ -4,7 +4,7 @@ defmodule WallopCore.VaultHealthCheck do
 
   Performs an encrypt/decrypt round-trip with a known probe through every
   configured cipher — `:default` always, plus `:retired` when
-  `VAULT_KEY_OLD` is present (see ADR-0013). Refuses to boot if any cipher
+  `VAULT_KEY_OLD` is present. Refuses to boot if any cipher
   fails to round-trip.
 
   Two failure modes this catches early:

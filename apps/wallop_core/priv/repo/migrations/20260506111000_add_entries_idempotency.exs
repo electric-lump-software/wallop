@@ -1,6 +1,6 @@
 defmodule WallopCore.Repo.Migrations.AddEntriesIdempotency do
   @moduledoc """
-  Side table for `Draw.add_entries` idempotent retries (ADR-0012).
+  Side table for `Draw.add_entries` idempotent retries.
 
   Operators supply a `client_ref` per batch. The boundary hashes it
   to a `client_ref_digest` (plaintext is never persisted). The

@@ -21,7 +21,7 @@ defmodule WallopCore.Vault do
       to the cipher whose `:tag` matches. This is what lets a single
       vault decrypt rows from multiple generations of key material.
 
-  ## Dual-key rotation (ADR-0013)
+  ## Dual-key rotation
 
   When `VAULT_KEY_OLD` is set in the environment, the vault is
   configured with TWO ciphers — `:default` and `:retired`. New writes

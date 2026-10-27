@@ -1,7 +1,7 @@
 defmodule WallopCore.Resources.Draw.Changes.AddEntries do
   @moduledoc """
   Appends entries to an open draw by creating Entry records, with
-  idempotency replay (ADR-0012).
+  idempotency replay.
 
   Each entry gets a server-generated UUID (the Ash PK `id`, from
   `Ash.UUID.generate/0`). Structural validation is handled by
@@ -54,7 +54,7 @@ defmodule WallopCore.Resources.Draw.Changes.AddEntries do
       # what gives us "concurrent retry blocks on the row lock and
       # then sees the populated entry_ids on its own retry." Refactoring
       # entry insertion to async/Oban or any out-of-tx mechanism
-      # collapses this property. See ADR-0012.
+      # collapses this property.
       new_entries = Ash.Changeset.get_argument(changeset, :entries) || []
       current_count = changeset.data.entry_count || 0
       new_count = current_count + length(new_entries)

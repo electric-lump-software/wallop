@@ -27,7 +27,7 @@ if config_env() in [:dev, :test] do
         mix phx.gen.secret, which produces a double-encoded value).
         """
 
-    # Optional retired-key slot for dual-key rotation (ADR-0013). When
+    # Optional retired-key slot for dual-key rotation. When
     # `VAULT_KEY_OLD` is supplied, rows encrypted under the old key
     # remain decryptable while new writes go to the default cipher.
     # When unset (current production state), the cipher list is
@@ -108,7 +108,7 @@ if config_env() == :prod do
     System.get_env("VAULT_KEY") ||
       raise "VAULT_KEY environment variable is not set"
 
-  # Optional retired-key slot for dual-key rotation (ADR-0013). Unset in
+  # Optional retired-key slot for dual-key rotation. Unset in
   # current production — `build_ciphers/2` then returns the same single-
   # cipher list that was hardcoded here previously.
   vault_key_old = System.get_env("VAULT_KEY_OLD")

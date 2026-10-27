@@ -1,6 +1,6 @@
 defmodule WallopCore.Resources.Draw.ClientRefIdempotencyTest do
   @moduledoc """
-  Sharp-edge regressions for `Draw.add_entries` idempotency (ADR-0012).
+  Sharp-edge regressions for `Draw.add_entries` idempotency.
 
   Each test guards a permanent commitment from the ADR. The matrix:
 
@@ -307,7 +307,7 @@ defmodule WallopCore.Resources.Draw.ClientRefIdempotencyTest do
     test "execution receipt unchanged + payload contains no idempotency keys after table wipe" do
       # Parallel to the lock-receipt test. The execution receipt is the
       # other signed artefact in the protocol; both must be invariant
-      # under idempotency-table mutation. ADR-0012.
+      # under idempotency-table mutation.
       api_key = create_api_key()
       WallopCore.TestHelpers.ensure_infrastructure_key()
 

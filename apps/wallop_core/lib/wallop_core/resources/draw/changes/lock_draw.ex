@@ -5,7 +5,7 @@ defmodule WallopCore.Resources.Draw.Changes.LockDraw do
   is the tag's own change (`DeclareEntropyV6` or `DeclareEntropyFreq`).
 
   Runs as before_action so all changes are applied in a single DB write
-  inside the action's transaction. The idempotency prune (ADR-0012) is
+  inside the action's transaction. The idempotency prune is
   same-tx with the `:open -> :locked` state change: a crash between
   prune and lock-commit rolls both back atomically, so no draw can be
   observed in a state where idempotency rows outlive their open phase.
@@ -47,7 +47,7 @@ defmodule WallopCore.Resources.Draw.Changes.LockDraw do
         {hash, canonical} = WallopCore.Protocol.entry_hash({draw.id, entries})
 
         # Prune idempotency rows for this draw — same transaction as
-        # the :open -> :locked state change. ADR-0012.
+        # the :open -> :locked state change.
         :ok = prune_idempotency_rows(draw.id)
 
         changeset

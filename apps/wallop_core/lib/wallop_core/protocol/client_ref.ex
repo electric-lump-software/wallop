@@ -1,6 +1,6 @@
 defmodule WallopCore.Protocol.ClientRef do
   @moduledoc """
-  Operational digests for `Draw.add_entries` idempotency (ADR-0012).
+  Operational digests for `Draw.add_entries` idempotency.
 
   **Operational, not protocol.** These digests are *never* signed,
   never appear in a receipt or proof bundle, and never feed
@@ -11,8 +11,8 @@ defmodule WallopCore.Protocol.ClientRef do
   (which builds signing inputs) to prevent any future PR from
   accidentally crossing the streams. A re-implementer who sees
   similar JCS-shaped construction in both modules MUST treat them
-  as distinct functions with distinct test vectors. See ADR-0012
-  for the receipt-invariance commitment.
+  as distinct functions with distinct test vectors.
+  Receipts must never depend on these digests.
 
   ## Constructions
 

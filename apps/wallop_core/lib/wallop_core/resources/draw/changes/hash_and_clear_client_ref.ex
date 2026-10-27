@@ -1,6 +1,6 @@
 defmodule WallopCore.Resources.Draw.Changes.HashAndClearClientRef do
   @moduledoc """
-  Hash-at-boundary for `Draw.add_entries` idempotency (ADR-0012).
+  Hash-at-boundary for `Draw.add_entries` idempotency.
 
   Reads the operator-supplied `client_ref` plaintext, computes the
   domain-separated `client_ref_digest` and the canonical-multiset

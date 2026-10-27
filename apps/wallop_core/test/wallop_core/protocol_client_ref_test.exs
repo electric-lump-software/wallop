@@ -1,7 +1,7 @@
 defmodule WallopCore.Protocol.ClientRefTest do
   @moduledoc """
   Frozen vectors for `WallopCore.Protocol.ClientRef.client_ref_digest/2`
-  and `payload_digest/2` (ADR-0012).
+  and `payload_digest/2`.
 
   These are the load-bearing crypto invariants for `add_entries`
   idempotency. A change here is a wire-incompatible break — every
@@ -36,7 +36,7 @@ defmodule WallopCore.Protocol.ClientRefTest do
       hex = Base.encode16(digest, case: :lower)
 
       assert ^hex = compute_expected_client_ref_digest(@sample_draw_id_bytes, "abc"),
-             "ADR-0012 client_ref_digest construction must match the documented preimage"
+             "client_ref_digest construction must match the documented preimage"
     end
 
     test "different client_refs on the same draw produce different digests" do
@@ -119,7 +119,7 @@ defmodule WallopCore.Protocol.ClientRefTest do
       # = {"draw_id":"11111111-2222-3333-4444-555555555555","entries":[{"weight":1},{"weight":2},{"weight":3}]}
       # SHA-256("wallop-client-ref-payload-v1\n" || <canonical>)
       assert ^hex = compute_expected_payload_digest(@sample_draw_id, [1, 2, 3]),
-             "ADR-0012 payload_digest construction must match the documented preimage"
+             "payload_digest construction must match the documented preimage"
     end
 
     test "is order-independent: [3, 1, 2] and [2, 3, 1] produce the same digest" do
