@@ -7,11 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Changed: a paused observation lock has its own error code
+### BREAKING — wallop_core 0.29.0 — Observation weather and grid-frequency draws; forecast draws retired
+
+#### Changed: a paused observation lock has its own error code
 
 An observation-weather lock refused because Land Observations readings can't be fetched now returns `code` `observation_paused` instead of `invalid_argument`. The status (`400`), `detail`, empty `meta` and missing `source.pointer` are unchanged. Clients that matched `invalid_argument` with this `detail` should match the new code.
 
-### Secrets can come from Infisical; a wrong vault key stops the boot
+#### Secrets can come from Infisical; a wrong vault key stops the boot
 
 **BREAKING (self-hosters).** `CLOAK_KEY` is no longer read. If your deployment sets only `CLOAK_KEY`, set `VAULT_KEY` to the same value before upgrading; otherwise the release refuses to boot with "VAULT_KEY environment variable is not set".
 
@@ -21,7 +23,7 @@ An observation-weather lock refused because Land Observations readings can't be 
 - **Docker image: secrets from Infisical at start.** When `INFISICAL_UNIVERSAL_AUTH_CLIENT_ID`, `INFISICAL_UNIVERSAL_AUTH_CLIENT_SECRET`, `INFISICAL_PROJECT_ID` and `INFISICAL_ENV` are all set, the start script signs in and restarts itself under `infisical run`, whose values replace variables of the same name. Setting only some of them refuses to start. `INFISICAL_PATHS` (space-separated, default `/`) picks the folders to read. A folder that is missing or can't be read stops the start only if the Infisical CLI exits with an error for it; that is not yet confirmed against a real deployment. Values are taken literally (no `${…}` expansion), and secrets are never watched for changes. The names, not values, of any `INFISICAL_CANARY_*` variables are logged at start. With none of the four set, nothing changes.
 - **The Docker image now includes the Infisical CLI** (v0.44.9, at `/usr/local/bin/infisical`), pinned by checksum for amd64 and arm64.
 
-### Added: signing-key rotation and revocation from a running release
+#### Added: signing-key rotation and revocation from a running release
 
 - **`WallopCore.KeyRotation`**, callable with `bin/wallop rpc`: `rotate_infrastructure_key/0`, `rotate_operator_key/1` (by slug; core had no way to rotate an existing operator's key before) and `revoke_superseded_keys/0`. Rotation adds a key with `valid_from` now, which signs from the next receipt. Revocation withdraws every key that isn't the current key of its class or operator, and never the current one. `mix wallop.rotate_infrastructure_key` now calls the same function.
 - **Revoked keys are not served or used.** A new append-only table, `signing_key_revocations`, records each revocation; UPDATE, DELETE and TRUNCATE are refused, as on the key tables. Every read of a signing key leaves revoked keys out: `/infrastructure/key(s)`, `/operator/:slug/key(s)`, `keyring-pin.json`, the proof page, transparency anchors and signing. The keys endpoints keep `schema_version "1"` and their shape; a revoked key simply isn't listed, so proofs signed under it no longer verify.
@@ -29,7 +31,7 @@ An observation-weather lock refused because Land Observations readings can't be 
 - **Revocation is permanent and breaks old proofs.** A revocation can't be undone: the table refuses DELETE. Every proof signed with a revoked key stops verifying, for good. Revocation is for a key that is compromised, not for routine rotation: after a routine rotation, leave the old key published so its proofs keep verifying.
 - **Database.** Run `mix ecto.migrate`. The migration only adds the table.
 
-### Removed: forecast-weather draws (BREAKING)
+#### Removed: forecast-weather draws (BREAKING)
 
 The forecast method (entropy tag `drand-quicknet+openmeteo-v1`, lock receipt schemas 4 and 5, execution receipt schemas 2, 3 and 4) is retired. It was the one method whose own spec said a compromised producer could pick the seed. Every new draw is a lock schema 6 / execution schema 5 draw, on observation weather or grid frequency.
 
@@ -51,7 +53,7 @@ The forecast method (entropy tag `drand-quicknet+openmeteo-v1`, lock receipt sch
 
 - `WallopCore.ForecastDrain` and its `WallopCore.Release` wrappers: the deploy gate that reports stranded forecast draws and, after the deploy, fails each with `failure_reason` `forecast_retired` and cancels the old worker's jobs. See `MIGRATING.md`. PDFs already cached for forecast draws stay in proof storage, unreachable; no cleanup is needed.
 
-### Added: observation weather (lock schema 6 / execution schema 5), per operator
+#### Added: observation weather (lock schema 6 / execution schema 5), per operator
 
 **ADDED.**
 
@@ -68,7 +70,7 @@ The forecast method (entropy tag `drand-quicknet+openmeteo-v1`, lock receipt sch
 - **Database.** New table `weather_observations` (one write-once reading per hour). New columns `operators.draw_protocol`, and `draws.lock_schema_version`, `draws.entropy_composition`, `draws.freq_start`, `draws.freq_value` and `draws.freq_fallback_reason`. Triggers and SQL functions enforce the timing, the three states and the receipts on the database's own clock. Run `mix ecto.migrate`.
 - **Vectors.** The shared vectors for both lock schema 6 tags were regenerated with this release (see the vectors entry below).
 
-### Added: grid-frequency draws (lock schema 6 / execution schema 5), per operator
+#### Added: grid-frequency draws (lock schema 6 / execution schema 5), per operator
 
 For operators who sell right up to the draw. Observation weather stays the default.
 
@@ -82,7 +84,7 @@ For operators who sell right up to the draw. Observation weather stays the defau
 
 **Operator note.** Never roll the service that runs core jobs back below this release; see MIGRATING.
 
-### Shared vectors for lock v6 / execution v5; older receipt vectors and bundles regenerated on real drand rounds
+#### Shared vectors for lock v6 / execution v5; older receipt vectors and bundles regenerated on real drand rounds
 
 **ADDED.** `spec/vectors` now freezes both lock v6 / execution v5 entropy tags: the observation-weather tag in all three of its execution states (observation, grid-frequency window, drand only) and the grid-frequency tag. Each tag gets its schedule, its value grammar, its receipts and passing proof bundles, and `proof-bundle-v6-negative.json` holds the bundles that must fail, each with the exact set of verifier steps that fail. The vectors README gains a "Third-party data" section: Elexon BMRS attribution, a note that the Met Office rows are synthetic (with a link to the real sample data), and a note on the drand beacons.
 
@@ -90,7 +92,7 @@ For operators who sell right up to the draw. Observation weather stays the defau
 
 **Operator note.** No protocol change and no change to signed bytes for live draws. `ProofBundle.assemble/1` is the pure half of `ProofBundle.build/1`; the live `/proof/:id.json` bytes are unchanged.
 
-### drand signatures are checked on observation-weather draws; building wallop_core needs Rust
+#### drand signatures are checked on observation-weather draws; building wallop_core needs Rust
 
 **CHANGED.** For observation-weather draws, core now checks each drand beacon's BLS signature against quicknet's public key before using it. It also checks that the chain is quicknet, that the round is the one asked for, and that the randomness is sha256 of the signature. A relay that serves a forged or malformed beacon is treated like any other bad relay: the next relay is asked. If every relay fails, it is a transient failure that retries, and the draw is never marked failed. Forecast draws are unchanged in this release.
 
@@ -103,7 +105,7 @@ For operators who sell right up to the draw. Observation weather stays the defau
 
 **Operator note.** No migration, no protocol change and no change to signed bytes. If you build your own image, add a Rust toolchain to the build stage; the runtime image needs nothing new.
 
-### Changed: the proof page's browser check runs the full verifier
+#### Changed: the proof page's browser check runs the full verifier
 
 - **What it checks.** "Verify independently" now fetches the proof bundle from `/proof/:id/json` and the signing keys from `/operator/:slug/keys` and `/infrastructure/keys`, and runs the full verifier (`wallop_verifier` 0.17.0, attestable mode) over them in the browser.
 - **One source for the verdict.** Green, amber or red comes from that check alone. No line shows a tick unless it passed, and the page's own values must match what was published.
@@ -111,7 +113,7 @@ For operators who sell right up to the draw. Observation weather stays the defau
 - **Honest about trust.** The keys come from the same site as the page, and the page says so. For a check that doesn't rely on wallop, use the CLI command shown beneath it.
 - **Fewer surprises.** A draw without signed receipts is amber, not green. A proof the site won't serve is red. A network failure says nothing was checked.
 
-### The monthly quota is gone
+#### The monthly quota is gone
 
 **BREAKING.** The monthly draw quota is removed:
 
@@ -124,11 +126,11 @@ For operators who sell right up to the draw. Observation weather stays the defau
 
 **Operator note.** No migration for this change. The columns stay until a later release drops them.
 
-### Fixed: API error pointers name the attribute; constraint messages are filled in
+#### Fixed: API error pointers name the attribute; constraint messages are filled in
 
 Errors from the update routes (`PATCH /draws/:id/entries`, `/lock`, `/winner_count`) carried a stray record index in `source.pointer` (`/data/attributes/0/winner_count`); it is now `/data/attributes/winner_count`. Constraint messages used to arrive as unfilled templates ("must be greater than or equal to %{min}"); `detail` now reads "must be greater than or equal to 1". Values that don't fit in a sentence (a list of allowed values, say) stay as the template. **Status codes and error `code`s are unchanged**; only `source.pointer` and `detail` differ, so match on `code`, not on the wording.
 
-### Many draws in one call: `GET /draws` filters by status and pages by keyset
+#### Many draws in one call: `GET /draws` filters by status and pages by keyset
 
 **BREAKING.** `GET /api/v1/draws` used to return every draw for the key in one go, which is a lovely idea right up until a key has a lot of draws. It now returns the first 50, oldest first. **Callers must follow `links.next` until it is `null`** to collect the rest; a client that reads one response and stops will quietly see only the first page.
 
@@ -140,7 +142,7 @@ Errors from the update routes (`PATCH /draws/:id/entries`, `/lock`, `/winner_cou
 
 **Not a snapshot.** Paging is by keyset: a draw created while you page can commit behind a cursor you were already handed. With one writer nothing is skipped or repeated; with several, sweep again if you need to be certain. **No protocol change, no signed-byte change.**
 
-### Rate limiting: one limiter, per-key limits, `Retry-After` everywhere, and a tap on the shoulder when someone gets close
+#### Rate limiting: one limiter, per-key limits, `Retry-After` everywhere, and a tap on the shoulder when someone gets close
 
 **ADDED.**
 
@@ -159,7 +161,7 @@ Errors from the update routes (`PATCH /draws/:id/entries`, `/lock`, `/winner_cou
 
 **Operator note.** Run `mix ecto.migrate` (adds `api_keys.rate_limit_per_minute`). If the limiter's store errors, requests are let through (fail open) rather than refused; the error is logged at most once a minute and emitted as `[:wallop_web, :rate_limiter, :backend_error]`. Every store call has a 100 ms timeout. Alert on that event before you turn Redis on, because a broken Redis will otherwise quietly mean no limits. `RATE_LIMIT_BACKEND=redis` without `REDIS_URL` refuses to boot. Per-IP limits trust `cf-connecting-ip`, so in production leave `EDGE_SHARED_SECRET` set (or otherwise keep the origin unreachable except through the edge); with it unset, boot logs an error saying so.
 
-### Draw outcomes and their webhooks commit together; failure reasons are fixed text
+#### Draw outcomes and their webhooks commit together; failure reasons are fixed text
 
 **CHANGED.**
 
