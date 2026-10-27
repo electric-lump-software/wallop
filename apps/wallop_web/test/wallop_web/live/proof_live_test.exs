@@ -182,8 +182,8 @@ defmodule WallopWeb.ProofLiveTest do
       assert html =~ "Result due in"
 
       assert html =~
-               "drand round ##{round}, Middle Wallop&#39;s #{Calendar.strftime(wt, "%H:%M UTC")} " <>
-                 "weather reading, if it turns up. The result is due at " <>
+               "drand round ##{round}. Declared: Middle Wallop&#39;s " <>
+                 "#{Calendar.strftime(wt, "%H:%M UTC")} weather reading. The result is due at " <>
                  Calendar.strftime(due, "%H:%M:%S UTC")
     end
 
@@ -297,7 +297,7 @@ defmodule WallopWeb.ProofLiveTest do
 
       assert html =~ "the National Grid&#39;s hum"
       assert html =~ "wallop&#39;s clock recorded the close time honestly."
-      assert html =~ "Declared: the National Grid&#39;s frequency from "
+      assert html =~ "Declared: the hum of the National Grid from "
       refute html =~ "Middle Wallop"
     end
 

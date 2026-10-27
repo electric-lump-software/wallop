@@ -157,7 +157,7 @@ defmodule WallopWeb.HomeLiveTest do
         refute html =~ phrase, "home page still says #{inspect(phrase)}"
       end
 
-      assert plain =~ "at worst to drand on its own"
+      assert plain =~ "The proof shows exactly what went in."
 
       for html <- [plain, crypto] do
         refute html =~ ~r/forecast/i

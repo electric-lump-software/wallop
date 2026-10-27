@@ -134,7 +134,7 @@ defmodule WallopWeb.Components.DrawTimeline do
   end
 
   defp declared_text(weather, status) when status in [:awaiting_entropy, :pending_entropy] do
-    "#{declared_source(weather)}, if it turns up. The result is due at " <>
+    "Declared: #{declared_source(weather)}. The result is due at " <>
       Calendar.strftime(weather.expected_result_at, "%H:%M:%S UTC")
   end
 
@@ -146,9 +146,9 @@ defmodule WallopWeb.Components.DrawTimeline do
   defp declared_source(%{tag: :landobs}), do: "Middle Wallop's weather reading"
 
   defp declared_source(%{tag: :freq, freq_start: %DateTime{} = t}),
-    do: "the National Grid's frequency from #{Calendar.strftime(t, "%H:%M:%S UTC")}"
+    do: "the hum of the National Grid from #{Calendar.strftime(t, "%H:%M:%S UTC")}"
 
-  defp declared_source(%{tag: :freq}), do: "the National Grid's frequency"
+  defp declared_source(%{tag: :freq}), do: "the hum of the National Grid"
 
   defp awaiting_stage(_draw, %{} = weather) do
     %{
