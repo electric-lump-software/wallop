@@ -16,7 +16,7 @@ Within each version section, look for `### HTTP API surface`, `### Hex package s
 
 ---
 
-## Unreleased (next release after 0.28.3)
+## 0.28.3 → 0.29.0
 
 Adds two draw protocols, observation weather and grid frequency (lock schema 6 / execution schema 5), set per operator by the platform, and **retires the forecast protocol: every operator moves to observation weather, and every new lock is a lock schema 6 lock.** Also removes the monthly draw quota, replaces the rate limiters with one `WallopWeb.RateLimiter`, adds per-key limits, and signals limit pressure as telemetry and PubSub. `GET /api/v1/draws` is now paged and filterable by status, and API error pointers and messages on the update routes are fixed. Requires a database migration.
 
