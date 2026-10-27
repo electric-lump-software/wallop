@@ -26,8 +26,8 @@ defmodule WallopCore.Resources.Draw.Changes.CheckIdempotency do
 
   This change runs inside the action's transaction (Ash wraps
   update actions in a tx by default; inserting in the same
-  transaction closes the orphan-digest window). A crash between this insert and the entry inserts will
-  roll BOTH back atomically.
+  transaction closes the orphan-digest window). A crash between this
+  insert and the entry inserts will roll BOTH back atomically.
   """
   use Ash.Resource.Change
 

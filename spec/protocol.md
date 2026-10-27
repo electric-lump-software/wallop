@@ -1043,7 +1043,7 @@ Cross-language parity is enforced in CI via shared frozen vectors (wallop's `spe
 For the avoidance of doubt, and for the future reviewer holding a clever idea: **no**.
 
 - wallop_core is a **fairness service**. It does not know about payments, buyers, tickets, sale channels, prices, refunds, or customer identity. Any binding between an entry UUID and any of those lives in a consumer layer above wallop.
-- **No reserved-for-future-use fields.** No `manifest_ext_hash`, no `extensions`, no `reserved_for_later`. If a future consumer has a real use case that demands a new signed commitment, they design it, justify it against wallop's design goals (verifiable randomness, simplicity, no scope creep), and it gets a 2.0.0. Reserving slots is scope creep disguised as foresight.
+- **No reserved-for-future-use fields.** No `manifest_ext_hash`, no `extensions`, no `reserved_for_later`. If a future consumer has a real use case that demands a new signed commitment, they design it, justify it against wallop's design goals (verifiable randomness, simplicity, no scope creep, no ticketing), and it gets a 2.0.0. Reserving slots is scope creep disguised as foresight.
 - **No per-draw operator-supplied metadata**: no tags, no labels, no display descriptions, no external-system references, no notes field. `operator_ref` was the last one of these and we purged it in 0.16.0 for a reason.
 - **No buyer-facing endpoints.** No "find my entry" lookup, no self-service "was I in this draw," no "tell me my odds." Buyers are the operator's customers; wallop serves operators.
 - **No analytics, metrics, or observability emission that carries entry UUIDs, draw content, or anything beyond counts and timings.** Operational metrics (request rates, error counts, queue depths) are fine. Leaking draw content through observability is a classic privacy footgun for this class of service.
@@ -1055,7 +1055,7 @@ For the avoidance of doubt, and for the future reviewer holding a clever idea: *
 
 The 1.x protocol is small enough that a motivated third party can read this document in one sitting and implement a working verifier in a weekend. Keeping it that way is the whole job.
 
-**A future reviewer reading this list with a case that feels different: write the justification against wallop's design goals (verifiable randomness, simplicity, no scope creep) first. If that justification is two sentences long, close your laptop.**
+**A future reviewer reading this list with a case that feels different: write the justification against wallop's design goals (verifiable randomness, simplicity, no scope creep, no ticketing) first. If that justification is two sentences long, close your laptop.**
 
 ---
 
@@ -1080,8 +1080,7 @@ proof page hosting, live draw features), not code licensing.
 
 ## Appendix B: Design rationale
 
-Brief notes on why specific choices were made. For full architectural context,
-see `docs/decisions/0001-picker-architecture.md`.
+Brief notes on why specific choices were made.
 
 - **SHA256-counter PRNG over ChaCha20 or HMAC-DRBG:** SHA256 is universally
   available, trivial to implement, and the security properties of the PRNG are

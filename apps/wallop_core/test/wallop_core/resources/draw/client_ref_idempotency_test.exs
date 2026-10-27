@@ -2,7 +2,7 @@ defmodule WallopCore.Resources.Draw.ClientRefIdempotencyTest do
   @moduledoc """
   Sharp-edge regressions for `Draw.add_entries` idempotency.
 
-  Each test guards a permanent commitment from the ADR. The matrix:
+  Each test guards a permanent commitment of the idempotency design. The matrix:
 
   | # | Concern                                  | What's at stake                                            |
   |---|------------------------------------------|------------------------------------------------------------|

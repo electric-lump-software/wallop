@@ -11,7 +11,7 @@ defmodule WallopCore.Repo.Migrations.AddEntriesIdempotency do
 
   Cascade-on-draw-delete is structural; the prune-at-lock hook is
   operational. Both exist deliberately. The table is operational
-  metadata only — never read during receipt construction. See ADR.
+  metadata only — never read during receipt construction.
   """
 
   use Ecto.Migration

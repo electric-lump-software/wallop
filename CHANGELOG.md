@@ -324,11 +324,11 @@ The proof page on a draw in `:open` status now renders through a struct that enu
 - `LockDraw` change now prunes idempotency rows for the draw in the **same transaction** as the `:open → :locked` state change. A crash between prune and lock-commit rolls both back atomically; no draw can be observed in a state where idempotency rows outlive their open phase.
 - Receipt invariance is permanent: the idempotency table is never read during entry-hash, seed, picker, or signing-input construction. Wholesale wipe of the table mid-flight produces zero bit-flip in any signed artefact (regression test pins this for both lock and execution receipts).
 
-Nine new sharp-edge regression tests pin the ADR commitments: 409 on payload mismatch, identical-payload replay returns same UUIDs (no double-insert), reordered entries replay correctly (byte-stable retry), plaintext absent from log capture, plaintext absent from stored row, prune-on-successful-lock, prune-rollback-on-failed-lock, lock receipt verifies after table wipe, execution receipt verifies after table wipe.
+Nine new sharp-edge regression tests pin the idempotency commitments: 409 on payload mismatch, identical-payload replay returns same UUIDs (no double-insert), reordered entries replay correctly (byte-stable retry), plaintext absent from log capture, plaintext absent from stored row, prune-on-successful-lock, prune-rollback-on-failed-lock, lock receipt verifies after table wipe, execution receipt verifies after table wipe.
 
 Twenty new protocol-level vector tests pin `client_ref_digest` and `payload_digest` byte-for-byte against documented preimages, computed independently of the implementation. Cross-language conformance: any Rust/Go/JS re-implementer reproduces these exact bytes from the spec text.
 
-Operator-side guidance ("use a UUID or 128-bit random — do NOT use semantically meaningful identifiers").
+Operator-side guidance: use a UUID or 128-bit random value, not a semantically meaningful identifier.
 
 ### wallop_core 0.23.0 — update winner_count pre-lock
 
