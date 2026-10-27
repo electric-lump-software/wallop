@@ -173,8 +173,8 @@ multiset hash of the proposed entries; the plaintext is never
 persisted. A retry with the same `(draw_id, client_ref)` and the
 same canonical entry multiset replays the cached `entry_ids`. A
 retry with the same `client_ref` against a different multiset
-returns HTTP 409. Implementation details and digest constructions
-are documented in ADR-0012; the storage layer is operational, never
+returns HTTP 409. The digest constructions and the storage layer are
+operational, never
 read during receipt construction, and thus carries no protocol
 weight in §4.
 
@@ -967,7 +967,7 @@ The following surfaces are explicitly **not** part of the 1.x stability contract
 
 - **HTTP response shapes on non-proof endpoints**. Operator-facing, authenticated, and LiveView responses can evolve additively in minor releases. The proof bundle is explicitly NOT in this class — it's frozen under §4.2.5.
 - **Internal `Draw` resource fields**. Fields returned inside the proof bundle are frozen (§4.2.5). Fields present on the Ash resource but not exposed in the public bundle are free to evolve *within scope* — new internal fields MUST NOT introduce identity, ticketing, payment, or buyer-facing semantics per §4.6, even if they live outside the signed-byte surface.
-- **Operational idempotency state for `add_entries`**. The `client_ref` argument and its associated dedup table (`client_ref_digest`, `payload_digest`, replay payload of entry UUIDs) exist outside the signed-byte surface entirely. They are HTTP-retry hygiene, not protocol. Implementations MAY change the digest construction across minor versions (subject to ADR-0012's rotation framing) and MAY remove or replace the side table without affecting protocol conformance. A wholesale wipe of the idempotency state mid-flight produces zero bit-flip in any signed artefact (regression-tested).
+- **Operational idempotency state for `add_entries`**. The `client_ref` argument and its associated dedup table (`client_ref_digest`, `payload_digest`, replay payload of entry UUIDs) exist outside the signed-byte surface entirely. They are HTTP-retry hygiene, not protocol. Implementations MAY change the digest construction across minor versions and MAY remove or replace the side table without affecting protocol conformance. A wholesale wipe of the idempotency state mid-flight produces zero bit-flip in any signed artefact (regression-tested).
 - **Pre-lock proof-page rendering and the proof-page fingerprint.** A draw in `:open` status has no signed lock receipt, no committed `entry_hash`, no entropy declaration, and no execution receipt. The public proof page therefore renders only the build-side allowlist defined in `WallopWeb.ProofPreLockView` (cross-language vector at `spec/vectors/pre_lock_wide_gap_v1.json`). **The PDF fingerprint sidecar is undefined for pre-lock draws** — implementations MUST NOT emit one, and verifiers MUST reject any fingerprint claim attached to a draw not yet locked. The fingerprint is a function of signed receipt bytes that do not yet exist; a "pre-lock fingerprint" is structurally a category error. Allowlist evolution (adding or removing a field) is operational and may change in any 1.x release subject to the wide-gap vector being updated; verifiers consuming the pre-lock surface MUST treat any field outside the version-pinned allowlist as out of contract.
 - **Operational knobs**. Rate limit thresholds, retry policies, entropy attempt caps, worker queue configuration, Oban pruning windows, weather fallback attempt budgets. None of these appear in signed bytes; none are protocol.
 - **Webhook payload schema**. Webhooks are operational. Additive changes in any 1.x release are permitted. The one protocol-adjacent commitment: **webhook payloads will not expose information beyond what is already in the proof bundle.** Webhooks are a push-notification convenience, not a second protocol surface.
@@ -1043,7 +1043,7 @@ Cross-language parity is enforced in CI via shared frozen vectors (wallop's `spe
 For the avoidance of doubt, and for the future reviewer holding a clever idea: **no**.
 
 - wallop_core is a **fairness service**. It does not know about payments, buyers, tickets, sale channels, prices, refunds, or customer identity. Any binding between an entry UUID and any of those lives in a consumer layer above wallop.
-- **No reserved-for-future-use fields.** No `manifest_ext_hash`, no `extensions`, no `reserved_for_later`. If a future consumer has a real use case that demands a new signed commitment, they design it, justify it against the six goals in `CLAUDE.md`, and it gets a 2.0.0. Reserving slots is scope creep disguised as foresight.
+- **No reserved-for-future-use fields.** No `manifest_ext_hash`, no `extensions`, no `reserved_for_later`. If a future consumer has a real use case that demands a new signed commitment, they design it, justify it against wallop's design goals (verifiable randomness, simplicity, no scope creep, no ticketing), and it gets a 2.0.0. Reserving slots is scope creep disguised as foresight.
 - **No per-draw operator-supplied metadata**: no tags, no labels, no display descriptions, no external-system references, no notes field. `operator_ref` was the last one of these and we purged it in 0.16.0 for a reason.
 - **No buyer-facing endpoints.** No "find my entry" lookup, no self-service "was I in this draw," no "tell me my odds." Buyers are the operator's customers; wallop serves operators.
 - **No analytics, metrics, or observability emission that carries entry UUIDs, draw content, or anything beyond counts and timings.** Operational metrics (request rates, error counts, queue depths) are fine. Leaking draw content through observability is a classic privacy footgun for this class of service.
@@ -1055,7 +1055,7 @@ For the avoidance of doubt, and for the future reviewer holding a clever idea: *
 
 The 1.x protocol is small enough that a motivated third party can read this document in one sitting and implement a working verifier in a weekend. Keeping it that way is the whole job.
 
-**A future reviewer reading this list with a case that feels different: write the justification against the six goals in `CLAUDE.md` first. If that justification is two sentences long, close your laptop.**
+**A future reviewer reading this list with a case that feels different: write the justification against wallop's design goals (verifiable randomness, simplicity, no scope creep, no ticketing) first. If that justification is two sentences long, close your laptop.**
 
 ---
 
@@ -1080,8 +1080,7 @@ proof page hosting, live draw features), not code licensing.
 
 ## Appendix B: Design rationale
 
-Brief notes on why specific choices were made. For full architectural context,
-see `docs/decisions/0001-picker-architecture.md`.
+Brief notes on why specific choices were made.
 
 - **SHA256-counter PRNG over ChaCha20 or HMAC-DRBG:** SHA256 is universally
   available, trivial to implement, and the security properties of the PRNG are

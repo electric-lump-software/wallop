@@ -3,7 +3,7 @@ defmodule WallopCore.Resources.ApiKey do
   API key for authenticating requests to the Wallop API.
 
   Keys are generated with a random secret, but only a bcrypt hash, a labelled
-  SHA-256 digest (ADR-0014) and an 8-character prefix are persisted. The raw
+  SHA-256 digest and an 8-character prefix are persisted. The raw
   key is returned once via metadata after creation and never stored.
   """
   use Ash.Resource,
@@ -37,7 +37,7 @@ defmodule WallopCore.Resources.ApiKey do
       accept([:operator_id])
     end
 
-    # Lazy migration from bcrypt (ADR-0014): records the digest of a key
+    # Lazy migration from bcrypt: records the digest of a key
     # that predates it. Matches only rows with no digest, so a concurrent
     # second writer gets StaleRecord, which callers treat as success.
     # Uses the filter change: a bare `filter(...)` is a no-op on an update action.
@@ -114,7 +114,7 @@ defmodule WallopCore.Resources.ApiKey do
 
     attribute :key_digest, :binary do
       description(
-        "SHA-256 of a label and the raw key (ADR-0014). Nil until first use for keys created before 0.29.0."
+        "SHA-256 of a label and the raw key. Nil until first use for keys created before 0.29.0."
       )
 
       allow_nil?(true)

@@ -1469,7 +1469,7 @@ defmodule WallopCore.Resources.Draw do
             "persisted, and weak inputs are theoretically rainbow-table-able. " <>
             "Retrying with the same (draw_id, client_ref) replays the " <>
             "original response. Re-using the same client_ref against a " <>
-            "different entry payload returns HTTP 409. See ADR-0012."
+            "different entry payload returns HTTP 409."
         )
       end
 

@@ -75,7 +75,7 @@ defmodule WallopWeb.Plugs.ApiKeyAuthTest do
     end
   end
 
-  describe "digest verification (ADR-0014)" do
+  describe "digest verification" do
     alias WallopCore.Resources.ApiKey
     alias WallopCore.Resources.ApiKey.Digest
 

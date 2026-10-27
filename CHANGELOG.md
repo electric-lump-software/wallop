@@ -254,11 +254,11 @@ There is no clean way to suppress two individual predicates: `filterable?: :simp
 
 **Lockfile scope.** Deliberately held to what the advisories require. `plug`, `plug_crypto`, `req` and `yaml_elixir` were briefly carried forward by the resolver and have been pinned back to their `main` versions — resolution accepts them, so they were never required. What moved is `spark`, `reactor`, `stream_data` and `multigraph` from `ash`; what left is `hackney` and its tree.
 
-### wallop_core 0.27.0 — Vault dual-key rotation capability (Wave A of ADR-0013)
+### wallop_core 0.27.0 — Vault dual-key rotation capability (wave A)
 
 **ADDED.** `WallopCore.Vault` can now boot with two ciphers — `:default` for new writes, `:retired` for decrypting rows under the previous master key — when `VAULT_KEY_OLD` is supplied alongside `VAULT_KEY`. Plus a read-only inspection task and an extended boot health check. **No protocol change, no signed-byte change, no on-disk shape change for existing single-key deployments.**
 
-The motivation is ADR-0013 (dual-key Cloak rotation capability). Previously, rotating the vault master key required a moment-T cutover where every encrypted row had to be re-written in lockstep with an environment-variable swap — a class of mistake we have already paid for once. Cloak's tag-prefix dispatch supports a two-cipher configuration where the old key remains decryptable while new writes use the new key; this wave introduces the capability without yet exercising it.
+The motivation is a dual-key Cloak rotation capability. Previously, rotating the vault master key required a moment-T cutover where every encrypted row had to be re-written in lockstep with an environment-variable swap — a class of mistake we have already paid for once. Cloak's tag-prefix dispatch supports a two-cipher configuration where the old key remains decryptable while new writes use the new key; this wave introduces the capability without yet exercising it.
 
 - New module `WallopCore.Vault.Config`. `build_ciphers/2` returns a single-cipher list when `vault_key_old` is `nil` (production state — unchanged behaviour) or a two-cipher list when both keys are supplied. Pins `@current_tag "AES.GCM.V1"` and `@previous_tag "AES.GCM.V0"` as the single source of truth for tag generation. Raises if the keys are identical, if the tags collide, or if either key fails to base64-decode to 32 bytes. The single-cipher branch is byte-identical to what `runtime.exs` previously hardcoded — zero behavioural difference for current production.
 - `config/runtime.exs` now reads optional `VAULT_KEY_OLD` and delegates to the builder in both `:dev` and `:prod`. Backwards-compatible: a deployment with only `VAULT_KEY` set produces the same cipher list it always has.
@@ -273,8 +273,6 @@ Out of scope (Wave B, blocked on staging):
 - AshCloak retrofit of hand-rolled `Vault.encrypt`/`Vault.decrypt` call sites (3 mix tasks, 5 production paths).
 - `mix wallop.vault.migrate` (re-encrypt-to-current-tag bulk operation).
 - End-to-end rotation drill against a real second key.
-
-Wave A is reviewed by Alex (architecture) and Colin (crypto) per ADR-0013.
 
 ### wallop_core 0.26.1 — fix: `:open` proof page render
 
@@ -326,11 +324,11 @@ The proof page on a draw in `:open` status now renders through a struct that enu
 - `LockDraw` change now prunes idempotency rows for the draw in the **same transaction** as the `:open → :locked` state change. A crash between prune and lock-commit rolls both back atomically; no draw can be observed in a state where idempotency rows outlive their open phase.
 - Receipt invariance is permanent: the idempotency table is never read during entry-hash, seed, picker, or signing-input construction. Wholesale wipe of the table mid-flight produces zero bit-flip in any signed artefact (regression test pins this for both lock and execution receipts).
 
-Nine new sharp-edge regression tests pin the ADR commitments: 409 on payload mismatch, identical-payload replay returns same UUIDs (no double-insert), reordered entries replay correctly (byte-stable retry), plaintext absent from log capture, plaintext absent from stored row, prune-on-successful-lock, prune-rollback-on-failed-lock, lock receipt verifies after table wipe, execution receipt verifies after table wipe.
+Nine new sharp-edge regression tests pin the idempotency commitments: 409 on payload mismatch, identical-payload replay returns same UUIDs (no double-insert), reordered entries replay correctly (byte-stable retry), plaintext absent from log capture, plaintext absent from stored row, prune-on-successful-lock, prune-rollback-on-failed-lock, lock receipt verifies after table wipe, execution receipt verifies after table wipe.
 
 Twenty new protocol-level vector tests pin `client_ref_digest` and `payload_digest` byte-for-byte against documented preimages, computed independently of the implementation. Cross-language conformance: any Rust/Go/JS re-implementer reproduces these exact bytes from the spec text.
 
-See ADR-0012 for the full design rationale, rejected alternatives (single-column-on-Draw, plaintext storage, HTTP-middleware idempotency), and operator-side guidance ("use a UUID or 128-bit random — do NOT use semantically meaningful identifiers").
+Operator-side guidance: use a UUID or 128-bit random value, not a semantically meaningful identifier.
 
 ### wallop_core 0.23.0 — update winner_count pre-lock
 

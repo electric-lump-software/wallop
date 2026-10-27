@@ -1,7 +1,7 @@
 defmodule WallopCore.Vault.Config do
   @moduledoc """
   Cloak cipher-list builder for `WallopCore.Vault`. Supports dual-key
-  rotation per ADR-0013.
+  rotation.
 
   ## How rotation works
 
@@ -89,8 +89,8 @@ defmodule WallopCore.Vault.Config do
   Build a Cloak cipher list from the supplied master keys.
 
   When `vault_key_old` is `nil`, returns a single-cipher list
-  (current production shape; unchanged behaviour from pre-ADR-0013
-  single-key deployments).
+  (current production shape; unchanged behaviour from single-key
+  pre-rotation deployments).
 
   When `vault_key_old` is supplied, returns a two-cipher list:
   `default` for the new key under `current_tag`, `retired` for
@@ -135,8 +135,7 @@ defmodule WallopCore.Vault.Config do
 
       Cloak cannot route decrypts when two ciphers share the same tag.
       Bump @current_tag in WallopCore.Vault.Config before introducing
-      VAULT_KEY_OLD into the environment. See ADR-0013 §"Cloak dual-
-      key rotation".
+      VAULT_KEY_OLD into the environment.
       """
     end
 

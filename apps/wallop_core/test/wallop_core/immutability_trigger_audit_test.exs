@@ -6,7 +6,7 @@ defmodule WallopCore.ImmutabilityTriggerAuditTest do
   confirming that DB-level triggers are the last line of defence. Ash
   policies are defence in depth; these triggers are the line.
 
-  Addresses Colin's March 2026 review concerns:
+  Addresses March 2026 review concerns:
   - TRUNCATE protection on all protected tables
   - Draws trigger state machine completeness
   - Append-only table enforcement

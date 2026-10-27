@@ -39,3 +39,25 @@ jobs:
             echo "ERROR: PR title or description contains attribution or ADR references"
             exit 1
           fi
+
+  tracked-files:
+    name: No internal references in tracked files
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Tracked file contents
+        run: |
+          if git grep -n -i -w -E 'ADRs?([- ]?[0-9]+)?|docs/(decisions|specs|superpowers)' -- . ':!.github/workflows/attribution.yml' ':!.gitignore' ':!.dockerignore'; then
+            echo "ERROR: tracked files contain ADR or internal docs references"
+            exit 1
+          fi
+          if git grep -n -i -E 'CLAUDE\.md|\.claude/' -- . ':!.github/workflows/attribution.yml' ':!.gitignore' ':!.dockerignore'; then
+            echo "ERROR: tracked files mention private Claude files"
+            exit 1
+          fi
+          if git grep -n -w -E 'Alex|Colin|Alan|Roman|Ozzy|Percy|Conan|PAM' -- . ':!.github/workflows/attribution.yml'; then
+            echo "ERROR: tracked files contain reviewer or client names"
+            exit 1
+          fi

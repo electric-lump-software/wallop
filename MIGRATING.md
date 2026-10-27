@@ -178,7 +178,7 @@ No changes.
 
 ## 0.26.x → 0.27.0
 
-Vault dual-key rotation capability (Wave A of ADR-0013). **No HTTP breaking changes; no protocol or signed-byte changes.** Pure additive.
+Vault dual-key rotation capability. **No HTTP breaking changes; no protocol or signed-byte changes.** Pure additive.
 
 ### HTTP API surface
 
@@ -281,7 +281,7 @@ Spec §4.3 now pins the proof-page fingerprint as **undefined for pre-lock draws
 
 ## 0.23.x → 0.24.0
 
-Idempotent `add_entries` retries via operator-supplied `client_ref` (ADR-0012).
+Idempotent `add_entries` retries via operator-supplied `client_ref`.
 
 ### HTTP API surface
 
@@ -313,7 +313,7 @@ draw
 |> Ash.update!()
 ```
 
-New module: `WallopCore.Protocol.ClientRef` with `client_ref_digest/2` and `payload_digest/2`. The constructions are documented for cross-language re-implementation; see ADR-0012. New error: `WallopCore.Errors.IdempotencyConflict` (mapped to HTTP 409 by `WallopWeb.DrawEntriesController`).
+New module: `WallopCore.Protocol.ClientRef` with `client_ref_digest/2` and `payload_digest/2`. The constructions are documented for cross-language re-implementation. New error: `WallopCore.Errors.IdempotencyConflict` (mapped to HTTP 409 by `WallopWeb.DrawEntriesController`).
 
 New resource: `WallopCore.Resources.AddEntriesIdempotency` (internal-only; `forbid_if(always())` on every action). Operational table only — never read during receipt construction.
 

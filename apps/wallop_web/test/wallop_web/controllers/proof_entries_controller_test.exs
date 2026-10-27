@@ -128,7 +128,7 @@ defmodule WallopWeb.ProofEntriesControllerTest do
 
     test "pagination round-trip reproduces ProofBundle.entries_for/1 bytes (invariant)",
          %{conn: conn, draw: draw} do
-      # Colin's invariant: the paginated public endpoint MUST produce the
+      # Invariant: the paginated public endpoint MUST produce the
       # same canonical entry list as ProofBundle.entries_for/1. A verifier
       # fetching all pages + concatenating + re-sorting by uuid must be
       # able to reproduce the inlined bundle entries byte-for-byte.

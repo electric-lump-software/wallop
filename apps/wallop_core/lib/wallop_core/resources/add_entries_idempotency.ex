@@ -1,7 +1,7 @@
 defmodule WallopCore.Resources.AddEntriesIdempotency do
   @moduledoc """
   Idempotency state for `Draw.add_entries`. Operational only — never
-  read during receipt construction. See ADR-0012.
+  read during receipt construction.
 
   Stores `(draw_id, client_ref_digest)` as the unique idempotency key,
   with a `payload_digest` for byte-stable replay comparison and the
@@ -61,7 +61,7 @@ defmodule WallopCore.Resources.AddEntriesIdempotency do
 
     # Ordered array of Entry UUIDs (submission order). For HTTP response
     # replay only — never an input to receipt construction (entry_hash,
-    # seed, signing). See ADR-0012 receipt-invariance commitment.
+    # seed, signing).
     attribute :entry_ids, {:array, :uuid} do
       allow_nil?(false)
     end

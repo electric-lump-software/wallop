@@ -3,7 +3,7 @@ defmodule WallopCore.Errors.IdempotencyConflict do
   Raised when an `add_entries` retry presents the same `client_ref`
   digest with a different `payload_digest` — i.e. the operator
   re-used an idempotency key against a logically different batch.
-  Maps to HTTP 409 Conflict (ADR-0012).
+  Maps to HTTP 409 Conflict.
   """
 
   use Splode.Error, class: :invalid, fields: [:field, :message]

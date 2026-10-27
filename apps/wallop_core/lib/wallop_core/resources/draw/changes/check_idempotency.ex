@@ -1,6 +1,6 @@
 defmodule WallopCore.Resources.Draw.Changes.CheckIdempotency do
   @moduledoc """
-  Idempotency conflict-check for `Draw.add_entries` (ADR-0012).
+  Idempotency conflict-check for `Draw.add_entries`.
 
   Runs after `HashAndClearClientRef` (which stashes both digests in
   the changeset context) and before `AddEntries` (which performs
@@ -25,10 +25,9 @@ defmodule WallopCore.Resources.Draw.Changes.CheckIdempotency do
     rolls back; nothing persists.
 
   This change runs inside the action's transaction (Ash wraps
-  update actions in a tx by default; see ADR-0012 "Same-transaction
-  insertion is the only construction that closes the orphan-digest
-  window"). A crash between this insert and the entry inserts will
-  roll BOTH back atomically.
+  update actions in a tx by default; inserting in the same
+  transaction closes the orphan-digest window). A crash between this
+  insert and the entry inserts will roll BOTH back atomically.
   """
   use Ash.Resource.Change
 

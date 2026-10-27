@@ -1,6 +1,6 @@
 defmodule WallopCore.Resources.ApiKey.Digest do
   @moduledoc """
-  Labelled SHA-256 digest of a raw API key (ADR-0014).
+  Labelled SHA-256 digest of a raw API key.
 
   No server secret: every deployment, including consumers embedding
   wallop_core, computes the same digest. Keys carry ~208 random bits, so a

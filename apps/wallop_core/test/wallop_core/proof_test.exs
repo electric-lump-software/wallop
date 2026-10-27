@@ -65,7 +65,7 @@ defmodule WallopCore.ProofTest do
     # into one response shape: "UUID entered but didn't win", "UUID never
     # entered", and "malformed input" all produce identical bytes. This
     # prevents the endpoint from becoming an enumeration oracle keyed by
-    # UUID. Pre-launch decision (confirmed with Colin).
+    # UUID. Pre-launch decision (confirmed in review).
 
     setup do
       api_key = create_api_key()

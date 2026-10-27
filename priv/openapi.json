@@ -2689,7 +2689,7 @@
                         "additionalProperties": false,
                         "properties": {
                           "client_ref": {
-                            "description": "Operator-supplied opaque idempotency token for this batch. 1..256 bytes. Use a UUID or other high-entropy random value. Do NOT use semantically meaningful or guessable identifiers — the value is hashed at the request boundary but the digest is persisted, and weak inputs are theoretically rainbow-table-able. Retrying with the same (draw_id, client_ref) replays the original response. Re-using the same client_ref against a different entry payload returns HTTP 409. See ADR-0012.",
+                            "description": "Operator-supplied opaque idempotency token for this batch. 1..256 bytes. Use a UUID or other high-entropy random value. Do NOT use semantically meaningful or guessable identifiers — the value is hashed at the request boundary but the digest is persisted, and weak inputs are theoretically rainbow-table-able. Retrying with the same (draw_id, client_ref) replays the original response. Re-using the same client_ref against a different entry payload returns HTTP 409.",
                             "type": "string"
                           },
                           "entries": {

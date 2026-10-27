@@ -1,6 +1,6 @@
 defmodule WallopWeb.Plugs.ApiKeyAuth do
   @moduledoc """
-  Bearer token authentication by API key (ADR-0014).
+  Bearer token authentication by API key.
 
   A key is looked up by its 8-character prefix and verified by comparing a
   labelled SHA-256 digest in constant time. Keys created before 0.29.0 have
@@ -10,8 +10,7 @@ defmodule WallopWeb.Plugs.ApiKeyAuth do
 
   The digest comparison is constant-time. Response time still differs by
   path (a malformed bearer skips the database; a key with no digest yet is
-  checked with bcrypt), which reveals nothing secret: prefixes are public
-  (ADR-0014).
+  checked with bcrypt), which reveals nothing secret: prefixes are public.
 
   Failures count against the caller's IP (`WallopWeb.IpAuthLimit`). Once over
   the limit, failures get a 429, and keys without a digest are refused before
@@ -115,7 +114,7 @@ defmodule WallopWeb.Plugs.ApiKeyAuth do
 
   # Never changes the authentication result, which bcrypt already decided.
   # A concurrent first request recording the digest first (StaleRecord) is a
-  # normal race and counts as success (ADR-0014). Exposed for tests only.
+  # normal race and counts as success. Exposed for tests only.
   @doc false
   def record_digest(api_key, raw_key) do
     api_key
