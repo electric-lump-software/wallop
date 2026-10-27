@@ -13,8 +13,6 @@ defmodule WallopCore.Application do
     warn_if_default_oban_prefix()
     warn_if_low_land_obs_cap()
     assert_vault_key_present!()
-    # No draw may run on a node that can't check drand signatures: a missing
-    # or broken NIF stops the boot here rather than failing every check.
     Bls.self_test!()
 
     OpentelemetryOban.setup(plugin: :disabled)
@@ -31,39 +29,24 @@ defmodule WallopCore.Application do
       [
         pubsub_child_spec(),
         {Oban, Application.fetch_env!(:wallop_core, Oban)},
-        # Records whether this node can fetch Land Observations readings,
-        # only if it runs the weather queue. Runs once; a failure is left to
-        # the 10-minute cron (ObservationReadinessWorker).
         Supervisor.child_spec({Task, &ObservationReadiness.publish_at_boot/0},
           id: :observation_readiness_boot
         )
       ] ++ prepared_transactions_check()
   end
 
-  # Off in the test config, which tests the check directly; on everywhere else.
   defp vault_key_check do
     if Application.get_env(:wallop_core, :vault_key_check, true),
       do: [WallopCore.VaultKeyCheck],
       else: []
   end
 
-  # Off in the test config; on everywhere else.
   defp prepared_transactions_check do
     if Application.get_env(:wallop_core, :prepared_transactions_check, true),
       do: [WallopCore.PreparedTransactionsCheck],
       else: []
   end
 
-  # `runtime.exs` raises if `VAULT_KEY` is unset, but only on a release-
-  # bootstrap path that loads runtime.exs. A code path that constructs
-  # the Vault without going through `runtime.exs` (test, release task,
-  # mix command without `Mix.Tasks.Loadconfig`) would silently get
-  # whatever Cloak default is configured and produce ciphertext that
-  # decrypts to garbage on production reload.
-  #
-  # Crash the boot at supervisor start-up if the default cipher's key
-  # is not a 32-byte binary. Costs effectively nothing; eliminates the
-  # silent-fallback class.
   defp assert_vault_key_present! do
     config = Application.get_env(:wallop_core, WallopCore.Vault)
 
@@ -126,11 +109,6 @@ defmodule WallopCore.Application do
     end
   end
 
-  # runtime.exs parses LAND_OBS_DAILY_CAP before Logger is configured, so
-  # the warning for a cap below a full day of polling is logged here.
-  # LandObsBudget.cap/0 also checks the value, however it was set (an app
-  # embedding wallop_core may set it in its own config), and raises on a bad
-  # one: the boot stops rather than running with no cap.
   defp warn_if_low_land_obs_cap do
     if warning = LandObsBudget.boot_warning(LandObsBudget.cap()) do
       Logger.warning(warning)
@@ -143,13 +121,10 @@ defmodule WallopCore.Application do
         if Node.alive?() do
           {Phoenix.PubSub, name: WallopCore.PubSub, adapter: Phoenix.PubSub.Redis, url: url}
         else
-          # Unnamed node (e.g. mix task via one-off runner) — Redis PubSub
-          # requires a named node. Fall back to local PubSub.
           {Phoenix.PubSub, name: WallopCore.PubSub}
         end
 
       _ ->
-        # Allow downstream consumers to provide full PubSub config
         case Application.get_env(:wallop_core, :pubsub) do
           opts when is_list(opts) ->
             {Phoenix.PubSub, Keyword.put_new(opts, :name, WallopCore.PubSub)}

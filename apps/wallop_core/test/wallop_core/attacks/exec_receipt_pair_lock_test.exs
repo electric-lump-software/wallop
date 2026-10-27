@@ -54,9 +54,6 @@ defmodule WallopCore.Attacks.ExecReceiptPairLockTest do
     end)
   end
 
-  # The lock as raw SQL, with every trigger on: open to awaiting_entropy
-  # under the frequency tag, an hour ahead, so only the receipt rule can
-  # refuse it.
   defp raw_lock!(draw) do
     round = Quicknet.round_at_or_after(DateTime.add(DateTime.utc_now(), 3600))
 
@@ -100,7 +97,6 @@ defmodule WallopCore.Attacks.ExecReceiptPairLockTest do
                   e in Postgrex.Error -> {:refused, e.postgres.code}
                 end
 
-              # Keep whatever happened, so an accepted receipt really commits.
               if outcome == :accepted, do: outcome, else: Repo.rollback(outcome)
             end)
           end)
@@ -110,7 +106,6 @@ defmodule WallopCore.Attacks.ExecReceiptPairLockTest do
 
     assert_receive {:snapshot, ^stale}, 5_000
 
-    # The draw locks (fixture: triggers off) and commits after the snapshot.
     unboxed(fn -> put_freq_awaiting!(draw, Schedule.freq_start_for_round(1), 1) end)
 
     send(stale, :go)
@@ -127,7 +122,6 @@ defmodule WallopCore.Attacks.ExecReceiptPairLockTest do
     assert_receive {:done_statement, ^receipt}, 5_000
 
     lock = in_transaction(fn -> raw_lock!(draw) end)
-    # The lock waits on the receipt's row lock on the draw.
     refute_receive {:done_statement, ^lock}, 1_500
 
     send(receipt, :commit)

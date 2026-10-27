@@ -54,7 +54,6 @@ defmodule WallopCore.Entropy.LandObsClientTest do
              LandObsClient.fetch_hour("gcnfur", hour)
 
     assert LandObsGrammar.valid_value?(value)
-    # 8.72 C, 1016 hPa, 88 %, 21430.0 m
     assert value == "87;1016;88;2143"
   end
 
@@ -63,7 +62,6 @@ defmodule WallopCore.Entropy.LandObsClientTest do
     serve(body)
     hour = hour_at("gcnfur.json", 2)
 
-    # 7.45 C rounds half away from zero to 75; 16285 m rounds to 1629 dam.
     assert {:ok, %{value: "75;1015;91;1629", raw: ^body, observation_time: ^hour}} =
              LandObsClient.fetch_hour("gcnfur", hour)
   end
@@ -181,7 +179,6 @@ defmodule WallopCore.Entropy.LandObsClientTest do
     assert {:error, :unknown_station} =
              LandObsClient.fetch_hour("gcpvj0", ~U[2026-10-14 19:00:00Z])
 
-    # Wittering is not a station of the tag.
     assert {:error, :unknown_station} =
              LandObsClient.fetch_hour("gcrem9", ~U[2026-10-14 19:00:00Z])
 

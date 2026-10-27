@@ -78,18 +78,8 @@ defmodule WallopWeb.OperatorLive do
     {:noreply, assign_search(socket, socket.assigns.search_query)}
   end
 
-  # Surgical in-place update of the affected draw in @draws.
-  #
-  # Phoenix LiveView's change tracking compares assigns with `===`. Ash
-  # structs use value-based equality, so re-querying the DB and reassigning
-  # the whole list often produces a list that compares equal to the previous
-  # one (no diff is pushed even though we just received a broadcast). Update
-  # the single affected element directly so the list reference is provably
-  # different.
   defp apply_draw_update(socket, %{operator_id: operator_id, status: :open})
        when is_binary(operator_id) do
-    # `:open` draws are operator working state and are intentionally
-    # excluded from the public listing per §4.2.7. Drop the broadcast.
     socket
   end
 
@@ -164,14 +154,7 @@ defmodule WallopWeb.OperatorLive do
     end
   end
 
-  # Returns {draws, next_cursor, has_more?} where next_cursor is the
-  # smallest operator_sequence in the page (used as the upper bound for the
-  # next page) or nil when no more pages exist.
   defp list_draws(operator_id, query, cursor) do
-    # `status != :open` excludes operator working state (entries still
-    # being added, no signed lock receipt yet). The cross-draw transparency
-    # commitment in spec/protocol.md §4.2.7 covers every draw with a signed
-    # lock receipt, which is everything except `:open`.
     base =
       Draw
       |> Ash.Query.filter(operator_id == ^operator_id and status != :open)

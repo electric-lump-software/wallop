@@ -24,7 +24,6 @@ defmodule WallopCore.Invariants.ObservationAndExecutionTest do
   @randomness "140117383b03a0c0c7a899a32b8cbd2ffff9e2569504037c358ee8c7c2efe2fd"
   @signature "b6541e41bb68ff318e8bd74b9f6e168ae6424476c432241420c38427df58c6ef33fe009ce202a7101120ab481702fddf"
   @drand_args %{
-    # A real quicknet beacon: drand_randomness is sha256 of the signature.
     drand_randomness: "140117383b03a0c0c7a899a32b8cbd2ffff9e2569504037c358ee8c7c2efe2fd",
     drand_signature:
       "b6541e41bb68ff318e8bd74b9f6e168ae6424476c432241420c38427df58c6ef33fe009ce202a7101120ab481702fddf",
@@ -33,17 +32,11 @@ defmodule WallopCore.Invariants.ObservationAndExecutionTest do
 
   defp reload(draw), do: Ash.get!(Draw, draw.id, authorize?: false, load: [:expected_result_at])
 
-  # The drand round published `offset` seconds from now (negative: ago).
   defp round_at(offset),
     do: Quicknet.round_at_or_after(DateTime.add(DateTime.utc_now(), offset))
 
-  # A v6 draw in awaiting_entropy whose stored weather_time is `wt_offset`
-  # seconds from now and whose drand round publishes `pub_offset` seconds
-  # from now. put_v6_awaiting!/4 signs the round's own hour; the stored
-  # weather_time is placed for the window under test.
   defp v6_draw(wt_offset, pub_offset, key \\ nil) do
     key = key || elem(create_v6_operator(), 1)
-    # The entries first, so their set-up time doesn't eat a near deadline.
     open = open_draw_with_entries(key)
     wt = DateTime.utc_now() |> DateTime.add(wt_offset) |> DateTime.truncate(:second)
     put_v6_awaiting!(open, wt, round_at(pub_offset))
@@ -64,9 +57,6 @@ defmodule WallopCore.Invariants.ObservationAndExecutionTest do
     )
   end
 
-  # Moves a draw's hour, its observation and every draw of that hour an hour
-  # into the past with every trigger off, so "after F" holds while the
-  # stored row stays.
   defp shift_window_back!(draw) do
     wt = DateTime.to_naive(draw.weather_time)
 
@@ -86,17 +76,12 @@ defmodule WallopCore.Invariants.ObservationAndExecutionTest do
   defp store(station, draw, value \\ @value),
     do: Observations.store(station, reading(draw, value))
 
-  # Three v6 draws of one operator sharing one stored weather_time,
-  # `wt_offset` seconds from now, as v6_draw/3 places it: one observation
-  # hour, so one reading for all three.
   defp three_draws_sharing_wt(wt_offset, pub_offset \\ 3600) do
     {_op, key} = create_v6_operator()
     wt = DateTime.utc_now() |> DateTime.add(wt_offset) |> DateTime.truncate(:second)
     for _ <- 1..3, do: put_v6_awaiting!(open_draw_with_entries(key), wt, round_at(pub_offset))
   end
 
-  # The first store for the hour wins; any second one, a different value or
-  # the same, is refused; every draw of the hour reads the one row.
   defp assert_one_reading_per_hour([a, b, c] = draws, station) do
     assert {:ok, obs} = store(station, a)
 
@@ -111,16 +96,12 @@ defmodule WallopCore.Invariants.ObservationAndExecutionTest do
     end
   end
 
-  # ── INV-7 ─────────────────────────────────────────────────────────
-
   describe "INV-7 one (station, value) per hour; every draw of the hour completes with it or the fallback" do
     test "INV-7 one reading per hour, shared by every draw of the hour (early in the window)" do
-      # Five minutes after weather_time.
       assert_one_reading_per_hour(three_draws_sharing_wt(-5 * 60), Stations.primary().id)
     end
 
     test "INV-7 one reading per hour, shared by every draw of the hour (late in the window)" do
-      # Five minutes before F: still Middle Wallop's window, and never Wittering's.
       draws = three_draws_sharing_wt(-(@w - 5 * 60))
       assert {:error, _} = store("wmo-03462", hd(draws))
       assert_one_reading_per_hour(draws, Stations.primary().id)
@@ -134,7 +115,6 @@ defmodule WallopCore.Invariants.ObservationAndExecutionTest do
       assert error_text(elem(store(Stations.primary().id, draw), 1)) =~
                "an observation is already stored for this hour"
 
-      # Wittering is refused too (it has no window, and the hour has its row).
       assert {:error, _} = store("wmo-03462", draw)
       assert Observations.for_draw(draw).station == Stations.primary().id
     end
@@ -173,16 +153,10 @@ defmodule WallopCore.Invariants.ObservationAndExecutionTest do
         assert try_sql(sql, [wt]) == "weather observations are write-once", sql
       end
 
-      # The sandbox never commits, so the row's deferred commit-time check is
-      # still queued, and PostgreSQL refuses TRUNCATE for that before any
-      # trigger runs. Run the queued check now (it passes: before F) so the
-      # TRUNCATE meets the write-once trigger, as it would after a commit.
       Repo.query!("SET CONSTRAINTS weather_observations_commit_deadline IMMEDIATE")
       assert try_sql("TRUNCATE weather_observations", []) == "weather observations are write-once"
     end
 
-    # Outside the sandbox: a committed row, then UPDATE, DELETE and TRUNCATE
-    # in real transactions, with no queued trigger events.
     test "INV-7 a committed observation can't be updated, deleted or truncated" do
       draw = unboxed_v6_draw(-5 * 60)
       assert {:ok, _} = unboxed(fn -> store(Stations.primary().id, draw) end)
@@ -202,10 +176,7 @@ defmodule WallopCore.Invariants.ObservationAndExecutionTest do
     end
   end
 
-  # ── INV-8 ─────────────────────────────────────────────────────────
-
   describe "INV-8 completion matches the stored observation or the fallback rule, at or after pub(R)" do
-    # Live now: the draws guard checks pub(R) before it reads the store.
     test "INV-8 a v6 draw can't complete before its drand round publishes" do
       draw = v6_draw(-(@w + 60), 600) |> to_pending!()
 
@@ -240,7 +211,6 @@ defmodule WallopCore.Invariants.ObservationAndExecutionTest do
 
     test "INV-8 with nothing stored, only the rule's fallback completes, and only after F" do
       message = "v6 draw may fall back only after the fetch deadline with nothing stored"
-      # State (c): no reading and no window stored.
       fallback = "weather_fallback_reason = $3, freq_fallback_reason = 'no_frequency_by_deadline'"
 
       before_f = v6_draw(-5 * 60, -10) |> to_pending!()
@@ -259,11 +229,6 @@ defmodule WallopCore.Invariants.ObservationAndExecutionTest do
     test "INV-8 execute_v6 records the stored observation, at or after pub(R)" do
       ensure_infrastructure_key()
 
-      # As a real lock leaves it, the stored weather_time is the round's own
-      # hour: the execution receipt signs the observation time, and its
-      # builder refuses one that isn't the round's hour. The round published
-      # 10 seconds ago, so the hour's window closed before it; the reading is
-      # placed directly (the store refuses writes after F).
       {_op, key} = create_v6_operator()
       round = round_at(-10)
       wt = Schedule.weather_time_for_round(round)
@@ -288,7 +253,6 @@ defmodule WallopCore.Invariants.ObservationAndExecutionTest do
       assert done.status == :completed
       assert {done.weather_value, done.weather_observation_time} == {nil, nil}
       assert done.weather_fallback_reason == LandObs.fallback_reason()
-      # No window stored for its T either: state (c), drand alone.
       assert {done.freq_value, done.freq_fallback_reason} == {nil, "no_frequency_by_deadline"}
       assert DateTime.compare(done.executed_at, Quicknet.pub_time(done.drand_round)) != :lt
     end
@@ -313,22 +277,11 @@ defmodule WallopCore.Invariants.ObservationAndExecutionTest do
     |> Ash.update!(authorize?: false)
   end
 
-  # ── INV-8b ────────────────────────────────────────────────────────
-
-  # The commit-time check's refusal: the store's deferred constraint
-  # trigger raises exactly this.
   @commit_late "an observation must commit by its fetch deadline"
 
   describe "INV-8b a stored observation's commit time is at or before F" do
-    # The sandbox wraps each test in one transaction, so a commit can't
-    # happen in it. These tests run their fixtures and the store transaction
-    # outside it (Sandbox.unboxed_run/2, as V6LockReceiptRaceTest does), on
-    # real connections that really commit, and delete what they created.
-    # Every time comparison uses the database clock.
     @tag :slow
     test "INV-8b an insert made before F but committed after F is refused at commit" do
-      # F is 6 to 7 seconds ahead: the store's statement runs inside the
-      # window, before F; the commit waits until F has passed.
       draw = unboxed_v6_draw(-(@w - 7))
       f = Schedule.fetch_deadline(draw.weather_time)
 
@@ -344,7 +297,6 @@ defmodule WallopCore.Invariants.ObservationAndExecutionTest do
 
     @tag :slow
     test "INV-8b an insert committed before F is stored, once" do
-      # Positive control: same path, F 35 minutes ahead, commit at once.
       draw = unboxed_v6_draw(-5 * 60)
       f = Schedule.fetch_deadline(draw.weather_time)
 
@@ -358,8 +310,6 @@ defmodule WallopCore.Invariants.ObservationAndExecutionTest do
     end
   end
 
-  # A v6 draw committed outside the sandbox, for its own fresh operator,
-  # deleted at the end of the test.
   defp unboxed_v6_draw(wt_offset, pub_offset \\ 3600) do
     {operator, draw} =
       unboxed(fn ->
@@ -371,11 +321,6 @@ defmodule WallopCore.Invariants.ObservationAndExecutionTest do
     draw
   end
 
-  # Inserts the hour's reading in a real transaction, runs `before_commit`
-  # inside it, then commits. :committed, or {:refused, message}. A raw INSERT:
-  # Observations.store/2 refuses to run inside a caller's transaction, so the
-  # only way to hold a store open is to bypass it, which is what the
-  # database's commit-time check is for.
   defp store_and_commit(draw, station, before_commit) do
     unboxed(fn ->
       {:ok, _} =
@@ -399,8 +344,6 @@ defmodule WallopCore.Invariants.ObservationAndExecutionTest do
     e in Postgrex.Error -> {:refused, e.postgres.message}
   end
 
-  # Fails the draw in a real transaction, runs `before_commit` inside it,
-  # then commits. :committed, or {:refused, message}.
   defp fail_and_commit(draw, before_commit) do
     unboxed(fn ->
       {:ok, _} =
@@ -455,7 +398,6 @@ defmodule WallopCore.Invariants.ObservationAndExecutionTest do
     Repo.transaction(fn ->
       Repo.query!("SET LOCAL session_replication_role = replica")
 
-      # The observation store's table may not exist yet.
       %{rows: [[store]]} = Repo.query!("SELECT to_regclass('weather_observations')::text")
 
       if store,
@@ -481,10 +423,6 @@ defmodule WallopCore.Invariants.ObservationAndExecutionTest do
     end)
   end
 
-  # ── INV-9 ─────────────────────────────────────────────────────────
-
-  # The draws guard's backstop refusal: the guard raises exactly this, from
-  # the fetch deadline F on (a minute or more before pub(R)).
   @no_fail_after_f "a v6 draw can't fail once its fetch deadline has passed"
 
   describe "INV-9 after drand is fetched, a v6 draw is never marked failed" do
@@ -496,8 +434,6 @@ defmodule WallopCore.Invariants.ObservationAndExecutionTest do
         req_options: [plug: {Req.Test, DrandClient}, retry: false]
       )
 
-      # Echoes the requested round, so the client's round check passes and
-      # the fetch succeeds. Reports each fetch to the test.
       Req.Test.stub(DrandClient, fn conn ->
         round = conn.path_info |> List.last() |> String.to_integer()
         send(test_pid, {:drand_fetched, round})
@@ -512,15 +448,11 @@ defmodule WallopCore.Invariants.ObservationAndExecutionTest do
       on_exit(fn -> Application.delete_env(:wallop_core, DrandClient) end)
     end
 
-    # The failure under test must come after a successful fetch of the
-    # draw's own round.
     defp assert_fetched(draw) do
       round = draw.drand_round
       assert_received {:drand_fetched, ^round}
     end
 
-    # Makes execute_v6 refuse after drand has been fetched: the committed
-    # entries no longer hash to the stored entry_hash.
     defp break_entry_hash!(draw) do
       with_triggers_off(fn ->
         Repo.query!("UPDATE draws SET entry_hash = $2 WHERE id = $1", [
@@ -530,10 +462,6 @@ defmodule WallopCore.Invariants.ObservationAndExecutionTest do
       end)
     end
 
-    # Makes the database refuse the completion with an existing constraint,
-    # no DDL: an execution receipt already stored for the draw collides with
-    # the unique index on execution_receipts(draw_id) when execution
-    # inserts its own.
     defp occupy_execution_receipt!(draw) do
       with_triggers_off(fn ->
         Repo.query!(
@@ -579,10 +507,6 @@ defmodule WallopCore.Invariants.ObservationAndExecutionTest do
     end
 
     test "INV-9 drand failing on the last attempt after pub(R) never fails the draw" do
-      # Attempt 1 fetches drand and rolls back (the database refuses the
-      # completion); the last attempt then finds drand unavailable. Failing
-      # the draw there would be a selective abort made once the outcome was
-      # knowable.
       draw = v6_draw(-(@w + 60), -10)
       occupy_execution_receipt!(draw)
       perform_job(ObservationDrawWorker, %{draw_id: draw.id}, attempt: 1)
@@ -590,8 +514,6 @@ defmodule WallopCore.Invariants.ObservationAndExecutionTest do
 
       Req.Test.stub(DrandClient, fn conn -> Plug.Conn.send_resp(conn, 503, "") end)
 
-      # An error, never a cancel: Oban discards the job and the re-drive
-      # brings the draw back once drand answers.
       for worker <- [ObservationDrawWorker] do
         assert {:error, reason} = perform_job(worker, %{draw_id: draw.id}, attempt: 10)
         assert reason =~ "drand unavailable after 10 attempts"
@@ -600,10 +522,6 @@ defmodule WallopCore.Invariants.ObservationAndExecutionTest do
     end
 
     test "INV-9 the draws guard refuses failing a v6 draw once its fetch deadline has passed" do
-      # From any status a v6 draw can be in: before drand is fetched
-      # (awaiting_entropy) as well as after (pending_entropy). Also between
-      # F and pub(R): a database clock lagging drand must not leave a window
-      # after the round is public.
       awaiting = v6_draw(-(@w + 60), -10)
       pending = v6_draw(-(@w + 60), -10) |> to_pending!()
       before_pub = v6_draw(-(@w + 120), 6)
@@ -615,7 +533,6 @@ defmodule WallopCore.Invariants.ObservationAndExecutionTest do
                ) == @no_fail_after_f,
                "#{draw.status}"
 
-        # Through the action too, the only path that fails a draw.
         assert {:error, error} =
                  draw
                  |> Ash.Changeset.for_update(:mark_failed, %{failure_reason: "test"})
@@ -625,9 +542,6 @@ defmodule WallopCore.Invariants.ObservationAndExecutionTest do
         assert reload(draw).status == draw.status
       end
 
-      # Positive control: a retired forecast draw with drand stored still
-      # fails; the backstop is a no-op without the v6 pair (the drain gate
-      # relies on this).
       forecast = put_retired_forecast_draw!(create_api_key(), :awaiting_entropy)
 
       with_triggers_off(fn ->
@@ -645,9 +559,6 @@ defmodule WallopCore.Invariants.ObservationAndExecutionTest do
 
     @tag :slow
     test "INV-9 a fail made before F but committed after it is refused at commit" do
-      # F is a few seconds ahead, as INV-8b places it: the UPDATE runs before
-      # F, passing the statement-time check; the commit waits until F has
-      # passed, and the deferred check refuses it.
       draw = unboxed_v6_draw(-(@w - 7))
       f = Schedule.fetch_deadline(draw.weather_time)
 
@@ -663,7 +574,6 @@ defmodule WallopCore.Invariants.ObservationAndExecutionTest do
 
     @tag :slow
     test "INV-9 a fail committed before F is kept" do
-      # Positive control: same path, F 35 minutes ahead, commit at once.
       draw = unboxed_v6_draw(-5 * 60)
 
       assert fail_and_commit(draw, fn -> :ok end) == :committed
@@ -671,9 +581,6 @@ defmodule WallopCore.Invariants.ObservationAndExecutionTest do
     end
 
     test "INV-9 before F, failing a v6 draw is still allowed" do
-      # Positive control for the backstop: before F (35 minutes ahead here)
-      # nothing is knowable, so failing is a visible abort, not a choice of
-      # outcome.
       awaiting = v6_draw(-5 * 60, 600)
       pending = v6_draw(-5 * 60, 600) |> to_pending!()
 
@@ -686,7 +593,6 @@ defmodule WallopCore.Invariants.ObservationAndExecutionTest do
     end
 
     test "INV-9 a discarded job is re-driven, and the draw is still not failed" do
-      # Stuck: pub(R) more than 15 minutes ago, and no live job.
       draw = v6_draw(-(@w + 3600), -20 * 60)
       break_entry_hash!(draw)
 
@@ -700,23 +606,15 @@ defmodule WallopCore.Invariants.ObservationAndExecutionTest do
       assert reload(draw).status == :pending_entropy
     end
 
-    # Re-drive inserts a job (cancelling, first, any job that can't run the
-    # draw) and nothing else. The tests below run the re-driven job itself,
-    # so the rules it runs under are the real ones.
     defp redriven_job!(draw) do
       assert draw.id in StuckDrawRedriver.redrive()
       assert [job] = all_enqueued(worker: ObservationDrawWorker, args: %{draw_id: draw.id})
       job
     end
 
-    # The live states in which a job on its own queue, with attempts left
-    # and due soon, counts as running a v6 draw. A suspended one doesn't
-    # (nothing resumes it): attacks/parked_job_test.exs.
     defp redrive_live_states, do: ~w(available scheduled executing retryable)
 
     test "INV-9 a re-driven job re-reads the stored reading: re-drive makes no choice" do
-      # As a real lock leaves it: weather_time is the round's own hour, the
-      # round published 20 minutes ago, and a reading is stored for the hour.
       {_op, key} = create_v6_operator()
       round = round_at(-20 * 60)
       wt = Schedule.weather_time_for_round(round)
@@ -747,7 +645,6 @@ defmodule WallopCore.Invariants.ObservationAndExecutionTest do
       assert reload(draw).status == :pending_entropy
       assert reload(draw).drand_randomness == nil
 
-      # The refusal's cancelled row is the marker: not re-driven again.
       Repo.query!("UPDATE oban_jobs SET state = 'cancelled' WHERE id = $1", [job.id])
       refute draw.id in StuckDrawRedriver.redrive()
     end
@@ -791,7 +688,6 @@ defmodule WallopCore.Invariants.ObservationAndExecutionTest do
     end
 
     test "INV-4 re-drive never acts on a retired forecast draw" do
-      # Stuck by the old forecast rule: weather_time 20 minutes ago, no job.
       draw = put_retired_forecast_draw!(create_api_key(), :awaiting_entropy)
 
       with_triggers_off(fn ->
@@ -815,8 +711,6 @@ defmodule WallopCore.Invariants.ObservationAndExecutionTest do
     end
   end
 
-  # ── INV-10 ────────────────────────────────────────────────────────
-
   defp lock_at(draw, key, draw_at),
     do: draw |> Ash.Changeset.for_update(:lock, %{draw_at: draw_at}, actor: key) |> Ash.update()
 
@@ -830,7 +724,6 @@ defmodule WallopCore.Invariants.ObservationAndExecutionTest do
   end
 
   describe "INV-10 an operator flag flip after lock never changes a locked draw's protocol" do
-    # Live now: the database freezes the pair once a draw leaves open.
     test "INV-10 the stored pair can't be changed after the lock, by any UPDATE" do
       {_op, key} = create_v6_operator()
       s = in_time_schedule()
@@ -871,11 +764,7 @@ defmodule WallopCore.Invariants.ObservationAndExecutionTest do
     end
   end
 
-  # ── INV-11 ────────────────────────────────────────────────────────
-
   describe "INV-11 a draw's expected_result_at is fixed at lock and never changes" do
-    # Live now: drand_round and the pair are frozen once a draw leaves open,
-    # and expected_result_at derives from nothing else.
     test "INV-11 the fields expected_result_at derives from are frozen after the lock" do
       {_op, key} = create_v6_operator()
       s = in_time_schedule()

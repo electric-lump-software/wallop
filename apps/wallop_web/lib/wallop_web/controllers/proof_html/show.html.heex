@@ -1,9 +1,7 @@
-<%!-- Hide logo on sandbox draws — the logo implies official verification --%>
 <style :if={@draw.seed_source == :sandbox}>
   [data-wallop-logo] { display: none !important; }
 </style>
 
-<%!-- Completed draw: verification-first view --%>
 <div :if={@draw.status == :completed} class="space-y-6">
   <div :if={@draw.seed_source == :sandbox} class="rounded-xl px-5 py-4 border-2" style="background-color: #f3e8ff; border-color: #c084fc;">
     <div class="font-semibold text-sm" style="color: #6b21a8;">
@@ -146,7 +144,6 @@
   </div>
 </div>
 
-<%!-- Expired draw --%>
 <div :if={@draw.status == :expired} class="space-y-6">
   <div class="flex items-center gap-3">
     <span class="inline-flex items-center gap-1.5 bg-yellow-100 text-yellow-800 text-xs font-semibold px-3 py-1 rounded-full">
@@ -162,7 +159,6 @@
   </div>
 </div>
 
-<%!-- Failed draw --%>
 <div :if={@draw.status == :failed} class="space-y-6">
   <div class="flex items-center gap-3">
     <span class="inline-flex items-center gap-1.5 bg-red-100 text-red-800 text-xs font-semibold px-3 py-1 rounded-full">

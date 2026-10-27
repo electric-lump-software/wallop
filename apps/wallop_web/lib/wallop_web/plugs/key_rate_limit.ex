@@ -35,14 +35,12 @@ defmodule WallopWeb.Plugs.KeyRateLimit do
   defp enforce(conn, api_key, limit) do
     case RateLimiter.hit("key", api_key.id, limit) do
       {:allow, count} ->
-        # A store error reports count 0, which is never a threshold.
         if count == near_threshold(limit),
           do: RateLimitSignal.emit(api_key.id, :near_limit, limit)
 
         conn
 
       {:deny, retry_after} ->
-        # First refusal this minute only; false on a store error too.
         if RateLimiter.first_this_window?("key-limited-event", api_key.id),
           do: RateLimitSignal.emit(api_key.id, :limited, limit)
 

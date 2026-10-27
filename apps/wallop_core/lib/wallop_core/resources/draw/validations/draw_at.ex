@@ -45,9 +45,6 @@ defmodule WallopCore.Resources.Draw.Validations.DrawAt do
     end
   end
 
-  # The schedule module and the late check of the recorded pair's rules.
-  # ResolveLockSchema records only known pairs; anything else is refused,
-  # never guessed.
   defp tag_rules(pair) do
     case V6Rules.rules(pair) do
       {:ok, :landobs} ->

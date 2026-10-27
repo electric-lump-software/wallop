@@ -42,12 +42,6 @@ defmodule WallopCore.Repo.Migrations.SandboxDrawSeparation do
   use Ecto.Migration
 
   def up do
-    # Pre-launch: drop any existing sandbox rows from draws. The real
-    # state transition fix below would otherwise leave these rows in an
-    # invalid state (seed_source value removed from enum). Sandbox rows
-    # may be in terminal state (:completed), which the existing
-    # immutability trigger blocks from deletion — bypass the trigger
-    # for this one DELETE via session_replication_role = replica.
     execute("""
     DO $$
     BEGIN
@@ -56,9 +50,6 @@ defmodule WallopCore.Repo.Migrations.SandboxDrawSeparation do
     END $$;
     """)
 
-    # Create the sandbox_draws table. Entries are embedded JSON, not a
-    # relation — sandbox entries are ephemeral and must never share a
-    # table with real Draw entries.
     create table(:sandbox_draws, primary_key: false) do
       add :id, :uuid, primary_key: true, null: false, default: fragment("gen_random_uuid()")
 
@@ -85,12 +76,6 @@ defmodule WallopCore.Repo.Migrations.SandboxDrawSeparation do
     create index(:sandbox_draws, [:api_key_id])
     create index(:sandbox_draws, [:operator_id])
 
-    # Rewrite the draws immutability trigger to remove the sandbox
-    # carve-out. Previous trigger allowed awaiting_entropy → completed
-    # ONLY when seed_source = 'sandbox'; new trigger forbids that
-    # transition entirely. Real draws must flow
-    # awaiting_entropy → pending_entropy → completed via the entropy
-    # worker, with no shortcut.
     execute("""
     CREATE OR REPLACE FUNCTION prevent_draw_mutation()
     RETURNS TRIGGER AS $$
@@ -162,7 +147,6 @@ defmodule WallopCore.Repo.Migrations.SandboxDrawSeparation do
   end
 
   def down do
-    # Restore previous trigger (with the sandbox carve-out).
     execute("""
     CREATE OR REPLACE FUNCTION prevent_draw_mutation()
     RETURNS TRIGGER AS $$

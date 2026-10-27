@@ -54,9 +54,6 @@ defmodule WallopCore.Attacks.ForgedCompletionTest do
 
   @tag :slow
   test "a completion committed with its receipt in the same transaction is kept" do
-    # Positive control for the commit-time check alone: the receipt row is
-    # a placeholder, inserted with triggers off, so only the deferred check
-    # is exercised.
     draw = unboxed_ready_draw()
     [chosen | _] = unboxed(fn -> WallopCore.Entries.load_for_draw(draw.id) end)
 
@@ -88,7 +85,6 @@ defmodule WallopCore.Attacks.ForgedCompletionTest do
                drand_signature: @signature,
                drand_response: "{}"
              })
-             # Run inside check_now's savepoint on purpose.
              |> Ash.Changeset.set_context(%{warn_on_transaction_hooks?: false})
              |> Ash.update!(authorize?: false)
            end) == nil
@@ -139,8 +135,6 @@ defmodule WallopCore.Attacks.ForgedCompletionTest do
     ]
   end
 
-  # Runs `fun` in a savepoint, then fires the deferred completion check at
-  # once. nil when accepted, or the refusal's message. Always rolled back.
   defp check_now(fun) do
     try_sql_fun(fn ->
       fun.()
@@ -179,8 +173,6 @@ defmodule WallopCore.Attacks.ForgedCompletionTest do
 
   defp reload(draw), do: Ash.get!(Draw, draw.id, authorize?: false)
 
-  # A v6 draw past F + 1 minute and past pub(R), committed outside the
-  # sandbox for a fresh operator, removed at the end of the test.
   defp unboxed_ready_draw do
     {operator, draw} =
       unboxed(fn ->

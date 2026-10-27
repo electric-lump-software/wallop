@@ -4,9 +4,6 @@ defmodule WallopCore.Weather.LandObsGrammarTest do
 
   alias WallopCore.Weather.LandObsGrammar, as: G
 
-  # Synthetic rows in the format the Met Office Weather DataHub documents for
-  # Land Observations (same field names, number formatting and datetime
-  # format). Neither is a real observation.
   @row_1900 ~s({"temperature": 12.34, "visibility": 34500.0, "weather_code": 7, "datetime": "2026-10-14T19:00:00Z", "humidity": 67, "mslp": 1012, "wind_gust": 7.4, "wind_speed": 3.6, "pressure_tendency": "S", "wind_direction": "SSW"})
   @row_1200 ~s({"datetime": "2026-10-15T12:00:00Z", "humidity": 72, "mslp": 1017, "pressure_tendency": "F", "temperature": 17.25, "visibility": 52370.0, "weather_code": 3, "wind_direction": "W", "wind_gust": 10.8, "wind_speed": 6.1})
 
@@ -39,7 +36,6 @@ defmodule WallopCore.Weather.LandObsGrammarTest do
 
   test "canonicalises rows in the documented format" do
     assert {:ok, "123;1012;67;3450"} = G.canonical_value(row(@row_1900))
-    # 17.25 rounds half away from zero to 173.
     assert {:ok, "173;1017;72;5237"} = G.canonical_value(row(@row_1200))
   end
 
@@ -187,7 +183,6 @@ defmodule WallopCore.Weather.LandObsGrammarTest do
             rh <- integer(-5..110),
             vis <- integer(0..110_000)
           ) do
-      # With negative_fraction?, temperature is -0.x: between -1 and 0.
       t_text = if negative_fraction?, do: "-0.#{t_frac}", else: "#{t}.#{t_frac}"
 
       json =
@@ -268,12 +263,10 @@ defmodule WallopCore.Weather.LandObsGrammarTest do
           ~s({"t": 1, "t": 1}),
           ~s([{"a": 1}, {"t": {"x": 1, "x": null}}]),
           ~s({"data": [], "data": [{"t": 1}]}),
-          # Compared after unescaping: \u0074 is "t".
           ~s({"t": 1, "\\u0074": 2})
         ],
         do: assert(G.decode(body) == {:error, :duplicate_key}, body)
 
-    # The same key in sibling objects, or as a string value, is fine.
     assert {:ok, [%{"t" => _}, %{"t" => _}]} = G.decode(~s([{"t": 1}, {"t": 2}]))
     assert {:ok, %{"t" => "t", "u" => %{"t" => _}}} = G.decode(~s({"t": "t", "u": {"t": 1}}))
   end

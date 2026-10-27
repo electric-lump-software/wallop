@@ -45,8 +45,6 @@ defmodule WallopWeb.RateLimitSignal do
     :ok
   end
 
-  # The broadcast can block on a slow Redis adapter, so it runs off the
-  # request process. If even starting the task fails, the signal is dropped.
   defp spawn_broadcast(api_key_id, kind, payload) do
     Task.Supervisor.start_child(WallopWeb.TaskSupervisor, fn ->
       broadcast(api_key_id, kind, payload)

@@ -144,7 +144,6 @@ defmodule WallopCore.Protocol.Tags.LandObs do
   def validate_exec!(
         %{weather_station: station, drand_round: round, executed_at: executed_at} = input
       ) do
-    # Present on every input, like the base keys; nil only where the rules allow it.
     for key <- [:freq_value, :freq_fallback_reason],
         do: require!(Map.has_key?(input, key), "exec v5 input must carry #{inspect(key)}")
 
@@ -182,7 +181,6 @@ defmodule WallopCore.Protocol.Tags.LandObs do
   end
 
   defp validate_weather!(%{weather_value: value, weather_observation_time: observed}, round) do
-    # valid_value?/1 checks the grammar and the frozen bounds.
     require!(
       LandObsGrammar.valid_value?(value),
       "exec v5 weather_value does not match the Land Observations grammar and bounds"

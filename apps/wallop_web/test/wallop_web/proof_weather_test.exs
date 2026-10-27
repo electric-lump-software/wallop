@@ -7,9 +7,6 @@ defmodule WallopWeb.ProofWeatherTest do
   @landobs "drand-quicknet+metoffice-landobs-v1"
   @freq "drand-quicknet+elexon-freq-v1"
 
-  # Round 33_068_212 publishes at 2026-10-14 20:00:00Z; its signed
-  # observation hour is 19:00Z. The row's weather_time is deliberately
-  # another hour: the page follows the signed receipt, not the row.
   @draw %{
     lock_schema_version: "6",
     entropy_composition: @landobs,
@@ -29,7 +26,6 @@ defmodule WallopWeb.ProofWeatherTest do
   defp edit(%{payload_jcs: jcs}, fun),
     do: %{payload_jcs: jcs |> Jason.decode!() |> fun.() |> Jason.encode!()}
 
-  # The whole trusted set for each tag, in order.
   @landobs_trust [
     "Fewer than drand's threshold of nodes collude.",
     "The public weather record is honest and stays available.",
@@ -146,7 +142,7 @@ defmodule WallopWeb.ProofWeatherTest do
 
   test "the source is the receipt's state, never which value happens to be there" do
     {exec, lock, _} = receipts("proof-bundle-v6.json")
-    # A weather value and a freq_value together fit none of the three states.
+
     bad =
       edit(exec, &Map.put(&1, "freq_value", "50012;50018;50012;49983;49980;49953;49912;49883"))
 

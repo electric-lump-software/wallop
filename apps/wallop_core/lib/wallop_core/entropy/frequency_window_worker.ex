@@ -46,9 +46,7 @@ defmodule WallopCore.Entropy.FrequencyWindowWorker do
       `%{freq_start, kind}`: the run raised, exited or threw.
   """
   use Oban.Worker,
-    # Its own queue: Elexon polls never hold Land Obs fetch slots.
     queue: :frequency,
-    # Snoozes don't count against this; only crashes and timeouts do.
     max_attempts: 100,
     unique: [period: :infinity, keys: [:freq_start], states: :incomplete]
 
@@ -59,12 +57,8 @@ defmodule WallopCore.Entropy.FrequencyWindowWorker do
   alias WallopCore.Frequency.{Schedule, Windows}
   alias WallopCore.Repo
 
-  # The client's own timeouts are per chunk, so each fetch is capped here.
-  # Fetch cap + store (5 s statement timeout) + reads stay under the job
-  # timeout, and the job timeout stays under the 20 s poll interval.
   @fetch_timeout_ms 8_000
   @job_timeout_ms 15_000
-  # The last poll is made at least this long before F.
   @deadline_margin_seconds 2
 
   @doc "The job for window start `t` (UTC, whole seconds, on the 15 s grid); raises otherwise."
@@ -108,8 +102,6 @@ defmodule WallopCore.Entropy.FrequencyWindowWorker do
 
   @impl Oban.Worker
   def perform(%Oban.Job{args: %{"freq_start" => iso}}) when is_binary(iso) do
-    # Only the canonical form is run, so every job for T has the same
-    # argument and uniqueness can't be sidestepped by another spelling.
     with {:ok, t, 0} <- DateTime.from_iso8601(iso),
          t = %{t | microsecond: {0, 6}},
          true <- iso == start_arg(t),
@@ -149,8 +141,6 @@ defmodule WallopCore.Entropy.FrequencyWindowWorker do
     result = fetch(t)
     report(t, result)
 
-    # The clock is read after fetching, so the decision is as close to the
-    # store as it can be. The trigger checks it again on its own clock.
     now = DbClock.now()
 
     case window_state(now, t) do
@@ -166,8 +156,6 @@ defmodule WallopCore.Entropy.FrequencyWindowWorker do
     end
   end
 
-  # Never inside a transaction; the check has to be here, since in the Task
-  # in_transaction? is always false.
   defp fetch(t) do
     if Repo.in_transaction?(), do: {:error, :nested_transaction}, else: timed_fetch(t)
   end
@@ -226,8 +214,6 @@ defmodule WallopCore.Entropy.FrequencyWindowWorker do
         :telemetry.execute([:wallop_core, :frequency, :stored], %{count: 1}, %{freq_start: t})
 
       {:error, reason} ->
-        # Refused because T already has a row: another run stored it first,
-        # and that row is T's window. Nothing to report.
         if Windows.for_start(t) == nil, do: store_refused(t, reason)
     end
   end
@@ -244,8 +230,6 @@ defmodule WallopCore.Entropy.FrequencyWindowWorker do
     })
   end
 
-  # Stops only when the database clock says F has passed. If the database
-  # can't be read, it snoozes; the BEAM clock is never used.
   defp poll_failed(t, kind, module) do
     poll_error(t, kind, module)
 
@@ -287,8 +271,6 @@ defmodule WallopCore.Entropy.FrequencyWindowWorker do
     do: DateTime.add(Schedule.store_from(t), Schedule.first_poll_after_store_from_seconds())
 
   @doc false
-  # The next poll, at least @deadline_margin_seconds before F; when there is
-  # no whole second left for that, polling stops.
   @spec next_poll(DateTime.t(), DateTime.t()) :: {:snooze, pos_integer()} | :ok
   def next_poll(now, t) do
     left = DateTime.diff(Schedule.fetch_deadline(t), now) - @deadline_margin_seconds

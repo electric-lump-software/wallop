@@ -45,7 +45,6 @@ defmodule WallopWeb.Api.LockV6Test do
       late = top_of_hour(-1)
       {:ok, s} = Schedule.schedule(late)
       latest = s.latest_lock_at |> DateTime.truncate(:second) |> DateTime.to_iso8601()
-      # Whole seconds: the observation hour minus 46 minutes.
       assert latest =~ ~r/\A\d{4}-\d\d-\d\dT\d\d:14:00Z\z/
 
       [error] = lock(key, draw, %{"draw_at" => DateTime.to_iso8601(late)}, 400)["errors"]
@@ -76,7 +75,6 @@ defmodule WallopWeb.Api.LockV6Test do
       [error] =
         lock(key, draw, %{"weather_time" => DateTime.to_iso8601(top_of_hour(3))}, 400)["errors"]
 
-      # weather_time is no longer a lock input: the body is refused.
       assert error["source"]["pointer"] == "/data/attributes/weather_time"
       assert error["code"] == "invalid_body"
     end

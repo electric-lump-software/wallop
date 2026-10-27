@@ -20,9 +20,6 @@ defmodule WallopCore.Frequency.FreqGrammar do
   alias WallopCore.Frequency.Schedule
 
   @bounds 47_000..52_999
-  # N, the stuck-run threshold, frozen by the tag. Mirrored by the SQL
-  # function wallop_freq_stuck_run(), the literal in wallop_freq_valid_value
-  # and the verifier's STUCK_RUN.
   @stuck_run 6
   @readings Schedule.readings()
   @reading_text ~r/\A(0|[1-9][0-9]{0,5})(?:\.([0-9]{1,3}))?\z/

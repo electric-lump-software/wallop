@@ -10,7 +10,6 @@ defmodule WallopCore.Repo.Migrations.AddExecutionReceipts do
   use Ecto.Migration
 
   def up do
-    # ----- infrastructure_signing_keys -----
 
     create table(:infrastructure_signing_keys, primary_key: false) do
       add :id, :uuid, primary_key: true, null: false, default: fragment("gen_random_uuid()")
@@ -49,7 +48,6 @@ defmodule WallopCore.Repo.Migrations.AddExecutionReceipts do
     FOR EACH ROW EXECUTE FUNCTION prevent_infra_key_mutation();
     """)
 
-    # ----- execution_receipts -----
 
     create table(:execution_receipts, primary_key: false) do
       add :id, :uuid, primary_key: true, null: false, default: fragment("gen_random_uuid()")

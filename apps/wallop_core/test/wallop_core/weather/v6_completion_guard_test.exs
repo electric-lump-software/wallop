@@ -17,8 +17,6 @@ defmodule WallopCore.Weather.V6CompletionGuardTest do
   @stored_only "v6 draw must complete with its stored observation"
   @fallback_only "v6 draw may fall back only after the fetch deadline with nothing stored"
 
-  # A v6 draw in pending_entropy whose stored weather_time is `wt_offset`
-  # seconds from now and whose round publishes `pub_offset` seconds from now.
   defp pending(wt_offset, pub_offset, key \\ nil) do
     wt = DateTime.utc_now() |> DateTime.add(wt_offset) |> DateTime.truncate(:second)
     pending_at(wt, pub_offset, key || elem(create_v6_operator(), 1))
@@ -33,7 +31,6 @@ defmodule WallopCore.Weather.V6CompletionGuardTest do
 
   defp dump(id), do: Ecto.UUID.dump!(id)
 
-  # nil when the completion is accepted (and rolled back), else the refusal.
   defp complete(draw, set_sql, params \\ []) do
     {:error, :accepted} =
       Repo.transaction(fn ->
@@ -50,14 +47,11 @@ defmodule WallopCore.Weather.V6CompletionGuardTest do
     e in Postgrex.Error -> e.postgres.message
   end
 
-  # The fallback here is state (c): no reading and no window stored.
   @fallback "weather_fallback_reason = $3, freq_fallback_reason = 'no_frequency_by_deadline'"
 
   defp reading(draw, value),
     do: %{value: value, raw: "[]", observation_time: draw.weather_time}
 
-  # Moves the draw's hour, its stored row and every draw of that hour an
-  # hour back with every trigger off, so "after F" holds while the row stays.
   defp shift_window_back!(draw) do
     wt = DateTime.to_naive(draw.weather_time)
     Repo.query!("SET session_replication_role = replica")
@@ -142,8 +136,6 @@ defmodule WallopCore.Weather.V6CompletionGuardTest do
       draw = pending(-5 * 60, -10)
       {:ok, primary} = store(@primary, draw, "141;1025;85;2432")
 
-      # Wittering has no window, and a reading is already stored: both
-      # refuse it.
       assert {:error, _} = store(@wittering, draw)
 
       shift_window_back!(draw)

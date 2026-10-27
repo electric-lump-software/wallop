@@ -28,9 +28,6 @@ defmodule WallopCore.InvariantCase do
       put_v6_awaiting!: 4
     ]
 
-  # One tag per task that still owes the suite an invariant. A task removes
-  # its tag from the tests it delivers; once no test uses a tag, it may be
-  # removed here too.
   @pending_tags []
 
   @doc "Tags of invariants whose task has not landed. Excluded by default."
@@ -58,7 +55,6 @@ defmodule WallopCore.InvariantCase do
     now = DateTime.utc_now()
     w = Schedule.fetch_window_seconds()
 
-    # The latest whole hour h with h - 46m < now.
     latest = DateTime.to_unix(now) + Schedule.lock_offset_seconds() - 1
     h = DateTime.from_unix!((latest - Integer.mod(latest, 3600)) * 1_000_000, :microsecond)
 
@@ -110,7 +106,6 @@ defmodule WallopCore.InvariantCase do
         overrides
       )
 
-    # Both lock schema 6 tags carry it; default it only for the Land Obs tag.
     freq_start =
       Keyword.get_lazy(overrides, :freq_start, fn ->
         if o[:tag] == LandObs.tag(), do: FreqSchedule.freq_start_for_round(round)
@@ -560,7 +555,6 @@ defmodule WallopCore.InvariantCase do
       |> Enum.map(fn {id, p} -> %{"position" => p, "entry_id" => id} end)
 
     seed = :crypto.hash(:sha256, draw.id) |> Base.encode16(case: :lower)
-    # drand's randomness is sha256 of its signature.
     signature = String.duplicate("cd", 48)
 
     randomness =

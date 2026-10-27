@@ -5,8 +5,6 @@ defmodule WallopCore.Resources.Draw.CreateLeavesKeyAloneTest do
 
   alias WallopCore.Resources.{ApiKey, Draw}
 
-  # Writes the deprecated quota columns directly, as a consumer on an older
-  # wallop_core still can. Nothing in this version may act on them.
   defp exhaust_old_quota(key) do
     WallopCore.Repo.query!(
       "UPDATE api_keys SET tier = 'frozen', monthly_draw_limit = 0, monthly_draw_count = 5, " <>

@@ -31,7 +31,6 @@ defmodule WallopCore.Entropy.ObservationDrawWorkerTest do
   @w Schedule.fetch_window_seconds()
   @value "141;1025;85;2432"
   @freq "50012;50018;50012;49983;49980;49953;49912;49883"
-  # A real quicknet beacon: the randomness is sha256 of the signature.
   @randomness "140117383b03a0c0c7a899a32b8cbd2ffff9e2569504037c358ee8c7c2efe2fd"
   @signature "b6541e41bb68ff318e8bd74b9f6e168ae6424476c432241420c38427df58c6ef33fe009ce202a7101120ab481702fddf"
 
@@ -43,8 +42,6 @@ defmodule WallopCore.Entropy.ObservationDrawWorkerTest do
       req_options: [plug: {Req.Test, DrandClient}, retry: false]
     )
 
-    # Echoes the requested round, so the client's round check passes, and
-    # reports each fetch to the test.
     Req.Test.stub(DrandClient, fn conn ->
       round = conn.path_info |> List.last() |> String.to_integer()
       send(test_pid, {:drand_fetched, round})
@@ -61,18 +58,12 @@ defmodule WallopCore.Entropy.ObservationDrawWorkerTest do
 
   defp round_at(offset), do: Quicknet.round_at_or_after(DateTime.add(DateTime.utc_now(), offset))
 
-  # A v6 draw whose fetch window closed `closed_ago` seconds ago (on the
-  # stored weather_time) and whose drand round publishes `pub_offset`
-  # seconds from now.
   defp v6_draw_after_deadline(closed_ago, pub_offset \\ -10) do
     {op, key} = create_v6_operator()
     wt = DateTime.utc_now() |> DateTime.add(-(@w + closed_ago)) |> DateTime.truncate(:second)
     {op, put_v6_awaiting!(open_draw_with_entries(key), wt, round_at(pub_offset))}
   end
 
-  # A v6 draw as a real lock leaves it: weather_time is the round's own
-  # observation hour. The round published 10 seconds ago, so F has passed.
-  # A reading from `station` is stored for the hour.
   defp v6_draw_on_round_hour(station) do
     {_op, key} = create_v6_operator()
     round = round_at(-10)
@@ -126,9 +117,6 @@ defmodule WallopCore.Entropy.ObservationDrawWorkerTest do
     end)
   end
 
-  # The database refuses the completion with an existing constraint: an
-  # execution receipt already stored for the draw collides with the unique
-  # index on execution_receipts(draw_id) when execution inserts its own.
   defp occupy_execution_receipt!(draw) do
     with_triggers_off(fn ->
       Repo.query!(
@@ -169,7 +157,6 @@ defmodule WallopCore.Entropy.ObservationDrawWorkerTest do
       assert done.weather_value == nil
       assert done.weather_observation_time == nil
       assert done.weather_fallback_reason == "no_observation_by_deadline"
-      # No window stored for its T either: state (c), drand alone.
       assert {done.freq_value, done.freq_fallback_reason} == {nil, "no_frequency_by_deadline"}
       assert done.drand_randomness == @randomness
       assert done.weather_station == Stations.primary().id
@@ -202,7 +189,6 @@ defmodule WallopCore.Entropy.ObservationDrawWorkerTest do
       assert done.weather_value == @value
       assert done.weather_observation_time == draw.weather_time
       assert done.weather_fallback_reason == nil
-      # The draws row and the receipt both name Middle Wallop.
       assert done.weather_station == Stations.primary().id
 
       {seed, _} = Protocol.compute_seed(done.entry_hash, @randomness, @value)
@@ -225,10 +211,8 @@ defmodule WallopCore.Entropy.ObservationDrawWorkerTest do
       assert :ok = perform_job(ObservationDrawWorker, %{draw_id: draw.id})
       done = reload(draw)
 
-      # Match: the completed draw's own seed is the weather seed of its inputs.
       assert {:ok, %{weather_value: @value}} = V6Rules.receipt_input(:landobs, done)
 
-      # Mismatch: the drand-only seed, the frequency seed, or any other.
       for {bytes, _} <- [
             Protocol.compute_seed(done.entry_hash, @randomness),
             Protocol.compute_freq_seed(done.entry_hash, @randomness, @value),
@@ -249,7 +233,6 @@ defmodule WallopCore.Entropy.ObservationDrawWorkerTest do
         |> Ash.Changeset.for_update(:set_draw_protocol, %{draw_protocol: :frequency})
         |> Ash.update(authorize?: false)
 
-      # The draw is still run under its stored Land Obs tag.
       assert :ok = perform_job(ObservationDrawWorker, %{draw_id: draw.id})
       done = reload(draw)
       assert done.status == :completed
@@ -268,10 +251,6 @@ defmodule WallopCore.Entropy.ObservationDrawWorkerTest do
   end
 
   describe "the round's grid-frequency window, end to end" do
-    # A weather-tag draw at d = 0, pub(R) = wt + 31 min, on the latest hour
-    # whose pub(R) is at least 10 s ago: every deadline has passed. The
-    # window job the lock would insert is inserted too. No reading is
-    # stored for the hour.
     defp draw_at_wt_plus_31m do
       {_op, key} = create_v6_operator()
       latest = DateTime.to_unix(DateTime.utc_now()) - 1860 - 10
@@ -327,10 +306,6 @@ defmodule WallopCore.Entropy.ObservationDrawWorkerTest do
       {_op, key} = create_v6_operator()
       round = round_at(-10)
       true_wt = Schedule.weather_time_for_round(round)
-      # The database clock can't be moved, so the hour is first placed inside
-      # its fetch window (6 minutes ago, as the worker tests do) for the
-      # capped poll, and then moved back to the round's own hour, whose F
-      # has passed, for the execution.
       in_window = DateTime.utc_now() |> DateTime.add(-6 * 60) |> DateTime.truncate(:second)
       draw = put_v6_awaiting!(open_draw_with_entries(key), in_window, round)
 
@@ -380,7 +355,6 @@ defmodule WallopCore.Entropy.ObservationDrawWorkerTest do
         from(j in Oban.Job, where: j.worker == "WallopCore.Entropy.FrequencyWindowWorker")
       )
 
-      # F_freq + M has passed: pub(R) = T + 360 >= F_freq + M.
       assert DateTime.compare(
                DateTime.utc_now(),
                DateTime.add(
@@ -399,12 +373,10 @@ defmodule WallopCore.Entropy.ObservationDrawWorkerTest do
       {seed, _} = Protocol.compute_seed(done.entry_hash, @randomness)
       assert done.seed == Base.encode16(seed, case: :lower)
 
-      # State (c) in the signed receipt and in the proof bundle's copy of it.
       {:ok, json} = ProofBundle.build(done)
       bundle = Jason.decode!(json)
 
       for p <- [exec_payload(draw), Jason.decode!(bundle["execution_receipt"]["payload_jcs"])] do
-        # Signed as nulls, not left out.
         assert Enum.all?(
                  ~w(weather_value weather_observation_time freq_value),
                  &Map.has_key?(p, &1)
@@ -416,7 +388,6 @@ defmodule WallopCore.Entropy.ObservationDrawWorkerTest do
         assert {p["freq_value"], p["freq_fallback_reason"]} == {nil, "no_frequency_by_deadline"}
       end
 
-      # The bundle's entropy carries neither value.
       refute Map.has_key?(bundle["entropy"], "weather_value")
       refute Map.has_key?(bundle["entropy"], "freq_value")
     end
@@ -431,7 +402,6 @@ defmodule WallopCore.Entropy.ObservationDrawWorkerTest do
       assert_receive {[:wallop_core, :v6, :executed], ^ref, _,
                       %{source: :weather, fallback?: false}}
 
-      # State (a): the draw, its signed receipt and its proof bundle.
       done = reload(draw)
       assert done.status == :completed
       assert {done.weather_value, done.weather_fallback_reason} == {@value, nil}
@@ -547,15 +517,12 @@ defmodule WallopCore.Entropy.ObservationDrawWorkerTest do
 
       Req.Test.stub(DrandClient, fn conn ->
         case List.last(conn.path_info) do
-          # The clock skew check's request, not a fetch of the round.
           "latest" ->
             Plug.Conn.send_resp(conn, 404, "")
 
           last ->
             :counters.add(calls, 1, 1)
             round = String.to_integer(last)
-            # The first relay answers with another round, which the client
-            # rejects as invalid; the next one answers properly.
             round = if :counters.get(calls, 1) == 1, do: round + 1, else: round
 
             Req.Test.json(conn, %{
@@ -598,8 +565,6 @@ defmodule WallopCore.Entropy.ObservationDrawWorkerTest do
     end
 
     test "every relay's 403 is transient: the last attempt is an error reported as exhausted, never cancelled or failed" do
-      # The public relays take no credentials, so a 403 is one relay's
-      # answer, not a verdict on the fetch.
       ref =
         :telemetry_test.attach_event_handlers(self(), [
           [:wallop_core, :v6, :exec_refused],
@@ -687,17 +652,12 @@ defmodule WallopCore.Entropy.ObservationDrawWorkerTest do
 
       {_op, draw} = v6_draw_after_deadline(60)
 
-      # Attempt 1: drand is fetched, then the database refuses the completion
-      # and everything rolls back. The outcome was knowable from here on.
       occupy_execution_receipt!(draw)
       assert {:error, _} = perform_job(ObservationDrawWorker, %{draw_id: draw.id}, attempt: 1)
       assert_received {:drand_fetched, _}
       assert_receive {[:wallop_core, :v6, :execute_error], ^ref, _, _}
       assert reload(draw).drand_randomness == nil
 
-      # The last attempt: drand is now unavailable. Failing the draw here
-      # would be a selective abort; the job ends in an error, is discarded,
-      # and the draw is left for the re-drive.
       Req.Test.stub(DrandClient, fn conn -> Plug.Conn.send_resp(conn, 503, "") end)
 
       assert {:error, reason} =
@@ -721,9 +681,6 @@ defmodule WallopCore.Entropy.ObservationDrawWorkerTest do
       {_op, draw} = v6_draw_after_deadline(60)
       later = round_at(600)
 
-      # Between the worker's own check and execute_v6, the stored round moves
-      # 10 minutes ahead: execute_v6 reads the draw again under its row lock
-      # and says "not yet", as it would for an app clock lagging the DB's.
       Req.Test.stub(DrandClient, fn conn ->
         round = conn.path_info |> List.last() |> String.to_integer()
 
@@ -761,10 +718,6 @@ defmodule WallopCore.Entropy.ObservationDrawWorkerTest do
     test "a receipt the builder refuses on stored state: exec_refused, job cancelled, draw untouched" do
       ref = :telemetry_test.attach_event_handlers(self(), [[:wallop_core, :v6, :exec_refused]])
 
-      # A reading stored for a weather_time that isn't the round's hour: the
-      # draws guard would accept the completion, but the exec v5 builder
-      # refuses an observation time that isn't the round's whole hour. No retry can fix
-      # stored state, so the job stops at once.
       {_op, draw} = v6_draw_after_deadline(60)
       put_observation!(Stations.primary().id, draw.weather_time, @value)
 
@@ -821,15 +774,10 @@ defmodule WallopCore.Entropy.ObservationDrawWorkerTest do
   end
 
   describe "the BLS check" do
-    # Quicknet round 33107467 (published 2026-10-16), from
-    # test/fixtures/drand/quicknet_rounds.json: a real round, so this runs
-    # the real check, with no stand-in signature.
     @real_round 33_107_467
     @real_sig "82108c75dfe9e153102818e8758dc4e0dda646e6022be94adfba9cacb6993b4066f2060807394815701f2e8066b1408a"
     @real_randomness "83acaac1207be3889a6467aa2682dc50685f922d0d705e66e78ea35c806d9b1f"
 
-    # The signature with its last bit flipped, and randomness to match it,
-    # so only the signature check can refuse it.
     defp forged(sig) do
       <<pre::binary-size(47), last>> = Base.decode16!(sig, case: :lower)
       bytes = <<pre::binary, Bitwise.bxor(last, 1)>>
@@ -956,9 +904,6 @@ defmodule WallopCore.Entropy.ObservationDrawWorkerTest do
 
     @tag :capture_log
     test "a job discarded after drand is re-driven, and the new job completes the draw" do
-      # Its round published 20 minutes ago. Attempt 10 fetches drand, the
-      # database refuses the completion, everything rolls back, and the job
-      # is out of attempts: discarded.
       {_op, draw} = v6_draw_after_deadline(30 * 60, -20 * 60)
       Repo.query!("DELETE FROM oban_jobs WHERE args->>'draw_id' = $1", [draw.id])
       occupy_execution_receipt!(draw)
@@ -967,7 +912,6 @@ defmodule WallopCore.Entropy.ObservationDrawWorkerTest do
       assert reload(draw).status == :pending_entropy
       job_row!(draw, "discarded")
 
-      # The fault is fixed.
       with_triggers_off(fn ->
         Repo.query!("DELETE FROM execution_receipts WHERE draw_id = $1", [
           Ecto.UUID.dump!(draw.id)
@@ -982,7 +926,6 @@ defmodule WallopCore.Entropy.ObservationDrawWorkerTest do
       assert done.weather_fallback_reason == "no_observation_by_deadline"
       assert execution_receipt_count(draw) == 1
 
-      # Nothing is left to re-drive.
       refute draw.id in StuckDrawRedriver.redrive()
     end
 
@@ -1001,7 +944,6 @@ defmodule WallopCore.Entropy.ObservationDrawWorkerTest do
       Repo.query!("DELETE FROM oban_jobs WHERE id = $1", [cancelled.id])
       job = redriven_job!(draw)
 
-      # The stored state is still wrong, so the re-driven job is refused too.
       assert {:cancel, reason} = perform_job(ObservationDrawWorker, job.args, attempt: 1)
       assert reason =~ "entry hash mismatch"
       assert reload(draw).status == :pending_entropy
@@ -1028,19 +970,15 @@ defmodule WallopCore.Entropy.ObservationDrawWorkerTest do
           [:wallop_core, :v6, :overdue]
         ])
 
-      # Both rounds published 20 minutes ago. `refused` has stored state no
-      # retry can fix: its entries no longer hash to its entry_hash.
       {_op, outage} = v6_draw_after_deadline(30 * 60, -20 * 60)
       {_op, refused} = v6_draw_after_deadline(30 * 60, -20 * 60)
       break_entry_hash!(refused)
 
       for draw <- [outage, refused] do
         Repo.query!("DELETE FROM oban_jobs WHERE args->>'draw_id' = $1", [draw.id])
-        # One attempt, so the first run is the last.
         {:ok, _} = Oban.insert(ObservationDrawWorker.new(%{draw_id: draw.id}, max_attempts: 1))
       end
 
-      # drand is down for the whole of the jobs' last attempts.
       Req.Test.stub(DrandClient, fn conn -> Plug.Conn.send_resp(conn, 503, "") end)
       Oban.drain_queue(queue: :v6_execution)
 
@@ -1052,7 +990,6 @@ defmodule WallopCore.Entropy.ObservationDrawWorkerTest do
       assert_received {[:wallop_core, :v6, :drand_exhausted], ^ref, _, _}
       refute_received {[:wallop_core, :v6, :exec_refused], ^ref, _, _}
 
-      # drand is back. The re-drive puts both jobs back.
       Req.Test.stub(DrandClient, fn conn ->
         round = conn.path_info |> List.last() |> String.to_integer()
 
@@ -1067,8 +1004,6 @@ defmodule WallopCore.Entropy.ObservationDrawWorkerTest do
       assert outage.id in redriven
       assert refused.id in redriven
 
-      # Both are overdue: neither is completed, and a discarded job is no
-      # refusal.
       for draw <- [outage, refused] do
         id = draw.id
         assert_received {[:wallop_core, :v6, :overdue], ^ref, %{count: 1}, %{draw_id: ^id}}
@@ -1076,8 +1011,6 @@ defmodule WallopCore.Entropy.ObservationDrawWorkerTest do
 
       Oban.drain_queue(queue: :v6_execution)
 
-      # The outage draw completes; the refused one is refused on stored
-      # state, and its job is cancelled.
       assert reload(outage).status == :completed
       assert job_states(outage) == ["discarded", "completed"]
       assert reload(refused).status == :pending_entropy
@@ -1085,9 +1018,6 @@ defmodule WallopCore.Entropy.ObservationDrawWorkerTest do
       assert_received {[:wallop_core, :v6, :exec_refused], ^ref, _, %{draw_id: id}}
       assert id == refused.id
 
-      # The cancelled job marks the refusal: no re-drive while it remains.
-      # The refusal was reported (exec_refused), so the draw is not
-      # reported as overdue either; the completed one never is.
       redriven = StuckDrawRedriver.redrive()
       refute outage.id in redriven
       refute refused.id in redriven
@@ -1101,8 +1031,6 @@ defmodule WallopCore.Entropy.ObservationDrawWorkerTest do
   end
 
   describe "no path to a failed draw" do
-    # The v6 path must not be able to mark a draw failed: once the worker
-    # runs, drand's round has published and the outcome is knowable.
     test "no v6 execution module calls mark_failed or fail_draw_with_reason" do
       lib = Path.expand("../../../lib/wallop_core", __DIR__)
 
@@ -1119,7 +1047,6 @@ defmodule WallopCore.Entropy.ObservationDrawWorkerTest do
   end
 
   describe "clock skew alarm" do
-    # Answers the round fetch as usual and drand's latest round as given.
     defp stub_latest(latest) do
       Req.Test.stub(DrandClient, fn conn ->
         round =
@@ -1139,8 +1066,6 @@ defmodule WallopCore.Entropy.ObservationDrawWorkerTest do
     test "a database clock far from drand's latest round is reported, and the draw still runs" do
       ref = :telemetry_test.attach_event_handlers(self(), [[:wallop_core, :v6, :clock_skew]])
       {_op, draw} = v6_draw_after_deadline(60)
-      # drand says its latest round published a minute ago: the database
-      # clock is a minute ahead of drand (or the relay a minute behind).
       stub_latest(round_at(-60))
 
       assert :ok = perform_job(ObservationDrawWorker, %{draw_id: draw.id}, attempt: 1)
@@ -1174,7 +1099,6 @@ defmodule WallopCore.Entropy.ObservationDrawWorkerTest do
     test "a failed latest-round request changes nothing" do
       ref = :telemetry_test.attach_event_handlers(self(), [[:wallop_core, :v6, :clock_skew]])
       {_op, draw} = v6_draw_after_deadline(60)
-      # The setup stub can't answer "latest": the check's request raises.
       assert :ok = perform_job(ObservationDrawWorker, %{draw_id: draw.id}, attempt: 1)
       assert reload(draw).status == :completed
       refute_received {[:wallop_core, :v6, :clock_skew], ^ref, _, _}

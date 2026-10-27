@@ -17,8 +17,6 @@ defmodule WallopCore.Attacks.FreqLockStraddleTest do
 
   @late "v6 lock is too late for this draw time"
 
-  # A schedule whose latest lock time is 8 to 22 seconds from now. Called
-  # after the fixtures exist, so their set-up time doesn't eat the margin.
   defp schedule_closing_soon do
     now = DateTime.to_unix(DateTime.utc_now())
     t = now + 68 + Integer.mod(-(now + 68), 15)
@@ -43,14 +41,11 @@ defmodule WallopCore.Attacks.FreqLockStraddleTest do
     draw
   end
 
-  # The raw lock in a real transaction, then `before_commit`, then COMMIT.
   defp lock_and_commit(draw, s, before_commit) do
     unboxed(fn ->
-      # The wait can outlast the default 15 s transaction timeout.
       {:ok, _} =
         Repo.transaction(
           fn ->
-            # raw_freq_lock/3 runs in a savepoint of this transaction.
             nil = raw_freq_lock(draw, s)
             before_commit.()
           end,

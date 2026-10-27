@@ -14,8 +14,6 @@ defmodule WallopWeb.Application do
     OpentelemetryBandit.setup()
 
     children = [
-      # Must start before the endpoint so the rate-limit table exists, and is
-      # owned by a supervised process, before the first request is served.
       WallopWeb.RateLimiter,
       {Task.Supervisor, name: WallopWeb.TaskSupervisor},
       WallopWeb.Endpoint
@@ -25,9 +23,6 @@ defmodule WallopWeb.Application do
     Supervisor.start_link(children, opts)
   end
 
-  # Set by config/runtime.exs in prod only. The edge secret stays optional
-  # (self-hosters, dev and test run without it), but without it per-IP limits
-  # key on a header any direct caller can forge.
   defp warn_if_edge_secret_unset do
     if Application.get_env(:wallop_web, :warn_edge_secret_unset, false) do
       Logger.error(

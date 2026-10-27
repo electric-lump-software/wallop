@@ -45,7 +45,6 @@ defmodule WallopWeb.Api.LockFreqTest do
       late = minute_after(360)
       {:ok, s} = Schedule.schedule(late)
       latest = s.latest_lock_at |> DateTime.truncate(:second) |> DateTime.to_iso8601()
-      # Whole seconds, on the 15-second grid of window starts.
       assert latest =~ ~r/\A\d{4}-\d\d-\d\dT\d\d:\d\d:(00|15|30|45)Z\z/
 
       [error] = lock(key, draw, %{"draw_at" => DateTime.to_iso8601(late)}, 400)["errors"]
@@ -88,7 +87,6 @@ defmodule WallopWeb.Api.LockFreqTest do
           "errors"
         ]
 
-      # weather_time is no longer a lock input: the body is refused.
       assert error["source"]["pointer"] == "/data/attributes/weather_time"
       assert error["code"] == "invalid_body"
     end
@@ -125,7 +123,6 @@ defmodule WallopWeb.Api.LockFreqTest do
     end
   end
 
-  # Every draw's JSON attributes, whatever its protocol.
   defp draw_attribute_keys,
     do: ~w(callback_url check_url drand_chain drand_randomness drand_response drand_round
            drand_signature entry_canonical entry_count entry_hash executed_at

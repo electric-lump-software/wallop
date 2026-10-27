@@ -127,7 +127,6 @@ defmodule WallopWeb.ExecutionReceiptControllerTest do
       assert receipt["signing_key_id"] == infra_key.key_id
       assert response["operator"]["slug"] == to_string(operator.slug)
 
-      # Immutable cache header
       assert get_resp_header(resp, "cache-control") == [
                "public, max-age=31536000, immutable"
              ]
@@ -148,10 +147,8 @@ defmodule WallopWeb.ExecutionReceiptControllerTest do
       payload_jcs = Base.decode64!(receipt["payload_jcs_b64"])
       signature = Base.decode64!(receipt["signature_b64"])
 
-      # Signature verifies under the infrastructure key
       assert Protocol.verify_receipt(payload_jcs, signature, infra_key.public_key)
 
-      # Decoded payload matches the structured payload field
       assert Jason.decode!(payload_jcs) == receipt["payload"]
     end
   end

@@ -18,8 +18,6 @@ defmodule WallopCore.ImmutabilityTriggerAuditTest do
 
   alias WallopCore.Transparency.AnchorWorker
 
-  # ── TRUNCATE protection ────────────────────────────────────────────
-
   describe "TRUNCATE protection" do
     test "draws cannot be TRUNCATEd" do
       assert_truncate_blocked("draws")
@@ -66,8 +64,6 @@ defmodule WallopCore.ImmutabilityTriggerAuditTest do
     end
   end
 
-  # ── Draws: terminal state protection ───────────────────────────────
-
   describe "draws: terminal states block all mutations" do
     setup do
       _infra_key = create_infrastructure_key()
@@ -98,8 +94,6 @@ defmodule WallopCore.ImmutabilityTriggerAuditTest do
       end
     end
 
-    # A v6 draw's own guard refuses these first, so the generic trigger is
-    # checked on a draw with no lock schema (a retired forecast draw).
     test "cannot UPDATE status on completed draw" do
       draw = put_retired_forecast_draw!(create_api_key(), :completed)
 
@@ -122,8 +116,6 @@ defmodule WallopCore.ImmutabilityTriggerAuditTest do
       end
     end
   end
-
-  # ── Draws: committed field protection ──────────────────────────────
 
   describe "draws: committed fields frozen after lock" do
     setup do
@@ -180,8 +172,6 @@ defmodule WallopCore.ImmutabilityTriggerAuditTest do
       end
     end
   end
-
-  # ── Draws: state transition validation ─────────────────────────────
 
   describe "draws: invalid state transitions blocked" do
     setup do
@@ -271,8 +261,6 @@ defmodule WallopCore.ImmutabilityTriggerAuditTest do
     end
   end
 
-  # ── Draws: caller-seed blocked when entropy declared ───────────────
-
   describe "draws: caller-seed blocked when entropy sources declared" do
     test "cannot set seed_source to caller when drand_round is set" do
       api_key = create_api_key()
@@ -286,8 +274,6 @@ defmodule WallopCore.ImmutabilityTriggerAuditTest do
       end
     end
   end
-
-  # ── Entries: frozen after lock ─────────────────────────────────────
 
   describe "entries: frozen after draw leaves open" do
     setup do
@@ -314,8 +300,6 @@ defmodule WallopCore.ImmutabilityTriggerAuditTest do
       end
     end
   end
-
-  # ── Append-only tables ─────────────────────────────────────────────
 
   describe "append-only: operator_signing_keys" do
     test "UPDATE blocked" do
@@ -450,8 +434,6 @@ defmodule WallopCore.ImmutabilityTriggerAuditTest do
     end
   end
 
-  # ── Operator slug immutability ─────────────────────────────────────
-
   describe "operator slug immutability" do
     test "slug cannot be changed" do
       operator = create_operator("test-slug-immutable")
@@ -475,8 +457,6 @@ defmodule WallopCore.ImmutabilityTriggerAuditTest do
     end
   end
 
-  # ── API key hash format constraint ─────────────────────────────────
-
   describe "api_keys key_hash format" do
     test "rejects garbage hash via direct SQL" do
       api_key = create_api_key()
@@ -489,8 +469,6 @@ defmodule WallopCore.ImmutabilityTriggerAuditTest do
       end
     end
   end
-
-  # ── Helpers ────────────────────────────────────────────────────────
 
   defp assert_truncate_blocked(table) do
     assert_raise Postgrex.Error, ~r/cannot be TRUNCATEd|cannot truncate/, fn ->

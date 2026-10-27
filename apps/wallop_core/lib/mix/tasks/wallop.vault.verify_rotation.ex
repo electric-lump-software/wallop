@@ -50,9 +50,6 @@ defmodule Mix.Tasks.Wallop.Vault.VerifyRotation do
 
   @shortdoc "Report Cloak cipher-tag distribution across Vault-encrypted columns"
 
-  # {table, column, format}.
-  #   :binary       — bytea column, raw Cloak ciphertext.
-  #   :base64_text  — text column storing base64-encoded Cloak ciphertext.
   @encrypted_columns [
     {"operator_signing_keys", "private_key", :binary},
     {"infrastructure_signing_keys", "private_key", :binary},
@@ -144,12 +141,6 @@ defmodule Mix.Tasks.Wallop.Vault.VerifyRotation do
     %{table: table, column: column, counts: counts, total: length(rows)}
   end
 
-  # Returns the Cloak tag string, or `nil` for malformed / NULL rows.
-  # Cloak's TLV layout is `<<1, len>> <> tag <> ciphertext`. Tags >= 128
-  # bytes use a multi-byte length encoding (see Cloak.Tags.Encoder) —
-  # wallop tags are short ASCII ("AES.GCM.V1") and will never approach
-  # that boundary. Anything claiming a single-byte length >= 128 here
-  # is malformed and routed to the unknown bucket, where it belongs.
   defp extract_tag(nil, _format), do: nil
 
   defp extract_tag(value, :base64_text) do

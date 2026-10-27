@@ -15,19 +15,12 @@ defmodule WallopCore.Resources.SandboxDraw.Changes.ExecuteWithSandboxSeed do
 
   @impl true
   def change(%Ash.Changeset{valid?: false} = changeset, _opts, _context) do
-    # Short-circuit if ValidateEntries (or any earlier change) already
-    # added an error. Running fair_pick against invalid input would
-    # raise an ArgumentError that surfaces as Error.Unknown instead of
-    # the cleaner Error.Invalid from the validator.
     changeset
   end
 
   def change(changeset, _opts, _context) do
     entries_arg = Ash.Changeset.get_argument(changeset, :entries) || []
 
-    # Normalise to string-keyed maps so the stored JSON shape matches
-    # what callers will see on read, regardless of whether they supplied
-    # atom or string keys on create.
     stored_entries =
       Enum.map(entries_arg, fn e ->
         %{
@@ -36,9 +29,6 @@ defmodule WallopCore.Resources.SandboxDraw.Changes.ExecuteWithSandboxSeed do
         }
       end)
 
-    # fair_pick expects entries as %{id: _, weight: _} atom-keyed maps
-    # (matches the shape WallopCore.Entries.load_for_draw returns for
-    # real draws).
     fair_pick_entries =
       Enum.map(stored_entries, fn e ->
         %{id: e["id"], weight: e["weight"]}
@@ -46,10 +36,6 @@ defmodule WallopCore.Resources.SandboxDraw.Changes.ExecuteWithSandboxSeed do
 
     seed_bytes = Base.decode16!(SandboxDraw.seed_hex(), case: :lower)
 
-    # Defensive: cap winner_count to the number of entries so fair_pick
-    # doesn't receive an impossible request. This is enforced by the
-    # constraint at the Ash layer for real draws; we mirror it here so
-    # a caller passing winner_count > entries gets a clean error.
     winner_count = Ash.Changeset.get_attribute(changeset, :winner_count) || 1
 
     cond do

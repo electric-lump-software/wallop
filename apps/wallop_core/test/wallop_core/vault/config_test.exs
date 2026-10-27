@@ -3,7 +3,6 @@ defmodule WallopCore.Vault.ConfigTest do
 
   alias WallopCore.Vault.Config
 
-  # Two distinct, valid base64 AES-256 keys.
   @key_a Base.encode64(:crypto.strong_rand_bytes(32))
   @key_b Base.encode64(:crypto.strong_rand_bytes(32))
 
@@ -21,12 +20,6 @@ defmodule WallopCore.Vault.ConfigTest do
   end
 
   describe "build_ciphers/2 — dual-key mode" do
-    # Wave A pins @current_tag=V1, @previous_tag=V0 — the same pair as
-    # production today. The placeholder guard refuses dual-key mode
-    # until @current_tag is bumped past V1. The dual-cipher shape tests
-    # therefore have to live behind that guard until the first real
-    # rotation. Once the tag is bumped, re-enable the shape assertions
-    # and delete the placeholder-guard test.
     test "refuses Wave-A placeholder tags + VAULT_KEY_OLD as a footgun" do
       assert_raise ArgumentError, ~r/Wave-A placeholder tags/, fn ->
         Config.build_ciphers(@key_a, @key_b)
@@ -54,11 +47,6 @@ defmodule WallopCore.Vault.ConfigTest do
         Config.build_ciphers(short, nil)
       end
     end
-
-    # VAULT_KEY_OLD-naming coverage: the dual-cipher path that would
-    # surface VAULT_KEY_OLD in the decode error is gated behind the
-    # Wave-A placeholder guard. Re-enable at first rotation, when the
-    # guard is removed and dual-cipher decode_key!/2 becomes reachable.
   end
 
   describe "tag constants" do
@@ -67,8 +55,6 @@ defmodule WallopCore.Vault.ConfigTest do
     end
 
     test "current tag matches the production V1 value" do
-      # If you bump this, you are starting a rotation. Read
-      # `WallopCore.Vault.Config` and the rotation runbook first.
       assert Config.current_tag() == "AES.GCM.V1"
     end
   end

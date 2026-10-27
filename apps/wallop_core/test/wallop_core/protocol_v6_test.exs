@@ -8,12 +8,8 @@ defmodule WallopCore.ProtocolV6Test do
 
   @landobs "drand-quicknet+metoffice-landobs-v1"
 
-  # The fair_pick release this build runs, as the lock and execution paths
-  # sign it. Never hard-coded: the verifier accepts only releases it knows.
   @fair_pick Application.spec(:fair_pick, :vsn) |> to_string()
 
-  # drand_round 33_068_212 publishes at 2026-10-14 20:00:00Z, so its
-  # observation hour is 19:00:00Z and the latest lock is 18:14:00Z.
   @lock %{
     entropy_composition: @landobs,
     operator_id: "11111111-1111-1111-1111-111111111111",
@@ -29,16 +25,13 @@ defmodule WallopCore.ProtocolV6Test do
     drand_round: 33_068_212,
     weather_station: "wmo-03749",
     weather_time: ~U[2026-10-14 19:00:00.000000Z],
-    # The round's grid-frequency window start, the tag's fallback window.
     freq_start: ~U[2026-10-14 19:54:00.000000Z],
     wallop_core_version: "0.29.0",
     fair_pick_version: @fair_pick
   }
 
-  # State (a): Middle Wallop's reading, with the lock above's draw.
   @exec WallopCore.TestHelpers.landobs_exec_input()
 
-  # State (c): no reading and no window, so drand alone.
   @fallback %{
     @exec
     | weather_value: nil,
@@ -47,18 +40,12 @@ defmodule WallopCore.ProtocolV6Test do
       freq_fallback_reason: "no_frequency_by_deadline"
   }
 
-  # State (b): no reading, so the round's grid-frequency window.
   @freq_fallback %{
     @fallback
     | freq_value: "50018;50012;49983;49980;49953;49912;49883;49887",
       freq_fallback_reason: nil
   }
 
-  # One entry per accepted entropy tag: {tag module, lock input, exec input}.
-  # A second tag adds an entry here, and every field-set test below runs for
-  # it against that tag's own expected key lists.
-  # The same round under the grid-frequency tag: its window starts at
-  # 19:54:00Z and the latest lock is 19:53:00Z.
   @freq_lock %{
     @lock
     | entropy_composition: "drand-quicknet+elexon-freq-v1",
@@ -109,7 +96,6 @@ defmodule WallopCore.ProtocolV6Test do
     end
   end
 
-  # The field set lock schemas 2 to 6 and execution schemas 3 to 5 share.
   @base_lock_keys ~w(commitment_hash draw_id drand_chain drand_round entropy_composition
                      entry_hash fair_pick_version jcs_version locked_at operator_id
                      operator_slug schema_version sequence signature_algorithm signing_key_id
@@ -191,8 +177,6 @@ defmodule WallopCore.ProtocolV6Test do
         end
       end
 
-      # The reasons and freq_value are nil on an observed receipt; nil
-      # where its state needs a value is the case to refuse.
       for key <- Map.keys(@exec) -- [:weather_fallback_reason, :freq_value, :freq_fallback_reason] do
         assert_raise ArgumentError, fn ->
           Protocol.build_v6_execution_payload(%{@exec | key => nil})
@@ -222,7 +206,6 @@ defmodule WallopCore.ProtocolV6Test do
     end
 
     test "both v6 builders refuse any other chain" do
-      # The drand mainnet (default) chain hash.
       other = "8990e7a9aaed2ffed73dbd7092123d6f289930540d7651336225dc172e51b2ce"
 
       for chain <- [other, String.upcase(@lock.drand_chain), "", nil] do
@@ -268,8 +251,6 @@ defmodule WallopCore.ProtocolV6Test do
         Protocol.build_v6_lock_payload(%{@lock | weather_time: ~U[2026-10-14 18:00:00.000000Z]})
       end
 
-      # pub(33_068_212 + 1) is 20:00:03; still 19:00. 20:41:00 is the first
-      # round whose observation hour is 20:00.
       assert is_binary(Protocol.build_v6_lock_payload(%{@lock | drand_round: 33_068_213}))
 
       assert_raise ArgumentError, ~r/observation hour/, fn ->
@@ -413,7 +394,6 @@ defmodule WallopCore.ProtocolV6Test do
   end
 
   describe "byte-level output" do
-    # Exact JCS bytes. Any change here changes every signature under the tag.
     test "lock v6 bytes" do
       assert Protocol.build_v6_lock_payload(@lock) ==
                ~s({"commitment_hash":"#{String.duplicate("ab", 32)}",) <>

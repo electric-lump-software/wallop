@@ -21,7 +21,6 @@ defmodule WallopCore.Entropy.LandObsClient do
   @base_url "https://data.hub.api.metoffice.gov.uk/observation-land/1"
   @connect_timeout 5_000
   @receive_timeout 10_000
-  # A full 48-hour response is about 10 KiB.
   @max_body_bytes 1_048_576
 
   @type observation :: %{value: String.t(), raw: binary(), observation_time: DateTime.t()}
@@ -127,9 +126,6 @@ defmodule WallopCore.Entropy.LandObsClient do
   defp handle_response({:ok, %Req.Response{status: status}}),
     do: {:error, {:unexpected_status, status}}
 
-  # Only an atom reason from a transport error is passed on. Any other
-  # reason (for example a Mint header error, which quotes the header value)
-  # could carry the key, so it is replaced.
   defp handle_response({:error, %Req.TransportError{reason: reason}}) when is_atom(reason),
     do: {:error, {:transport, reason}}
 
@@ -164,8 +160,6 @@ defmodule WallopCore.Entropy.LandObsClient do
     end
   end
 
-  # Visible ASCII only, so the key can never be refused (and quoted) by the
-  # HTTP client as an invalid header value.
   defp visible_ascii?(key), do: Regex.match?(~r/\A[\x21-\x7E]+\z/, key)
 
   defp https_url(url) do
@@ -183,10 +177,6 @@ defmodule WallopCore.Entropy.LandObsClient do
   defp config, do: Application.get_env(:wallop_core, __MODULE__, [])
 
   @doc false
-  # The effective Req options. Config may set only `:plug`,
-  # `req_options: [receive_timeout: ...]` and
-  # `req_options: [connect_options: [timeout: ...]]`; everything else is
-  # fixed here.
   @spec request_options() :: keyword()
   def request_options do
     overrides = Keyword.get(config(), :req_options, [])

@@ -6,12 +6,9 @@ defmodule WallopCore.Repo.Migrations.MigrateEntriesData do
   use Ecto.Migration
 
   def up do
-    # Temporarily disable immutability triggers for data migration
     execute "ALTER TABLE entries DISABLE TRIGGER entries_immutability"
     execute "ALTER TABLE draws DISABLE TRIGGER enforce_draw_immutability"
 
-    # entries column is {:array, :map} which Postgres stores as jsonb[].
-    # Use unnest to expand the array, then extract fields from each element.
     execute """
     INSERT INTO entries (id, draw_id, entry_id, weight, inserted_at)
     SELECT
@@ -33,7 +30,6 @@ defmodule WallopCore.Repo.Migrations.MigrateEntriesData do
     )
     """
 
-    # Re-enable triggers
     execute "ALTER TABLE entries ENABLE TRIGGER entries_immutability"
     execute "ALTER TABLE draws ENABLE TRIGGER enforce_draw_immutability"
   end

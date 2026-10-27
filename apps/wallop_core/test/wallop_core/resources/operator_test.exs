@@ -106,7 +106,6 @@ defmodule WallopCore.Resources.OperatorTest do
     end
 
     test "draw creation is rejected for API keys without an operator" do
-      # Create an API key with no operator (bypass the helper's auto-create)
       api_key =
         WallopCore.Resources.ApiKey
         |> Ash.Changeset.for_create(:create, %{name: "orphan-key"})

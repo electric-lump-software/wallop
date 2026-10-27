@@ -150,9 +150,6 @@ defmodule WallopCore.Protocol.Pin do
     Map.put(envelope, "infrastructure_signature", Base.encode16(signature, case: :lower))
   end
 
-  # Validate every keyring row, normalise to wire shape, assert
-  # uniqueness on key_id, sort ascending (ASCII byte-order, equivalent
-  # to lexicographic on lowercase hex per the §4.2.4 fingerprint rule).
   defp serialise_keys(keys) do
     serialised = Enum.map(keys, &serialise_key/1)
     key_ids = Enum.map(serialised, & &1["key_id"])

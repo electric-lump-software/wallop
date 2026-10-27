@@ -75,7 +75,6 @@ defmodule WallopCore.Resources.ExecutionReceiptTest do
 
       decoded = Jason.decode!(receipt.payload_jcs)
 
-      # Execution receipt schema 5, under the draw's Land Obs tag.
       assert decoded["draw_id"] == draw.id
       assert decoded["operator_id"] == draw.operator_id
       assert is_integer(decoded["sequence"])
@@ -88,23 +87,18 @@ defmodule WallopCore.Resources.ExecutionReceiptTest do
       assert decoded["drand_signature_algorithm"] == "bls12_381_g2"
       assert decoded["merkle_algorithm"] == "sha256-pairwise-v1"
 
-      # Entropy fields
       assert decoded["drand_randomness"] == test_drand_randomness()
       assert decoded["drand_signature"] == test_drand_signature()
       assert is_binary(decoded["seed"])
       assert is_list(decoded["results"])
 
-      # Lock receipt linkage
       assert String.match?(decoded["lock_receipt_hash"], ~r/^[0-9a-f]{64}$/)
 
-      # Algorithm versions
       assert is_binary(decoded["wallop_core_version"])
       assert is_binary(decoded["fair_pick_version"])
 
-      # Execution timestamp
       assert is_binary(decoded["executed_at"])
 
-      # Entry hash (self-contained verification)
       assert decoded["entry_hash"] == draw.entry_hash
     end
 
@@ -160,7 +154,6 @@ defmodule WallopCore.Resources.ExecutionReceiptTest do
         |> Ash.Query.filter(draw_id == ^executed.id)
         |> Ash.read!(authorize?: false)
 
-      # JCS requires lexicographic key ordering
       decoded_keys = receipt.payload_jcs |> Jason.decode!() |> Map.keys()
       assert decoded_keys == Enum.sort(decoded_keys)
     end
@@ -186,10 +179,8 @@ defmodule WallopCore.Resources.ExecutionReceiptTest do
       api_key = create_api_key_for_operator(operator)
       draw = create_draw(api_key)
 
-      # Pending by hand (bypassing execute_draw, which creates an infra key)
       draw = pending_for_execution!(draw)
 
-      # No infra key bootstrapped — execution should fail
       assert {:error, _} =
                draw
                |> Ash.Changeset.for_update(:execute_v6, test_drand_args())
@@ -256,10 +247,6 @@ defmodule WallopCore.Resources.ExecutionReceiptTest do
 
   describe "execution receipt — key rotation" do
     test "uses the most recent infra key by valid_from" do
-      # Insert an "older" key. Offset stays inside the ±60s skew window
-      # enforced by the keyring temporal binding CHECK; the helper-created
-      # newer key (-30s) still has a strictly later valid_from than this
-      # one (-45s), which is what the rotation pick logic actually tests.
       {old_pub, old_priv} = :crypto.generate_key(:eddsa, :ed25519)
       old_key_id = Protocol.key_id(old_pub)
       {:ok, old_encrypted} = WallopCore.Vault.encrypt(old_priv)
@@ -274,7 +261,6 @@ defmodule WallopCore.Resources.ExecutionReceiptTest do
         })
         |> Ash.create(authorize?: false)
 
-      # Insert a newer key
       new_key = create_infrastructure_key()
 
       operator = create_operator()
@@ -287,23 +273,15 @@ defmodule WallopCore.Resources.ExecutionReceiptTest do
         |> Ash.Query.filter(draw_id == ^executed.id)
         |> Ash.read!(authorize?: false)
 
-      # Should have used the newer key
       assert receipt.signing_key_id == new_key.key_id
 
-      # Verify against the new key's public key, not the old one
       assert Protocol.verify_receipt(receipt.payload_jcs, receipt.signature, new_key.public_key)
       refute Protocol.verify_receipt(receipt.payload_jcs, receipt.signature, old_pub)
     end
 
     test "ignores infra keys with valid_from in the future" do
-      # Insert a current key
       current_key = create_infrastructure_key()
 
-      # Insert a future-dated key. Offset stays inside the ±60s skew
-      # window enforced by the keyring temporal binding CHECK; what's
-      # being tested here is the rotation pick's `valid_from <= now`
-      # filter, not arbitrary forward-dating (which the CHECK rejects
-      # at insert time anyway).
       {future_pub, future_priv} = :crypto.generate_key(:eddsa, :ed25519)
       future_key_id = Protocol.key_id(future_pub)
       {:ok, future_encrypted} = WallopCore.Vault.encrypt(future_priv)
@@ -363,7 +341,6 @@ defmodule WallopCore.Resources.ExecutionReceiptTest do
       api_key = create_api_key_for_operator(operator)
       draw = create_draw(api_key)
 
-      # No reading and no grid-frequency window by the deadline: drand alone
       executed =
         draw
         |> pending_for_execution!(observation: false)
@@ -377,23 +354,18 @@ defmodule WallopCore.Resources.ExecutionReceiptTest do
 
       decoded = Jason.decode!(receipt.payload_jcs)
 
-      # Weather value/observation should be null (weather fetch failed)
       assert decoded["weather_value"] == nil
       assert decoded["weather_observation_time"] == nil
 
-      # Station is still declared at lock time (before fetch attempt)
       assert is_binary(decoded["weather_station"])
 
-      # Fallback reasons should be present
       assert decoded["weather_fallback_reason"] == "no_observation_by_deadline"
       assert decoded["freq_value"] == nil
       assert is_binary(decoded["freq_fallback_reason"])
 
-      # Drand fields should be populated
       assert decoded["drand_randomness"] == test_drand_randomness()
       assert decoded["drand_signature"] == test_drand_signature()
 
-      # Schema version
       assert decoded["schema_version"] == "5"
       assert is_binary(decoded["signing_key_id"])
       refute Map.has_key?(decoded, "execution_schema_version")

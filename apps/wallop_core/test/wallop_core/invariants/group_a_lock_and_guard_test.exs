@@ -34,8 +34,6 @@ defmodule WallopCore.Invariants.LockAndGuardTest do
     assert open.receipt == nil
   end
 
-  # ── INV-1 ─────────────────────────────────────────────────────────
-
   describe "INV-1 a v6 draw can't leave open once the DB clock is past weather_time - 46m" do
     test "INV-1 (Ash lock) the lock action refuses a draw time whose latest lock has passed",
          %{draw: d, key: key, s: s} do
@@ -53,7 +51,6 @@ defmodule WallopCore.Invariants.LockAndGuardTest do
         assert_still_open(d)
       end
 
-      # Positive control: an in-time draw time locks under v6.
       assert {:ok, locked} =
                d
                |> Ash.Changeset.for_update(:lock, %{draw_at: s.draw_at}, actor: key)
@@ -73,7 +70,6 @@ defmodule WallopCore.Invariants.LockAndGuardTest do
         assert_still_open(d)
       end
 
-      # In time, only awaiting_entropy is a way out of open.
       for status <- @non_open -- ["awaiting_entropy"] do
         assert raw_lock(d, s.weather_time, s.round, status: status) == @lock_only, status
       end
@@ -117,11 +113,9 @@ defmodule WallopCore.Invariants.LockAndGuardTest do
          %{draw: d, s: s} do
       {payload, cols} = valid_receipt(d, s)
 
-      # A schema 6 receipt can't go in before the lock.
       assert insert_receipt(payload, cols) ==
                "a schema 6 lock receipt needs a draw locked under schema 6"
 
-      # A non-6 receipt can, and then no v6 lock is accepted, late or in time.
       five = %{payload | "schema_version" => "5"}
 
       Repo.query!(
@@ -178,16 +172,11 @@ defmodule WallopCore.Invariants.LockAndGuardTest do
         assert try_sql(sql, [dump(d.id)]) == message, sql
       end
 
-      # Positive control: the locked draw moves on as normal.
       assert try_sql("UPDATE draws SET status = 'pending_entropy' WHERE id = $1", [dump(d.id)]) ==
                nil
     end
   end
 
-  # ── INV-2 ─────────────────────────────────────────────────────────
-
-  # Every signed lock v6 key with a row counterpart, and a value that differs
-  # from the row's. Keys with no row counterpart are listed in @unbound.
   @payload_tampers [
     {"draw_id", :uuid},
     {"operator_id", :uuid},
@@ -212,7 +201,6 @@ defmodule WallopCore.Invariants.LockAndGuardTest do
     {:operator_id, "operator_id", :other_operator}
   ]
 
-  # Signed keys with no row counterpart: constants of the build.
   @unbound ~w(fair_pick_version jcs_version signature_algorithm wallop_core_version)
 
   defp tamper(:uuid, _), do: Ecto.UUID.generate()
@@ -294,10 +282,6 @@ defmodule WallopCore.Invariants.LockAndGuardTest do
     end
   end
 
-  # ── The guard triggers ────────────────────────────────────────────
-
-  # Every trigger on the tables the invariants rest on, as the database
-  # defines it, enabled. A dropped, disabled or changed trigger fails here.
   @guard_triggers [
     "O CREATE TRIGGER draws_no_truncate BEFORE TRUNCATE ON public.draws FOR EACH STATEMENT EXECUTE FUNCTION prevent_draws_truncate()",
     "O CREATE CONSTRAINT TRIGGER draws_v6_completed_commit AFTER UPDATE ON public.draws DEFERRABLE INITIALLY DEFERRED FOR EACH ROW WHEN (((new.status = 'completed'::text) AND (old.status IS DISTINCT FROM 'completed'::text) AND ((new.lock_schema_version IS NOT NULL) OR (new.entropy_composition IS NOT NULL)))) EXECUTE FUNCTION check_v6_draw_completed_commit()",
@@ -338,8 +322,6 @@ defmodule WallopCore.Invariants.LockAndGuardTest do
     end
   end
 
-  # ── INV-3 ─────────────────────────────────────────────────────────
-
   describe "INV-3 every lock is a lock schema 6 lock: an open draw with no lock schema can only expire" do
     setup do
       ensure_infrastructure_key()
@@ -376,8 +358,6 @@ defmodule WallopCore.Invariants.LockAndGuardTest do
     end
   end
 
-  # ── INV-4 ─────────────────────────────────────────────────────────
-
   describe "INV-4 a retired forecast draw meets no v6 rule" do
     setup do
       ensure_infrastructure_key()
@@ -389,8 +369,6 @@ defmodule WallopCore.Invariants.LockAndGuardTest do
       draw = put_retired_forecast_draw!(key, :awaiting_entropy)
       [late | _] = missed_schedules()
 
-      # Insert: a copy already out of open, with a NULL pair, is refused:
-      # it would be a lock with no lock schema.
       assert try_sql(
                """
                INSERT INTO draws (id, status, winner_count, entry_count, api_key_id, operator_id,
@@ -402,7 +380,6 @@ defmodule WallopCore.Invariants.LockAndGuardTest do
                [dump(draw.id), dump(Ecto.UUID.generate())]
              ) == "a draw is created open"
 
-      # Completion: any executed_at, no observation, no pub(R) rule.
       Repo.query!("UPDATE draws SET status = 'pending_entropy' WHERE id = $1", [dump(draw.id)])
 
       assert try_sql(
@@ -410,7 +387,6 @@ defmodule WallopCore.Invariants.LockAndGuardTest do
                [dump(draw.id), DateTime.to_naive(late.weather_time)]
              ) == nil
 
-      # Execution receipt: anything not schema 5 goes in.
       for payload <- [Jason.encode!(%{"schema_version" => "4", "sequence" => 7.0}), "not json"] do
         assert insert_exec_receipt(payload, %{
                  draw_id: draw.id,
@@ -421,14 +397,11 @@ defmodule WallopCore.Invariants.LockAndGuardTest do
                }) == nil
       end
 
-      # Failing long after its round published (round 1, in 2023), from
-      # awaiting_entropy: allowed, so a stranded retired draw can be failed.
       stranded = put_retired_forecast_draw!(key, :awaiting_entropy)
 
       assert try_sql("UPDATE draws SET status = 'failed' WHERE id = $1", [dump(stranded.id)]) ==
                nil
 
-      # Delete of a draw out of open, with no receipt.
       copy = Ecto.UUID.generate()
 
       with_triggers_off(fn ->
@@ -448,12 +421,8 @@ defmodule WallopCore.Invariants.LockAndGuardTest do
     end
   end
 
-  # ── INV-5 ─────────────────────────────────────────────────────────
-
   @unknown_tags ["drand-quicknet+metoffice-landobs-v2", "drand-quicknet+openmeteo-v1", "", nil]
 
-  # drand_round 33_068_212 publishes at 2026-10-14 20:00:00Z; its
-  # observation hour is 19:00:00Z.
   @lock_input %{
     entropy_composition: "drand-quicknet+metoffice-landobs-v1",
     operator_id: "11111111-1111-1111-1111-111111111111",
@@ -510,8 +479,6 @@ defmodule WallopCore.Invariants.LockAndGuardTest do
       "unknown lock_schema_version and entropy_composition pair: " <>
         "(#{schema || "<NULL>"}, #{tag || "<NULL>"})"
 
-  # Stores the draw as a v6 draw in `status` under `tag`, with every
-  # trigger off, so the guards can be tried on a pair they would refuse.
   defp store_with_pair!(draw, s, status, schema, tag) do
     {hash, canonical} = entry_hash(draw)
 
@@ -604,11 +571,9 @@ defmodule WallopCore.Invariants.LockAndGuardTest do
       {payload, cols} = valid_receipt(d, s)
       other = "drand-quicknet+metoffice-landobs-v2"
 
-      # On a draw without a pair: no schema 6 receipt at all.
       assert insert_receipt(%{payload | "entropy_composition" => other}, cols) ==
                "a schema 6 lock receipt needs a draw locked under schema 6"
 
-      # On a Land Obs draw: the receipt's tag must be the draw's.
       assert raw_lock(d, s.weather_time, s.round) == nil
 
       assert insert_receipt(%{payload | "entropy_composition" => other}, cols) ==
@@ -649,8 +614,6 @@ defmodule WallopCore.Invariants.LockAndGuardTest do
     test "INV-5 (execution) a stored unknown pair is never executed", %{key: key} do
       ensure_infrastructure_key()
 
-      # A round published a minute ago: pub(R) and F are both behind us, so
-      # nothing but the pair can stop the execution.
       round = Quicknet.round_at_or_after(DateTime.add(DateTime.utc_now(), -60))
       past = %{round: round, weather_time: Schedule.weather_time_for_round(round)}
 
@@ -663,7 +626,6 @@ defmodule WallopCore.Invariants.LockAndGuardTest do
         assert Ash.get!(Draw, draw.id, authorize?: false).status == :pending_entropy
       end
 
-      # Positive control: the known pair, in the same timing, executes.
       known = put_v6_awaiting!(open_draw_with_entries(key), past.weather_time, round)
       Repo.query!("UPDATE draws SET status = 'pending_entropy' WHERE id = $1", [dump(known.id)])
       assert {:ok, done} = execute_v6(known)
@@ -683,12 +645,6 @@ defmodule WallopCore.Invariants.LockAndGuardTest do
     |> Ash.update(authorize?: false)
   end
 
-  # ── INV-6 ─────────────────────────────────────────────────────────
-
-  # WallopCore.Weather.SqlSchedulePropertyTest checks the same functions
-  # under Asia/Kolkata (300 runs each, plus pinned boundaries). This extends
-  # it to zones with fractional and daylight-saving offsets, and walks every
-  # round across both of the UK's clock changes.
   @zones ["America/St_Johns", "Pacific/Chatham", "Europe/London"]
 
   defp sql_one(sql, params) do
@@ -761,11 +717,6 @@ defmodule WallopCore.Invariants.LockAndGuardTest do
     end
   end
 
-  # ── INV-12, INV-13 ────────────────────────────────────────────────
-
-  # A commit can be held back past drand only by a transaction that is
-  # still open (bounded by the commit-time check) or by one that was
-  # prepared and committed later. These pin that the second way is shut.
   @umbrella_root Path.expand("../../../../..", __DIR__)
 
   describe "INV-12 / INV-13 no commit can be deferred past drand" do
@@ -773,11 +724,8 @@ defmodule WallopCore.Invariants.LockAndGuardTest do
       assert %{rows: [["0"]]} = Repo.query!("SHOW max_prepared_transactions")
     end
 
-    # Scans the shipped code: apps/*/lib and apps/*/priv. The test-support
-    # helpers under test/ turn triggers off on purpose and aren't scanned.
     @risky ~r/set\s+constraints|prepare\s+transaction|session_replication_role|disable\s+trigger/i
 
-    # Existing migration lines that legitimately match: {file, trimmed line}.
     @allowed MapSet.new([
                {"apps/wallop_core/priv/repo/migrations/20260408204500_sandbox_draw_separation.exs",
                 "# for this one DELETE via session_replication_role = replica."},

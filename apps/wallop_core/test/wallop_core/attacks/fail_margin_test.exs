@@ -25,7 +25,6 @@ defmodule WallopCore.Attacks.FailMarginTest do
 
   test "a v6 draw can't be failed in the last seconds before pub(R), after F" do
     {_op, key} = create_v6_operator()
-    # F passed two minutes ago; drand's round publishes in 6 seconds.
     wt = DateTime.utc_now() |> DateTime.add(-(@w + 120)) |> DateTime.truncate(:second)
     round = Quicknet.round_at_or_after(DateTime.add(DateTime.utc_now(), 6))
     draw = put_v6_awaiting!(open_draw_with_entries(key), wt, round)

@@ -60,9 +60,6 @@ defmodule WallopWeb.Api.DrawsListTest do
     end
   end
 
-  # Keyset paging is not a snapshot: a draw created concurrently can commit
-  # with an inserted_at behind a cursor already handed out. With one writer,
-  # as here, nothing is skipped or repeated.
   test "pages with page[limit] and page[after]; a draw created after a page was read appears later (single writer)",
        %{conn: conn} do
     key = create_api_key()

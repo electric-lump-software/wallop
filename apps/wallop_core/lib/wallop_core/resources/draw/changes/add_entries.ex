@@ -13,7 +13,9 @@ defmodule WallopCore.Resources.Draw.Changes.AddEntries do
     * `{:first_write, idempotency_row_id}` — proceed with insertion.
       After entries are inserted, update the idempotency row with
       the resulting `entry_ids`. All same-tx so a crash rolls
-      everything back atomically.
+      everything back atomically. Moving entry insertion out of the action
+      transaction (a job, say) breaks the guarantee that a concurrent retry
+      waits for the first write and then replays it.
 
     * `{:replay, [entry_id, ...]}` — a prior request with the same
       `client_ref_digest` and `payload_digest` already succeeded.
@@ -39,22 +41,8 @@ defmodule WallopCore.Resources.Draw.Changes.AddEntries do
   @impl true
   def change(changeset, _opts, _context) do
     if changeset.errors != [] do
-      # An earlier change failed. Bail out without touching the DB.
       changeset
     else
-      # Reserve the entry-count attribute change up-front (Ash needs it
-      # in the changeset for the data-layer write). The first/replay
-      # branch is decided in the after_action callback, where the
-      # context populated by CheckIdempotency.before_action is visible.
-      #
-      # IDEMPOTENCY INVARIANT: the conflict-check `INSERT…ON CONFLICT`
-      # in CheckIdempotency.before_action and the entry inserts +
-      # idempotency-row finalisation in this after_action MUST remain
-      # in the same transaction. The wrapping action transaction is
-      # what gives us "concurrent retry blocks on the row lock and
-      # then sees the populated entry_ids on its own retry." Refactoring
-      # entry insertion to async/Oban or any out-of-tx mechanism
-      # collapses this property.
       new_entries = Ash.Changeset.get_argument(changeset, :entries) || []
       current_count = changeset.data.entry_count || 0
       new_count = current_count + length(new_entries)
@@ -75,17 +63,8 @@ defmodule WallopCore.Resources.Draw.Changes.AddEntries do
   defp dispatch_after_action(changeset, draw) do
     case Map.get(changeset.context, :idempotency_state) do
       {:replay, entry_ids} ->
-        # No DB writes — re-fetch cached entries and surface them.
-        # Skip PubSub broadcast (no state change occurred). Note we
-        # also un-do the entry_count bump that change/3 set, since
-        # the entries already exist from the original call.
         _ = fetch_entries_in_order(draw.id, entry_ids)
 
-        # Restore the prior entry_count so the in-memory struct matches DB.
-        # The DB row's entry_count was bumped by the ATTRIBUTE_UPDATE — but
-        # we want replay to be idempotent at the storage layer too. So we
-        # need to revert the entry_count update before returning.
-        # Simplest: re-fetch the draw to get the canonical state.
         canonical_draw = WallopCore.Repo.get!(WallopCore.Resources.Draw, draw.id)
 
         {:ok,
@@ -114,10 +93,6 @@ defmodule WallopCore.Resources.Draw.Changes.AddEntries do
     end
   end
 
-  # Returns the inserted Entry UUIDs in the SAME order as the caller's
-  # submitted `entries` argument. Order preservation is part of the
-  # public HTTP contract — `meta.inserted_entries[i].uuid` matches the
-  # i-th submitted entry.
   @spec insert_entries(map(), [map()]) :: [String.t()]
   defp insert_entries(draw, entries) do
     inputs =

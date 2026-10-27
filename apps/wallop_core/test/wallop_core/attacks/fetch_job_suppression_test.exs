@@ -24,7 +24,6 @@ defmodule WallopCore.Attacks.FetchJobSuppressionTest do
       |> DateTime.truncate(:second)
       |> Map.merge(%{minute: 0, second: 0, microsecond: {0, 0}})
 
-    # The attacker's row: a job for hour H already marked completed.
     {:ok, planted} = Oban.insert(WeatherObservationWorker.new_for_hour(hour))
 
     Repo.query!(
@@ -32,8 +31,6 @@ defmodule WallopCore.Attacks.FetchJobSuppressionTest do
       [planted.id]
     )
 
-    # Later, a draw locks for H and the hour's fetch job is inserted. It
-    # must be a real, scheduled job.
     {:ok, job} = Oban.insert(WeatherObservationWorker.new_for_hour(hour))
 
     refute job.conflict?, "the hour's fetch job was swallowed by a completed row"

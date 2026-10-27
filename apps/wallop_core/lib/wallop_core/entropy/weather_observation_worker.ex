@@ -64,7 +64,6 @@ defmodule WallopCore.Entropy.WeatherObservationWorker do
   """
   use Oban.Worker,
     queue: :weather,
-    # Snoozes don't count against this; only crashes and timeouts do.
     max_attempts: 100,
     unique: [period: :infinity, keys: [:weather_time], states: :incomplete]
 
@@ -75,8 +74,6 @@ defmodule WallopCore.Entropy.WeatherObservationWorker do
   alias WallopCore.Repo
   alias WallopCore.Weather.{LandObsBudget, Observations, Schedule, Stations}
 
-  # Tests swap in a wrapper around the real client; see
-  # WallopCore.Test.WindowedLandObsClient. Fixed at compile time.
   @client Application.compile_env(:wallop_core, [__MODULE__, :land_obs_client], LandObsClient)
 
   if @client != LandObsClient and Mix.env() != :test do
@@ -87,13 +84,8 @@ defmodule WallopCore.Entropy.WeatherObservationWorker do
           "worker always uses #{inspect(LandObsClient)}."
   end
 
-  # The client's own timeouts are per chunk (connect 5 s, receive 10 s), so
-  # each fetch is also capped here.
-  # Fetch cap + store (5 s statement timeout) + reads stay under the job
-  # timeout, and the job timeout stays under the poll interval.
   @fetch_timeout_ms 20_000
   @job_timeout_ms 30_000
-  # The last poll is made at least this long before F.
   @deadline_margin_seconds 5
 
   @doc """
@@ -160,12 +152,6 @@ defmodule WallopCore.Entropy.WeatherObservationWorker do
   def perform(%Oban.Job{}), do: {:cancel, :invalid_weather_time}
 
   @doc false
-  # The hour a job argument names, if the job may run: only the canonical
-  # form (`hour_arg/1`), so every job for an hour has the same argument and
-  # uniqueness can't be sidestepped by another spelling, and only a whole
-  # hour. The whole-hour rule is the real client's: the test client
-  # (allowed only in the test environment) fetches the hour at or before
-  # any time, which is how tests place "now" in a fetch window.
   @spec runnable_hour(String.t(), module()) :: {:ok, DateTime.t()} | :error
   def runnable_hour(iso, client) when is_binary(iso) do
     with {:ok, wt, 0} <- DateTime.from_iso8601(iso),
@@ -208,8 +194,6 @@ defmodule WallopCore.Entropy.WeatherObservationWorker do
     result = fetch_one(station.geohash, wt)
     report(wt, station.id, result)
 
-    # The clock is read after fetching, so the decision is as close to the
-    # store as it can be. The trigger checks it again on its own clock.
     now = DbClock.now()
 
     case window_state(now, wt) do
@@ -230,10 +214,6 @@ defmodule WallopCore.Entropy.WeatherObservationWorker do
     end
   end
 
-  # One fetch, capped at @fetch_timeout_ms; a fetch still running then is
-  # killed and counts as {:error, :poll_timeout}. Never inside a transaction
-  # (the check has to be here: in the Task, in_transaction? is always false),
-  # and only once the call is reserved under the daily cap.
   defp fetch_one(geohash, wt) do
     if Repo.in_transaction?() do
       {:error, :nested_transaction}
@@ -253,8 +233,6 @@ defmodule WallopCore.Entropy.WeatherObservationWorker do
     end
   end
 
-  # One error log per UTC day, on the first refused reservation; telemetry
-  # on every one.
   defp cap_reached(wt) do
     cap = LandObsBudget.cap()
 
@@ -329,8 +307,6 @@ defmodule WallopCore.Entropy.WeatherObservationWorker do
         })
 
       {:error, reason} ->
-        # Refused because the hour already has a row: another run stored it
-        # first, and that row is the hour's reading. Nothing to report.
         if Observations.for_hour(wt) == nil, do: store_refused(wt, station, reason)
     end
   end
@@ -349,10 +325,6 @@ defmodule WallopCore.Entropy.WeatherObservationWorker do
     })
   end
 
-  # Stops only when the database clock says F has passed. If the database
-  # can't be read (it may be what failed), it snoozes: the next run's
-  # database-clock check ends the job once F has passed. The BEAM clock is
-  # never used.
   defp poll_failed(wt, kind, module) do
     poll_error(wt, kind, module, nil)
 
@@ -390,15 +362,12 @@ defmodule WallopCore.Entropy.WeatherObservationWorker do
     :exit, _ -> :error
   end
 
-  # Seconds to snooze so the next run lands just after F, where it ends.
   defp past_deadline(now, wt),
     do: max(DateTime.diff(Schedule.fetch_deadline(wt), now), 0) + 1
 
   defp first_poll_at(wt), do: DateTime.add(wt, Schedule.first_poll_after_weather_time_seconds())
 
   @doc false
-  # The next poll, at least @deadline_margin_seconds before F; when there is
-  # no whole second left for that, polling stops.
   @spec next_poll(DateTime.t(), DateTime.t()) :: {:snooze, pos_integer()} | :ok
   def next_poll(now, wt) do
     left = DateTime.diff(Schedule.fetch_deadline(wt), now) - @deadline_margin_seconds

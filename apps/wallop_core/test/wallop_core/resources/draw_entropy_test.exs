@@ -89,9 +89,6 @@ defmodule WallopCore.Resources.DrawEntropyTest do
       api_key = create_api_key()
       draw = create_draw(api_key)
 
-      # Attempt to set seed_source = 'caller' directly, bypassing Ash.
-      # Keep status unchanged (awaiting_entropy -> awaiting_entropy is valid per trigger)
-      # so that the entropy-seed check is reached.
       assert_raise Postgrex.Error, ~r/Cannot use caller-provided seed/, fn ->
         SQL.query!(
           WallopCore.Repo,

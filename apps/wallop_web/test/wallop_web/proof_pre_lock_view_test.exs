@@ -60,9 +60,6 @@ defmodule WallopWeb.ProofPreLockViewTest do
 
   describe "from_draw/2" do
     test "projects only allowlisted fields from a fully-loaded draw" do
-      # A "wide-gap" draw struct: every field populated as if it had
-      # somehow reached :open with later-stage data attached. The
-      # projection MUST drop everything not in the allowlist.
       draw = %{
         id: "11111111-2222-3333-4444-555555555555",
         name: "Public Name",
@@ -72,16 +69,11 @@ defmodule WallopWeb.ProofPreLockViewTest do
         check_url: "https://operator.example/draw-info",
         inserted_at: ~U[2026-05-01 12:00:00.000000Z],
         stage_timestamps: %{"opened_at" => "2026-05-01T12:00:00.000000Z"},
-
-        # Not on the allowlist — must NOT survive projection.
         api_key_id: "secret-key-id",
         operator_id: "secret-op-id",
         operator_sequence: 42,
         metadata: %{"internal" => "data"},
         callback_url: "https://operator.example/cb",
-
-        # Cryptographic state that doesn't semantically exist pre-lock
-        # but if it ever appeared on the struct, we still drop it.
         entry_hash: "fakehash",
         entry_canonical: "fakecanonical",
         seed: "fakeseed",
@@ -107,7 +99,6 @@ defmodule WallopWeb.ProofPreLockViewTest do
 
       view = ProofPreLockView.from_draw(draw, operator)
 
-      # Allowlisted fields present.
       assert view.id == "11111111-2222-3333-4444-555555555555"
       assert view.name == "Public Name"
       assert view.status == :open
@@ -117,10 +108,6 @@ defmodule WallopWeb.ProofPreLockViewTest do
       assert %DateTime{} = view.opened_at
       assert view.operator == %{slug: "op-slug", name: "Op Name"}
 
-      # The struct cannot carry fields outside its definition — this
-      # is what makes the allowlist load-bearing. We assert that no
-      # accidental keys leaked through by checking the rendered map
-      # has exactly the expected keys.
       view_map = Map.from_struct(view)
 
       assert Map.keys(view_map) |> Enum.sort() ==
@@ -136,8 +123,6 @@ defmodule WallopWeb.ProofPreLockViewTest do
                  :winner_count
                ]
 
-      # Forensic check: no leaked field appears anywhere in the
-      # rendered map's string representation.
       stringified = inspect(view_map)
 
       for forbidden <- [

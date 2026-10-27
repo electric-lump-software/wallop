@@ -91,7 +91,6 @@ defmodule WallopCore.Repo.Migrations.ProtectOperatorSequence do
   end
 
   def down do
-    # Restore the prior trigger body without the operator_sequence check.
     execute("""
     CREATE OR REPLACE FUNCTION prevent_draw_mutation()
     RETURNS TRIGGER AS $$

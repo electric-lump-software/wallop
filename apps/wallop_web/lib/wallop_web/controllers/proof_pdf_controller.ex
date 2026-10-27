@@ -60,6 +60,5 @@ defmodule WallopWeb.ProofPdfController do
     end
   end
 
-  # A retired forecast draw is not found, exactly like an unknown id.
   defp load_draw(id), do: WallopWeb.RetiredDraw.fetch(id)
 end

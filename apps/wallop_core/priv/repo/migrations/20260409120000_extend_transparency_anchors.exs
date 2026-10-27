@@ -18,9 +18,6 @@ defmodule WallopCore.Repo.Migrations.ExtendTransparencyAnchors do
   use Ecto.Migration
 
   def change do
-    # Disable the immutability trigger temporarily so we can ALTER the table
-    # (the trigger blocks all modifications, but ALTER TABLE isn't DML)
-    # Actually ALTER TABLE ADD COLUMN is DDL, not blocked by the trigger.
 
     alter table(:transparency_anchors) do
       add :operator_receipts_root, :binary

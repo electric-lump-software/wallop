@@ -35,10 +35,6 @@ defmodule WallopCore.Resources.FrequencyWindow do
 
   alias WallopCore.Repo
 
-  # Limits on the store transaction, so it can't be left open. The
-  # commit-time check is what enforces F; these keep a stalled writer from
-  # holding T's draw rows and its index entry for long. Both are 5 s, the
-  # same as the weather store's.
   @statement_timeout "5s"
   @idle_in_transaction_timeout "5s"
 
@@ -60,12 +56,8 @@ defmodule WallopCore.Resources.FrequencyWindow do
       )
     end
 
-    # SQL for the store. Every constant comes from a wallop_freq_* function
-    # with an Elixir equality test. Comparisons that could meet a NULL are
-    # written so that NULL refuses.
     custom_statements do
       statement :wallop_freq_store_allowed do
-        # True when T's window may be stored at now_utc: [T + 105 s, F].
         up("""
         CREATE OR REPLACE FUNCTION wallop_freq_store_allowed(freq_start timestamp, now_utc timestamp)
         RETURNS boolean
@@ -79,12 +71,6 @@ defmodule WallopCore.Resources.FrequencyWindow do
       end
 
       statement :guard_frequency_window_insert do
-        # One row per T; the unique index on freq_start makes it the only
-        # row, so every draw of T gets the same value. The waiting draws of
-        # T (either tag) are locked FOR SHARE in id order: a completion UPDATE then waits
-        # for this store to end and its guard reads the store afresh, and a
-        # completion already under way makes this insert wait and then not
-        # count that draw.
         up("""
         DO $do$
         BEGIN
@@ -140,9 +126,6 @@ defmodule WallopCore.Resources.FrequencyWindow do
       end
 
       statement :check_frequency_window_commit do
-        # Runs at COMMIT (a deferred constraint trigger), on the wall clock
-        # then: a row whose transaction reaches its commit after F is
-        # refused, and nothing is stored.
         up("""
         DO $do$
         BEGIN
@@ -237,16 +220,11 @@ defmodule WallopCore.Resources.FrequencyWindow do
     uuid_primary_key(:id)
     attribute(:freq_start, :utc_datetime_usec, allow_nil?: false)
     attribute(:value, :string, allow_nil?: false)
-    # The Elexon response body, byte for byte: not trimmed (Ash trims a
-    # :string by default), so the stored bytes are exactly the ones received.
     attribute(:raw, :string, allow_nil?: false, constraints: [trim?: false, allow_empty?: true])
-    # Set by the insert trigger from the database clock.
     attribute(:stored_at, :utc_datetime_usec, allow_nil?: true)
   end
 
   identities do
-    # T's single window. Its unique index is what makes every draw of T use
-    # the same value.
     identity(:one_per_start, [:freq_start], message: "a window is already stored for this start")
   end
 end

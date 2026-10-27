@@ -24,9 +24,6 @@ defmodule WallopWeb.OperatorController do
 
   alias WallopCore.Vault
 
-  # Schema version for the JSON keys-list response shape (spec §4.2.4).
-  # A bump here is a wire-contract change for resolver-driven verifiers
-  # and requires a coordinated wallop_verifier release.
   @keys_response_schema_version "1"
 
   def receipts_index(conn, %{"slug" => slug}) do
@@ -93,38 +90,12 @@ defmodule WallopWeb.OperatorController do
       {:ok, operator} ->
         keys = list_keys(operator.id)
 
-        # Closed-set response shape per spec §4.2.4: exactly
-        # `{schema_version, keys}` and nothing else under
-        # `schema_version: "1"`. The previous response also carried
-        # an `operator` block (`{id, name, slug}`) as a friendly
-        # extension; that block is operator-identity decoration and
-        # belongs above the verifier protocol surface, not on a
-        # signed-key endpoint. Conforming verifiers
-        # (`wallop_verifier ≥ 0.14.0`) reject any extra envelope
-        # field per `deny_unknown_fields`. Same precedent as the
-        # `operator_ref` deletion in v0.16.0 and the v0.17.0
-        # ticket-manifest reversal: surface area on a protocol
-        # endpoint is non-negotiable, even when the extra field
-        # looks harmless. Consumers needing operator metadata fetch
-        # `GET /operator/:slug` (LiveView, unsigned, free to evolve).
         conn
         |> put_resp_header("cache-control", "public, max-age=300")
         |> json(%{
           schema_version: @keys_response_schema_version,
           keys:
             Enum.map(keys, fn k ->
-              # `inserted_at` is the keyring entry's first-existence timestamp
-              # — load-bearing for the spec §4.2.4 temporal binding rule
-              # (verifier MUST reject if `key.inserted_at > receipt.binding_timestamp`).
-              # `valid_from` is deliberately NOT on the wire: see the
-              # equivalent comment on `InfrastructureController.keys_index`
-              # for the V-02 backdating-window rationale.
-              # `key_class` discriminates operator vs infrastructure keys
-              # per spec §4.2.4. Redundant on this endpoint (every row is
-              # the same class), load-bearing in the
-              # `.well-known/wallop-keyring-pin.json` format where rows of
-              # mixed class can coexist; emit on both endpoints so resolver
-              # implementations have one canonical row shape to deserialise.
               %{
                 key_id: k.key_id,
                 public_key_hex: Base.encode16(k.public_key, case: :lower),
@@ -140,24 +111,10 @@ defmodule WallopWeb.OperatorController do
   end
 
   def keyring_pin(conn, %{"slug" => slug}) do
-    # Snapshot semantics: `list_keys/1` and `load_current_infra_key/0` are
-    # not in a single transaction. Between them, an operator-key rotation
-    # could insert a row that this snapshot misses; the resulting pin
-    # commits to a slightly stale keyring. Verifier rule is
-    # `key.inserted_at <= receipt.binding_timestamp`, which is a strictly
-    # stronger relation than `<= pin.published_at`, so this is not a
-    # soundness break — only an availability/freshness window bounded
-    # by the 60-second cache. Acceptable for 1.0; document over silence.
     with {:ok, operator} <- load_operator(slug),
          keys when keys != [] <- list_keys(operator.id),
          {:ok, infra_key} <- load_current_infra_key(),
          {:ok, private_key} <- decrypt_private_key(infra_key.private_key),
-         # Defence-in-depth, not load-bearing for the wire artefact:
-         # catches a corrupted in-memory key (truncated bytes after
-         # Vault decrypt) or a row whose stored `key_id` no longer
-         # matches its public key. A forged signature would fail the
-         # verifier-side signature step regardless; this guard prevents
-         # *publishing* an envelope that nobody can verify.
          :ok <-
            Protocol.assert_key_consistency(
              infra_key.public_key,
@@ -183,17 +140,9 @@ defmodule WallopWeb.OperatorController do
       |> put_resp_header("cache-control", "public, max-age=60")
       |> json(wire)
     else
-      # No operator with that slug, or operator has zero signing keys
-      # yet (greenfield). Both are "outside attributable mode" per
-      # spec §4.2.4 — surface as 404 (pin not available), not 503.
       :error -> not_found(conn)
       [] -> not_found(conn)
-      # No infrastructure key bootstrapped yet. Same shape as above:
-      # this is a deployment-not-yet-configured state, not an outage.
       {:error, :no_infra_key} -> not_found(conn)
-      # Vault decrypt failure or keyring-row inconsistency — these
-      # ARE outages. The deployment thinks it has a key but cannot
-      # produce signed bytes from it.
       {:error, _} -> conn |> send_resp(503, "") |> halt()
     end
   end
@@ -234,12 +183,6 @@ defmodule WallopWeb.OperatorController do
     end
   end
 
-  # Operator slugs are constrained at the resource boundary to 2-63 chars
-  # (`Operator.validate_slug/1`). Reject longer inputs at the controller
-  # before issuing a Postgres round-trip; an unbounded query parameter
-  # would otherwise round-trip arbitrary-length strings before failing to
-  # match. Ash escapes parameters so this isn't a SQL injection vector,
-  # just wasted work.
   @max_slug_length 63
 
   defp load_operator(slug) when is_binary(slug) do
@@ -294,10 +237,6 @@ defmodule WallopWeb.OperatorController do
     |> Ash.read!(authorize?: false)
   end
 
-  # Pin-signing helpers. The pin endpoint signs lazily on each request
-  # using the wallop infrastructure key, then serves the signed bytes
-  # with `Cache-Control: public, max-age=60`. No persistent
-  # `KeyringPin` resource — the keyring is the source of truth.
   defp load_current_infra_key do
     now = DateTime.utc_now()
 

@@ -44,7 +44,6 @@ defmodule WallopCore.Resources.Draw.Changes.ResolveLockSchema do
   @impl true
   def change(changeset, _opts, _context) do
     case changeset.data.operator_id do
-      # Refused when the receipt is signed (SignAndStoreReceipt).
       nil ->
         changeset
 
@@ -53,7 +52,6 @@ defmodule WallopCore.Resources.Draw.Changes.ResolveLockSchema do
           {:ok, operator} ->
             record(changeset, protocol(operator), operator_id)
 
-          # Never guess a protocol: an unreadable operator refuses the lock.
           {:error, _} ->
             Ash.Changeset.add_error(changeset,
               field: :operator_id,
@@ -75,8 +73,6 @@ defmodule WallopCore.Resources.Draw.Changes.ResolveLockSchema do
     |> require_ready(protocol)
   end
 
-  # Unreachable while the database allows only the two protocols above; a
-  # clean 400 rather than a database exception if it ever isn't.
   defp record(changeset, :unknown, _operator_id) do
     Ash.Changeset.add_error(
       changeset,
@@ -84,8 +80,6 @@ defmodule WallopCore.Resources.Draw.Changes.ResolveLockSchema do
     )
   end
 
-  # The lock is still recorded as schema 6, so the rest of the action
-  # follows the schema 6 path; the error stops it before anything is written.
   defp require_ready(changeset, :observation) do
     if ObservationReadiness.ready?() do
       changeset
@@ -99,8 +93,6 @@ defmodule WallopCore.Resources.Draw.Changes.ResolveLockSchema do
   defp tag(:observation), do: Protocol.landobs_entropy_composition()
   defp tag(:frequency), do: Protocol.freq_entropy_composition()
 
-  # In the lock transaction: the operator must still be on the protocol this
-  # lock recorded. FOR SHARE makes a concurrent flag change wait for it.
   defp confirm(changeset, operator_id, protocol) do
     current =
       Operator

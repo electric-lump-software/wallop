@@ -96,8 +96,6 @@ defmodule WallopCore.Drand.BlsTest do
     end
   end
 
-  # Every one of these is quicknet round 33068212 or round 1000 changed in
-  # one way. Each must be false, never a raise.
   @t_33068212 Enum.find(@fixtures["quicknet_t"]["rounds"], &(&1["round"] == 33_068_212))
   @r_33068212 Enum.find(@fixtures["quicknet"]["rounds"], &(&1["round"] == 33_068_212))
 
@@ -105,7 +103,6 @@ defmodule WallopCore.Drand.BlsTest do
     test "one bit flipped, at the start, the middle and the end" do
       s = @r_33068212["signature"]
 
-      # Bit 7 of byte 0 is the compression flag; also flip ordinary bits.
       for {byte, bit} <- [{0, 7}, {0, 5}, {0, 0}, {24, 3}, {47, 0}] do
         refute Bls.verify_quicknet(33_068_212, flip_bit(s, byte, bit)), "byte #{byte} bit #{bit}"
       end
@@ -177,7 +174,6 @@ defmodule WallopCore.Drand.BlsTest do
 end
 
 defmodule WallopCore.Drand.BlsTest.NotLoaded do
-  # What a Rustler module is when its library didn't load.
   def verify_g1(_pubkey, _round, _sig), do: :erlang.nif_error(:nif_not_loaded)
 end
 

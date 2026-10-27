@@ -30,8 +30,6 @@ defmodule WallopCore.ProtocolKeyRotationTest do
 
   alias WallopCore.Protocol
 
-  # Vector lives at the umbrella root. Same path-expansion pattern as
-  # `protocol_pin_vector_test.exs`.
   @vector_path Path.expand(
                  "../../../../spec/vectors/key-rotation-bidirectional.json",
                  __DIR__
@@ -71,12 +69,6 @@ defmodule WallopCore.ProtocolKeyRotationTest do
 
     test "Ed25519 verify has no forward lower bound (pipeline temporal binding is separate)",
          %{vector: vector} do
-      # Receipt is signed with the post-rotation key but its locked_at
-      # predates that key's inserted_at. At the cryptographic primitive
-      # level the signature is valid — the verifier MUST accept it here.
-      # The pipeline-level temporal-binding step (spec §4.2.4) is the
-      # separate layer that rejects such receipts; that's tested
-      # elsewhere.
       assert run_case(vector, "Ed25519 verify itself has no forward lower bound")
     end
   end
@@ -159,9 +151,6 @@ defmodule WallopCore.ProtocolKeyRotationTest do
     end
   end
 
-  # Run a single verification case from the vector against `Protocol.verify_receipt/3`,
-  # returning the boolean result. Tests above wrap with `assert` / `refute` per
-  # the case's `expect` field.
   defp run_case(vector, case_name) do
     case_ =
       Enum.find(vector["verifications"], fn c -> c["name"] == case_name end) ||

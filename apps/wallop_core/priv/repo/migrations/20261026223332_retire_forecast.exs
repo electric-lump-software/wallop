@@ -21,10 +21,6 @@ defmodule WallopCore.Repo.Migrations.RetireForecast do
       modify(:draw_protocol, :text, default: "observation")
     end
 
-    # Hand-written: the forecast protocol is retired, so every operator on it
-    # moves to observation weather. The default changes first, so an operator
-    # inserted while this runs gets observation, then the constraint below
-    # validates every row. The down migration leaves these rows as they are.
     execute("UPDATE operators SET draw_protocol = 'observation' WHERE draw_protocol = 'forecast'")
 
     execute("""

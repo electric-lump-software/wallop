@@ -105,12 +105,8 @@ defmodule WallopCore.Entropy.StuckDrawRedriver do
 
   @threshold_seconds 15 * 60
 
-  # Oban's :incomplete group: every state in which a job may still run.
   @live_states ~w(available scheduled executing retryable suspended)
 
-  # A live job of a schema 6 draw that can still run it soon (see the
-  # moduledoc). $2 is the worker, $3 its queue, $4 is D in seconds. Oban's
-  # scheduled_at is UTC without a zone.
   @runnable_v6_job """
   j.queue = $3
   AND (j.state::text = 'executing'
@@ -119,8 +115,6 @@ defmodule WallopCore.Entropy.StuckDrawRedriver do
            AND j.scheduled_at <= timezone('UTC', now()) + make_interval(secs => $4)))
   """
 
-  # The cancelled ObservationDrawWorker rows that park a schema 6 draw:
-  # every one but those this module cancelled itself.
   @parked_by_cancel """
   EXISTS (
     SELECT 1 FROM oban_jobs c
@@ -131,9 +125,6 @@ defmodule WallopCore.Entropy.StuckDrawRedriver do
   )
   """
 
-  # Lock schema 6 draws without a job that can run them. The `args @>`
-  # containment predicates use Oban's GIN index on args. A draw is left out
-  # once an ObservationDrawWorker job has been cancelled.
   @stuck_sql """
   SELECT d.id::text, d.lock_schema_version, d.entropy_composition, d.drand_round, d.weather_time,
     d.freq_start
@@ -150,9 +141,6 @@ defmodule WallopCore.Entropy.StuckDrawRedriver do
     AND NOT #{@parked_by_cancel}
   """
 
-  # The parked live jobs of one schema 6 draw ($5), cancelled so the new job
-  # doesn't conflict with them. An executing job is never touched, nor is
-  # one that became runnable meanwhile.
   @cancel_parked_sql """
   UPDATE oban_jobs j
   SET state = 'cancelled',
@@ -180,8 +168,6 @@ defmodule WallopCore.Entropy.StuckDrawRedriver do
     AND d.lock_schema_version = '6'
   """
 
-  # Pending schema 6 draws not refused by the executor: no cancelled
-  # ObservationDrawWorker row ($1) carries its refusal ($2, a LIKE pattern).
   @unrefused_v6_sql """
   SELECT d.id::text, d.lock_schema_version, d.entropy_composition, d.drand_round, d.weather_time,
     d.freq_start
@@ -197,8 +183,6 @@ defmodule WallopCore.Entropy.StuckDrawRedriver do
     )
   """
 
-  # How Oban records the executor's refusal, `{:cancel, "execution
-  # refused: ..."}`, in the cancelled row's errors (Oban.PerformError).
   @refusal_pattern "%#{inspect(ObservationDrawWorker)} failed with " <>
                      ~s({:cancel, "execution refused: %)
 
@@ -235,7 +219,6 @@ defmodule WallopCore.Entropy.StuckDrawRedriver do
     end
   end
 
-  # $1..$4 of the queries above.
   defp job_params do
     [
       @live_states,
@@ -247,8 +230,6 @@ defmodule WallopCore.Entropy.StuckDrawRedriver do
 
   defp queue_of(worker), do: worker.__opts__() |> Keyword.fetch!(:queue) |> to_string()
 
-  # Cancels the draw's parked jobs and inserts the new one in one
-  # transaction: if the insert doesn't happen, nothing is cancelled.
   defp redrive_execution(protocol, id) do
     Repo.transaction(fn ->
       %{rows: cancelled} = Repo.query!(@cancel_parked_sql, job_params() ++ [Ecto.UUID.dump!(id)])
@@ -269,8 +250,6 @@ defmodule WallopCore.Entropy.StuckDrawRedriver do
     %{draw_id: id, replaced: n}
   end
 
-  # Every pending schema 6 draw past pub(R) + 15 minutes, not refused by
-  # the executor, whatever its jobs say.
   defp report_overdue(now) do
     %{rows: rows} =
       Repo.query!(@unrefused_v6_sql, [inspect(ObservationDrawWorker), @refusal_pattern])
@@ -299,8 +278,6 @@ defmodule WallopCore.Entropy.StuckDrawRedriver do
   defp redrive_fetches(now) do
     %{rows: rows} = Repo.query!(@pending_v6_sql, [])
 
-    # Land Obs draws only: a grid-frequency window job is never re-driven.
-    # A lost one falls back by rule.
     hours =
       for row <- rows,
           draw <- [to_draw(row)],
@@ -332,15 +309,12 @@ defmodule WallopCore.Entropy.StuckDrawRedriver do
     }
   end
 
-  # When the draw was due: pub(R) by its rules.
   defp due_time(draw) do
     case V6Rules.rules(draw) do
       {:ok, rules} ->
         {:ok, protocol(rules), V6Rules.drand_pub_time(rules, draw)}
 
       :error ->
-        # Refused at insert by the draws guard, so it can't exist; if one
-        # did, no rules say when it was due, and its job would refuse it.
         Logger.warning(
           "StuckDrawRedriver: draw #{Log.redact_id(draw.id)} has an unknown stored pair; not re-driven"
         )
@@ -354,24 +328,18 @@ defmodule WallopCore.Entropy.StuckDrawRedriver do
 
   defp before?(a, b), do: DateTime.compare(a, b) == :lt
 
-  # The telemetry label of a schema 6 draw's rules.
   defp protocol(:landobs), do: :observation
   defp protocol(:freq), do: :frequency
 
-  # The live-job check above already ran. The worker is unique on draw_id
-  # among live jobs, so a race with another inserter is a conflict, not a
-  # second job.
   defp insert_execution(protocol, id) when protocol in [:observation, :frequency],
     do: Oban.insert(ObservationDrawWorker.new(%{draw_id: id}))
 
-  # One clause per observation tag: nothing falls through to Land Obs.
   defp insert_fetch(:landobs, wt) do
     case wt do
       %DateTime{minute: 0, second: 0, microsecond: {0, _}} ->
         Oban.insert(WeatherObservationWorker.new_for_hour(wt))
 
       _ ->
-        # The lock requires a whole hour, so this can't be stored.
         Logger.warning(
           "StuckDrawRedriver: weather_time #{DateTime.to_iso8601(wt)} is not a whole hour"
         )

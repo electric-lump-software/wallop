@@ -61,12 +61,6 @@ defmodule WallopCore.ProofTest do
   end
 
   describe "winner?/2 — byte-identical responses for non-winner cases" do
-    # The self-check endpoint collapses three distinct non-winner cases
-    # into one response shape: "UUID entered but didn't win", "UUID never
-    # entered", and "malformed input" all produce identical bytes. This
-    # prevents the endpoint from becoming an enumeration oracle keyed by
-    # UUID. Pre-launch decision (confirmed in review).
-
     setup do
       api_key = create_api_key()
 

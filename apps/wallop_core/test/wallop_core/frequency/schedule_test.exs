@@ -86,10 +86,8 @@ defmodule WallopCore.Frequency.ScheduleTest do
         assert t + 15 + 105 + w + m > pub
         assert DateTime.to_unix(s.store_from) == t + 105
         assert DateTime.to_unix(s.fetch_deadline) == t + 105 + w
-        # F is never later than pub(R) - M.
         assert DateTime.to_unix(s.fetch_deadline) <= pub - m
         assert DateTime.to_unix(s.latest_lock_at) == t - 60
-        # Close to result: 60 + 105 + W_freq + M, plus up to 14 s of floor rounding.
         assert (pub - DateTime.to_unix(s.latest_lock_at)) in (165 + w + m)..(179 + w + m)
       end
     end
@@ -101,7 +99,6 @@ defmodule WallopCore.Frequency.ScheduleTest do
         {:ok, s} = Schedule.schedule(draw_at)
         {:ok, prev} = Schedule.schedule(DateTime.add(draw_at, -3, :second))
 
-        # At least 29 s of margin for the lock's own work.
         assert Schedule.lock_allowed?(DateTime.add(now, 29, :second), s.freq_start)
         assert DateTime.diff(prev.freq_start, now, :microsecond) < 90_000_000
       end

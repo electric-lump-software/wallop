@@ -17,22 +17,16 @@ defmodule WallopCore.Protocol.ClientRefTest do
   alias WallopCore.Protocol.ClientRef
 
   @sample_draw_id "11111111-2222-3333-4444-555555555555"
-  # 16 raw bytes of: 11 11 11 11 22 22 33 33 44 44 55 55 55 55 55 55
   @sample_draw_id_bytes <<0x11, 0x11, 0x11, 0x11, 0x22, 0x22, 0x33, 0x33, 0x44, 0x44, 0x55, 0x55,
                           0x55, 0x55, 0x55, 0x55>>
 
   describe "client_ref_digest/2" do
     test "produces deterministic raw 32-byte SHA-256 over domain + uuid + 0x00 + ref" do
-      # SHA-256("wallop-client-ref-v1\n" || <16-byte uuid> || 0x00 || "abc")
-      # = 6e7c4e2b30a82c0adfaaa3b58dba9f8d3df2b9d1d83e34abe3dd1e5a5f43c79b
-      # (preimage: 21-byte domain string + 16-byte uuid + 0x00 + "abc")
       digest = ClientRef.client_ref_digest(@sample_draw_id, "abc")
 
       assert is_binary(digest)
       assert byte_size(digest) == 32
 
-      # The exact bytes pin the construction. Any change here breaks
-      # cross-language conformance.
       hex = Base.encode16(digest, case: :lower)
 
       assert ^hex = compute_expected_client_ref_digest(@sample_draw_id_bytes, "abc"),
@@ -52,9 +46,6 @@ defmodule WallopCore.Protocol.ClientRefTest do
     end
 
     test "(draw_a, 'X' <> ref) does NOT collide with (draw_aX, ref) — separator works" do
-      # Without the 0x00 separator + fixed 16-byte uuid, an attacker could
-      # craft (draw_a, "Xfoo") to collide with (draw_aX, "foo"). The
-      # 16-byte fixed-width UUID + null separator make this impossible.
       a = ClientRef.client_ref_digest("00000000-0000-0000-0000-000000000000", "Xfoo")
       b = ClientRef.client_ref_digest("00000000-0000-0000-0000-000000000058", "foo")
       refute a == b
@@ -114,10 +105,6 @@ defmodule WallopCore.Protocol.ClientRefTest do
 
       hex = Base.encode16(digest, case: :lower)
 
-      # JCS({"draw_id": "11111111-2222-3333-4444-555555555555",
-      #      "entries": [{"weight":1},{"weight":2},{"weight":3}]})
-      # = {"draw_id":"11111111-2222-3333-4444-555555555555","entries":[{"weight":1},{"weight":2},{"weight":3}]}
-      # SHA-256("wallop-client-ref-payload-v1\n" || <canonical>)
       assert ^hex = compute_expected_payload_digest(@sample_draw_id, [1, 2, 3]),
              "payload_digest construction must match the documented preimage"
     end
@@ -147,14 +134,8 @@ defmodule WallopCore.Protocol.ClientRefTest do
     end
 
     test "domain-separated from entry_hash (different prefix produces different digest)" do
-      # Sanity: payload_digest is NOT entry_hash. Even with the same
-      # draw_id and weights, the digests must differ — different
-      # canonical shapes (no uuids), different sort key, different
-      # domain separator. Re-implementers must not share code paths.
       payload = ClientRef.payload_digest(@sample_draw_id, [1, 2, 3])
-      # entry_hash needs UUIDs which payload_digest doesn't have, so
-      # we just confirm payload_digest is its own thing by recomputing
-      # without the domain separator and asserting inequality.
+
       naked =
         :crypto.hash(
           :sha256,
@@ -190,17 +171,10 @@ defmodule WallopCore.Protocol.ClientRefTest do
     end
 
     test "accepts empty weights list (returns deterministic digest of empty entries)" do
-      # An empty add_entries batch is structurally valid for the digest
-      # function (action-level validation is what rejects empty lists,
-      # not this layer). The digest should still be deterministic.
       digest = ClientRef.payload_digest(@sample_draw_id, [])
       assert byte_size(digest) == 32
     end
   end
-
-  # -- Test-only oracles. Compute the expected hex digests from the
-  # documented preimages WITHOUT calling into the implementation, so a
-  # regression cannot silently rewrite both sides of the assertion.
 
   defp compute_expected_client_ref_digest(draw_id_bytes, client_ref) do
     domain = "wallop-client-ref-v1\n"

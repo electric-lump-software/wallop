@@ -22,23 +22,15 @@ defmodule WallopCore.Entropy.ObservationDrawWorker do
   discarded job can be inserted again by the re-drive.
   """
   use Oban.Worker,
-    # Its own queue, apart from the fetch queues, so a burst of executions
-    # never holds a fetch's slots.
     queue: :v6_execution,
     max_attempts: 10,
     unique: [period: :infinity, keys: [:draw_id], states: :incomplete]
 
   alias WallopCore.Entropy.V6Execution
 
-  # Ends before Lifeline rescues at 2 minutes.
   @impl Oban.Worker
   def timeout(_job), do: :timer.seconds(90)
 
-  # The longest this worker ever puts a live job off once its draw is due
-  # (pub(R)): its retry backoff cap. Its snoozes are shorter: before F or
-  # pub(R) it snoozes to pub(R) + 1 s at most, and a "not yet" from the
-  # database waits for F or pub(R) plus 2 s (at least 5 s). The re-drive
-  # relies on this bound (`StuckDrawRedriver`).
   @max_backoff_seconds 120
 
   @impl Oban.Worker

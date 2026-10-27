@@ -29,8 +29,6 @@ defmodule WallopCore.Entropy.DrandClient do
   @connect_timeout 5_000
   @receive_timeout 10_000
   @max_body_bytes 16_384
-  # With `on_invalid: :next`, each relay gets this long in total, then the
-  # next one is asked.
   @relay_deadline_ms 10_000
 
   @default_relays [
@@ -42,8 +40,6 @@ defmodule WallopCore.Entropy.DrandClient do
 
   @quicknet_chain_hash "52db9ba70e0cc0f6eaf7803dd07447a1f5477735fd3f661792ba94600c84e971"
 
-  # Tests swap in a wrapper around the real check; see
-  # WallopCore.Test.DrandBls. Fixed at compile time.
   @bls Application.compile_env(:wallop_core, [__MODULE__, :bls], Bls)
 
   if @bls != Bls and Mix.env() != :test do
@@ -62,8 +58,6 @@ defmodule WallopCore.Entropy.DrandClient do
   def max_body_bytes, do: @max_body_bytes
 
   @doc false
-  # The total time one relay gets under `on_invalid: :next`. Configurable
-  # (`relay_deadline_ms`) only so tests can shorten it.
   @spec relay_deadline_ms() :: pos_integer()
   def relay_deadline_ms do
     Application.get_env(:wallop_core, __MODULE__, [])
@@ -130,7 +124,6 @@ defmodule WallopCore.Entropy.DrandClient do
       {:ok, _} = success ->
         success
 
-      # One relay's refusal (lagging, broken or hostile) is not the round's.
       {:error, reason} when mode == :next ->
         try_relays(rest, chain_hash, round, on_invalid, [{relay, reason} | errors])
 
@@ -140,7 +133,6 @@ defmodule WallopCore.Entropy.DrandClient do
       {:error, :invalid_response} = invalid ->
         invalid
 
-      # Don't failover on auth errors — all relays use the same credentials
       {:error, {:unexpected_status, status}} = auth_err when status in [401, 403] ->
         auth_err
 
@@ -155,9 +147,6 @@ defmodule WallopCore.Entropy.DrandClient do
   defp fetch_relay(chain_hash, round, relay, _on_invalid, verify?),
     do: do_fetch(chain_hash, round, relay, verify_bls: verify?)
 
-  # One relay, no Req retries, within the relay deadline. The request runs
-  # in a task so a relay dripping bytes can be abandoned; a raise, exit or
-  # throw inside it is passed on to the caller unchanged.
   defp bounded_fetch(chain_hash, round, relay, verify?) do
     task =
       Task.async(fn ->
@@ -240,8 +229,6 @@ defmodule WallopCore.Entropy.DrandClient do
     end
   end
 
-  # Anything but a JSON object (an array, a string, null, a non-JSON page)
-  # is malformed, never a crash.
   defp parse_and_validate(body, _chain_hash, _expected_round) when not is_map(body),
     do: {:error, :malformed_body}
 
@@ -282,8 +269,6 @@ defmodule WallopCore.Entropy.DrandClient do
     end
   end
 
-  # The first check the beacon fails, or nil. The format checks run first,
-  # so the NIF only ever sees a well-formed signature and round.
   defp bls_failure(beacon, chain_hash, round) do
     cond do
       chain_hash != Quicknet.chain_hash() -> :wrong_chain
@@ -300,10 +285,6 @@ defmodule WallopCore.Entropy.DrandClient do
     :sha256 |> :crypto.hash(sig) |> Base.encode16(case: :lower)
   end
 
-  # The body is collected through the cap; Req then decodes JSON by content
-  # type as before. Compression stays off (Req's default), so a body sent
-  # compressed anyway is never inflated: Req leaves it encoded, which isn't
-  # a map, which is refused.
   defp get(url, extra_opts \\ []) do
     opts = Keyword.merge([into: &collect_capped/2, compressed: false], extra_opts)
     Req.get(url, Keyword.merge(req_options(), opts))

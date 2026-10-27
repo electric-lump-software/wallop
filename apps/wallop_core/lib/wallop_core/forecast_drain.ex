@@ -94,7 +94,6 @@ defmodule WallopCore.ForecastDrain do
   end
 
   defp fail(id) do
-    # A read error fails this draw only; the drain carries on with the rest.
     result =
       with {:ok, draw} <- Ash.get(Draw, id, authorize?: false) do
         draw

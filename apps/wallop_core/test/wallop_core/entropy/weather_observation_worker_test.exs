@@ -33,10 +33,6 @@ defmodule WallopCore.Entropy.WeatherObservationWorkerTest do
     end)
   end
 
-  # The database clock can't be set, so the draws' weather_time is placed
-  # `offset` seconds from now and is not a whole hour; the test client
-  # (WindowedLandObsClient) fetches the whole hour at or before it with the
-  # real client. Whole-hour cases are below, where the clock allows them.
   defp v6_draws(offset, n) do
     wt = DateTime.utc_now() |> DateTime.add(offset) |> DateTime.truncate(:second)
     {:ok, s} = Schedule.schedule(Schedule.default_draw_at(DateTime.utc_now()))
@@ -45,8 +41,6 @@ defmodule WallopCore.Entropy.WeatherObservationWorkerTest do
     {wt, draws}
   end
 
-  # Serves Middle Wallop's body (nil: a 503), and tells the test which
-  # geohash was asked.
   defp stub_primary(body) do
     test = self()
 
@@ -183,7 +177,6 @@ defmodule WallopCore.Entropy.WeatherObservationWorkerTest do
       {wt, [d]} = v6_draws(-6 * 60, 1)
       ref = attach([@stored, @store_refused])
 
-      # The other run stores while this one is fetching.
       Req.Test.stub(LandObsClient, fn conn ->
         if String.ends_with?(conn.request_path, "gcnfur") do
           {:ok, _} =
@@ -210,7 +203,6 @@ defmodule WallopCore.Entropy.WeatherObservationWorkerTest do
       stub_primary(row(wt, 12.34))
       ref = attach([@store_refused])
 
-      # A trigger that refuses every insert, for this test's transaction only.
       Repo.query!("""
       CREATE FUNCTION test_refuse_observation() RETURNS trigger AS $$
       BEGIN RAISE EXCEPTION 'refused for the test'; END;
@@ -297,7 +289,6 @@ defmodule WallopCore.Entropy.WeatherObservationWorkerTest do
       capture_log(fn ->
         {:snooze, s} = run(wt)
         until_f = DateTime.diff(Schedule.fetch_deadline(wt), DateTime.utc_now())
-        # One second past F, give or take the test's own running time.
         assert s in (until_f + 1 - 2)..(until_f + 1 + 2)
         assert s > Schedule.poll_interval_seconds()
       end)
@@ -433,13 +424,11 @@ defmodule WallopCore.Entropy.WeatherObservationWorkerTest do
     test "an exception during a poll snoozes until F instead of failing the job" do
       {wt, [d]} = v6_draws(-6 * 60, 1)
       ref = attach([@poll_error, @poll])
-      # A non-string base URL makes the client raise inside the poll.
       Application.put_env(:wallop_core, LandObsClient, base_url: 123)
 
       log = capture_log(fn -> assert {:snooze, _} = run(wt) end)
       assert Observations.for_draw(d.id) == nil
 
-      # Counted in both events.
       assert_receive {@poll_error, ^ref, %{count: 1},
                       %{weather_time: ^wt, station: @primary, kind: :error}}
 
@@ -458,12 +447,9 @@ defmodule WallopCore.Entropy.WeatherObservationWorkerTest do
     end
 
     test "when the database clock can't be read it snoozes, even well past F on the BEAM clock" do
-      # F passed long ago: stopping on the BEAM clock would return :ok here.
       {wt, _} = v6_draws(-(@w + 3600), 1)
       ref = attach([@poll_error])
 
-      # Every query in an aborted transaction fails, so the run's first
-      # database-clock read raises and so does the read after the failure.
       log =
         capture_log(fn ->
           result =
@@ -532,8 +518,6 @@ defmodule WallopCore.Entropy.WeatherObservationWorkerTest do
       refute log =~ key
       refute log =~ "SENTINEL"
 
-      # The poll lines name only the reason (the debug SQL above them names
-      # the raw column, so only these lines are checked for it).
       failed = log |> String.split("\n") |> Enum.filter(&(&1 =~ "failed ("))
       assert length(failed) == 4
       refute Enum.any?(failed, &(&1 =~ "raw"))
@@ -581,7 +565,6 @@ defmodule WallopCore.Entropy.WeatherObservationWorkerTest do
                arg
       end
 
-      # The canonical form runs: an hour long past F stops without fetching.
       stub_primary("[]")
 
       assert :ok =
@@ -598,7 +581,6 @@ defmodule WallopCore.Entropy.WeatherObservationWorkerTest do
         assert WeatherObservationWorker.runnable_hour(arg, LandObsClient) == :error, arg
       end
 
-      # The test client places "now" in a window with hours that aren't whole.
       assert {:ok, _} =
                WeatherObservationWorker.runnable_hour(
                  "2026-10-14T19:00:01Z",

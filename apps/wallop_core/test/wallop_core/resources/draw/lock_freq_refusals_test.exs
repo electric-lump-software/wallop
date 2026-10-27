@@ -34,8 +34,6 @@ defmodule WallopCore.Resources.Draw.LockFreqRefusalsTest do
   test "a draw time about six minutes ahead is already too late: latest_lock_at = T - 60 s" do
     {_op, key} = create_freq_operator()
     draw = open_draw_with_entries(key)
-    # pub(R) - now is in (300, 360] s, and T - 60 s is pub(R) - 420 s or
-    # earlier, so it is always before now.
     late = minute_after(360)
     {:ok, s} = Schedule.schedule(late)
     assert DateTime.compare(s.latest_lock_at, DateTime.utc_now()) == :lt
@@ -63,7 +61,6 @@ defmodule WallopCore.Resources.Draw.LockFreqRefusalsTest do
     d = open_draw_with_entries(key)
     ok = minute_after(3600)
 
-    # weather_time is no longer a lock input at all.
     assert {:error, %Ash.Error.Invalid{}} = lock(d, key, %{weather_time: ok})
 
     for {args, field, message} <- [

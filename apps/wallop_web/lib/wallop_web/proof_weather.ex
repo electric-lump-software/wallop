@@ -32,9 +32,6 @@ defmodule WallopWeb.ProofWeather do
                               "one on its own."
   @freq_drand_only_label "The Grid went quiet, so drand did this one on its own."
 
-  # The whole trusted set for each tag, kept close to the protocol's public
-  # wording (the weather design for observation weather, the frequency design for
-  # the grid frequency). Shown in full under "What you're trusting here".
   @landobs_trust_lines [
     "Fewer than drand's threshold of nodes collude.",
     "The public weather record is honest and stays available.",
@@ -67,10 +64,8 @@ defmodule WallopWeb.ProofWeather do
       "drand's network colluding, or wallop deliberately getting round its own database."
   ]
 
-  # What anyone can check afterwards, by state.
   @landobs_weather_check "Checkable with wallop-verify weather-attest: the value matches the " <>
                            "public record for that station and hour."
-  # A fallback can't be told apart from a withheld reading.
   @late_reading_caveat "A reading can arrive after the deadline, so a fallback can happen for " <>
                          "an hour whose reading the archive does hold; weather-attest can show " <>
                          "the reading exists, but can't tell a late reading from a withheld one."
@@ -87,9 +82,7 @@ defmodule WallopWeb.ProofWeather do
                        "grid-frequency draw can go (the Grid, or drand alone), so there's no " <>
                        "source to show, and we can't vouch for it."
 
-  # The five keys of the three-state table. All must be present.
   @landobs_state_keys ~w(weather_value weather_observation_time weather_fallback_reason freq_value freq_fallback_reason)
-  # Signed under the grid-frequency tag, always null.
   @freq_weather_keys ~w(weather_station weather_value weather_observation_time weather_fallback_reason)
 
   @type source :: :weather | :frequency | :drand_only
@@ -238,7 +231,6 @@ defmodule WallopWeb.ProofWeather do
   defp source_fields(tag, :frequency, signed, bmrs_year) do
     %{
       freq_value: signed["freq_value"],
-      # Under the grid-frequency tag the grid is the plan, not a fallback.
       fallback_label: if(tag == :landobs, do: @landobs_frequency_label),
       check_line: if(tag == :landobs, do: @landobs_frequency_check, else: @freq_frequency_check),
       bmrs_line: "Contains BMRS data © Elexon Limited copyright and database right #{bmrs_year}"
@@ -265,7 +257,6 @@ defmodule WallopWeb.ProofWeather do
 
   defp signed(_), do: %{}
 
-  # A DateTime, or nil for anything that isn't a UTC timestamp.
   defp time(value) do
     case time_or_text(value) do
       %DateTime{} = dt -> dt
@@ -273,7 +264,6 @@ defmodule WallopWeb.ProofWeather do
     end
   end
 
-  # Keeps an unreadable timestamp as text, so the state check refuses it.
   defp time_or_text(text) when is_binary(text) do
     case DateTime.from_iso8601(text) do
       {:ok, dt, 0} -> dt

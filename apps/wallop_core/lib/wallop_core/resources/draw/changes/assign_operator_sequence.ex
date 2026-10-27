@@ -38,11 +38,8 @@ defmodule WallopCore.Resources.Draw.Changes.AssignOperatorSequence do
   defp assign(changeset, %{operator_id: operator_id}) when is_binary(operator_id) do
     repo = WallopCore.Repo
 
-    # Normalise to canonical UUID string form so the advisory lock key is
-    # stable regardless of whether the caller passed binary or string UUID.
     {:ok, normalised_id} = Ecto.UUID.cast(operator_id)
 
-    # Hash the operator_id into a stable int8 for advisory lock keyspace.
     {:ok, %{rows: [[lock_key]]}} =
       repo.query("SELECT ('x' || substr(md5($1), 1, 16))::bit(64)::bigint", [normalised_id])
 

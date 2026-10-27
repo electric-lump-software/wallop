@@ -74,9 +74,6 @@ defmodule WallopCore.Invariants.TamperFreqTest do
     end
 
     test "INV-2 (tamper, frequency lock builder) the round and window moved together still build" do
-      # The builder can't tell the next window from this one; the database
-      # binds the round to the draw (below), and the verifier has the
-      # vectors' cases.
       lock = lock_input()
       next = lock.drand_round + 5
 
@@ -123,8 +120,6 @@ defmodule WallopCore.Invariants.TamperFreqTest do
     end
 
     test "INV-2 (tamper, frequency exec builder) the Land Obs tag on a frequency input is refused" do
-      # A frequency exec input under the Land Obs tag: the weather rules
-      # refuse its null weather fields.
       exec = exec_input()
 
       assert_raise ArgumentError, fn ->
@@ -149,7 +144,6 @@ defmodule WallopCore.Invariants.TamperFreqTest do
 
     test "INV-2 (tamper, frequency lock database) round and window moved together pass the builder, not the database",
          %{s: s, payload: payload, cols: cols} do
-      # The next window's round and start, consistent with each other.
       moved = %{
         payload
         | "drand_round" => s.round + 5,
@@ -257,7 +251,6 @@ defmodule WallopCore.Invariants.TamperFreqTest do
                %{payload | "executed_at" => offset_rfc(x.input.executed_at, 1)},
                not_canonical(offset_rfc(x.input.executed_at, 1))}
             ],
-            # On a fallback the reason is already there.
             tampered != payload do
           assert insert_exec_receipt(Jason.encode!(tampered), x.cols) == message,
                  "#{kind}: #{label}"

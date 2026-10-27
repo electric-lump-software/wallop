@@ -33,10 +33,6 @@ defmodule WallopCore.BoundaryTest do
   end
 
   test "wallop_core does not reference downstream consumer app modules" do
-    # Belt-and-braces check that no core-layer file accidentally introduces
-    # a reference to a known consumer-side namespace. The list below names
-    # the namespaces of currently-known closed-source consumers; extend if
-    # a new consumer ships and starts depending on wallop_core.
     consumer_namespaces = ["WallopApp"]
 
     violations =

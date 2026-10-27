@@ -45,10 +45,6 @@ defmodule WallopWeb.Components.PreLockTimeline do
     """
   end
 
-  # Six stages, matching the post-lock timeline's shape so the
-  # progress indicator is consistent across statuses. Only the
-  # "Entries Open" stage carries detail (entry count); the rest are
-  # pure placeholders because the underlying fields don't yet exist.
   defp build_stages(%WallopWeb.ProofPreLockView{entry_count: count}) do
     [
       %{label: "Entries Open", detail: "#{count} entries", state: :current},

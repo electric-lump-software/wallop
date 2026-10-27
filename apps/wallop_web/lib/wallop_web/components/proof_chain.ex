@@ -19,7 +19,6 @@ defmodule WallopWeb.Components.ProofChain do
     <div class="space-y-4">
       <h3 class="text-lg font-bold">How to verify</h3>
 
-      <%!-- Step 1: Entry Hash --%>
       <div class="bg-cream-dark border border-cream-border rounded-xl">
         <div class="p-4">
           <div class="flex items-start gap-3">
@@ -37,7 +36,6 @@ defmodule WallopWeb.Components.ProofChain do
         </div>
       </div>
 
-      <%!-- Step 2: Entropy Sources --%>
       <div class="bg-cream-dark border border-cream-border rounded-xl">
         <div class="p-4">
           <div class="flex items-start gap-3">
@@ -64,7 +62,6 @@ defmodule WallopWeb.Components.ProofChain do
         </div>
       </div>
 
-      <%!-- Step 3: Seed Computation --%>
       <div class="bg-cream-dark border border-cream-border rounded-xl">
         <div class="p-4">
           <div class="flex items-start gap-3">
@@ -82,7 +79,6 @@ defmodule WallopWeb.Components.ProofChain do
         </div>
       </div>
 
-      <%!-- Step 4: Algorithm --%>
       <div class="bg-cream-dark border border-cream-border rounded-xl">
         <div class="p-4">
           <div class="flex items-start gap-3">
@@ -118,8 +114,6 @@ defmodule WallopWeb.Components.ProofChain do
 
   attr(:weather, :map, required: true)
 
-  # What the signed receipts say the draw used. Display only, and headed
-  # as such: the browser check's verifier gate is what shows a match.
   defp observation_weather(assigns) do
     ~H"""
     <div class="mt-2 text-xs text-[#555] space-y-1" data-observation-weather={@weather.source || "none"}>

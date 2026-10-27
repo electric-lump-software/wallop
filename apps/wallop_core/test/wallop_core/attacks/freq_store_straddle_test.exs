@@ -58,8 +58,6 @@ defmodule WallopCore.Attacks.FreqStoreStraddleTest do
         ]).rows
       end)
 
-  # A T on the 15 s grid whose F is 6 to 21 s away: the lead covers the
-  # fixture's set-up on a loaded machine, so the insert still runs before F.
   defp t_closing_soon do
     now = DateTime.to_unix(DateTime.utc_now())
     lead = Schedule.span_seconds() + Schedule.fetch_window_seconds() - 6
@@ -116,8 +114,6 @@ defmodule WallopCore.Attacks.FreqStoreStraddleTest do
       send(t1, :commit)
       assert_receive {:result, ^t1, :committed}, 5_000
 
-      # Had the guard read the store before the row lock, it would have
-      # found nothing and refused for the deadline instead.
       assert_receive {:result, ^t2,
                       {:refused, "v6 draw must complete with its stored frequency window"}},
                      5_000
@@ -144,7 +140,6 @@ defmodule WallopCore.Attacks.FreqStoreStraddleTest do
       send(t1, :rollback)
       assert_receive {:result, ^t1, :rolled_back}, 5_000
 
-      # F hasn't passed (the window is open), so the empty store still refuses.
       assert_receive {:result, ^t2,
                       {:refused,
                        "v6 draw may fall back only after the fetch deadline with nothing stored"}},

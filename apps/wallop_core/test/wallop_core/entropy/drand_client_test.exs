@@ -35,7 +35,6 @@ defmodule WallopCore.Entropy.DrandClientTest do
       assert result.round == 1000
       assert is_binary(result.response)
 
-      # response is valid JSON
       assert {:ok, decoded} = Jason.decode(result.response)
       assert decoded["round"] == 1000
     end
@@ -312,7 +311,6 @@ defmodule WallopCore.Entropy.DrandClientTest do
     end
   end
 
-  # Default stub handler
   defp handle_request(conn) do
     cond do
       String.contains?(conn.request_path, "/public/latest") ->

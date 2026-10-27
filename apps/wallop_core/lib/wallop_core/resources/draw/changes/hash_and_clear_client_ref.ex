@@ -29,8 +29,6 @@ defmodule WallopCore.Resources.Draw.Changes.HashAndClearClientRef do
 
     cond do
       changeset.errors != [] ->
-        # An earlier change (eg. ValidateEntries) already failed.
-        # Don't run digest work over invalid data.
         changeset
 
       not is_binary(client_ref) ->
@@ -59,11 +57,6 @@ defmodule WallopCore.Resources.Draw.Changes.HashAndClearClientRef do
     end
   end
 
-  # Sanitise the ArgumentError message before surfacing as a changeset
-  # error. The protocol module's messages reference the cap and
-  # validation rules without echoing the plaintext, so they're safe
-  # to surface, but we strip any "got: ..." tail defensively in case
-  # a future protocol change adds plaintext to the message.
   defp argument_error_message(%ArgumentError{message: msg}) do
     msg
     |> String.replace(~r/, got:.*$/s, "")

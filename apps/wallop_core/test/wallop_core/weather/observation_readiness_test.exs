@@ -84,8 +84,6 @@ defmodule WallopCore.Weather.ObservationReadinessTest do
     end
 
     test "the boot write is a one-shot child after Oban in the application" do
-      # It runs once and exits (a temporary Task), so it isn't listed once
-      # done; the supervision tree's source is checked instead.
       source = File.read!(Path.expand("../../../lib/wallop_core/application.ex", __DIR__))
       [_, after_oban] = String.split(source, "{Oban, Application.fetch_env!(:wallop_core, Oban)}")
 

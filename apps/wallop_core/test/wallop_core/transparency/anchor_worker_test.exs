@@ -14,8 +14,6 @@ defmodule WallopCore.Transparency.AnchorWorkerTest do
       operator = create_operator()
       api_key = create_api_key_for_operator(operator)
 
-      # Create and execute a draw — produces both operator receipt (at lock)
-      # and execution receipt (at execute)
       draw = create_draw(api_key)
       executed = execute_draw(draw, test_seed(), api_key)
 
@@ -31,7 +29,6 @@ defmodule WallopCore.Transparency.AnchorWorkerTest do
       assert byte_size(anchor.operator_receipts_root) == 32
       assert byte_size(anchor.execution_receipts_root) == 32
 
-      # Verify via the public combined_root/2 function
       expected =
         AnchorWorker.combined_root(
           anchor.operator_receipts_root,
@@ -42,8 +39,6 @@ defmodule WallopCore.Transparency.AnchorWorkerTest do
     end
 
     test "combined root uses distinct domain prefix from Merkle internal nodes" do
-      # The anchor root prefix must NOT be <<1>> (internal node) or <<0>> (leaf)
-      # to avoid structural ambiguity with RFC 6962 tree hashes.
       dummy_root = :crypto.hash(:sha256, "test")
       combined = AnchorWorker.combined_root(dummy_root, dummy_root)
       internal_node = :crypto.hash(:sha256, <<1>> <> dummy_root <> dummy_root)
@@ -65,7 +60,6 @@ defmodule WallopCore.Transparency.AnchorWorkerTest do
 
       {:ok, anchor} = perform_anchor()
 
-      # Leaves are length-prefixed: <<payload_len::32>> <> payload_jcs <> signature
       op_leaf =
         <<byte_size(op_receipt.payload_jcs)::32>> <>
           op_receipt.payload_jcs <> op_receipt.signature
@@ -107,16 +101,12 @@ defmodule WallopCore.Transparency.AnchorWorkerTest do
     test "anchor includes drand evidence" do
       {:ok, anchor} = perform_anchor()
 
-      # Drand fetch may fail in test (no network), but the fields should be set
-      # to either valid values or nil
       assert anchor.external_anchor_kind in ["drand_quicknet", nil]
     end
 
     test "anchored_at is derived from latest receipt, not wall clock" do
       {:ok, anchor} = perform_anchor()
 
-      # anchored_at should equal the latest receipt's inserted_at,
-      # not a DateTime.utc_now() call
       all_receipts =
         Ash.read!(OperatorReceipt, authorize?: false) ++
           Ash.read!(ExecutionReceipt, authorize?: false)
@@ -158,8 +148,6 @@ defmodule WallopCore.Transparency.AnchorWorkerTest do
       operator = create_operator()
       api_key = create_api_key_for_operator(operator)
 
-      # Lock a draw (produces operator receipt) but don't execute it
-      # (no execution receipt)
       draw = create_draw(api_key)
 
       %{draw: draw}
@@ -173,7 +161,6 @@ defmodule WallopCore.Transparency.AnchorWorkerTest do
       assert byte_size(anchor.operator_receipts_root) == 32
       assert byte_size(anchor.execution_receipts_root) == 32
 
-      # Execution receipts root is the empty-tree sentinel
       assert anchor.execution_receipts_root == Protocol.merkle_root([])
     end
   end
@@ -187,21 +174,18 @@ defmodule WallopCore.Transparency.AnchorWorkerTest do
     end
 
     test "second anchor only includes new receipts", %{api_key: api_key} do
-      # First draw + anchor
       _d1 = create_draw(api_key) |> then(&execute_draw(&1, test_seed(), api_key))
       {:ok, anchor1} = perform_anchor()
 
       assert anchor1.receipt_count == 1
       assert anchor1.execution_receipt_count == 1
 
-      # Second draw + anchor
       _d2 = create_draw(api_key) |> then(&execute_draw(&1, test_seed(), api_key))
       {:ok, anchor2} = perform_anchor()
 
       assert anchor2.receipt_count == 1
       assert anchor2.execution_receipt_count == 1
 
-      # Roots should differ (different receipts)
       refute anchor1.merkle_root == anchor2.merkle_root
     end
   end
@@ -214,7 +198,6 @@ defmodule WallopCore.Transparency.AnchorWorkerTest do
 
       assert {:error, _} = perform_anchor()
 
-      # No anchor created
       [] = Ash.read!(TransparencyAnchor, authorize?: false)
     end
   end
@@ -247,8 +230,6 @@ defmodule WallopCore.Transparency.AnchorWorkerTest do
       end
     end
   end
-
-  # Helpers
 
   defp perform_anchor do
     case AnchorWorker.perform(%Oban.Job{}) do

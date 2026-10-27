@@ -19,7 +19,6 @@ defmodule WallopCore.PreparedTransactionsCheckTest do
     on_exit(fn -> :telemetry.detach(handler) end)
   end
 
-  # A reader that returns (or raises) each of `results` in turn.
   defp reader(results) do
     {:ok, agent} = Agent.start_link(fn -> results end)
 
@@ -31,7 +30,6 @@ defmodule WallopCore.PreparedTransactionsCheckTest do
     end
   end
 
-  # After the scripted results run out, every read is "0".
   defp next([]), do: {"0", []}
   defp next([h | t]), do: {h, t}
 

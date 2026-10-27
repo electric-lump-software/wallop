@@ -4,6 +4,11 @@ defmodule WallopWeb.ProofLive do
 
   Displays real-time progress during a live draw and permanent
   verification records for completed draws.
+
+  The open-draw template renders only fields of the `ProofPreLockView`
+  struct, which is built for open draws alone and is nil for every other
+  status. A rate-limited entry check says so rather than showing the
+  non-winner copy, so a real winner is never told they lost.
   """
   use WallopWeb, :live_view
 
@@ -108,21 +113,12 @@ defmodule WallopWeb.ProofLive do
   end
 
   def handle_event("check_entry", %{"entry_id" => entry_id}, socket) do
-    # Mirror the HTTP-side rate limit on the LiveView channel, using the
-    # RateLimiter's "self-check" bucket shared with the HTTP plug so budgets
-    # unify across transports. Without this, an attacker holding one socket
-    # open could fire handle_event faster than the HTTP plug's 60/min would
-    # allow.
     case SelfCheckRateLimit.check_rate(socket.assigns.peer_ip) do
       :ok ->
         {:ok, result} = Proof.winner?(socket.assigns.draw, entry_id)
         {:noreply, assign(socket, check_result: result, checked_entry_id: entry_id)}
 
       :rate_limited ->
-        # Say so, rather than render the non-winner copy: a real winner must
-        # never be told they lost. Winners are public in `draw.results` and the
-        # HTTP path already answers with an explicit 429, so hiding the
-        # rate-limit state would protect nothing.
         {:noreply,
          assign(socket,
            check_result: %{rate_limited: true},
@@ -146,13 +142,6 @@ defmodule WallopWeb.ProofLive do
     new_status = draw.status
 
     cond do
-      # Lock transition: open → awaiting_entropy (animate stages 0-3).
-      # Refresh the lock receipt — it didn't exist when the LiveView mounted
-      # in :open state, but the lock action just wrote it. The reveal_complete
-      # redirect masks the user-visible symptom by handing off to the static
-      # controller, but this assign refresh keeps the LiveView's internal
-      # state consistent — defense in depth for any future code path that
-      # renders the receipt panel from the LiveView itself.
       old_status == :open and new_status == :awaiting_entropy ->
         {_operator, lock_receipt, _exec} = WallopCore.OperatorInfo.for_draw(draw)
 
@@ -166,11 +155,6 @@ defmodule WallopWeb.ProofLive do
            reveal_to: 3
          )}
 
-      # Completion transition: in-progress → completed (animate stages 4-5).
-      # Refresh both receipts — the execution receipt is new, and the lock
-      # receipt may also be stale if the user landed on the page after lock
-      # but before this branch ever fired (no lock animation, no refresh).
-      # Same defense-in-depth rationale as the lock branch above.
       old_status in [:locked, :awaiting_entropy, :pending_entropy] and new_status == :completed ->
         {entries_json, results_json} = load_verify_data(draw)
         {operator, lock_receipt, execution_receipt} = WallopCore.OperatorInfo.for_draw(draw)
@@ -215,10 +199,6 @@ defmodule WallopWeb.ProofLive do
     result
   end
 
-  # Build the pre-lock view ONLY for :open status. Any other status
-  # gets nil, and the template branches on that. This is the structural
-  # firewall — the :open template branch can only render fields the
-  # ProofPreLockView struct exposes.
   defp open_view_for(%{status: :open} = draw, operator) do
     ProofPreLockView.from_draw(draw, operator)
   end
@@ -233,6 +213,5 @@ defmodule WallopWeb.ProofLive do
     {Jason.encode!(entries), VerifyBlock.results_json(draw.results)}
   end
 
-  # A retired forecast draw is not found, exactly like an unknown id.
   defp load_draw(id), do: WallopWeb.RetiredDraw.fetch(id)
 end

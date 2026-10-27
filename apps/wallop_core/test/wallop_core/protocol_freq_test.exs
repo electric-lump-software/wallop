@@ -5,14 +5,10 @@ defmodule WallopCore.ProtocolFreqTest do
 
   @freq "drand-quicknet+elexon-freq-v1"
 
-  # The fair_pick release this build runs, as the lock and execution paths
-  # sign it. Never hard-coded: the verifier accepts only releases it knows.
   @fair_pick Application.spec(:fair_pick, :vsn) |> to_string()
   @randomness "140117383b03a0c0c7a899a32b8cbd2ffff9e2569504037c358ee8c7c2efe2fd"
   @value "50018;50012;49983;49980;49953;49912;49883;49887"
 
-  # drand_round 33_068_212 publishes at 2026-10-14 20:00:00Z, so (W_freq = 240 s,
-  # M = 15 s) its window starts at 19:54:00Z and the latest lock is 19:53:00Z.
   @lock %{
     entropy_composition: @freq,
     operator_id: "11111111-1111-1111-1111-111111111111",
@@ -81,8 +77,6 @@ defmodule WallopCore.ProtocolFreqTest do
     assert payload["weather_time"] == nil
   end
 
-  # Each refusal is pinned to its exact message, so no case passes for the
-  # wrong reason.
   defp assert_refused(build, input, message) do
     error = assert_raise ArgumentError, fn -> build.(input) end
     assert error.message == message, inspect(input)
@@ -170,13 +164,11 @@ defmodule WallopCore.ProtocolFreqTest do
       )
     end
 
-    # Explicit nils, where the rules allow them, still build.
     assert Protocol.build_v6_execution_payload(@exec) =~ ~s("freq_fallback_reason":null)
     assert Protocol.build_v6_execution_payload(@fallback) =~ ~s("freq_value":null)
   end
 
   test "freq_start goes through the canonical-timestamp check without changing a byte" do
-    # A freq_start of any precision signs the one canonical form.
     for t <- [
           ~U[2026-10-14 19:54:00Z],
           ~U[2026-10-14 19:54:00.000Z],
@@ -188,7 +180,6 @@ defmodule WallopCore.ProtocolFreqTest do
 
     assert Protocol.build_v6_lock_payload(@lock) =~ ~s("freq_start":"2026-10-14T19:54:00.000000Z")
 
-    # The same instant outside UTC is refused, never signed in another form.
     non_utc = %{
       @lock.freq_start
       | time_zone: "Europe/London",
@@ -277,7 +268,6 @@ defmodule WallopCore.ProtocolFreqTest do
     assert Protocol.build_v6_execution_payload(landobs_exec) =~
              ~s("freq_fallback_reason":null,"freq_value":null,)
 
-    # Both keys are required, as under the grid-frequency tag.
     for key <- [:freq_value, :freq_fallback_reason] do
       assert_raise ArgumentError, ~r/must carry/, fn ->
         Protocol.build_v6_execution_payload(Map.delete(landobs_exec, key))

@@ -16,7 +16,6 @@ defmodule WallopWeb.Plugs.ProofPreLockRateLimitTest do
 
   describe "call/2" do
     test "no-op when params has no draw id", %{conn: conn} do
-      # Many requests, no id — must not rate-limit.
       for _ <- 1..200 do
         result = ProofPreLockRateLimit.call(conn, [])
         refute result.halted
@@ -25,13 +24,10 @@ defmodule WallopWeb.Plugs.ProofPreLockRateLimitTest do
 
     test "no-op for non-:open draw", %{conn: conn} do
       api_key = create_api_key()
-      # `create_draw` runs through to :awaiting_entropy (locked).
       draw = create_draw(api_key, %{winner_count: 1})
 
       conn = %{conn | params: %{"id" => draw.id}}
 
-      # Many requests against a locked draw — must not be throttled
-      # by THIS plug. Different cache story / different bucket.
       for _ <- 1..200 do
         result = ProofPreLockRateLimit.call(conn, [])
         refute result.halted
@@ -91,8 +87,6 @@ defmodule WallopWeb.Plugs.ProofPreLockRateLimitTest do
     end
 
     test "exhausting pre-lock bucket does not deplete self-check bucket", %{conn: conn} do
-      # Cross-bucket isolation under load. The two plugs use different
-      # buckets — exhausting one must not affect the other.
       api_key = create_api_key()
 
       draw =
@@ -102,7 +96,6 @@ defmodule WallopWeb.Plugs.ProofPreLockRateLimitTest do
 
       ip = "9.9.9.9"
 
-      # Exhaust the pre-lock bucket for this IP.
       for _ <- 1..ProofPreLockRateLimit.max_attempts() do
         assert {:allow, _} =
                  WallopWeb.RateLimiter.hit(
@@ -119,11 +112,8 @@ defmodule WallopWeb.Plugs.ProofPreLockRateLimitTest do
                  ProofPreLockRateLimit.max_attempts()
                )
 
-      # Self-check bucket for the SAME IP must still serve.
       assert SelfCheckRateLimit.check_rate(ip) == :ok
 
-      # And the controller plug for self-check, with an entry_id, must
-      # still pass on this draw (using the same IP).
       check_conn = %{
         conn
         | remote_ip: {9, 9, 9, 9},
@@ -137,11 +127,6 @@ defmodule WallopWeb.Plugs.ProofPreLockRateLimitTest do
     test "non-existent draw id is not throttled (no enumeration oracle)", %{conn: conn} do
       conn = %{conn | params: %{"id" => "11111111-2222-3333-4444-555555555555"}}
 
-      # Even at high request volume, an unknown id stays at status_for/1
-      # = nil and the plug does nothing. We deliberately do NOT throttle
-      # not-found, because doing so would conflate "draw doesn't exist"
-      # with "draw is :open and you've burned your quota" — turning the
-      # rate limiter into an oracle.
       for _ <- 1..(ProofPreLockRateLimit.max_attempts() + 50) do
         result = ProofPreLockRateLimit.call(conn, [])
         refute result.halted

@@ -26,8 +26,6 @@ defmodule WallopWeb.Plugs.SelfCheckRateLimit do
   def init(opts), do: opts
 
   def call(conn, _opts) do
-    # Only enforce when the request actually carries a self-check
-    # (either via path param or query string).
     if has_self_check?(conn) do
       ip = RateLimiter.ip_bucket(conn.remote_ip)
 

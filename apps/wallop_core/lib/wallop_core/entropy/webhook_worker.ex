@@ -22,7 +22,6 @@ defmodule WallopCore.Entropy.WebhookWorker do
 
   @impl true
   def backoff(%Oban.Job{attempt: attempt}) do
-    # Exponential backoff: ~30s, ~1m, ~2m, ~4m
     trunc(:math.pow(2, attempt) * 15)
   end
 

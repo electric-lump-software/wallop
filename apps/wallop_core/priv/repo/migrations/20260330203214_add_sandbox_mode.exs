@@ -2,10 +2,6 @@ defmodule WallopCore.Repo.Migrations.AddSandboxMode do
   use Ecto.Migration
 
   def up do
-    # Update the immutability trigger to:
-    # 1. Allow awaiting_entropy → completed (for sandbox execution)
-    # 2. Block seed_source = 'caller' when drand_round is set (unchanged)
-    # Note: seed_source is a text column, no enum type to alter
     execute """
     CREATE OR REPLACE FUNCTION prevent_draw_mutation()
     RETURNS TRIGGER AS $$
@@ -78,7 +74,6 @@ defmodule WallopCore.Repo.Migrations.AddSandboxMode do
   end
 
   def down do
-    # Restore previous trigger (awaiting_entropy cannot go directly to completed)
     execute """
     CREATE OR REPLACE FUNCTION prevent_draw_mutation()
     RETURNS TRIGGER AS $$

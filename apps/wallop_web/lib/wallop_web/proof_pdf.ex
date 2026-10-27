@@ -44,9 +44,6 @@ defmodule WallopWeb.ProofPdf do
         fetch_or_generate(draw)
 
       true ->
-        # Cache disabled — render fresh on every request, don't write
-        # to storage. Used while iterating on the design so old cached
-        # PDFs don't have to be hand-purged.
         generate(draw)
     end
   end
@@ -156,7 +153,6 @@ defmodule WallopWeb.ProofPdf do
         end
 
       {:error, :not_found} ->
-        # First generation for this draw — nothing to compare against.
         :ok
 
       {:error, reason} ->
@@ -196,7 +192,6 @@ defmodule WallopWeb.ProofPdf do
         File.read(output_path)
       end
     after
-      # Use non-bang to avoid masking the original error if cleanup fails
       File.rm_rf(tmp_dir)
     end
   end
@@ -221,11 +216,6 @@ defmodule WallopWeb.ProofPdf do
     end
   end
 
-  # Paranoid post-attach check: re-run qpdf to list attachments and
-  # confirm proof.json is actually present in the output. Catches qpdf
-  # version skew, silent truncation, and "0 exit but no attachment"
-  # edge cases. One extra fork per PDF is cheap; shipping a
-  # fingerprint-less PDF claiming to be fingerprinted is not.
   defp verify_attachment_present(pdf_path) do
     case System.cmd("qpdf", ["--list-attachments", pdf_path], stderr_to_stdout: true) do
       {output, 0} ->

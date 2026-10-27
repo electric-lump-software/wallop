@@ -31,7 +31,6 @@ defmodule WallopWeb.Components.OperatorPanel do
 
   def receipt_panel(assigns) do
     ~H"""
-    <%!-- Receipt exists: show it --%>
     <div :if={@receipt && @operator} class="bg-white border border-cream-border rounded-xl overflow-hidden">
       <div class="p-5 space-y-3">
         <h3 class="text-lg font-bold">Operator commitment receipt</h3>
@@ -77,7 +76,6 @@ defmodule WallopWeb.Components.OperatorPanel do
         </p>
       </div>
     </div>
-    <%!-- Missing receipt on completed draw with operator: error --%>
     <div
       :if={!@receipt && @operator && @draw.status == :completed}
       class="bg-red-50 border border-red-300 rounded-xl p-5"
@@ -96,7 +94,6 @@ defmodule WallopWeb.Components.OperatorPanel do
 
   def execution_receipt_panel(assigns) do
     ~H"""
-    <%!-- Receipt exists: show it --%>
     <div
       :if={@execution_receipt}
       class="bg-white border border-cream-border rounded-xl overflow-hidden"
@@ -144,7 +141,6 @@ defmodule WallopWeb.Components.OperatorPanel do
         </p>
       </div>
     </div>
-    <%!-- Missing receipt on completed draw with operator: error --%>
     <div
       :if={!@execution_receipt && @operator && @draw.status == :completed}
       class="bg-red-50 border border-red-300 rounded-xl p-5"

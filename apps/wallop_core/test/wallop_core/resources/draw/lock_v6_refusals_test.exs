@@ -52,7 +52,6 @@ defmodule WallopCore.Resources.Draw.LockV6RefusalsTest do
   test "a late draw_at is refused before the lock runs, with latest_lock_at; nothing changes" do
     {_op, key} = create_v6_operator()
     draw = open_draw_with_entries(key)
-    # The top of the previous hour: its observation hour's lock time has passed.
     draw_at = next_hour_draw_at(-1)
     {:ok, s} = Schedule.schedule(draw_at)
 
@@ -73,7 +72,6 @@ defmodule WallopCore.Resources.Draw.LockV6RefusalsTest do
     draw = open_draw_with_entries(key)
     ok = next_hour_draw_at(3)
 
-    # weather_time is no longer a lock input at all.
     for args <- [%{weather_time: ok}, %{draw_at: ok, weather_time: ok}] do
       assert {:error, %Ash.Error.Invalid{errors: [%Ash.Error.Invalid.NoSuchInput{}]}} =
                lock(draw, key, args)
@@ -111,11 +109,6 @@ defmodule WallopCore.Resources.Draw.LockV6RefusalsTest do
     assert_enqueued(worker: ObservationDrawWorker, args: %{draw_id: locked.id})
   end
 
-  # The validation passes, then the signer finds the lock late. Without a
-  # clock seam, the changeset is built in time and its weather_time (which
-  # the signer checks its own locked_at against) is then moved to an hour
-  # whose latest lock time has passed: the state a slow lock reaches when
-  # the clock crosses latest_lock_at between validation and signing.
   for sent? <- [true, false] do
     test "validation passes, the signer refuses (draw_at sent: #{sent?}): nothing is written" do
       {_op, key} = create_v6_operator()

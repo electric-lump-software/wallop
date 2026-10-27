@@ -28,21 +28,13 @@ config :wallop_web, WallopWeb.Endpoint,
     ]
   ]
 
-# Local infrastructure keys aren't in the released verifier's anchor set.
 config :wallop_web, :verify_block_anchor_mode, :self
 
 config :phoenix_live_view,
   debug_heex_annotations: true,
   enable_expensive_runtime_checks: true
 
-# WallopCore.Vault is configured at runtime in config/runtime.exs so the
-# key can come from .env (VAULT_KEY). If you run another consumer of
-# wallop_core against the same local Postgres, both projects share the
-# same DB and encrypt/decrypt each other's rows — they must use the same
-# VAULT_KEY value.
 
-# Mix tasks such as the OpenAPI generator start the app in :dev without a database.
 config :wallop_core, :vault_key_check, false
 
-# Silence OpenTelemetry in dev — no collector running locally.
 config :opentelemetry, traces_exporter: :none

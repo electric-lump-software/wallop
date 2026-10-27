@@ -62,7 +62,6 @@ defmodule WallopCore.Repo.Migrations.FixAwaitingEntropyFailureTransition do
   end
 
   def down do
-    # Revert to previous version (without awaiting_entropy → failed)
     execute """
     CREATE OR REPLACE FUNCTION prevent_draw_mutation()
     RETURNS TRIGGER AS $$

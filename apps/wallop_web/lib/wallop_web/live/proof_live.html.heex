@@ -1,4 +1,3 @@
-<%!-- Reveal animation (plays when draw transitions while user is watching) --%>
 <div
   :if={@revealing}
   id={"draw-reveal-#{@reveal_from}"}
@@ -41,12 +40,10 @@
   </div>
 </div>
 
-<%!-- Hide logo on sandbox draws — the logo implies official verification --%>
 <style :if={@draw.seed_source == :sandbox}>
   [data-wallop-logo] { display: none !important; }
 </style>
 
-<%!-- Completed draw: verification-first view --%>
 <div :if={@draw.status == :completed and not @revealing} class="space-y-6">
   <div :if={@draw.seed_source == :sandbox} class="rounded-xl px-5 py-4 border-2" style="background-color: #f3e8ff; border-color: #c084fc;">
     <div class="font-semibold text-sm" style="color: #6b21a8;">
@@ -166,11 +163,6 @@
   </div>
 </div>
 
-<%!-- Open draw (accepting entries) — rendered via PreLockPanel
-     against the build-side allowlist (ProofPreLockView). The
-     template here cannot reach into @draw at all in the :open
-     branch; only the allowlisted fields on @open_view are
-     available. See spec/protocol.md §4.3. --%>
 <.pre_lock_panel
   :if={@draw.status == :open and not @revealing and @open_view}
   view={@open_view}
@@ -178,7 +170,6 @@
   checked_entry_id={@checked_entry_id}
 />
 
-<%!-- Expired draw --%>
 <div :if={@draw.status == :expired} class="space-y-6">
   <div class="flex items-center gap-3">
     <span class="inline-flex items-center gap-1.5 bg-yellow-100 text-yellow-800 text-xs font-semibold px-3 py-1 rounded-full">
@@ -193,7 +184,6 @@
   </div>
 </div>
 
-<%!-- Failed draw --%>
 <div :if={@draw.status == :failed} class="space-y-6">
   <div class="flex items-center gap-3">
     <span class="inline-flex items-center gap-1.5 bg-red-100 text-red-800 text-xs font-semibold px-3 py-1 rounded-full">
@@ -220,7 +210,6 @@
   </div>
 </div>
 
-<%!-- Live draw (locked, awaiting_entropy, pending_entropy) --%>
 <div :if={@draw.status not in [:completed, :failed, :open, :expired] and not @revealing} class="space-y-6">
   <div class="flex items-center gap-3">
     <span class="inline-flex items-center gap-1.5 bg-blue-100 text-blue-800 text-xs font-semibold px-3 py-1 rounded-full">

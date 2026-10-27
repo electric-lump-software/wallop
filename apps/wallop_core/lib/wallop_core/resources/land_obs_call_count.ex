@@ -25,10 +25,6 @@ defmodule WallopCore.Resources.LandObsCallCount do
   actions do
     defaults([:read])
 
-    # One statement, upserting on the primary key, with the day taken from
-    # the database clock in the same statement: INSERT ... ON CONFLICT
-    # (utc_day) DO UPDATE SET calls = calls + 1 RETURNING calls. No
-    # transaction, so it holds no row lock beyond the statement.
     create :reserve do
       transaction?(false)
       accept([])
@@ -44,8 +40,6 @@ defmodule WallopCore.Resources.LandObsCallCount do
       change(atomic_update(:calls, expr(calls + 1)))
     end
 
-    # Set once a day, by the first refusal at the cap; the caller filters on
-    # cap_reported == false, so exactly one caller sees it change.
     update :mark_cap_reported do
       accept([])
       change(set_attribute(:cap_reported, true))
@@ -61,7 +55,6 @@ defmodule WallopCore.Resources.LandObsCallCount do
   attributes do
     attribute(:utc_day, :date, primary_key?: true, allow_nil?: false, public?: true)
     attribute(:calls, :integer, allow_nil?: false, public?: true)
-    # Whether today's first refusal at the cap has been reported.
     attribute(:cap_reported, :boolean, allow_nil?: false, default: false, public?: true)
   end
 end

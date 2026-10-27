@@ -4,7 +4,6 @@ defmodule WallopWeb.ProofStorageTest do
   alias WallopWeb.ProofStorage
 
   setup do
-    # Each test gets a fresh tmp dir so they don't collide
     root = Path.join(System.tmp_dir!(), "proof_storage_#{System.unique_integer([:positive])}")
     File.mkdir_p!(root)
 

@@ -31,7 +31,6 @@ defmodule WallopCore.Resources.Draw.ClientRefIdempotencyTest do
 
       shared_ref = Ash.UUID.generate()
 
-      # First batch lands cleanly.
       _draw =
         draw
         |> Ash.Changeset.for_update(
@@ -41,7 +40,6 @@ defmodule WallopCore.Resources.Draw.ClientRefIdempotencyTest do
         )
         |> Ash.update!()
 
-      # Second call, SAME client_ref, DIFFERENT entries → must 409.
       assert {:error, %Ash.Error.Invalid{errors: errors}} =
                draw
                |> Ash.Changeset.for_update(
@@ -78,7 +76,6 @@ defmodule WallopCore.Resources.Draw.ClientRefIdempotencyTest do
 
       first_uuids = Ash.Resource.get_metadata(first, :inserted_entries)
 
-      # Replay must return the same uuids.
       replayed =
         draw
         |> Ash.Changeset.for_update(
@@ -120,7 +117,6 @@ defmodule WallopCore.Resources.Draw.ClientRefIdempotencyTest do
 
       first_uuids = Ash.Resource.get_metadata(first, :inserted_entries)
 
-      # Same logical multiset, presented in a different order: must replay.
       replayed =
         draw
         |> Ash.Changeset.for_update(
@@ -149,7 +145,6 @@ defmodule WallopCore.Resources.Draw.ClientRefIdempotencyTest do
         |> Ash.Changeset.for_create(:create, %{winner_count: 1}, actor: api_key)
         |> Ash.create!()
 
-      # Use a distinctive plaintext we can grep for in logs.
       sentinel = "wallop-leak-canary-#{Ash.UUID.generate()}"
 
       log =
@@ -187,13 +182,11 @@ defmodule WallopCore.Resources.Draw.ClientRefIdempotencyTest do
 
       [row] = Repo.all(AddEntriesIdempotency)
 
-      # Storage shape: bytea (32-byte raw SHA-256), not text/hex.
       assert is_binary(row.client_ref_digest)
       assert byte_size(row.client_ref_digest) == 32
       assert is_binary(row.payload_digest)
       assert byte_size(row.payload_digest) == 32
 
-      # The plaintext sentinel must not appear anywhere on the row.
       stringified = inspect(row)
       refute String.contains?(stringified, sentinel)
     end
@@ -208,7 +201,6 @@ defmodule WallopCore.Resources.Draw.ClientRefIdempotencyTest do
         |> Ash.Changeset.for_create(:create, %{winner_count: 1}, actor: api_key)
         |> Ash.create!()
 
-      # Two distinct batches → two idempotency rows.
       draw =
         draw
         |> Ash.Changeset.for_update(
@@ -234,14 +226,12 @@ defmodule WallopCore.Resources.Draw.ClientRefIdempotencyTest do
         |> Ash.Changeset.for_update(:lock, %{}, actor: api_key)
         |> Ash.update!()
 
-      # All rows for this draw gone.
       assert Repo.aggregate(AddEntriesIdempotency, :count) == 0
     end
 
     test "failed lock leaves idempotency rows in place (rollback)" do
       api_key = create_api_key()
 
-      # Create a draw with winner_count > entry_count so lock fails.
       draw =
         Draw
         |> Ash.Changeset.for_create(:create, %{winner_count: 5}, actor: api_key)
@@ -258,8 +248,6 @@ defmodule WallopCore.Resources.Draw.ClientRefIdempotencyTest do
 
       assert Repo.aggregate(AddEntriesIdempotency, :count) == 1
 
-      # Lock will fail (entries < winner_count). The transaction must
-      # roll back. Idempotency rows stay.
       assert {:error, %Ash.Error.Invalid{}} =
                draw
                |> Ash.Changeset.for_update(:lock, %{}, actor: api_key)
@@ -271,10 +259,6 @@ defmodule WallopCore.Resources.Draw.ClientRefIdempotencyTest do
 
   describe "receipt invariance" do
     test "lock receipt unchanged + payload contains no idempotency keys after table wipe" do
-      # Goal-3 / receipt-invariance: idempotency table is operational
-      # only. Wiping it must not change a single bit of any signed
-      # artefact. Lock receipt parallel to the execution-receipt test
-      # below; together they cover both signed surfaces.
       api_key = create_api_key()
       WallopCore.TestHelpers.ensure_infrastructure_key()
 
@@ -284,8 +268,6 @@ defmodule WallopCore.Resources.Draw.ClientRefIdempotencyTest do
       original_signature = receipt.signature
       original_payload = receipt.payload_jcs
 
-      # Forensic check: the payload itself must not contain any idempotency
-      # field names. A future refactor that piped one in would fail here.
       payload_str = receipt.payload_jcs
 
       for forbidden <- ["client_ref", "client_ref_digest", "payload_digest"] do
@@ -293,11 +275,8 @@ defmodule WallopCore.Resources.Draw.ClientRefIdempotencyTest do
                "lock receipt payload contains '#{forbidden}' — receipt invariance broken"
       end
 
-      # Wipe ALL idempotency rows (might already be empty post-lock,
-      # but force the issue).
       Repo.delete_all(AddEntriesIdempotency)
 
-      # Re-fetch the receipt and assert nothing about it changed.
       reloaded = WallopCore.Resources.OperatorReceipt |> Ash.read_first!(authorize?: false)
       assert reloaded.signature == original_signature
       assert reloaded.payload_jcs == original_payload
@@ -305,13 +284,9 @@ defmodule WallopCore.Resources.Draw.ClientRefIdempotencyTest do
     end
 
     test "execution receipt unchanged + payload contains no idempotency keys after table wipe" do
-      # Parallel to the lock-receipt test. The execution receipt is the
-      # other signed artefact in the protocol; both must be invariant
-      # under idempotency-table mutation.
       api_key = create_api_key()
       WallopCore.TestHelpers.ensure_infrastructure_key()
 
-      # Full flow: create_draw → execute_draw produces an execution receipt.
       draw = create_draw(api_key, %{winner_count: 1})
       draw = execute_draw(draw, WallopCore.TestHelpers.test_seed(), api_key)
 

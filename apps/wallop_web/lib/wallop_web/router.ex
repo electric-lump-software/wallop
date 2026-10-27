@@ -34,19 +34,9 @@ defmodule WallopWeb.Router do
 
     get("/health", WallopWeb.ApiHealthController, :index)
 
-    # Custom handlers for draw entries — take precedence over the generic
-    # AshJsonApi route. `:create` returns `meta.inserted_entries` alongside
-    # the draw; `:index` is the authenticated readback endpoint for
-    # post-ingest UUID recovery and manifest construction.
     patch("/draws/:id/entries", WallopWeb.DrawEntriesController, :create)
     get("/draws/:id/entries", WallopWeb.DrawEntriesController, :index)
 
-    # Wildcard forward to AshJsonApi. Anything an Ash resource exposes via
-    # `json_api do` is auto-mounted here. The route surface is pinned by
-    # `WallopWeb.RouterRoutesTest` (see
-    # `apps/wallop_web/test/wallop_web/router_routes_test.exs`); a new
-    # resource × action under the wildcard fails that test until the
-    # allowlist is updated intentionally.
     forward("/", WallopWeb.AshJsonApiRouter)
   end
 

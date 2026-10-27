@@ -64,11 +64,6 @@ defmodule WallopWeb.Plugs.ProofPreLockRateLimit do
         end
 
       _ ->
-        # Not :open or not found — let the controller handle it. We
-        # deliberately do NOT throttle the not-found case here, since
-        # it's served by the same code path as :open and over-throttling
-        # would conflate the two states and turn the rate limiter into
-        # an enumeration oracle ("limited = exists as :open").
         conn
     end
   end

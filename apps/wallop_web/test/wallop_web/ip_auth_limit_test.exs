@@ -18,7 +18,6 @@ defmodule WallopWeb.IpAuthLimitTest do
 
   defp exhaust(ip), do: for(_ <- 1..IpAuthLimit.max_failures(), do: status(ip, bad_key()))
 
-  # Same prefix as `raw`, wrong secret: finds the key, fails verification.
   defp wrong_secret_for("wallop_" <> <<prefix::binary-size(8), _::binary>>),
     do: "wallop_" <> prefix <> String.duplicate("Z", 35)
 

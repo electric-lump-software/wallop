@@ -36,10 +36,6 @@ defmodule WallopCore.Resources.SandboxDraw do
   @typedoc "Published sandbox seed: `SHA-256(\"wallop-sandbox\")` as lowercase hex."
   @type seed_hex :: String.t()
 
-  # The sandbox seed is computed at compile time from the literal input
-  # string so anyone reading the source can verify exactly what goes into
-  # SHA-256. Don't replace this with a pre-hashed hex blob — visibility of
-  # the input matters.
   @seed_input "wallop-sandbox"
   @seed_hex @seed_input |> then(&:crypto.hash(:sha256, &1)) |> Base.encode16(case: :lower)
 

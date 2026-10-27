@@ -44,7 +44,6 @@ defmodule WallopCore.Resources.ApiKeyDigestTest do
 
     assert updated.key_digest == Digest.compute(raw_key)
 
-    # A second writer holding the stale (nil) record matches no row.
     assert {:error, %Ash.Error.Invalid{errors: errors}} =
              stored
              |> Ash.Changeset.for_update(:record_key_digest, %{

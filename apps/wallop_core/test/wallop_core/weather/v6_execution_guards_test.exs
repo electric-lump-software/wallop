@@ -6,7 +6,6 @@ defmodule WallopCore.Weather.V6ExecutionGuardsTest do
   (every forecast and historic draw), and each test that says so proves it.
   The refusal of `failed` after pub(R) is pinned by INV-9.
   """
-  # Not async: the observation store has one row per hour across the database.
   use WallopCore.DataCase, async: false
 
   import WallopCore.InvariantCase, except: [__using__: 1]
@@ -27,8 +26,6 @@ defmodule WallopCore.Weather.V6ExecutionGuardsTest do
 
   defp build(input), do: Protocol.build_v6_execution_payload(input)
 
-  # The signer's payload for `x`, with the drand pair put in by hand (the
-  # builder may refuse it), for checking the database alone.
   defp raw_payload(x, randomness, signature) do
     x.input
     |> build()
@@ -38,7 +35,6 @@ defmodule WallopCore.Weather.V6ExecutionGuardsTest do
 
   defp round_at(offset), do: Quicknet.round_at_or_after(DateTime.add(DateTime.utc_now(), offset))
 
-  # A stored weather_time whose fetch deadline F was `ago` seconds ago.
   defp wt_with_deadline_ago(ago),
     do: DateTime.utc_now() |> DateTime.add(-(@w + ago)) |> DateTime.truncate(:second)
 
@@ -51,7 +47,6 @@ defmodule WallopCore.Weather.V6ExecutionGuardsTest do
       signing_key_id: "k"
     }
 
-  # State (c): no reading and no window, so drand alone.
   defp complete_by_fallback(draw) do
     try_sql(
       """
@@ -97,9 +92,6 @@ defmodule WallopCore.Weather.V6ExecutionGuardsTest do
     end
 
     test "an open draw that already has an execution receipt can't lock under v6" do
-      # The guard reads a forecast draw's pair without a lock, so a receipt
-      # could reach an open draw that a concurrent lock is making v6; the
-      # lock then refuses it.
       {_op, key} = create_v6_operator()
       s = in_time_schedule()
       draw = open_draw_with_entries(key)
@@ -176,7 +168,6 @@ defmodule WallopCore.Weather.V6ExecutionGuardsTest do
     end
 
     test "a fallback receipt waits a minute past the fetch deadline" do
-      # Completed with triggers off: the completion guard would refuse it.
       early =
         completed_v6_receipt_input(:fallback,
           weather_time: wt_with_deadline_ago(30),
@@ -217,8 +208,6 @@ defmodule WallopCore.Weather.V6ExecutionGuardsTest do
   end
 
   describe "the three states" do
-    # The signer's receipt for state `kind`, with `key` set to `value` (a
-    # decoded JSON term) and nothing else changed.
     defp receipt_with(x, key, value),
       do: x.input |> build() |> Jason.decode!() |> Map.put(key, value) |> Jason.encode!()
 
@@ -255,7 +244,6 @@ defmodule WallopCore.Weather.V6ExecutionGuardsTest do
                x.cols
              ) == refusal("freq_fallback_reason")
 
-      # The weather side of (b) is the weather fallback's.
       assert insert_exec_receipt(receipt_with(x, "weather_fallback_reason", nil), x.cols) ==
                refusal("weather_fallback_reason")
     end
@@ -275,10 +263,6 @@ defmodule WallopCore.Weather.V6ExecutionGuardsTest do
     end
 
     test "(c) waits until M past T's fetch deadline; (b) does not need to" do
-      # Now strictly between F_freq and F_freq + M: F_freq = T + 345 s is the
-      # last 15 s boundary at or before now (waiting past the next one when
-      # under 3 s are left), while the weather's F + 1 min is long past.
-      # Completed with triggers off: the completion guard would refuse (c) too.
       r = rem(DateTime.to_unix(DateTime.utc_now()), 15)
       if r >= 12, do: Process.sleep((15 - r) * 1000 + 100)
       t = aligned_freq_start(-345)
@@ -347,7 +331,6 @@ defmodule WallopCore.Weather.V6ExecutionGuardsTest do
 
   describe "the drand binding" do
     test "a real quicknet beacon's randomness is sha256 of its signature, in the guard's encoding" do
-      # quicknet round 33068212.
       randomness = "140117383b03a0c0c7a899a32b8cbd2ffff9e2569504037c358ee8c7c2efe2fd"
 
       signature =
@@ -365,7 +348,6 @@ defmodule WallopCore.Weather.V6ExecutionGuardsTest do
             {"not hex", x.input.drand_randomness, "sig"},
             {"upper case", String.upcase(x.input.drand_randomness), x.input.drand_signature}
           ] do
-        # The draw row carries the same pair, so only the binding can refuse.
         with_triggers_off(fn ->
           Repo.query!(
             "UPDATE draws SET drand_randomness = $2, drand_signature = $3 WHERE id = $1",
@@ -392,7 +374,6 @@ defmodule WallopCore.Weather.V6ExecutionGuardsTest do
 
       Repo.query!("UPDATE draws SET status = 'pending_entropy' WHERE id = $1", [dump(pending.id)])
 
-      # Failing is allowed before pub(R).
       failed =
         put_v6_awaiting!(open_draw_with_entries(key), wt_with_deadline_ago(-600), round_at(3600))
 
@@ -404,7 +385,6 @@ defmodule WallopCore.Weather.V6ExecutionGuardsTest do
         assert try_sql("DELETE FROM draws WHERE id = $1", [dump(draw.id)]) == @no_delete
       end
 
-      # Its receipts are not what stops it: with them gone it is still refused.
       with_triggers_off(fn ->
         Repo.query!("DELETE FROM operator_receipts WHERE draw_id = $1", [dump(awaiting.id)])
       end)
@@ -428,12 +408,9 @@ defmodule WallopCore.Weather.V6ExecutionGuardsTest do
 
       assert try_sql("DELETE FROM draws WHERE id = $1", [dump(open.id)]) == nil
 
-      # A retired locked forecast draw: its lock receipt's foreign key
-      # refuses, and with the receipt gone the draw is deletable, as before.
       locked = put_retired_forecast_draw!(api_key, :awaiting_entropy)
       assert locked.status == :awaiting_entropy
 
-      # PostgreSQL 17+ adds "RESTRICT setting of" to this message; 16 doesn't.
       assert try_sql("DELETE FROM draws WHERE id = $1", [dump(locked.id)]) =~
                ~r/violates (RESTRICT setting of )?foreign key constraint "operator_receipts_draw_id_fkey"/
 
@@ -472,8 +449,6 @@ defmodule WallopCore.Weather.V6ExecutionGuardsTest do
   end
 
   describe "under a non-UTC session" do
-    # +13:45: a guard reading local time instead of UTC would let the early
-    # fallback through and refuse the early fail.
     setup do
       Repo.query!("SET LOCAL TIME ZONE 'Pacific/Chatham'")
       :ok
@@ -494,7 +469,6 @@ defmodule WallopCore.Weather.V6ExecutionGuardsTest do
       later = completed_v6_receipt_input(:fallback, weather_time: wt_with_deadline_ago(90))
       assert insert_exec_receipt(build(later.input), later.cols) == nil
 
-      # (b) waits for F + 1 min too, even with T's window stored.
       early_b =
         completed_v6_receipt_input(:frequency,
           weather_time: wt_with_deadline_ago(30),
@@ -508,7 +482,6 @@ defmodule WallopCore.Weather.V6ExecutionGuardsTest do
         completed_v6_receipt_input(:frequency,
           weather_time: wt_with_deadline_ago(90),
           freq_value: @freq,
-          # Another round, so another T: one window per T.
           hours_ago: 1
         )
 
@@ -525,7 +498,6 @@ defmodule WallopCore.Weather.V6ExecutionGuardsTest do
       assert try_sql(fail, [dump(published.id)]) ==
                "a v6 draw can't fail once its fetch deadline has passed"
 
-      # Past F, its round still 6 seconds off.
       past_f =
         put_v6_awaiting!(open_draw_with_entries(key), wt_with_deadline_ago(60), round_at(6))
 

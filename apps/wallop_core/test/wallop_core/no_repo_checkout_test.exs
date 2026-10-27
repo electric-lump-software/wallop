@@ -9,8 +9,6 @@ defmodule WallopCore.NoRepoCheckoutTest do
   use ExUnit.Case, async: true
 
   @umbrella_root Path.expand("../../../..", __DIR__)
-  # Any receiver (Repo, an alias, a variable) and DBConnection.run, which
-  # pins a connection the same way.
   @checkout ~r/\.\s*checkout\b|\bDBConnection\s*\.\s*run\b/
 
   defp hits(contents),

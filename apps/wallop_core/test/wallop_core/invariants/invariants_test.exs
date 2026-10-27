@@ -132,13 +132,8 @@ defmodule WallopCore.Invariants.SuiteTest do
     end
   end
 
-  # What each pending task delivers: once it exists, that task has landed.
   defp landed?(:pending_task_6), do: Code.ensure_loaded?(Observations)
 
-  # The executor and its worker (ObservationDrawWorker) landed before the
-  # database backstop, and their invariants are on. The pending_task_10 tags
-  # left are the backstop's, so the marker is its pinned refusal in the
-  # draws guard: `can''t` in a single-quoted literal, `can't` if dollar-quoted.
   defp landed?(:pending_task_10) do
     Draw
     |> AshPostgres.DataLayer.Info.custom_statements()
@@ -151,8 +146,6 @@ defmodule WallopCore.Invariants.SuiteTest do
   defp landed?(:pending_task_13),
     do: Code.ensure_loaded?(ProofBundle) and function_exported?(ProofBundle, :assemble, 1)
 
-  # Part F. Each marker is the first thing its task delivers. The modules
-  # are named by string so this file compiles before they exist.
   defp landed?(:pending_task_F5) do
     Draw
     |> AshPostgres.DataLayer.Info.custom_statements()

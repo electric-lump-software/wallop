@@ -25,7 +25,6 @@ defmodule WallopCore.Resources.Draw.LockFreqTest do
   defp lock(draw, key, args),
     do: draw |> Ash.Changeset.for_update(:lock, args, actor: key) |> Ash.update()
 
-  # A whole minute about `seconds` from now: on quicknet's grid.
   defp draw_at_in(seconds),
     do:
       DateTime.utc_now()
@@ -58,7 +57,6 @@ defmodule WallopCore.Resources.Draw.LockFreqTest do
     refute_enqueued(worker: ObservationDrawWorker, args: %{draw_id: draw.id})
   end
 
-  # The lock v6 builder's bytes for a locked draw, rebuilt from the stored row.
   defp rebuilt_v6_payload(locked, extra) do
     receipt = locked.receipt
     operator = Ash.get!(Operator, locked.operator_id, authorize?: false)
@@ -126,7 +124,6 @@ defmodule WallopCore.Resources.Draw.LockFreqTest do
       scheduled_at: DateTime.add(s.expected_result_at, Schedule.execution_delay_seconds())
     )
 
-    # No weather fetch job for any hour around the draw.
     for h <- -1..3 do
       hour =
         DateTime.utc_now()
@@ -159,8 +156,6 @@ defmodule WallopCore.Resources.Draw.LockFreqTest do
     later = DateTime.utc_now()
     assert Schedule.freq_start_for_round(locked.drand_round) == locked.freq_start
 
-    # The lock reads the clock once, somewhere between `before` and `later`,
-    # so its draw time is the default for one of them: no wall-clock range.
     defaults =
       for now <- [before, later] do
         {:ok, s} = Schedule.schedule(Schedule.default_draw_at(now))
@@ -249,11 +244,9 @@ defmodule WallopCore.Resources.Draw.LockFreqTest do
   test "a late draw_at is refused by validation with latest_lock_at; nothing is written" do
     {_op, key} = create_freq_operator()
     draw = open_draw_with_entries(key)
-    # A draw time whose T - 60 s has passed: its round published a minute ago.
     late = draw_at_in(-60)
     {:ok, s} = Schedule.schedule(late)
 
-    # Refused by validation, when the changeset is built: before any write.
     changeset = Ash.Changeset.for_update(draw, :lock, %{draw_at: late}, actor: key)
     refute changeset.valid?
     assert [%InvalidArgument{field: :draw_at}] = changeset.errors
@@ -272,8 +265,6 @@ defmodule WallopCore.Resources.Draw.LockFreqTest do
 
   test "a frequency draw_at is checked against the frequency schedule, not the weather one" do
     {_op, key} = create_freq_operator()
-    # Ten minutes ahead: in time for grid frequency (T - 60 s is about 3 minutes
-    # ahead), far too late for an observation-weather draw (hour minus 46 minutes).
     draw_at = draw_at_in(600)
     {:ok, ws} = WeatherSchedule.schedule(draw_at)
     refute WeatherSchedule.lock_allowed?(DateTime.utc_now(), ws.weather_time)
@@ -292,8 +283,6 @@ defmodule WallopCore.Resources.Draw.LockFreqTest do
       assert changeset.valid?
       in_time_t = Ash.Changeset.get_attribute(changeset, :freq_start)
 
-      # The state a slow lock reaches when the clock crosses T - 60 s between
-      # validation and signing: the signer's freq_start is now in the past.
       late_t = aligned_freq_start(-600)
 
       assert {:error, %Ash.Error.Invalid{errors: [%InvalidArgument{} = error]}} =
@@ -366,10 +355,6 @@ defmodule WallopCore.Resources.Draw.LockFreqTest do
       end
     end
 
-    # Fails the lock after every other after_action has run (the enqueue,
-    # LockDraw's and the receipt insert), so the whole lock rolls back last.
-    # A before_action added here runs after the lock's own; the after_action
-    # it adds is the last one registered.
     defp fail_last(changeset) do
       Ash.Changeset.before_action(changeset, fn cs ->
         Ash.Changeset.after_action(cs, fn _cs, _draw -> {:error, "rolled back last"} end)
@@ -396,7 +381,6 @@ defmodule WallopCore.Resources.Draw.LockFreqTest do
         assert Exception.message(err) =~ "rolled back last"
         assert Ash.get!(Draw, draw.id, authorize?: false).status == :open
         assert broadcasts(draw.id) == []
-        # The rolled-back lock takes its jobs with it, T's window job included.
         refute_enqueued(worker: FrequencyWindowWorker)
         refute_enqueued(worker: ObservationDrawWorker, args: %{draw_id: draw.id})
       end

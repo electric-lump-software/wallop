@@ -92,8 +92,6 @@ defmodule WallopCore.LogLeakGuardTest do
   end
 
   defp scan_file(path) do
-    # Self-exempt: WallopCore.Log IS the redaction module and its
-    # tests necessarily exercise ID-shaped strings in asserts.
     if String.contains?(path, "log.ex") or
          String.contains?(path, "log_test.exs") or
          String.contains?(path, "log_leak_guard_test.exs") do

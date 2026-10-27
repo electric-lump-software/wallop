@@ -59,19 +59,8 @@ defmodule WallopCore.Vault.Config do
   is preparation, not migration.
   """
 
-  # Current generation: every new encrypted write is tagged with this.
-  # Bump on rotation. Single source of truth.
-  #
-  # Production is currently V1; existing rows carry this tag.
   @current_tag "AES.GCM.V1"
 
-  # Previous generation: the tag attached to rows encrypted under the
-  # previous master key. Only used when `VAULT_KEY_OLD` is supplied
-  # (i.e. during a rotation overlap window); ignored otherwise.
-  #
-  # Production is currently V1; there is NO prior rotation yet, so V0
-  # has no rows in the database. This value becomes meaningful when
-  # the first rotation bumps current to V2 and previous to V1.
   @previous_tag "AES.GCM.V0"
 
   @doc "Current cipher tag. New writes use this."
@@ -139,15 +128,6 @@ defmodule WallopCore.Vault.Config do
       """
     end
 
-    # Wave-A placeholder guard. The shipped tag constants are V1/V0 — V1
-    # is what production already uses, V0 is a placeholder until a
-    # rotation gets declared in code. Configuring dual-key mode without
-    # first bumping @current_tag would route legacy V1 rows (encrypted
-    # under the REAL key) to :default (also V1, but the operator now
-    # believes VAULT_KEY has been rotated to something new). Cloak
-    # cannot distinguish, and the failure surfaces as decrypt errors
-    # under load. Refuse to boot until @current_tag has been declared
-    # past its launch value. Remove this guard at first rotation.
     if @current_tag == "AES.GCM.V1" and @previous_tag == "AES.GCM.V0" do
       raise ArgumentError, """
       VAULT_KEY_OLD is set but WallopCore.Vault.Config still ships the

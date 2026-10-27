@@ -130,10 +130,6 @@ defmodule WallopCore.Resources.Draw.Changes.SignAndStoreExecutionReceipt do
     end
   end
 
-  # The builder raises ArgumentError on stored state it won't sign. Any
-  # ArgumentError here becomes a refusal: that is safe because a refusal
-  # never fails a draw. It rolls the execution back, cancels the job and
-  # leaves the draw for the re-drive, with an alert.
   defp build_payload(draw, lock_receipt, input) do
     with {:ok, rules} <- v6_rules(draw),
          {:ok, tag_input} <- v6_receipt_input(rules, draw),
@@ -165,8 +161,6 @@ defmodule WallopCore.Resources.Draw.Changes.SignAndStoreExecutionReceipt do
     end
   end
 
-  # Producer side of the verifier's rule: lock and execution receipts carry
-  # the same fair_pick_version.
   defp same_fair_pick_version(lock_receipt, version) do
     case Jason.decode(lock_receipt.payload_jcs) do
       {:ok, %{"fair_pick_version" => ^version}} ->

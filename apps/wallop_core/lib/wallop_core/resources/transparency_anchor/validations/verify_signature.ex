@@ -35,11 +35,6 @@ defmodule WallopCore.Resources.TransparencyAnchor.Validations.VerifySignature do
     signature = Ash.Changeset.get_attribute(changeset, :infrastructure_signature)
     signing_key_id = Ash.Changeset.get_attribute(changeset, :signing_key_id)
 
-    # Fall-through to :ok on missing fields. Required-ness is enforced
-    # by the resource's `allow_nil?` attributes elsewhere — letting that
-    # produce the canonical "field is required" error avoids surfacing a
-    # misleading "signature does not verify" error on a row that's just
-    # missing inputs.
     cond do
       not is_binary(merkle_root) ->
         :ok

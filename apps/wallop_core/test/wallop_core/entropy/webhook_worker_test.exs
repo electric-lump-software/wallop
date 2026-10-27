@@ -56,7 +56,6 @@ defmodule WallopCore.Entropy.WebhookWorkerTest do
 
       assert draw.status == :awaiting_entropy
 
-      # Transition to pending then fail
       draw =
         draw
         |> Ash.Changeset.for_update(:transition_to_pending, %{})

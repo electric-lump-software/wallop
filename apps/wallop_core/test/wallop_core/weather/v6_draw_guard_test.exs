@@ -26,8 +26,6 @@ defmodule WallopCore.Weather.V6DrawGuardTest do
   WHERE id = $1
   """
 
-  # The refusal's message, or nil when the statement succeeds. Runs in a
-  # savepoint so a refusal leaves the test transaction usable.
   defp refusal(sql, params) do
     Repo.transaction(fn -> Repo.query!(sql, params) end)
     nil
@@ -48,7 +46,6 @@ defmodule WallopCore.Weather.V6DrawGuardTest do
         overrides
       )
 
-    # Both lock schema 6 tags carry it; default it only for the Land Obs tag.
     freq_start =
       Keyword.get_lazy(overrides, :freq_start, fn ->
         if o[:tag] == LandObs.tag(), do: FreqSchedule.freq_start_for_round(round)
@@ -202,7 +199,6 @@ defmodule WallopCore.Weather.V6DrawGuardTest do
       draw = put_retired_forecast_draw!(create_api_key(), :awaiting_entropy)
       past = DateTime.to_naive(DateTime.add(DateTime.utc_now(), -4 * 3600))
 
-      # A v6 lock this late would be refused; a forecast draw's state moves on.
       assert refusal("UPDATE draws SET status = 'pending_entropy' WHERE id = $1", [id(draw)]) ==
                nil
 
@@ -331,10 +327,8 @@ defmodule WallopCore.Weather.V6DrawGuardTest do
       {payload, cols} = valid_receipt(d, s)
       locked_at = cols.locked_at
 
-      # Entered the keyring after locked_at.
       later = add_key(d.operator_id, DateTime.add(locked_at, 600), DateTime.add(locked_at, 600))
-      # Eligible (valid_from) before locked_at, but in the keyring only after:
-      # the verifier's inserted_at <= locked_at rule refuses it.
+
       straddling =
         add_key(d.operator_id, DateTime.add(locked_at, -30), DateTime.add(locked_at, 20))
 
@@ -366,7 +360,7 @@ defmodule WallopCore.Weather.V6DrawGuardTest do
 
     test "a non-6 receipt on a draw without a lock schema is untouched", %{draw: d, s: s} do
       {payload, cols} = valid_receipt(d, s)
-      # Anything goes here, as before: the guard does not look past the schema.
+
       assert insert_receipt(%{payload | "schema_version" => "5", "drand_round" => 1}, cols) ==
                nil
     end
@@ -428,8 +422,6 @@ defmodule WallopCore.Weather.V6DrawGuardTest do
   end
 
   describe "v6 completion" do
-    # The stored-observation clauses read weather_observations, which a later
-    # migration creates; they are tested with it. This clause runs first.
     test "can't complete before the drand round publishes", %{draw: d, s: s} do
       v6 = put_v6_awaiting!(d, s.weather_time, s.round)
       assert refusal("UPDATE draws SET status = 'pending_entropy' WHERE id = $1", [id(v6)]) == nil
@@ -515,8 +507,6 @@ defmodule WallopCore.Weather.V6DrawGuardTest do
 
   defp rfc(dt), do: WallopCore.Time.to_rfc3339_usec(dt)
 
-  # A raw keyring row for the operator, with the given valid_from and
-  # inserted_at (the keyring CHECK keeps them within 60 seconds).
   defp add_key(operator_id, valid_from, inserted_at) do
     {public_key, _private} = :crypto.generate_key(:eddsa, :ed25519)
     key_id = Protocol.key_id(public_key)
@@ -548,13 +538,10 @@ defmodule WallopCore.Weather.V6DrawGuardTest do
     |> Ash.read_one!(authorize?: false)
   end
 
-  # A payload and receipt columns that pass the guards for `draw` locked by
-  # lock(draw, s.weather_time, s.round), built by the real lock v6 builder.
   defp valid_receipt(draw, s) do
     operator = Ash.get!(Operator, draw.operator_id, authorize?: false)
     key = key_for(operator)
     {hash, _} = entry_hash(draw)
-    # Now, after the operator's key entered the keyring, and in time for s.
     locked_at = DateTime.utc_now()
 
     payload =
@@ -593,8 +580,6 @@ defmodule WallopCore.Weather.V6DrawGuardTest do
     {payload, cols}
   end
 
-  # Inserts a receipt row as given. The database does not check the
-  # signature, so it is a placeholder.
   defp insert_receipt(payload, cols) do
     refusal(
       """

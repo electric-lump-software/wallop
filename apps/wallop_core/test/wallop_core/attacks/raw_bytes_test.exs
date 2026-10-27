@@ -42,8 +42,6 @@ defmodule WallopCore.Attacks.RawBytesTest do
   test "a Land Obs observation's raw is stored byte for byte, whitespace included" do
     {:ok, s} = WeatherSchedule.schedule(WeatherSchedule.default_draw_at(DateTime.utc_now()))
     {_op, key} = create_v6_operator()
-    # The trigger keys on the stored weather_time, so 5 minutes ago puts
-    # "now" inside the primary's window.
     wt = DateTime.utc_now() |> DateTime.add(-5 * 60) |> DateTime.truncate(:second)
     put_v6_awaiting!(open_draw_with_entries(key), wt, s.round)
 

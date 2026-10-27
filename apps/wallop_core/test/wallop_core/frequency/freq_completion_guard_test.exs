@@ -53,8 +53,6 @@ defmodule WallopCore.Frequency.FreqCompletionGuardTest do
     end
 
     test "nothing stored, F passed but F + M not yet: the fallback waits" do
-      # A stored freq_start whose F was 5 s ago (put_freq_awaiting!/3 places
-      # it with triggers off; the window rules read the stored value).
       t =
         DateTime.utc_now()
         |> DateTime.add(-(FreqSchedule.span_seconds() + FreqSchedule.fetch_window_seconds() + 5))

@@ -17,12 +17,8 @@ defmodule WallopCore.Weather.LandObsBudget do
 
   require Ash.Query
 
-  # The Met Office's daily allowance per key.
   @max_cap 900
   @default_cap 800
-  # The most the worker can spend in a full day of polling: 26 polls an hour
-  # (once a minute from weather_time + 5 min to F = weather_time + 30 min)
-  # x 24 hours = 624. If the polling schedule changes, this changes with it.
   @full_day_calls 26 * 24
 
   @doc "The Met Office's daily allowance, and the largest cap accepted."

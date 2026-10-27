@@ -50,8 +50,6 @@ defmodule WallopWeb.ProofPdf.Fingerprint do
   """
 
   @schema_version "1"
-  # Bump only when the fingerprint shape changes in a way that breaks
-  # verifiers. Layout / styling changes do not bump this.
   @template_revision "1"
 
   @doc """

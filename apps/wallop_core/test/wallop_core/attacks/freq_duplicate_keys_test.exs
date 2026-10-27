@@ -43,7 +43,7 @@ defmodule WallopCore.Attacks.FreqDuplicateKeysTest do
 
   test "a row with two frequency keys is refused, not read last-wins" do
     good = elexon_body(@t, @value)
-    # The first row Elexon sends is the newest, T + 105 s (49.883).
+
     body =
       String.replace(good, ~s("frequency":49.883), ~s("frequency":50.999,"frequency":49.883),
         global: false

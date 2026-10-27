@@ -28,8 +28,6 @@ defmodule WallopWeb.RateLimiter do
 
   defmodule Redis do
     @moduledoc false
-    # `timeout` is handed to Redix for every command; on expiry the call exits
-    # and Redix discards the late reply, so nothing is left in our mailbox.
     use Hammer,
       backend: Hammer.Redis,
       algorithm: :fix_window,
@@ -75,7 +73,6 @@ defmodule WallopWeb.RateLimiter do
   @spec ip_bucket(:inet.ip_address()) :: String.t()
   def ip_bucket({_, _, _, _} = ip), do: ip |> :inet.ntoa() |> List.to_string()
 
-  # IPv4-mapped IPv6 (::ffff:a.b.c.d) is the IPv4 client, not one shared /64.
   def ip_bucket({0, 0, 0, 0, 0, 0xFFFF, hi, lo}),
     do:
       ip_bucket(

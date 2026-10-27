@@ -70,11 +70,6 @@ defmodule WallopWeb.VerifyCommand do
     |> Enum.map(fn k -> "--infra-key-pin '#{anchor_record_json(k)}'" end)
   end
 
-  # `inserted_at` must be byte-identical to what `/infrastructure/keys`
-  # publishes: the verifier's temporal-binding check compares it against
-  # the pin's `published_at`. `revoked_at` is always null because the
-  # infrastructure keyring has no revocation column; if it gains one, emit
-  # it here too (the test compares against `/infrastructure/keys`).
   defp anchor_record_json(key) do
     Jason.encode!(
       Jason.OrderedObject.new(

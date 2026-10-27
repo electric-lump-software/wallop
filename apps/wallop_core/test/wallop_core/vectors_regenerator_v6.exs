@@ -1,39 +1,3 @@
-# Generates the lock v6 / execution v5 shared vectors for both entropy tags.
-# Run with:
-#
-#   MIX_ENV=test mix run apps/wallop_core/test/wallop_core/vectors_regenerator_v6.exs
-#
-# Writes (in spec/vectors/):
-#
-#   drand-quicknet+metoffice-landobs-v1 (observation weather):
-#     weather-schedule-landobs-v1.json, weather-value-landobs-v1.json,
-#     lock-receipt-v6.json, execution-receipt-v5.json (state a),
-#     execution-receipt-freq-window-v5.json (state b),
-#     execution-receipt-fallback-v5.json (state c),
-#     proof-bundle-v6.json, proof-bundle-v6-freq-window.json,
-#     proof-bundle-v6-fallback.json
-#
-#   drand-quicknet+elexon-freq-v1 (grid frequency):
-#     frequency-schedule-elexon-v1.json, frequency-value-elexon-v1.json,
-#     lock-receipt-v6-freq.json, execution-receipt-v5-freq.json,
-#     execution-receipt-fallback-v5-freq.json, proof-bundle-v6-freq.json,
-#     proof-bundle-v6-freq-fallback.json
-#
-#   both tags: proof-bundle-v6-negative.json
-#
-# Pure: no database, no network. Every receipt comes from the real builders
-# (`Protocol.build_v6_lock_payload/1`, `Protocol.build_v6_execution_payload/1`),
-# which refuse any input the tag's rules don't allow, and every bundle from
-# `WallopCore.ProofBundle.assemble/1`. Both receipts are signed with the
-# deterministic vector keys (`WallopCore.TamperVectors`).
-#
-# A negative case starts from a positive bundle, changes signed fields, and
-# signs again, so the signatures are valid over the bytes as written (cases
-# that change only a wrapper key or the unsigned entropy are not re-signed). A changed lock gets
-# a recomputed `lock_receipt_hash` in the execution receipt. The seed, the
-# results and the unsigned entropy block are rebuilt from the changed receipt
-# the way the verifier's own fixtures build them (see `seed_for/2`).
-
 defmodule WallopCore.VectorsV6 do
   @moduledoc false
 
@@ -53,7 +17,6 @@ defmodule WallopCore.VectorsV6 do
   @no_observation "no_observation_by_deadline"
   @no_frequency "no_frequency_by_deadline"
 
-  # Quicknet round 33068212, published 2026-10-14T20:00:00Z.
   @round 33_068_212
   @randomness "140117383b03a0c0c7a899a32b8cbd2ffff9e2569504037c358ee8c7c2efe2fd"
   @signature "b6541e41bb68ff318e8bd74b9f6e168ae6424476c432241420c38427df58c6ef33fe009ce202a7101120ab481702fddf"
@@ -68,10 +31,7 @@ defmodule WallopCore.VectorsV6 do
   @entries for n <- 1..5, do: "00000000-0000-4000-8000-00000000000#{n}"
   @winner_count 2
 
-  # The weather value of state (a), from the synthetic 19:00 UTC row below
-  # (12.34 C, 1012 hPa, 67 %, 34500 m).
   @weather_value "123;1012;67;3450"
-  # The Elexon FREQ window 19:54:00-19:55:45 UTC, in time order.
   @freq_value "50012;50018;50012;49983;49980;49953;49912;49883"
 
   def run do
@@ -81,8 +41,6 @@ defmodule WallopCore.VectorsV6 do
     write_freq()
     write("proof-bundle-v6-negative.json", negative_vector())
   end
-
-  # ── Shared ────────────────────────────────────────────────────────
 
   defp keys do
     {_, op_pub, op_kid} = Keys.operator_key()
@@ -142,7 +100,6 @@ defmodule WallopCore.VectorsV6 do
     }
   end
 
-  # The five fields of the three-state table, for each base.
   defp five(:a),
     do: %{
       weather_value: @weather_value,
@@ -207,7 +164,6 @@ defmodule WallopCore.VectorsV6 do
   defp rule(_), do: :freq
 
   @doc false
-  # {lock_input, lock_jcs, exec_input, exec_jcs} for a positive base.
   def base(base) do
     lock = lock_input(tag_of(base))
     lock_jcs = Protocol.build_v6_lock_payload(lock)
@@ -215,16 +171,6 @@ defmodule WallopCore.VectorsV6 do
     {lock, lock_jcs, exec, Protocol.build_v6_execution_payload(exec)}
   end
 
-  # The seed a bundle carries, from its signed execution receipt (a string
-  # keyed map). Mirrors the verifier's fixture builders:
-  #
-  #   * :landobs (`build_v6_bundle`): under the Land Obs tag, a receipt in
-  #     the three-state table takes its state's seed; otherwise (another tag,
-  #     or out of the table) the first non-null of weather_value, freq_value,
-  #     then drand alone. The verifier refuses an out-of-table receipt
-  #     whatever its seed.
-  #   * :freq (`build_freq_bundle`): freq_value, or drand alone if it is
-  #     null. Never weather_value.
   defp seed_for(exec, :landobs) do
     case landobs_state(exec) do
       {:ok, :weather} -> {:weather, exec["weather_value"]}
@@ -276,8 +222,6 @@ defmodule WallopCore.VectorsV6 do
     {seed, FairPick.draw(Enum.map(@entries, &%{id: &1, weight: 1}), seed, @winner_count)}
   end
 
-  # The bundle (JCS text) around a lock and an execution payload: signs both
-  # and takes the results from the receipt's own seed.
   defp bundle(lock_jcs, exec_jcs, opts \\ []) do
     {op_sk, op_pub, _} = Keys.operator_key()
     {infra_sk, infra_pub, _} = Keys.infrastructure_key()
@@ -309,8 +253,6 @@ defmodule WallopCore.VectorsV6 do
     })
   end
 
-  # The unsigned entropy block: the beacon, and every non-null value the
-  # execution receipt signs.
   defp entropy_for(exec) do
     %{
       "drand_round" => exec["drand_round"],
@@ -353,8 +295,6 @@ defmodule WallopCore.VectorsV6 do
       "expected_passed" => true
     }
   end
-
-  # ── Observation weather (drand-quicknet+metoffice-landobs-v1) ─────
 
   @state_text %{
     a: "a Middle Wallop observation for the round's hour fed the seed",
@@ -444,7 +384,6 @@ defmodule WallopCore.VectorsV6 do
     h = ~U[2026-10-14 19:00:00Z]
     at_bound = div(DateTime.to_unix(h) + w + 60 - Quicknet.genesis(), Quicknet.period()) + 1
 
-    # The at-bound round publishes exactly at h + W + 60 s, so its weather_time is h.
     true = DateTime.compare(Quicknet.pub_time(at_bound), DateTime.add(h, w + 60)) == :eq
     true = DateTime.compare(Schedule.weather_time_for_round(at_bound), h) == :eq
 
@@ -503,8 +442,6 @@ defmodule WallopCore.VectorsV6 do
     }
   end
 
-  # ── weather-value-landobs-v1.json ─────────────────────────────────
-
   @valid_values [
     {"173;1017;72;5237", [173, 1017, 72, 5237]},
     {"-900;850;0;0", [-900, 850, 0, 0]},
@@ -548,9 +485,6 @@ defmodule WallopCore.VectorsV6 do
     {"184;;51;4114", "empty_part"}
   ]
 
-  # Synthetic rows, made in the format the Met Office Weather DataHub
-  # documents for Land Observations (same field names, number formatting and
-  # datetime format). None is a real observation. {key, JSON text} pairs.
   @row_1900 [
     {"temperature", "12.34"},
     {"visibility", "34500.0"},
@@ -577,7 +511,6 @@ defmodule WallopCore.VectorsV6 do
     {"wind_speed", "6.1"}
   ]
 
-  # A synthetic night-time row in a different key order.
   @row_0100 [
     {"mslp", "1003"},
     {"weather_code", "7"},
@@ -591,8 +524,6 @@ defmodule WallopCore.VectorsV6 do
     {"pressure_tendency", ~s("R")}
   ]
 
-  # {field, JSON text, expected part or :error}; each changes one field of
-  # the 12:00 row (173;1017;72;5237).
   @single_field [
     {"temperature", "19.59", 196},
     {"temperature", "19.55", 196},
@@ -632,7 +563,6 @@ defmodule WallopCore.VectorsV6 do
     {"humidity", "76.5", :error},
     {"humidity", "101", :error},
     {"humidity", "-0", :error},
-    # Fields the grammar never reads.
     {"wind_speed", "4e0", :unchanged},
     {"wind_gust", "1e400", :unchanged}
   ]
@@ -724,8 +654,6 @@ defmodule WallopCore.VectorsV6 do
   defp row_text(row),
     do: "{" <> Enum.map_join(row, ", ", fn {k, v} -> ~s("#{k}": #{v}) end) <> "}"
 
-  # Reads the written text back with the grammar's own decoder: no number
-  # text was normalised on the way out, and core agrees with every case.
   defp check_from_row!(text, from_row) do
     {:ok, decoded} = LandObsGrammar.decode(text)
     true = length(decoded["from_row"]) == length(from_row)
@@ -742,8 +670,6 @@ defmodule WallopCore.VectorsV6 do
       unless ok?, do: raise("from_row case disagrees with core: #{inspect({c, got})}")
     end
   end
-
-  # ── Grid frequency (drand-quicknet+elexon-freq-v1) ────────────────
 
   defp write_freq do
     write("frequency-schedule-elexon-v1.json", freq_schedule())
@@ -849,8 +775,6 @@ defmodule WallopCore.VectorsV6 do
     }
   end
 
-  # The Elexon FREQ rows for 19:53:45-19:56:00 UTC on 2026-10-14, as JSON
-  # number text.
   @elexon %{
     "2026-10-14T19:53:45Z" => "50.023",
     "2026-10-14T19:54:00Z" => "50.012",
@@ -1015,11 +939,8 @@ defmodule WallopCore.VectorsV6 do
 
   defp stamp(dt), do: Calendar.strftime(dt, "%Y-%m-%dT%H:%M:%SZ")
 
-  # [[measurementTime, text]], newest first.
   defp rows(pairs), do: pairs |> Enum.map(fn {t, v} -> [t, v] end) |> sort_rows()
   defp sort_rows(rows), do: Enum.sort_by(rows, &hd/1, :desc)
-
-  # ── proof-bundle-v6-negative.json ─────────────────────────────────
 
   @oot ~w(weather_observation_window receipt_field_consistency seed_recomputation)
 
@@ -1053,9 +974,6 @@ defmodule WallopCore.VectorsV6 do
     usec(dt)
   end
 
-  # A case: change the lock and the execution receipt of a base (string-keyed
-  # maps), then rebuild the bundle. `seed`: :landobs or :freq (see
-  # `seed_for/2`), or :keep to keep the execution receipt's own seed.
   defp mutate(base, opts) do
     {_, lock_jcs, _, exec_jcs} = base(base)
     lock = Keyword.get(opts, :lock, & &1).(Jason.decode!(lock_jcs))
@@ -1064,7 +982,6 @@ defmodule WallopCore.VectorsV6 do
   end
 
   defp resign(lock, exec, seed_rule, opts) do
-    # Receipts are string-keyed, like the JSON they become.
     true = Enum.all?(Map.keys(lock) ++ Map.keys(exec), &is_binary/1)
     lock_jcs = Jcs.encode(lock)
     exec = Map.put(exec, "lock_receipt_hash", sha256_hex(lock_jcs))
@@ -1097,7 +1014,6 @@ defmodule WallopCore.VectorsV6 do
     landobs_lock = fn -> elem(base(:a), 1) |> Jason.decode!() end
 
     landobs = [
-      # Set A: the verifier's own landobs negatives, name for name.
       {"weather_time_not_whole_hour", ~w(bundle_shape weather_observation_window),
        fn ->
          mutate(:a,
@@ -1199,7 +1115,6 @@ defmodule WallopCore.VectorsV6 do
            seed: :freq
          )
        end},
-      # Set B: unknown and mismatched tags.
       {"unknown_v6_tag", ~w(bundle_shape weather_observation_window receipt_field_consistency),
        fn ->
          mutate(:a,
@@ -1210,7 +1125,6 @@ defmodule WallopCore.VectorsV6 do
       {"entropy_composition_mismatch",
        ~w(bundle_shape weather_observation_window receipt_field_consistency),
        fn -> mutate(:a, exec: put("entropy_composition", @freq)) end},
-      # Every single-field step away from the three states.
       {"observation_time_without_weather_value", @oot,
        fn -> mutate(:a, exec: put("weather_value", nil)) end},
       {"freq_window_with_weather_value", @oot,
@@ -1285,18 +1199,12 @@ defmodule WallopCore.VectorsV6 do
     landobs ++ freq
   end
 
-  # State (a)'s execution receipt in the retired execution 4 shape: the
-  # forecast tag, schema 4, no freq fields. That builder is gone; its field
-  # set is the shared base, so this is the v5 receipt without the fields
-  # the Land Obs tag adds.
   defp exec_v4(exec) do
     exec
     |> Map.drop(["freq_value", "freq_fallback_reason"])
     |> Map.merge(%{"schema_version" => "4", "entropy_composition" => @forecast})
   end
 
-  # The state (a) lock in the retired lock 5 shape: the forecast tag,
-  # schema 5, no freq_start. Built from the v6 lock the same way.
   defp lock_v5 do
     {_, lock_jcs, _, _} = base(:a)
 
@@ -1306,8 +1214,6 @@ defmodule WallopCore.VectorsV6 do
     |> Map.merge(%{"schema_version" => "5", "entropy_composition" => @forecast})
   end
 
-  # ── Output ────────────────────────────────────────────────────────
-
   defp write(file, data), do: write_raw(file, encode(data))
 
   defp write_raw(file, text) do
@@ -1316,7 +1222,6 @@ defmodule WallopCore.VectorsV6 do
     IO.puts("Wrote #{path}")
   end
 
-  # Pretty JSON, keys sorted, trailing newline.
   defp encode(data), do: data |> sorted() |> Jason.encode!(pretty: true) |> Kernel.<>("\n")
 
   defp sorted(map) when is_map(map),
