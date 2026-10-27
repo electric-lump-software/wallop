@@ -9,6 +9,8 @@ work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 failures=0
 
+allowed="VAULT_KEY VAULT_KEY_OLD SECRET_KEY_BASE EDGE_SHARED_SECRET HONEYCOMB_API_KEY MET_OFFICE_OBS_API_KEY AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY"
+
 cp "$loader" "$work/load_infisical_secrets"
 
 cat > "$work/start" <<'SCRIPT'
@@ -18,15 +20,18 @@ set -eu
 echo "VAULT_KEY=${VAULT_KEY:-unset}"
 echo "TOKEN=${INFISICAL_TOKEN:-unset}"
 echo "CLIENT_SECRET=${INFISICAL_UNIVERSAL_AUTH_CLIENT_SECRET:-unset}"
+echo "ARGS=$*"
 SCRIPT
 chmod +x "$work/start"
 
-# The stub records each command in $STUB_CALLS, the full `run` arguments in
-# $STUB_RUN_ARGS and each `export`'s in $STUB_EXPORT_ARGS. An `export` or
-# `run` naming $STUB_MISSING_PATH exits non-zero, as the CLI does for a
-# folder it can't read. `export` lists a clean set of names for every
-# folder, plus STUB_NAMES (and STUB_SPACED_NAMES, as indented JSON) for the
-# folder STUB_NAMES_PATH, default "/".
+# The stub records each subcommand in $STUB_CALLS and the full argument list
+# of `run` in $STUB_RUN_ARGS, and of each `export` in $STUB_EXPORT_ARGS. A
+# --path listed in STUB_UNREADABLE_PATHS makes `export` and `run` exit
+# non-zero, as the CLI does when a folder fetch fails. `export` lists a clean
+# set of names for every folder, plus STUB_NAMES (and STUB_SPACED_NAMES, as
+# indented JSON) for the folder STUB_NAMES_PATH, default "/", or prints
+# STUB_RAW_EXPORT for that folder instead. `run` also sets STUB_RUN_EXTRA,
+# a variable that `export` did not list.
 mkdir "$work/bin"
 cat > "$work/bin/infisical" <<'STUB'
 #!/bin/sh
@@ -38,20 +43,28 @@ case "$1" in
     [ "${STUB_LOGIN_EMPTY:-}" = "1" ] && exit 0
     echo "stub-token" ;;
   export)
-    echo "$*" >> "$STUB_EXPORT_ARGS"
     [ "${INFISICAL_TOKEN:-}" = "stub-token" ] || { echo "export without token" >&2; exit 9; }
+    printf '%s\n' "$@" >> "$STUB_EXPORT_ARGS"
     for arg in "$@"; do
       case "$arg" in --path=*) path=${arg#--path=} ;; esac
     done
-    [ -n "${STUB_MISSING_PATH:-}" ] && [ "$path" = "$STUB_MISSING_PATH" ] && {
-      echo "failed to fetch secrets for path" >&2; exit 1; }
-    names="VAULT_KEY INFISICAL_CANARY_SHARED LDAP_URL PORTAL_KEY HOMEPAGE_URL MY_PATH ld_preload"
+    for unreadable in ${STUB_UNREADABLE_PATHS:-}; do
+      if [ "$path" = "$unreadable" ]; then
+        echo "failed to fetch secrets for path \"$unreadable\"" >&2
+        exit 1
+      fi
+    done
+    names="VAULT_KEY INFISICAL_CANARY_SHARED SECRET_KEY_BASE"
     spaced=""
     if [ "$path" = "${STUB_NAMES_PATH:-/}" ]; then
+      if [ -n "${STUB_RAW_EXPORT+set}" ]; then
+        printf '%s\n' "$STUB_RAW_EXPORT"
+        exit 0
+      fi
       names="$names ${STUB_NAMES:-}"
       spaced=${STUB_SPACED_NAMES:-}
     fi
-    printf '[{"key":"NOTE","value":"stub-value \\"key\\":\\"LD_PRELOAD\\""}'
+    printf '[{"key":"HONEYCOMB_API_KEY","value":"stub-value \\"key\\":\\"LD_PRELOAD\\",\\"value\\":1"}'
     for name in $names; do
       printf ',{"key":"%s","value":"stub-value-%s","type":"shared","secretPath":"%s"}' "$name" "$name" "$path"
     done
@@ -60,30 +73,48 @@ case "$1" in
     done
     printf ']\n' ;;
   run)
-    echo "$*" > "$STUB_RUN_ARGS"
     [ "${INFISICAL_TOKEN:-}" = "stub-token" ] || { echo "run without token" >&2; exit 9; }
-    for arg in "$@"; do
-      [ -n "${STUB_MISSING_PATH:-}" ] && [ "$arg" = "--path=$STUB_MISSING_PATH" ] && {
-        echo "failed to fetch secrets for path" >&2; exit 1; }
+    printf '%s\n' "$@" > "$STUB_RUN_ARGS"
+    while [ "$1" != "--" ]; do
+      for unreadable in ${STUB_UNREADABLE_PATHS:-}; do
+        if [ "$1" = "--path=$unreadable" ]; then
+          echo "failed to fetch secrets for path \"$unreadable\"" >&2
+          exit 1
+        fi
+      done
+      shift
     done
-    while [ "$1" != "--" ]; do shift; done
     shift
-    VAULT_KEY=from-infisical INFISICAL_CANARY_SHARED=canary-value-shared \
-      INFISICAL_CANARY_CORE=canary-value-core exec "$@" ;;
+    exec env VAULT_KEY=from-infisical INFISICAL_CANARY_SHARED=shared-test INFISICAL_CANARY_CORE=core-test \
+      ${STUB_RUN_EXTRA:-} "$@" ;;
 esac
 STUB
 chmod +x "$work/bin/infisical"
 
 all_four="INFISICAL_UNIVERSAL_AUTH_CLIENT_ID=id INFISICAL_UNIVERSAL_AUTH_CLIENT_SECRET=secret INFISICAL_PROJECT_ID=project INFISICAL_ENV=prod"
+project_flags="--projectId=project --env=prod --expand=false --silent --telemetry=false "
 
 run_start() {
   rm -f "$work/calls" "$work/run_args" "$work/export_args"
   STUB_CALLS="$work/calls" STUB_RUN_ARGS="$work/run_args" STUB_EXPORT_ARGS="$work/export_args" \
-    PATH="$work/bin:$PATH" VAULT_KEY=from-platform env "$@" "$work/start" > "$work/out" 2> "$work/err"
+    PATH="$work/bin:$PATH" VAULT_KEY=from-platform DATABASE_URL=from-platform \
+    env "$@" "$work/start" > "$work/out" 2> "$work/err"
 }
 
 check() {
   if eval "$2"; then echo "ok - $1"; else echo "FAIL - $1"; failures=$((failures + 1)); fi
+}
+
+no_values() {
+  ! grep -q -e "stub-value" -e "from-platform" -e "-test" -e "elsewhere" "$work/err"
+}
+
+refused() {
+  [ $status -ne 0 ] && ! grep -q VAULT_KEY "$work/out" && ! grep -qx run "$work/calls" && no_values
+}
+
+project_flags_in() {
+  [ "$(grep -x -e "--projectId=project" -e "--env=prod" -e "--expand=false" -e "--silent" -e "--telemetry=false" "$1" | tr "\n" " ")" = "$project_flags" ]
 }
 
 run_start
@@ -95,63 +126,113 @@ check "nothing configured starts as before, without calling Infisical" \
 run_start $all_four
 status=$?
 check "fully configured re-runs under Infisical, whose values win" \
-  '[ $status -eq 0 ] && grep -q "VAULT_KEY=from-infisical" "$work/out" && [ "$(cat "$work/calls" | tr "\n" " ")" = "login export run " ]'
-check "the app never sees the Infisical credentials" \
+  '[ $status -eq 0 ] && grep -q "VAULT_KEY=from-infisical" "$work/out" && [ "$(tr "\n" " " < "$work/calls")" = "login export run " ]'
+check "the start script never sees the Infisical credentials" \
   'grep -q "TOKEN=unset" "$work/out" && grep -q "CLIENT_SECRET=unset" "$work/out"'
-check "without INFISICAL_PATHS it reads the root folder only" \
-  '[ "$(grep -o -- "--path=[^ ]*" "$work/run_args" | tr "\n" " ")" = "--path=/ " ]'
-check "values are read literally, with --expand=false" \
-  'grep -q -- "--expand=false" "$work/run_args"'
-check "--watch is never passed" \
+check "the digest travels as an argument and the start script never sees it" \
+  'grep -qx "ARGS=" "$work/out" && grep -q -- "^--infisical-env-digest=[0-9a-f]\{64\}$" "$work/run_args"'
+check "with no INFISICAL_PATHS, only the root folder is read" \
+  '[ "$(grep -c -- "^--path=" "$work/run_args")" -eq 1 ] && grep -qx -- "--path=/" "$work/run_args"'
+check "secret references are not expanded" \
+  'grep -qx -- "--expand=false" "$work/run_args"'
+check "secrets are never watched for changes" \
   '! grep -q -- "--watch" "$work/run_args"'
-check "the restarted script logs the canary names it was given" \
-  'grep -q "Canaries present: INFISICAL_CANARY_CORE INFISICAL_CANARY_SHARED" "$work/out"'
-check "canary values are never logged" \
-  '! grep -q "canary-value" "$work/out" "$work/err"'
+check "the names of the canaries present are logged, never their values" \
+  'grep -qx "Secrets loaded from Infisical. Canaries present: INFISICAL_CANARY_CORE INFISICAL_CANARY_SHARED " "$work/out" && ! grep -q -- "-test" "$work/out"'
+check "names and secrets are fetched with the same project flags" \
+  'project_flags_in "$work/export_args" && project_flags_in "$work/run_args"'
+check "names are listed as JSON on stdout, never to a file" \
+  'grep -qx -- "--format=json" "$work/export_args" && ! grep -q -- "--output-file" "$work/export_args"'
 
 # shellcheck disable=SC2086
 run_start $all_four "INFISICAL_PATHS=/shared /core"
 status=$?
-check "two paths are each passed as their own --path, in order" \
-  '[ $status -eq 0 ] && [ "$(grep -o -- "--path=[^ ]*" "$work/run_args" | tr "\n" " ")" = "--path=/shared --path=/core " ]'
+check "each folder in INFISICAL_PATHS is passed as its own --path" \
+  '[ $status -eq 0 ] && grep -q "VAULT_KEY=from-infisical" "$work/out" && [ "$(grep -- "^--path=" "$work/run_args" | tr "\n" " ")" = "--path=/shared --path=/core " ]'
 check "the names in each folder are listed before the re-run" \
-  '[ "$(tr "\n" " " < "$work/calls")" = "login export export run " ] && [ "$(grep -o -- "--path=[^ ]*" "$work/export_args" | tr "\n" " ")" = "--path=/shared --path=/core " ]'
-check "names are listed from the same project and environment, as JSON, unexpanded, with telemetry off" \
-  '[ "$(grep -c -- "--projectId project --env prod .*--format=json --expand=false --silent --telemetry=false" "$work/export_args")" -eq 2 ] && ! grep -q -- "--output-file" "$work/export_args"'
-check "a clean set of names, a canary and a value mentioning a refused name all pass" \
-  '[ $status -eq 0 ] && ! grep -q "must not come from Infisical" "$work/err"'
+  '[ "$(tr "\n" " " < "$work/calls")" = "login export export run " ] && [ "$(grep -- "^--path=" "$work/export_args" | tr "\n" " ")" = "--path=/shared --path=/core " ]'
 
 # shellcheck disable=SC2086
-run_start $all_four STUB_MISSING_PATH=/core "INFISICAL_PATHS=/shared /core"
+run_start $all_four "STUB_NAMES=$allowed INFISICAL_CANARY_CORE" STUB_SPACED_NAMES=EDGE_SHARED_SECRET
 status=$?
-check "a folder the CLI fails to read stops the start, before the re-run" \
-  '[ $status -ne 0 ] && grep -q "Could not list the secrets in Infisical folder /core" "$work/err" && ! grep -q VAULT_KEY "$work/out" && ! grep -qx run "$work/calls"'
+check "every allowed name, a canary and a value quoting a refused name pass" \
+  '[ $status -eq 0 ] && grep -q "VAULT_KEY=from-infisical" "$work/out" && [ ! -s "$work/err" ]'
 
-for name in PATH HOME SHELL ENV BASH_ENV IFS SHELLOPTS PS4 DATABASE_URL REDIS_URL PORT \
-  ELIXIR_ERL_OPTIONS SSL_CERT_FILE SSL_CERT_DIR LD_PRELOAD DYLD_INSERT_LIBRARIES ERL_FLAGS \
+for raw in "[]" "null" ""; do
+  # shellcheck disable=SC2086
+  run_start $all_four "STUB_RAW_EXPORT=$raw"
+  status=$?
+  check "an empty folder ('$raw') passes" '[ $status -eq 0 ] && [ ! -s "$work/err" ]'
+done
+
+# shellcheck disable=SC2086
+run_start $all_four "INFISICAL_PATHS=/*"
+status=$?
+check "a folder name is passed as written, never expanded as a filename pattern" \
+  '[ $status -eq 0 ] && [ "$(grep -- "^--path=" "$work/run_args" | tr "\n" " ")" = "--path=/* " ]'
+
+# shellcheck disable=SC2086
+run_start $all_four "INFISICAL_PATHS=/shared /core" STUB_UNREADABLE_PATHS=/core
+status=$?
+check "a folder that is missing or forbidden refuses to start, before the re-run" \
+  'refused && grep -q "failed to fetch secrets" "$work/err" && grep -q "Could not list the secrets in Infisical folder /core" "$work/err"'
+
+for name in PATH HOME SHELL ENV BASH_ENV IFS PS4 DATABASE_URL REDIS_URL PORT \
+  ELIXIR_ERL_OPTIONS SSL_CERT_FILE LD_PRELOAD DYLD_INSERT_LIBRARIES ERL_FLAGS \
   RELEASE_COOKIE MIX_ENV OTEL_EXPORTER_OTLP_ENDPOINT BEAM_PORT OPENSSL_CONF INFISICAL_TOKEN \
-  INFISICAL_API_URL PGHOST PGPASSWORD GCONV_PATH GLIBC_TUNABLES HOSTALIASES RES_OPTIONS \
-  HTTP_PROXY https_proxy All_Proxy no_proxy; do
+  INFISICAL_API_URL PGHOST GCONV_PATH HTTP_PROXY https_proxy \
+  PHX_HOST POOL_SIZE AWS_REGION AWS_S3_BUCKET_NAME RAILWAY_ENVIRONMENT_NAME STRIPE_SECRET_KEY \
+  vault_key Vault_Key 1VAULT_KEY VAULT-KEY "LD_PRELOAD=x" "VAULT_KÉY" "INFISICAL_CANARY_x"; do
   # shellcheck disable=SC2086
   run_start $all_four "INFISICAL_PATHS=/shared /core" STUB_NAMES_PATH=/core "STUB_NAMES=$name"
   status=$?
   check "$name in Infisical refuses to start, before the re-run" \
-    '[ $status -ne 0 ] && grep -qx "Infisical folder /core holds names that must not come from Infisical: $name" "$work/err" && ! grep -q VAULT_KEY "$work/out" && ! grep -qx run "$work/calls" && ! grep -q "stub-value" "$work/out" "$work/err"'
+    'refused && grep -qxF "Infisical folder /core holds names that must stay host variables or be removed: $name" "$work/err"'
 done
+
+# shellcheck disable=SC2086
+run_start $all_four 'STUB_NAMES=A\"B'
+status=$?
+check "an escaped quote in a name refuses to start" \
+  'refused && grep -qxF "Infisical folder / holds names that must stay host variables or be removed: A\\" "$work/err"'
 
 # shellcheck disable=SC2086
 run_start $all_four "INFISICAL_PATHS=/shared /core" STUB_NAMES_PATH=/shared "STUB_NAMES=PATH LD_PRELOAD" STUB_SPACED_NAMES=ERL_FLAGS
 status=$?
 check "every refused name in a folder is named on one line, from compact or indented JSON" \
-  '[ $status -ne 0 ] && [ "$(grep -c "must not come from Infisical" "$work/err")" -eq 1 ] && grep -qx "Infisical folder /shared holds names that must not come from Infisical: ERL_FLAGS LD_PRELOAD PATH" "$work/err"'
-check "secret values never appear in the output" \
-  '! grep -q "stub-value" "$work/out" "$work/err"'
+  'refused && [ "$(grep -c "must stay host variables" "$work/err")" -eq 1 ] && grep -qx "Infisical folder /shared holds names that must stay host variables or be removed: ERL_FLAGS LD_PRELOAD PATH" "$work/err"'
+
+for raw in '{"PATH":"x"}' '[{"Key":"PATH","Value":"x"}]' '[{"key":"VAULT_KEY"}]' '[{"key":null,"value":"x"},{"key":"VAULT_KEY","value":"x"}]'; do
+  # shellcheck disable=SC2086
+  run_start $all_four "STUB_RAW_EXPORT=$raw"
+  status=$?
+  check "an export shaped like $raw refuses to start" \
+    'refused && grep -qxF "Could not read the secret names in Infisical folder / from the CLI'"'"'s output." "$work/err"'
+done
 
 # shellcheck disable=SC2086
-run_start $all_four STUB_NAMES=INFISICAL_CANARY_CORE
+run_start $all_four STUB_RUN_EXTRA=ERL_FLAGS=-x
 status=$?
-check "an INFISICAL_CANARY_ name is allowed" \
+check "a refused name that appears between listing and loading refuses to start" \
+  '[ $status -ne 0 ] && grep -q "changed between listing the secret names and loading them" "$work/err" && ! grep -q VAULT_KEY "$work/out" && no_values'
+
+# shellcheck disable=SC2086
+run_start $all_four STUB_RUN_EXTRA=DATABASE_URL=elsewhere
+status=$?
+check "a host variable changed between listing and loading refuses to start" \
+  '[ $status -ne 0 ] && grep -q "changed between listing" "$work/err" && ! grep -q VAULT_KEY "$work/out" && no_values'
+
+# shellcheck disable=SC2086
+run_start $all_four STUB_RUN_EXTRA=AWS_ACCESS_KEY_ID=added
+status=$?
+check "an allowed name that appears between listing and loading is accepted" \
   '[ $status -eq 0 ] && grep -q "VAULT_KEY=from-infisical" "$work/out" && [ ! -s "$work/err" ]'
+
+# shellcheck disable=SC2086
+run_start INFISICAL_SECRETS_LOADED=1 INFISICAL_TOKEN=stub-token $all_four
+status=$?
+check "a sentinel and token without the digest argument refuse to start" \
+  '[ $status -ne 0 ] && grep -q "not re-run by this loader" "$work/err" && ! grep -q VAULT_KEY "$work/out" && [ ! -e "$work/calls" ]'
 
 run_start INFISICAL_UNIVERSAL_AUTH_CLIENT_ID=id INFISICAL_PROJECT_ID=project
 status=$?
@@ -161,8 +242,8 @@ check "partly configured refuses to start" \
 # shellcheck disable=SC2086
 run_start STUB_LOGIN_FAILS=1 $all_four
 status=$?
-check "a failed Infisical sign-in refuses to start" \
-  '[ $status -ne 0 ] && ! grep -q VAULT_KEY "$work/out"'
+check "a failed Infisical sign-in refuses to start, before fetching secrets" \
+  '[ $status -ne 0 ] && ! grep -q VAULT_KEY "$work/out" && [ "$(cat "$work/calls")" = "login" ]'
 
 # shellcheck disable=SC2086
 run_start STUB_LOGIN_EMPTY=1 $all_four
@@ -173,12 +254,12 @@ check "an empty Infisical token refuses to start, before fetching secrets" \
 # shellcheck disable=SC2086
 run_start INFISICAL_SECRETS_LOADED=1 $all_four
 status=$?
-check "INFISICAL_SECRETS_LOADED without a token refuses to start, without calling Infisical" \
+check "a sentinel set without a token refuses to start, rather than skip Infisical" \
   '[ $status -ne 0 ] && grep -q "did not come from Infisical" "$work/err" && ! grep -q VAULT_KEY "$work/out" && [ ! -e "$work/calls" ]'
 
 run_start INFISICAL_SECRETS_LOADED=1
 status=$?
-check "INFISICAL_SECRETS_LOADED alone refuses to start" \
+check "a sentinel set on its own refuses to start" \
   '[ $status -ne 0 ] && grep -q "did not come from Infisical" "$work/err" && ! grep -q VAULT_KEY "$work/out"'
 
 [ "$failures" -eq 0 ]
