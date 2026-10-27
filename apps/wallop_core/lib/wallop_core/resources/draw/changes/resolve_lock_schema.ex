@@ -28,13 +28,13 @@ defmodule WallopCore.Resources.Draw.Changes.ResolveLockSchema do
   (`WallopCore.Weather.ObservationReadiness.ready?/0`, read from the
   database, since the lock may run in another service): otherwise no
   reading could be fetched, and every such draw would fall back by design.
-  The refusal is an action-level `Ash.Error.Changes.InvalidArgument` (a
-  JSON:API `400` `invalid_argument` with no pointer), and the draw stays
-  open. Grid-frequency locks don't depend on the key.
+  The refusal is `WallopCore.Errors.ObservationPaused` (a JSON:API `400`
+  `observation_paused` with no pointer), and the draw stays open. Grid-frequency locks don't depend on the key.
   """
   use Ash.Resource.Change
 
   alias Ash.Error.Changes.InvalidArgument
+  alias WallopCore.Errors.ObservationPaused
   alias WallopCore.Protocol
   alias WallopCore.Resources.Operator
   alias WallopCore.Weather.ObservationReadiness
@@ -90,14 +90,7 @@ defmodule WallopCore.Resources.Draw.Changes.ResolveLockSchema do
     if ObservationReadiness.ready?() do
       changeset
     else
-      Ash.Changeset.add_error(
-        changeset,
-        InvalidArgument.exception(
-          field: nil,
-          message:
-            "observation-weather draws are paused here: Land Observations readings can't be fetched right now"
-        )
-      )
+      Ash.Changeset.add_error(changeset, ObservationPaused.exception())
     end
   end
 

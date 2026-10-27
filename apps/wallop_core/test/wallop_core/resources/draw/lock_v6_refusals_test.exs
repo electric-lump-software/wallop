@@ -166,7 +166,8 @@ defmodule WallopCore.Resources.Draw.LockV6RefusalsTest do
 
     defp assert_refused(draw, key, args) do
       assert {:error, %Ash.Error.Invalid{errors: errors}} = lock(draw, key, args)
-      assert [%InvalidArgument{field: nil, message: @message}] = errors
+      assert [%WallopCore.Errors.ObservationPaused{} = error] = errors
+      assert Exception.message(error) == @message
     end
 
     test "no record: an observation lock is refused, with or without draw_at; nothing changes" do

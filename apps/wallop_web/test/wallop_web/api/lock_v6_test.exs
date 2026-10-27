@@ -83,7 +83,7 @@ defmodule WallopWeb.Api.LockV6Test do
   end
 
   describe "when the fetching service isn't ready" do
-    test "an observation lock is a 400 invalid_argument with no pointer; the draw stays open" do
+    test "an observation lock is a 400 observation_paused with no pointer; the draw stays open" do
       {_op, key} = create_v6_operator()
       put_observation_readiness!(nil)
       draw = open_draw_with_entries(key)
@@ -92,7 +92,7 @@ defmodule WallopWeb.Api.LockV6Test do
         [error] = lock(key, draw, attrs, 400)["errors"]
 
         assert error["status"] == "400"
-        assert error["code"] == "invalid_argument"
+        assert error["code"] == "observation_paused"
         assert error["source"] in [nil, %{}]
         assert error["meta"] in [nil, %{}]
 
