@@ -31,7 +31,8 @@ chmod +x "$work/start"
 # set of names for every folder, plus STUB_NAMES (and STUB_SPACED_NAMES, as
 # indented JSON) for the folder STUB_NAMES_PATH, default "/", or prints
 # STUB_RAW_EXPORT for that folder instead. `run` also sets STUB_RUN_EXTRA,
-# a variable that `export` did not list.
+# a variable that `export` did not list, and the canaries in
+# STUB_RUN_CANARIES (default: one per folder).
 mkdir "$work/bin"
 cat > "$work/bin/infisical" <<'STUB'
 #!/bin/sh
@@ -85,7 +86,7 @@ case "$1" in
       shift
     done
     shift
-    exec env VAULT_KEY=from-infisical INFISICAL_CANARY_SHARED=shared-test INFISICAL_CANARY_CORE=core-test \
+    exec env VAULT_KEY=from-infisical ${STUB_RUN_CANARIES-INFISICAL_CANARY_SHARED=shared-test INFISICAL_CANARY_CORE=core-test} \
       ${STUB_RUN_EXTRA:-} "$@" ;;
 esac
 STUB
@@ -216,6 +217,34 @@ for raw in '{"PATH":"x"}' '[{"Key":"PATH","Value":"x"}]' '[{"key":"VAULT_KEY"}]'
   check "an export shaped like $raw refuses to start" \
     'refused && grep -qxF "Could not read the secret names in Infisical folder / from the CLI'"'"'s output." "$work/err"'
 done
+
+# shellcheck disable=SC2086
+run_start $all_four 'STUB_RAW_EXPORT=[{"key":"VAULT_KEY","value":"stub-value"}]'
+status=$?
+check "a folder without an INFISICAL_CANARY_ secret refuses to start" \
+  'refused && grep -q "Infisical folder / holds no INFISICAL_CANARY_ secret" "$work/err"'
+
+for raw in '[{"key":"INFISICAL_CANARY_SHARED","value":"\u003chidden-by-infisical\u003e","secretValueHidden":true}]' \
+  '[{"key":"INFISICAL_CANARY_SHARED","value":"","secretValueHidden" : true}]' \
+  '[{"key":"INFISICAL_CANARY_SHARED","value":"<hidden-by-infisical>"}]'; do
+  # shellcheck disable=SC2086
+  run_start $all_four "STUB_RAW_EXPORT=$raw"
+  status=$?
+  check "names returned without values ($raw) refuse to start" \
+    'refused && grep -qxF "Infisical folder / returned names without their values; the identity'"'"'s role needs Read Value." "$work/err"'
+done
+
+# shellcheck disable=SC2086
+run_start $all_four "INFISICAL_PATHS=/shared /core" STUB_RUN_CANARIES=
+status=$?
+check "a re-run that receives no canaries refuses to start" \
+  '[ $status -ne 0 ] && grep -q "fewer INFISICAL_CANARY_ secrets (none) than folders" "$work/err" && ! grep -q VAULT_KEY "$work/out"'
+
+# shellcheck disable=SC2086
+run_start $all_four "INFISICAL_PATHS=/shared /core" STUB_RUN_CANARIES=INFISICAL_CANARY_SHARED=shared-test
+status=$?
+check "a re-run that receives fewer canaries than folders refuses to start" \
+  '[ $status -ne 0 ] && grep -q "fewer INFISICAL_CANARY_ secrets" "$work/err" && ! grep -q VAULT_KEY "$work/out" && no_values'
 
 # shellcheck disable=SC2086
 run_start $all_four STUB_RUN_EXTRA=ERL_FLAGS=-x
