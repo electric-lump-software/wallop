@@ -11,7 +11,9 @@ defmodule WallopCore.DatabaseUrl do
   is percent-encoded into the URL, so any characters are fine.
 
   The URL is checked here rather than left to Ecto, because Ecto's own
-  error for a malformed URL prints the whole URL, password included. These
+  error for a malformed URL (including a non-numeric `timeout`,
+  `pool_size` or `idle_interval` in the query) prints the whole URL,
+  password included. These
   errors never include the URL or the password.
   """
 
@@ -46,9 +48,23 @@ defmodule WallopCore.DatabaseUrl do
       port_written?(url) and is_nil(uri.port) ->
         raise ArgumentError, "DATABASE_URL has a port that is not a number"
 
+      not integer_settings?(uri.query) ->
+        raise ArgumentError,
+              "DATABASE_URL has a timeout, pool_size or idle_interval that is not a number"
+
       true ->
         url
     end
+  end
+
+  defp integer_settings?(nil), do: true
+
+  defp integer_settings?(query) do
+    query
+    |> URI.decode_query()
+    |> Enum.all?(fn {key, value} ->
+      key not in ~w(timeout pool_size idle_interval) or value =~ ~r/\A\d+\z/
+    end)
   end
 
   defp port_written?(url) do

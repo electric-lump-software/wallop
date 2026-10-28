@@ -70,7 +70,9 @@ defmodule WallopCore.DatabaseUrlTest do
           "postgresql://wallop_api:old-pass@db.internal:5432",
           "postgresql://wallop_api:old-pass@db.internal:5432/wallop/",
           "postgresql://wallop_api:old-pass@db.internal:abc/wallop",
-          "postgresql://wallop_api:old-pass@/wallop"
+          "postgresql://wallop_api:old-pass@/wallop",
+          "postgresql://wallop_api:old-pass@db.internal:5432/wallop?timeout=abc",
+          "postgresql://wallop_api:old-pass@db.internal:5432/wallop?pool_size=1x"
         ],
         password <- [nil, "NEW-SECRET"] do
       error = assert_raise ArgumentError, fn -> DatabaseUrl.build(url, password) end
