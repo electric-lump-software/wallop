@@ -148,6 +148,39 @@ defmodule WallopCore.Entropy.WebhookWorkerTest do
                })
     end
 
+    test "makes one request per attempt and leaves retrying to Oban" do
+      Application.put_env(:wallop_core, WebhookWorker,
+        req_options: [plug: {Req.Test, WebhookWorker}]
+      )
+
+      api_key = create_api_key()
+      draw = create_draw(api_key, %{callback_url: "https://example.com/hook"})
+      draw = execute_draw(draw, test_seed(), api_key)
+      test_pid = self()
+
+      Req.Test.stub(WebhookWorker, fn conn ->
+        send(test_pid, :webhook_request)
+
+        conn
+        |> Plug.Conn.put_resp_header("retry-after", "0")
+        |> Plug.Conn.send_resp(503, "Service Unavailable")
+      end)
+
+      assert {:error, {:unexpected_status, 503}} =
+               WebhookWorker.perform(%Oban.Job{
+                 args: %{"draw_id" => draw.id, "api_key_id" => api_key.id}
+               })
+
+      assert_received :webhook_request
+      refute_received :webhook_request
+    end
+
+    test "an attempt times out inside Oban's shutdown grace" do
+      grace = Keyword.fetch!(Application.fetch_env!(:wallop_core, Oban), :shutdown_grace_period)
+      assert WebhookWorker.timeout(%Oban.Job{}) == 45_000
+      assert WebhookWorker.timeout(%Oban.Job{}) + 5_000 < grace
+    end
+
     test "cancels on 4xx failure" do
       api_key = create_api_key()
       draw = create_draw(api_key, %{callback_url: "https://example.com/hook"})

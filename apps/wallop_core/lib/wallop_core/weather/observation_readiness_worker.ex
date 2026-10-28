@@ -5,6 +5,8 @@ defmodule WallopCore.Weather.ObservationReadinessWorker do
   (`WallopCore.Weather.ObservationReadiness`). It runs on the `weather`
   queue, so only a node that runs that queue, and so makes the fetches,
   ever runs it.
+
+  Job timeout 30 s: one database write, no network call.
   """
   use Oban.Worker,
     queue: :weather,
@@ -12,6 +14,9 @@ defmodule WallopCore.Weather.ObservationReadinessWorker do
     unique: [period: 60]
 
   alias WallopCore.Weather.ObservationReadiness
+
+  @impl Oban.Worker
+  def timeout(_job), do: :timer.seconds(30)
 
   @impl Oban.Worker
   def perform(%Oban.Job{}) do

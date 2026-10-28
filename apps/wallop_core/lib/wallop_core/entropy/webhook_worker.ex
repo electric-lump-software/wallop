@@ -12,6 +12,11 @@ defmodule WallopCore.Entropy.WebhookWorker do
 
   Signature format: X-Wallop-Signature: t=<unix_ts>,v1=<hmac>
   where hmac = HMAC-SHA256(webhook_secret, "<timestamp>.<payload>")
+
+  Each attempt makes one request, with no in-request retries: the connect
+  is capped at 10 s and each read at 10 s, so an attempt ends well inside
+  its 45 s job timeout, and that timeout stays under Oban's shutdown grace.
+  Retrying is left to Oban's backoff.
   """
   use Oban.Worker, queue: :webhooks, max_attempts: 5
 
@@ -19,6 +24,13 @@ defmodule WallopCore.Entropy.WebhookWorker do
   require OpenTelemetry.Tracer, as: Tracer
 
   alias WallopCore.Log
+
+  @job_timeout_ms 45_000
+
+  @request_options [retry: false, connect_options: [timeout: 10_000], receive_timeout: 10_000]
+
+  @impl true
+  def timeout(_job), do: @job_timeout_ms
 
   @impl true
   def backoff(%Oban.Job{attempt: attempt}) do
@@ -108,7 +120,7 @@ defmodule WallopCore.Entropy.WebhookWorker do
 
       case Req.post(
              url,
-             [body: payload, headers: headers, receive_timeout: 10_000] ++ req_options()
+             [body: payload, headers: headers] ++ req_options()
            ) do
         {:ok, %Req.Response{status: status}} when status in 200..299 ->
           {:ok, :delivered}
@@ -161,7 +173,10 @@ defmodule WallopCore.Entropy.WebhookWorker do
   end
 
   defp req_options do
-    Application.get_env(:wallop_core, __MODULE__, [])
-    |> Keyword.get(:req_options, [])
+    overrides =
+      Application.get_env(:wallop_core, __MODULE__, [])
+      |> Keyword.get(:req_options, [])
+
+    Keyword.merge(@request_options, overrides)
   end
 end

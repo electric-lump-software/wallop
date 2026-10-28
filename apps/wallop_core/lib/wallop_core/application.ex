@@ -5,7 +5,7 @@ defmodule WallopCore.Application do
   require Logger
 
   alias WallopCore.Drand.Bls
-  alias WallopCore.Telemetry.EctoHandler
+  alias WallopCore.Telemetry.{EctoHandler, ObanShutdownHandler}
   alias WallopCore.Weather.{LandObsBudget, ObservationReadiness}
 
   @impl true
@@ -17,6 +17,7 @@ defmodule WallopCore.Application do
 
     OpentelemetryOban.setup(plugin: :disabled)
     EctoHandler.setup([:wallop_core, :repo])
+    ObanShutdownHandler.attach()
 
     opts = [strategy: :one_for_one, name: WallopCore.Supervisor]
     Supervisor.start_link(children(), opts)

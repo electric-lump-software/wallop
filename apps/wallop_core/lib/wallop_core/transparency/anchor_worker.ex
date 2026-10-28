@@ -16,6 +16,12 @@ defmodule WallopCore.Transparency.AnchorWorker do
   Ed25519 key, making the transparency log itself infra-key-signed.
 
   Idempotent: a run with no new receipts of either type inserts no anchor.
+
+  Job timeout 90 s: the drand round fetch is a GET that Req retries up to
+  three times (5 s connect and 10 s read each, 1 + 2 + 4 s apart), about
+  70 s at worst, and the rest is a few database reads and one insert. A
+  relay that answers with a long `Retry-After` can stretch the fetch past
+  that; the timeout then ends the attempt and Oban retries it.
   """
   use Oban.Worker, queue: :default
 
@@ -35,6 +41,9 @@ defmodule WallopCore.Transparency.AnchorWorker do
   alias WallopCore.Vault
 
   @anchor_root_prefix "wallop-anchor-v1"
+
+  @impl true
+  def timeout(_job), do: :timer.seconds(90)
 
   @impl true
   def perform(_job) do

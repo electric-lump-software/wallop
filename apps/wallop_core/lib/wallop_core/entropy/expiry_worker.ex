@@ -1,6 +1,9 @@
 defmodule WallopCore.Entropy.ExpiryWorker do
   @moduledoc """
   Oban cron worker that expires open draws older than 90 days.
+
+  Job timeout 60 s: one read and one update per expired draw, all local
+  database work. A run cut short is finished by the next hourly run.
   """
   use Oban.Worker, queue: :default
 
@@ -11,6 +14,9 @@ defmodule WallopCore.Entropy.ExpiryWorker do
   alias WallopCore.Log
 
   @max_age_days 90
+
+  @impl true
+  def timeout(_job), do: :timer.seconds(60)
 
   @impl true
   def perform(_job) do

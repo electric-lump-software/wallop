@@ -92,6 +92,10 @@ defmodule WallopCore.Entropy.StuckDrawRedriver do
   `weather_time` (and `replaced`, the number of parked jobs cancelled, for
   a schema 6 execution), and logs a warning. A draw re-driven again and
   again is a fault worth an alert.
+
+  Job timeout 60 s: a handful of database queries and job inserts. A run
+  cut short changes nothing it has not committed, and the next run ten
+  minutes later picks up the rest.
   """
   use Oban.Worker, queue: :default, max_attempts: 3
 
@@ -185,6 +189,9 @@ defmodule WallopCore.Entropy.StuckDrawRedriver do
 
   @refusal_pattern "%#{inspect(ObservationDrawWorker)} failed with " <>
                      ~s({:cancel, "execution refused: %)
+
+  @impl Oban.Worker
+  def timeout(_job), do: :timer.seconds(60)
 
   @impl Oban.Worker
   def perform(_job) do
