@@ -101,6 +101,10 @@ if config_env() == :prod do
     System.get_env("SECRET_KEY_BASE") ||
       raise "SECRET_KEY_BASE environment variable is not set"
 
+  if byte_size(secret_key_base) < 64 do
+    raise "SECRET_KEY_BASE is shorter than 64 bytes; generate one with `mix phx.gen.secret`"
+  end
+
   host = System.get_env("PHX_HOST") || "localhost"
 
   case System.get_env("VERIFY_BLOCK_ANCHOR_MODE") do

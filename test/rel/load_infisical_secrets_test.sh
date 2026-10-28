@@ -31,7 +31,10 @@ chmod +x "$work/start"
 # set of names for every folder, plus STUB_NAMES (and STUB_SPACED_NAMES, as
 # indented JSON) for the folder STUB_NAMES_PATH, default "/", or prints
 # STUB_RAW_EXPORT for that folder instead. `run` also sets STUB_RUN_EXTRA,
-# a variable that `export` did not list.
+# a variable that `export` did not list. Each folder's canary is named for
+# the folder ("/shared" gives INFISICAL_CANARY_SHARED); `run` loads every
+# canary `export` listed, or STUB_RUN_CANARIES instead, and passes the
+# re-run STUB_RUN_CANARY_ARG in place of the canary list when it is set.
 mkdir "$work/bin"
 cat > "$work/bin/infisical" <<'STUB'
 #!/bin/sh
@@ -54,7 +57,8 @@ case "$1" in
         exit 1
       fi
     done
-    names="VAULT_KEY INFISICAL_CANARY_SHARED SECRET_KEY_BASE"
+    canary=INFISICAL_CANARY_$(printf '%s' "${path#/}" | tr 'a-z' 'A-Z' | tr -c 'A-Z0-9' '_')
+    names="VAULT_KEY $canary SECRET_KEY_BASE"
     spaced=""
     if [ "$path" = "${STUB_NAMES_PATH:-/}" ]; then
       if [ -n "${STUB_RAW_EXPORT+set}" ]; then
@@ -64,6 +68,9 @@ case "$1" in
       names="$names ${STUB_NAMES:-}"
       spaced=${STUB_SPACED_NAMES:-}
     fi
+    for name in $names $spaced; do
+      case "$name" in INFISICAL_CANARY_*) echo "$name=canary-test" >> "$STUB_EXPORTED_CANARIES" ;; esac
+    done
     printf '[{"key":"HONEYCOMB_API_KEY","value":"stub-value \\"key\\":\\"LD_PRELOAD\\",\\"value\\":1"}'
     for name in $names; do
       printf ',{"key":"%s","value":"stub-value-%s","type":"shared","secretPath":"%s"}' "$name" "$name" "$path"
@@ -85,8 +92,15 @@ case "$1" in
       shift
     done
     shift
-    exec env VAULT_KEY=from-infisical INFISICAL_CANARY_SHARED=shared-test INFISICAL_CANARY_CORE=core-test \
-      ${STUB_RUN_EXTRA:-} "$@" ;;
+    script=$1
+    digest=$2
+    canary_arg=$3
+    shift 3
+    if [ -n "${STUB_RUN_CANARY_ARG+set}" ]; then
+      canary_arg=$STUB_RUN_CANARY_ARG
+    fi
+    exec env VAULT_KEY=from-infisical ${STUB_RUN_CANARIES-$(cat "$STUB_EXPORTED_CANARIES")} \
+      ${STUB_RUN_EXTRA:-} "$script" "$digest" ${canary_arg:+"$canary_arg"} "$@" ;;
 esac
 STUB
 chmod +x "$work/bin/infisical"
@@ -95,8 +109,8 @@ all_four="INFISICAL_UNIVERSAL_AUTH_CLIENT_ID=id INFISICAL_UNIVERSAL_AUTH_CLIENT_
 project_flags="--projectId=project --env=prod --expand=false --silent --telemetry=false "
 
 run_start() {
-  rm -f "$work/calls" "$work/run_args" "$work/export_args"
-  STUB_CALLS="$work/calls" STUB_RUN_ARGS="$work/run_args" STUB_EXPORT_ARGS="$work/export_args" \
+  rm -f "$work/calls" "$work/run_args" "$work/export_args" "$work/exported_canaries"
+  STUB_EXPORTED_CANARIES="$work/exported_canaries" STUB_CALLS="$work/calls" STUB_RUN_ARGS="$work/run_args" STUB_EXPORT_ARGS="$work/export_args" \
     PATH="$work/bin:$PATH" VAULT_KEY=from-platform DATABASE_URL=from-platform \
     env "$@" "$work/start" > "$work/out" 2> "$work/err"
 }
@@ -137,8 +151,6 @@ check "secret references are not expanded" \
   'grep -qx -- "--expand=false" "$work/run_args"'
 check "secrets are never watched for changes" \
   '! grep -q -- "--watch" "$work/run_args"'
-check "the names of the canaries present are logged, never their values" \
-  'grep -qx "Secrets loaded from Infisical. Canaries present: INFISICAL_CANARY_CORE INFISICAL_CANARY_SHARED " "$work/out" && ! grep -q -- "-test" "$work/out"'
 check "names and secrets are fetched with the same project flags" \
   'project_flags_in "$work/export_args" && project_flags_in "$work/run_args"'
 check "names are listed as JSON on stdout, never to a file" \
@@ -151,9 +163,14 @@ check "each folder in INFISICAL_PATHS is passed as its own --path" \
   '[ $status -eq 0 ] && grep -q "VAULT_KEY=from-infisical" "$work/out" && [ "$(grep -- "^--path=" "$work/run_args" | tr "\n" " ")" = "--path=/shared --path=/core " ]'
 check "the names in each folder are listed before the re-run" \
   '[ "$(tr "\n" " " < "$work/calls")" = "login export export run " ] && [ "$(grep -- "^--path=" "$work/export_args" | tr "\n" " ")" = "--path=/shared --path=/core " ]'
+check "the canary names present are logged, never their values" \
+  'grep -qx "Secrets loaded from Infisical. Canaries present: INFISICAL_CANARY_CORE INFISICAL_CANARY_SHARED " "$work/out" && ! grep -q -- "-test" "$work/out"'
+check "the re-run is told which canaries to expect" \
+  'grep -qx -- "--infisical-canaries=INFISICAL_CANARY_SHARED,INFISICAL_CANARY_CORE" "$work/run_args"'
+
 
 # shellcheck disable=SC2086
-run_start $all_four "STUB_NAMES=$allowed INFISICAL_CANARY_CORE" STUB_SPACED_NAMES=EDGE_SHARED_SECRET
+run_start $all_four "STUB_NAMES=$allowed INFISICAL_CANARY_EXTRA" STUB_SPACED_NAMES=EDGE_SHARED_SECRET
 status=$?
 check "every allowed name, a canary and a value quoting a refused name pass" \
   '[ $status -eq 0 ] && grep -q "VAULT_KEY=from-infisical" "$work/out" && [ ! -s "$work/err" ]'
@@ -162,8 +179,15 @@ for raw in "[]" "null" ""; do
   # shellcheck disable=SC2086
   run_start $all_four "STUB_RAW_EXPORT=$raw"
   status=$?
-  check "an empty folder ('$raw') passes" '[ $status -eq 0 ] && [ ! -s "$work/err" ]'
+  check "an empty folder ('$raw') refuses to start, as a folder the identity may not read" \
+    'refused && grep -qxF "Infisical folder / returned no secrets; check the folder, environment and the identity'"'"'s role." "$work/err"'
 done
+
+# shellcheck disable=SC2086
+run_start $all_four "INFISICAL_PATHS=/shared /core" STUB_NAMES_PATH=/core "STUB_RAW_EXPORT=[]"
+status=$?
+check "one empty folder among several refuses to start, naming that folder" \
+  'refused && grep -q "Infisical folder /core returned no secrets" "$work/err" && ! grep -q "folder /shared" "$work/err"'
 
 # shellcheck disable=SC2086
 run_start $all_four "INFISICAL_PATHS=/*"
@@ -211,6 +235,62 @@ for raw in '{"PATH":"x"}' '[{"Key":"PATH","Value":"x"}]' '[{"key":"VAULT_KEY"}]'
 done
 
 # shellcheck disable=SC2086
+run_start $all_four 'STUB_RAW_EXPORT=[{"key":"VAULT_KEY","value":"stub-value"}]'
+status=$?
+check "a folder without an INFISICAL_CANARY_ secret refuses to start" \
+  'refused && grep -q "Infisical folder / holds no INFISICAL_CANARY_ secret" "$work/err"'
+
+for raw in '[{"key":"INFISICAL_CANARY_SHARED","value":"\u003chidden-by-infisical\u003e","secretValueHidden":true}]' \
+  '[{"key":"INFISICAL_CANARY_SHARED","value":"","secretValueHidden" : true}]' \
+  '[{"key":"INFISICAL_CANARY_SHARED","value":"<hidden-by-infisical>"}]'; do
+  # shellcheck disable=SC2086
+  run_start $all_four "STUB_RAW_EXPORT=$raw"
+  status=$?
+  check "names returned without values ($raw) refuse to start" \
+    'refused && grep -qxF "Infisical folder / returned names without their values; the identity'"'"'s role needs Read Value." "$work/err"'
+done
+
+# shellcheck disable=SC2086
+run_start $all_four "INFISICAL_PATHS=/shared /core" STUB_NAMES_PATH=/shared STUB_NAMES=INFISICAL_CANARY_EXTRA \
+  "STUB_RUN_CANARIES=INFISICAL_CANARY_SHARED=x INFISICAL_CANARY_EXTRA=x"
+status=$?
+check "two canaries from one folder cannot stand in for another folder lost at the run" \
+  '[ $status -ne 0 ] && grep -qx "Infisical did not load the canaries it listed: INFISICAL_CANARY_CORE; the identity may have lost access to a folder since the listing." "$work/err" && ! grep -q VAULT_KEY "$work/out" && no_values'
+
+# shellcheck disable=SC2086
+run_start $all_four "INFISICAL_PATHS=/shared /core" STUB_RUN_CANARIES=
+status=$?
+check "a re-run that receives no canaries refuses to start" \
+  '[ $status -ne 0 ] && grep -q "did not load the canaries it listed: INFISICAL_CANARY_SHARED INFISICAL_CANARY_CORE;" "$work/err" && ! grep -q VAULT_KEY "$work/out"'
+
+# shellcheck disable=SC2086
+run_start $all_four "INFISICAL_PATHS=/shared /core" STUB_NAMES_PATH=/core STUB_NAMES=INFISICAL_CANARY_SHARED
+status=$?
+check "a canary repeated in two folders refuses to start" \
+  'refused && grep -q "Infisical folder /core repeats the canary INFISICAL_CANARY_SHARED from another folder" "$work/err"'
+
+# shellcheck disable=SC2086
+run_start $all_four INFISICAL_CANARY_HOST=host-test
+status=$?
+check "a canary set as a host variable refuses to start, before signing in" \
+  '[ $status -ne 0 ] && grep -q "INFISICAL_CANARY_HOST is set as a host variable; remove it from the host variables" "$work/err" && [ ! -e "$work/calls" ] && ! grep -q host-test "$work/err"'
+
+# shellcheck disable=SC2086
+run_start $all_four 'STUB_RAW_EXPORT=[{"key":"INFISICAL_CANARY_","value":"x"},{"key":"VAULT_KEY","value" : ""}]'
+status=$?
+check "a secret with an empty value refuses to start" \
+  'refused && grep -qx "Infisical folder / holds a secret with an empty value." "$work/err"'
+
+for arg in "" "--infisical-canaries=" "--infisical-canaries=PATH" "--infisical-canaries=INFISICAL_CANARY_*" \
+  "--infisical-canaries=INFISICAL_CANARY_;true" "--infisical-canaries=INFISICAL_CANARY_MISSING"; do
+  # shellcheck disable=SC2086
+  run_start $all_four "STUB_RUN_CANARY_ARG=$arg"
+  status=$?
+  check "a re-run given the canary list '$arg' refuses to start" \
+    '[ $status -ne 0 ] && ! grep -q VAULT_KEY "$work/out" && grep -q -e "not re-run by this loader" -e "canary list passed to the re-run is not valid" -e "did not load the canaries it listed: INFISICAL_CANARY_MISSING;" "$work/err"'
+done
+
+# shellcheck disable=SC2086
 run_start $all_four STUB_RUN_EXTRA=ERL_FLAGS=-x
 status=$?
 check "a refused name that appears between listing and loading refuses to start" \
@@ -248,6 +328,7 @@ check "an awk that fails refuses to start, rather than compare two empty digests
   cd "$work" || exit 1
   PATH="$work/broken_awk:$PATH" INFISICAL_SECRETS_LOADED=1 INFISICAL_TOKEN=stub-token \
     ./start --infisical-env-digest=e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855 \
+      --infisical-canaries=INFISICAL_CANARY_ \
     > "$work/out" 2> "$work/err"
 )
 status=$?
