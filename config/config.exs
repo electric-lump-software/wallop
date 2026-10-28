@@ -17,6 +17,7 @@ config :wallop_core,
 config :wallop_core, Oban,
   repo: WallopCore.Repo,
   queues: [webhooks: 5, default: 5, weather: 5, frequency: 6, v6_execution: 5],
+  shutdown_grace_period: :timer.seconds(100),
   plugins: [
     {Oban.Plugins.Cron,
      crontab: [
