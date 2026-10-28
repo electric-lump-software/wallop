@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Database password and edge secret rotation
+
+- **`DATABASE_PASSWORD` (optional).** When set, it replaces the password in `DATABASE_URL`. A secrets store can then hold only the password, while the host, port, user and database name stay host variables, so write access to the store can't redirect the app to another database. The Infisical loader now accepts `DATABASE_PASSWORD`; `DATABASE_URL` stays refused. The password must use only letters, digits and `. _ ~ -`, because the database URL is not percent-decoded; anything else, an empty value, or a `DATABASE_URL` without a user stops the boot without printing either value.
+- **`EDGE_SHARED_SECRET_PREVIOUS` (optional).** While set, the edge guard accepts it as well as `EDGE_SHARED_SECRET`, so the edge's header value can be rotated without refusing requests: set the new value as current and the old one as previous, deploy, switch the edge, then remove the previous value and deploy again. It must be at least 32 bytes and needs `EDGE_SHARED_SECRET` set, or the boot stops. The Infisical loader accepts it.
+
 ### Infisical loader accepts only the secrets wallop reads
 
 **BREAKING (self-hosters using Infisical).** The Docker image's start script now refuses to start if an Infisical folder holds any name other than `VAULT_KEY`, `VAULT_KEY_OLD`, `SECRET_KEY_BASE`, `EDGE_SHARED_SECRET`, `HONEYCOMB_API_KEY`, `MET_OFFICE_OBS_API_KEY`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` or an `INFISICAL_CANARY_*` canary. Infisical's values replace the host's, so anyone who could write to the project could otherwise set a name such as `LD_PRELOAD`, `ERL_FLAGS`, `DATABASE_URL` or a proxy and take over or redirect the process. If you keep anything else in Infisical (for example `DATABASE_URL`, `PHX_HOST` or `POOL_SIZE`), move it back to a host variable before upgrading. The refusal names the folder and the offending names on stderr, never values, and exits 1.

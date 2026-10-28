@@ -18,6 +18,9 @@ defmodule WallopWeb.Plugs.EdgeGuardTest do
 
   defp with_secret(secret), do: Application.put_env(:wallop_web, EdgeGuard, secret: secret)
 
+  defp with_both(secret, previous),
+    do: Application.put_env(:wallop_web, EdgeGuard, secret: secret, previous_secret: previous)
+
   defp call(method, path, header) do
     conn = conn(method, path)
     conn = if header, do: put_req_header(conn, "x-edge-secret", header), else: conn
@@ -34,6 +37,31 @@ defmodule WallopWeb.Plugs.EdgeGuardTest do
     conn = call(:get, "/api/v1/draws", "s3cret-value")
     refute conn.halted
     assert get_req_header(conn, "x-edge-secret") == []
+  end
+
+  test "while a previous secret is set, both the current and previous values pass" do
+    with_both("new-s3cret-value", "old-s3cret-value")
+
+    for header <- ["new-s3cret-value", "old-s3cret-value"] do
+      conn = call(:get, "/api/v1/draws", header)
+      refute conn.halted
+      assert get_req_header(conn, "x-edge-secret") == []
+    end
+  end
+
+  test "while a previous secret is set, any other value is refused" do
+    with_both("new-s3cret-value", "old-s3cret-value")
+
+    for header <- ["guess", "", nil] do
+      {conn, _log} = with_log(fn -> call(:get, "/api/v1/draws", header) end)
+      assert conn.halted
+      assert conn.status == 403
+    end
+  end
+
+  test "a previous secret alone does not switch the guard on or replace the current one" do
+    Application.put_env(:wallop_web, EdgeGuard, secret: nil, previous_secret: "old-s3cret-value")
+    refute call(:get, "/api/v1/draws", nil).halted
   end
 
   test "a wrong header is refused with 403" do

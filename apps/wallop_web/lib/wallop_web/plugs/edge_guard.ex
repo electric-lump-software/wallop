@@ -8,6 +8,11 @@ defmodule WallopWeb.Plugs.EdgeGuard do
   and set the same value here (`EDGE_SHARED_SECRET`). Requests without it
   get 403.
 
+  To rotate the value without refusing anything, set the new value as
+  `EDGE_SHARED_SECRET` and the old one as `EDGE_SHARED_SECRET_PREVIOUS`,
+  deploy, switch the edge to the new value, then remove the previous one
+  and deploy again. While both are set, either is accepted.
+
   `GET /health` is exempt so the platform's internal healthcheck, which
   doesn't pass through the edge, keeps working. `HEAD /health` is not
   exempt (the platform's healthcheck uses GET). With no secret configured
@@ -32,24 +37,26 @@ defmodule WallopWeb.Plugs.EdgeGuard do
     do: delete_req_header(conn, @header)
 
   def call(conn, _opts) do
-    case secret() do
-      nil -> conn
-      secret -> check(conn, secret)
+    case secrets() do
+      [] -> conn
+      secrets -> check(conn, secrets)
     end
   end
 
-  defp check(conn, ""), do: refuse(conn)
-
-  defp check(conn, secret) do
-    case get_req_header(conn, @header) do
-      [given] ->
-        if Plug.Crypto.secure_compare(given, secret),
-          do: delete_req_header(conn, @header),
-          else: refuse(conn)
-
-      _ ->
-        refuse(conn)
+  defp check(conn, secrets) do
+    with [given] <- get_req_header(conn, @header),
+         true <- accepted?(given, secrets) do
+      delete_req_header(conn, @header)
+    else
+      _ -> refuse(conn)
     end
+  end
+
+  defp accepted?(given, secrets) do
+    Enum.reduce(secrets, false, fn secret, matched ->
+      matches = secret != "" and Plug.Crypto.secure_compare(given, secret)
+      matches or matched
+    end)
   end
 
   defp refuse(conn) do
@@ -61,7 +68,12 @@ defmodule WallopWeb.Plugs.EdgeGuard do
     |> halt()
   end
 
-  defp secret do
-    :wallop_web |> Application.get_env(__MODULE__, []) |> Keyword.get(:secret)
+  defp secrets do
+    config = Application.get_env(:wallop_web, __MODULE__, [])
+
+    case Keyword.get(config, :secret) do
+      nil -> []
+      secret -> Enum.reject([secret, Keyword.get(config, :previous_secret)], &is_nil/1)
+    end
   end
 end

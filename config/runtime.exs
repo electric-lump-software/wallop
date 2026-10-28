@@ -58,7 +58,17 @@ if config_env() == :prod do
             "unset it to disable the edge guard"
   end
 
-  config :wallop_web, WallopWeb.Plugs.EdgeGuard, secret: edge_shared_secret
+  edge_previous_secret = System.get_env("EDGE_SHARED_SECRET_PREVIOUS")
+
+  if edge_previous_secret != nil and
+       (edge_shared_secret == nil or byte_size(edge_previous_secret) < 32) do
+    raise "EDGE_SHARED_SECRET_PREVIOUS is set without EDGE_SHARED_SECRET, " <>
+            "or is shorter than 32 bytes"
+  end
+
+  config :wallop_web, WallopWeb.Plugs.EdgeGuard,
+    secret: edge_shared_secret,
+    previous_secret: edge_previous_secret
 
   config :wallop_web, :warn_edge_secret_unset, is_nil(edge_shared_secret)
 
@@ -96,7 +106,7 @@ if config_env() == :prod do
       raise "DATABASE_URL environment variable is not set"
 
   config :wallop_core, WallopCore.Repo,
-    url: database_url,
+    url: WallopCore.DatabaseUrl.build(database_url, System.get_env("DATABASE_PASSWORD")),
     pool_size: String.to_integer(System.get_env("POOL_SIZE") || "20")
 
   secret_key_base =
