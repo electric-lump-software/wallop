@@ -4,7 +4,8 @@ set -eu
 . "$(dirname "$0")/load_infisical_secrets"
 
 echo "Running migrations..."
-/app/bin/wallop eval "WallopCore.Release.migrate()"
+DATABASE_URL="${MIGRATION_DATABASE_URL:-${DATABASE_URL:-}}" /app/bin/wallop eval "WallopCore.Release.migrate()"
+unset MIGRATION_DATABASE_URL
 
 echo "Starting application..."
 exec /app/bin/wallop start
