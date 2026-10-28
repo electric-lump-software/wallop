@@ -11,7 +11,10 @@ defmodule WallopWeb.Plugs.EdgeGuard do
   To rotate the value without refusing anything, set the new value as
   `EDGE_SHARED_SECRET` and the old one as `EDGE_SHARED_SECRET_PREVIOUS`,
   deploy, switch the edge to the new value, then remove the previous one
-  and deploy again. While both are set, either is accepted.
+  and deploy again. While both are set, either is accepted, and every
+  request that arrives with the previous value logs a warning, so the
+  logs show when the edge has switched and the previous value can go. A
+  previous value nobody meant to set is visible the same way, and at boot.
 
   `GET /health` is exempt so the platform's internal healthcheck, which
   doesn't pass through the edge, keeps working. `HEAD /health` is not
@@ -45,18 +48,28 @@ defmodule WallopWeb.Plugs.EdgeGuard do
 
   defp check(conn, secrets) do
     with [given] <- get_req_header(conn, @header),
-         true <- accepted?(given, secrets) do
+         {:ok, which} <- match(given, secrets) do
+      if which == :previous do
+        Logger.warning(
+          "edge guard accepted the previous edge secret: #{conn.method} #{conn.request_path}"
+        )
+      end
+
       delete_req_header(conn, @header)
     else
       _ -> refuse(conn)
     end
   end
 
-  defp accepted?(given, secrets) do
-    Enum.reduce(secrets, false, fn secret, matched ->
-      matches = secret != "" and Plug.Crypto.secure_compare(given, secret)
-      matches or matched
-    end)
+  defp match(given, secrets) do
+    matches =
+      for {which, secret} <- secrets,
+          do: {which, secret != "" and Plug.Crypto.secure_compare(given, secret)}
+
+    case Enum.find(matches, fn {_which, matched} -> matched end) do
+      {which, true} -> {:ok, which}
+      nil -> :error
+    end
   end
 
   defp refuse(conn) do
@@ -71,9 +84,10 @@ defmodule WallopWeb.Plugs.EdgeGuard do
   defp secrets do
     config = Application.get_env(:wallop_web, __MODULE__, [])
 
-    case Keyword.get(config, :secret) do
-      nil -> []
-      secret -> Enum.reject([secret, Keyword.get(config, :previous_secret)], &is_nil/1)
+    case {Keyword.get(config, :secret), Keyword.get(config, :previous_secret)} do
+      {nil, _previous} -> []
+      {secret, nil} -> [current: secret]
+      {secret, previous} -> [current: secret, previous: previous]
     end
   end
 end

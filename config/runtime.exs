@@ -71,6 +71,7 @@ if config_env() == :prod do
     previous_secret: edge_previous_secret
 
   config :wallop_web, :warn_edge_secret_unset, is_nil(edge_shared_secret)
+  config :wallop_web, :warn_edge_previous_secret_set, edge_previous_secret != nil
 
   case System.get_env("RATE_LIMIT_BACKEND", "ets") do
     "ets" ->

@@ -7,30 +7,59 @@ defmodule WallopCore.DatabaseUrl do
   holding the host, port, user and database name, so whoever can write to
   that store can't point the app at a different database. When a password
   is given it replaces any password already in the URL, which lets the
-  password move out of the URL without a moment where neither has it.
+  password move out of the URL without a moment where neither has it. It
+  is percent-encoded into the URL, so any characters are fine.
 
-  Ecto reads the password from the URL without percent-decoding it, so the
-  password is limited to characters that need no escaping in a URL. Errors
-  never include the URL or the password.
+  The URL is checked here rather than left to Ecto, because Ecto's own
+  error for a malformed URL prints the whole URL, password included. These
+  errors never include the URL or the password.
   """
 
   @spec build(String.t(), String.t() | nil) :: String.t()
-  def build(url, nil), do: url
+  def build(url, nil) when is_binary(url), do: check!(url)
+
+  def build(_url, ""), do: raise(ArgumentError, "DATABASE_PASSWORD is set but empty")
 
   def build(url, password) when is_binary(url) and is_binary(password) do
-    unless password =~ ~r/\A[A-Za-z0-9._~-]+\z/ do
-      raise ArgumentError,
-            "DATABASE_PASSWORD must be non-empty and use only letters, digits and . _ ~ -"
-    end
-
-    uri = URI.parse(url)
+    uri = url |> check!() |> URI.parse()
 
     case uri.userinfo && String.split(uri.userinfo, ":", parts: 2) do
       [user | _] when user != "" ->
-        URI.to_string(%{uri | userinfo: user <> ":" <> password})
+        encoded = URI.encode(password, &URI.char_unreserved?/1)
+        check!(URI.to_string(%{uri | userinfo: user <> ":" <> encoded}))
 
       _ ->
         raise ArgumentError, "DATABASE_URL must name a user when DATABASE_PASSWORD is set"
     end
+  end
+
+  defp check!(url) do
+    uri = URI.parse(url)
+
+    cond do
+      uri.host in [nil, ""] ->
+        raise ArgumentError, "DATABASE_URL has no host"
+
+      not (is_binary(uri.path) and uri.path =~ ~r"\A/[^/]+\z") ->
+        raise ArgumentError, "DATABASE_URL must end with /<database name>"
+
+      port_written?(url) and is_nil(uri.port) ->
+        raise ArgumentError, "DATABASE_URL has a port that is not a number"
+
+      true ->
+        url
+    end
+  end
+
+  defp port_written?(url) do
+    host_and_port =
+      case String.split(url, "//", parts: 2) do
+        [_scheme, rest] -> rest |> String.split(["/", "?", "#"], parts: 2) |> hd()
+        _ -> ""
+      end
+      |> String.split("@")
+      |> List.last()
+
+    host_and_port =~ ~r/:[^\]]*\z/
   end
 end

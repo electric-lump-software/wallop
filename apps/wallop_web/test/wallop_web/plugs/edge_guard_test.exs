@@ -43,10 +43,21 @@ defmodule WallopWeb.Plugs.EdgeGuardTest do
     with_both("new-s3cret-value", "old-s3cret-value")
 
     for header <- ["new-s3cret-value", "old-s3cret-value"] do
-      conn = call(:get, "/api/v1/draws", header)
+      {conn, _log} = with_log(fn -> call(:get, "/api/v1/draws", header) end)
       refute conn.halted
       assert get_req_header(conn, "x-edge-secret") == []
     end
+  end
+
+  test "a request with the previous value logs a warning; one with the current value doesn't" do
+    with_both("new-s3cret-value", "old-s3cret-value")
+
+    {_conn, previous_log} = with_log(fn -> call(:get, "/api/v1/draws", "old-s3cret-value") end)
+    assert previous_log =~ "accepted the previous edge secret"
+    refute previous_log =~ "old-s3cret-value"
+
+    {_conn, current_log} = with_log(fn -> call(:get, "/api/v1/draws", "new-s3cret-value") end)
+    refute current_log =~ "previous edge secret"
   end
 
   test "while a previous secret is set, any other value is refused" do
