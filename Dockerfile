@@ -101,6 +101,25 @@ RUN set -eux; \
     install -m 0755 /tmp/infisical /usr/local/bin/infisical; \
     infisical --version
 
+FROM ${RUNNER_IMAGE} AS inshape
+
+ARG INSHAPE_VERSION=1.0.0
+ARG INSHAPE_SHA256_AMD64=fdb1b2d1955bb75d720833d6b3862a7398eea56e9c5ec4d6b467defddfca4008
+ARG INSHAPE_SHA256_ARM64=0696f380a19cd24e7b21ab7c21a80ebad753c6a62ca35d4f29984593569c2553
+RUN set -eux; \
+    apt-get update -y; \
+    apt-get install -y --no-install-recommends curl ca-certificates; \
+    case "$(dpkg --print-architecture)" in \
+      amd64) target=x86_64; sha=${INSHAPE_SHA256_AMD64} ;; \
+      arm64) target=aarch64; sha=${INSHAPE_SHA256_ARM64} ;; \
+      *) echo "unsupported architecture" >&2; exit 1 ;; \
+    esac; \
+    curl --proto '=https' --tlsv1.2 -sSfL -o /tmp/inshape \
+      "https://github.com/electric-lump-software/inshape/releases/download/v${INSHAPE_VERSION}/inshape-${target}-unknown-linux-musl"; \
+    echo "${sha}  /tmp/inshape" | sha256sum -c -; \
+    install -m 0755 /tmp/inshape /usr/local/bin/inshape; \
+    inshape --version
+
 # Runtime stage
 FROM ${RUNNER_IMAGE}
 
@@ -117,6 +136,8 @@ WORKDIR /app
 RUN chown nobody /app
 
 COPY --from=infisical /usr/local/bin/infisical /usr/local/bin/infisical
+COPY --from=inshape /usr/local/bin/inshape /usr/local/bin/inshape
+COPY rel/secrets.allow /etc/wallop/secrets.allow
 
 ENV MIX_ENV="prod"
 
