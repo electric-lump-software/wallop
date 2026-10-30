@@ -154,6 +154,10 @@ Production sets the same variable via the hosting platform's env var mechanism.
 - `POOL_SIZE` (production): the database pool size; default 20. The job queues add up to 26, which is fine because no job holds a connection across an HTTP call.
 - `EXAMPLE_PROOF_URL` (optional): an `https://` URL of a completed observation-weather proof page, linked from the home page and the verification explainer as the example proof. Unset, the example links are hidden. Set to anything not starting with `https://`, the boot stops.
 
+### Deploying your own
+
+The release image needs nothing but environment variables: it starts with `/app/bin/migrate_and_start` and never needs a secrets manager. `.railway/railway.ts` is wallop.run's own Railway deployment. Its `start` wraps the release in [inshape](https://github.com/electric-lump-software/inshape), which fetches the secrets named in `rel/secrets.allow` from Infisical before starting it. If you deploy to your own Railway project, remove `start` and set the variables yourself.
+
 ## Status
 
 Active development. The algorithm, protocol layer, API, entropy layer (drand, Met Office weather and GB grid frequency), and public proof pages are all implemented.
