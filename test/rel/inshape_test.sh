@@ -19,6 +19,10 @@ grep -qxF 'COPY rel/secrets.allow /etc/wallop/secrets.allow' Dockerfile ||
 grep -qxF 'COPY --from=inshape /usr/local/bin/inshape /usr/local/bin/inshape' Dockerfile ||
   fail "the Dockerfile does not install inshape at /usr/local/bin/inshape"
 
+grep -qxF '    start: "/usr/local/bin/inshape --allowlist /etc/wallop/secrets.allow -- /app/bin/migrate_and_start",' .railway/railway.ts ||
+  fail ".railway/railway.ts does not start the release through inshape"
+[ ! -e railway.toml ] || fail "railway.toml is replaced by .railway/railway.ts"
+
 expected="EDGE_SHARED_SECRET
 HONEYCOMB_API_KEY
 MET_OFFICE_OBS_API_KEY

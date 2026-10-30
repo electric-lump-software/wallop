@@ -14,7 +14,7 @@ defmodule WallopCore.DeployDrainConfigTest do
   use ExUnit.Case, async: true
 
   @sample_jobs %{}
-  @railway_toml Path.expand("../../../../railway.toml", __DIR__)
+  @railway_ts Path.expand("../../../../.railway/railway.ts", __DIR__)
 
   defp workers do
     {:ok, modules} = :application.get_key(:wallop_core, :modules)
@@ -54,14 +54,12 @@ defmodule WallopCore.DeployDrainConfigTest do
   end
 
   defp draining_seconds do
-    @railway_toml
+    @railway_ts
     |> File.read!()
-    |> String.split(~r/^\s*\[/m)
-    |> Enum.find(&String.starts_with?(&1, "deploy]"))
-    |> then(&Regex.run(~r/^\s*drainingSeconds\s*=\s*(\d+)\s*$/m, &1, capture: :all_but_first))
+    |> then(&Regex.run(~r/^\s*drainingSeconds:\s*(\d+),\s*$/m, &1, capture: :all_but_first))
     |> case do
       [value] -> String.to_integer(value)
-      nil -> flunk("railway.toml [deploy] has no drainingSeconds")
+      nil -> flunk(".railway/railway.ts has no drainingSeconds")
     end
   end
 
