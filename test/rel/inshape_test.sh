@@ -22,6 +22,10 @@ grep -qxF 'COPY --from=inshape /usr/local/bin/inshape /usr/local/bin/inshape' Do
 grep -qxF '    start: "/usr/local/bin/inshape --allowlist /etc/wallop/secrets.allow -- /app/bin/migrate_and_start",' .railway/railway.ts ||
   fail ".railway/railway.ts does not start the release through inshape"
 [ ! -e railway.toml ] || fail "railway.toml is replaced by .railway/railway.ts"
+! grep -qi infisical Dockerfile || fail "the Dockerfile still installs the Infisical CLI"
+! grep -q load_infisical_secrets rel/overlays/bin/migrate_and_start ||
+  fail "migrate_and_start still sources the shell secret loader"
+[ ! -e rel/overlays/bin/load_infisical_secrets ] || fail "the shell secret loader is replaced by inshape"
 
 expected="EDGE_SHARED_SECRET
 HONEYCOMB_API_KEY

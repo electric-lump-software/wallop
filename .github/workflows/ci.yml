@@ -157,9 +157,6 @@ jobs:
       - name: Check formatting
         run: mix format --check-formatted
 
-      - name: Start script
-        run: sh test/rel/load_infisical_secrets_test.sh
-
       - name: inshape pin and allowlist
         run: sh test/rel/inshape_test.sh
 

@@ -24,9 +24,9 @@ defmodule WallopCore.ForecastDrain do
   `drain/0` writes through the draw's actions, so it must run inside the
   running service (`bin/wallop rpc "WallopCore.Release.drain_retired_forecast()"`),
   where Oban is up to take each failed draw's webhook. Run it once, after
-  the last container on the old code has stopped. With secrets from
-  Infisical a plain shell has no `RELEASE_COOKIE`; `MIGRATING.md` says how
-  to run it. Both are wrapped in `WallopCore.Release`.
+  the last container on the old code has stopped. When the service loads
+  its secrets with inshape, a plain shell doesn't have them; `MIGRATING.md`
+  says how to run it. Both are wrapped in `WallopCore.Release`.
   """
 
   require Logger
