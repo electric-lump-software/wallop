@@ -1,7 +1,7 @@
 import "phoenix_html"
 import {Socket} from "phoenix"
 import {LiveSocket} from "phoenix_live_view"
-import anime from "animejs/lib/anime.es.js"
+import { animate, utils } from "animejs"
 import "./verify.js"
 import "./winners.js"
 
@@ -155,15 +155,14 @@ Hooks.DrawReveal = {
             let prefix = text.substring(0, text.indexOf(countMatch[0]))
             let suffix = text.substring(text.indexOf(countMatch[0]) + countMatch[0].length)
             let counter = { val: 0 }
-            anime({
-              targets: counter, val: target, round: 1, duration: 1500, easing: "easeOutCirc",
-              update: () => { detail.textContent = prefix + counter.val + suffix }
+            animate(counter, { val: target, modifier: utils.round(0), duration: 1500, ease: "outCirc",
+              onUpdate: () => { detail.textContent = prefix + counter.val + suffix }
             })
           } else {
             detail.textContent = text
           }
         }
-        anime({ targets: detail, translateY: [-12, 0], opacity: [0, 1], duration: 800, easing: "easeOutElastic(1, .8)" })
+        animate(detail, { translateY: [-12, 0], opacity: [0, 1], duration: 800, ease: "outElastic(1, .8)" })
       }
     }
 
@@ -191,9 +190,8 @@ Hooks.DrawReveal = {
           badge.textContent = "Verified by Wallop"
           badge.classList.remove("badge-info")
           badge.classList.add("badge-success")
-          anime({
-            targets: badge, scale: [0, 1.1, 0.95, 1], translateY: [-40, 0], opacity: [0, 1],
-            duration: 1500, easing: "easeOutBounce"
+          animate(badge, { scale: [0, 1.1, 0.95, 1], translateY: [-40, 0], opacity: [0, 1],
+            duration: 1500, ease: "outBounce"
           })
         }
       }, 500)
@@ -262,15 +260,13 @@ Hooks.DrawReveal = {
       let angle = (i / 10) * Math.PI * 2 + (Math.random() * 0.5)
       let distance = 25 + Math.random() * 35
 
-      anime({
-        targets: particle,
-        translateX: Math.cos(angle) * distance,
+      animate(particle, { translateX: Math.cos(angle) * distance,
         translateY: Math.sin(angle) * distance,
         opacity: [1, 0],
         scale: [1, 0.2],
         duration: 500 + Math.random() * 400,
-        easing: "easeOutExpo",
-        complete: () => particle.remove()
+        ease: "outExpo",
+        onComplete: () => particle.remove()
       })
     }
   },
@@ -334,11 +330,9 @@ document.addEventListener("click", (e) => {
   let end = target.getBoundingClientRect().top + window.scrollY - 80 // offset for sticky nav
   let scroll = { y: start }
 
-  anime({
-    targets: scroll,
-    y: end,
+  animate(scroll, { y: end,
     duration: 800,
-    easing: "easeInOutCubic",
-    update: () => window.scrollTo(0, scroll.y)
+    ease: "inOutCubic",
+    onUpdate: () => window.scrollTo(0, scroll.y)
   })
 })
