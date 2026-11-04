@@ -1841,48 +1841,6 @@
         },
         "type": "object"
       },
-      "": {
-        "additionalProperties": false,
-        "description": "A \"Resource object\" representing a ",
-        "properties": {
-          "attributes": {
-            "additionalProperties": false,
-            "description": "An attributes object for a ",
-            "properties": {
-              "name": {
-                "description": "Display label only. Mutable. Never in any signed payload. Field included by default.",
-                "type": "string"
-              },
-              "slug": {
-                "description": "Canonical identity. Immutable. Embedded in every signed receipt. Field included by default.",
-                "type": "string"
-              }
-            },
-            "required": [
-              "slug",
-              "name"
-            ],
-            "type": "object"
-          },
-          "id": {
-            "type": "string"
-          },
-          "relationships": {
-            "additionalProperties": false,
-            "description": "A relationships object for a ",
-            "properties": {},
-            "type": "object"
-          },
-          "type": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "type",
-          "id"
-        ],
-        "type": "object"
-      },
       "draw-filter-seed_json": {
         "additionalProperties": false,
         "properties": {
