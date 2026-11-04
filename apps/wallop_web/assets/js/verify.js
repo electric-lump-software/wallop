@@ -6,7 +6,7 @@
  * keys, and the wallop_verifier WASM module checks them locally. What
  * is checked, and the verdict, live in verify_core.js.
  */
-import anime from "animejs/lib/anime.es.js"
+import { animate, utils } from "animejs"
 import { GENERIC_RED, REFUSED_RED, computeChecks, fetchPublishedProof, receiptState } from "./verify_core.js"
 
 // "neutral" is for when nothing was checked: never green, and nothing
@@ -139,7 +139,7 @@ class VerifyRunner {
     this.box.style.display = "block"
     this.box.innerHTML = ""
 
-    anime({ targets: this.box, opacity: [0, 1], duration: 300, easing: "easeOutCubic" })
+    animate(this.box, { opacity: [0, 1], duration: 300, ease: "outCubic" })
 
     let header = document.createElement("div")
     header.style.cssText = "color:#888;margin-bottom:14px;font-size:11px;letter-spacing:1px;text-transform:uppercase;"
@@ -331,12 +331,10 @@ class VerifyRunner {
     el.style.cssText = `color:${color};font-weight:700;margin-top:14px;`
     el.textContent = message
     this.box.appendChild(el)
-    anime({ targets: el, opacity: [0, 1], translateY: [8, 0], duration: 500, easing: "easeOutCubic" })
-    anime({
-      targets: this.box,
-      borderColor: ["#1a1a1a", color, color, "#333"],
+    animate(el, { opacity: [0, 1], translateY: [8, 0], duration: 500, ease: "outCubic" })
+    animate(this.box, { borderColor: ["#1a1a1a", color, color, "#333"],
       duration: 1500,
-      easing: "easeInOutCubic"
+      ease: "inOutCubic"
     })
   }
 
@@ -356,14 +354,12 @@ class VerifyRunner {
   countUp(el, target, duration) {
     let counter = { val: 0 }
     return new Promise(resolve => {
-      anime({
-        targets: counter,
-        val: target,
-        round: 1,
+      animate(counter, { val: target,
+        modifier: utils.round(0),
         duration: duration,
-        easing: "easeOutCirc",
-        update: () => { el.textContent = `${counter.val}/${target}` },
-        complete: resolve
+        ease: "outCirc",
+        onUpdate: () => { el.textContent = `${counter.val}/${target}` },
+        onComplete: resolve
       })
     })
   }

@@ -12,9 +12,6 @@ updates:
     directory: "/apps/wallop_web/assets"
     patterns: ["*"]
     multi-ecosystem-group: weekly
-    ignore:
-      - dependency-name: animejs
-        update-types: ["version-update:semver-major"]
   - package-ecosystem: cargo
     directory: "/apps/wallop_core/native/drand_bls"
     patterns: ["*"]
