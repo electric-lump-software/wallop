@@ -12,7 +12,7 @@ jobs:
       contents: write
       pull-requests: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           # Check out under the PAT so subsequent `git push` to a feature
           # branch is attributed to the PAT user, not github-actions[bot].

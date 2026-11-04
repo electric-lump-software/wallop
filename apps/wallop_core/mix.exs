@@ -36,7 +36,7 @@ defmodule WallopCore.MixProject do
       {:jcs, "~> 0.2.0"},
       {:jason, "~> 1.4"},
       {:oban, "~> 2.23"},
-      {:req, "~> 0.6.1"},
+      {:req, "~> 0.7.5"},
       {:rustler, "~> 0.36", runtime: false},
       {:ash_cloak, "~> 0.2"},
       {:cloak_ecto, "~> 1.3"},

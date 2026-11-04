@@ -1,37 +1,26 @@
 version: 2
+multi-ecosystem-groups:
+  weekly:
+    schedule:
+      interval: weekly
 updates:
   - package-ecosystem: mix
     directory: "/"
-    schedule:
-      interval: weekly
-    groups:
-      mix:
-        patterns: ["*"]
+    patterns: ["*"]
+    multi-ecosystem-group: weekly
   - package-ecosystem: npm
     directory: "/apps/wallop_web/assets"
-    schedule:
-      interval: weekly
-    groups:
-      npm:
-        patterns: ["*"]
+    patterns: ["*"]
+    multi-ecosystem-group: weekly
   - package-ecosystem: cargo
     directory: "/apps/wallop_core/native/drand_bls"
-    schedule:
-      interval: weekly
-    groups:
-      cargo:
-        patterns: ["*"]
+    patterns: ["*"]
+    multi-ecosystem-group: weekly
   - package-ecosystem: github-actions
     directory: "/"
-    schedule:
-      interval: weekly
-    groups:
-      github-actions:
-        patterns: ["*"]
+    patterns: ["*"]
+    multi-ecosystem-group: weekly
   - package-ecosystem: docker
     directory: "/"
-    schedule:
-      interval: weekly
-    groups:
-      docker:
-        patterns: ["*"]
+    patterns: ["*"]
+    multi-ecosystem-group: weekly
