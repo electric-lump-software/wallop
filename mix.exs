@@ -32,7 +32,7 @@ defmodule Wallop.MixProject do
   defp deps do
     [
       {:dialyxir, "~> 1.4", only: [:dev, :test], runtime: false},
-      {:dotenvy, "~> 0.8", only: [:dev, :test]},
+      {:dotenvy, "~> 1.2", only: [:dev, :test]},
       {:mix_audit, "~> 2.1", only: [:dev, :test], runtime: false}
     ]
   end
