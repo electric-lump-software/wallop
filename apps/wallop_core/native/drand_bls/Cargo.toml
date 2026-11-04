@@ -14,7 +14,7 @@ crate-type = ["cdylib"]
 # Pinned exactly: the same version the wallop_rs verifier uses, so the
 # producer and the verifier accept and refuse the same signatures.
 drand-verify = "=0.6.2"
-rustler = "=0.38.0"
+rustler = "=0.39.0"
 
 [profile.release]
 # Unwinding (the default, stated so it isn't changed): verify_g1 catches a
