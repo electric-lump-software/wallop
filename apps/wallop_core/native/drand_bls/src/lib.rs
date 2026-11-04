@@ -7,13 +7,20 @@
 //!
 //! The pairing check takes about a millisecond, so it runs on a dirty CPU
 //! scheduler.
+//!
+//! The NIF wrapper is left out of the unit test build. On Linux, Rustler
+//! links the `enif_*` functions directly, and only the BEAM provides them,
+//! so a test binary that held the wrapper could not link. The tests check
+//! `verify`, which holds every BLS check; the wrapper only reads the binaries
+//! and turns a panic into false.
 
 use drand_verify::{G2PubkeyRfc, Pubkey};
-use rustler::Binary;
-use std::panic::{catch_unwind, AssertUnwindSafe};
 
+#[cfg(not(test))]
 #[rustler::nif(schedule = "DirtyCpu")]
-fn verify_g1(pubkey: Binary, round: u64, sig: Binary) -> bool {
+fn verify_g1(pubkey: rustler::Binary, round: u64, sig: rustler::Binary) -> bool {
+    use std::panic::{catch_unwind, AssertUnwindSafe};
+
     let pubkey = pubkey.as_slice();
     let sig = sig.as_slice();
 
@@ -36,6 +43,7 @@ fn verify(pubkey: &[u8], round: u64, sig: &[u8]) -> bool {
     pk.verify(round, b"", sig).unwrap_or(false)
 }
 
+#[cfg(not(test))]
 rustler::init!("Elixir.WallopCore.Drand.Bls.Native");
 
 #[cfg(test)]
