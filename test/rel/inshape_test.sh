@@ -28,12 +28,11 @@ grep -qxF '    start: "/usr/local/bin/inshape --allowlist /etc/wallop/secrets.al
 [ ! -e rel/overlays/bin/load_infisical_secrets ] || fail "the shell secret loader is replaced by inshape"
 
 expected="EDGE_SHARED_SECRET
-HONEYCOMB_API_KEY
 MET_OFFICE_OBS_API_KEY
 SECRET_KEY_BASE
 VAULT_KEY
 VAULT_KEY_OLD"
-[ "$(sort rel/secrets.allow)" = "$expected" ] || fail "rel/secrets.allow does not hold exactly the six secret names"
+[ "$(sort rel/secrets.allow)" = "$expected" ] || fail "rel/secrets.allow does not hold exactly the five secret names"
 
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT

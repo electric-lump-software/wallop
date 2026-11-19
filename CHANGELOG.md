@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Traces go to any OpenTelemetry endpoint, not Honeycomb
+
+**BREAKING (self-hosters exporting traces).** `HONEYCOMB_API_KEY` is gone: it is no longer read, and it is off the list of secrets the start-up loader accepts, so remove it from Infisical before upgrading. To export traces, set `OTEL_EXPORTER_OTLP_ENDPOINT`, plus `OTEL_EXPORTER_OTLP_HEADERS` if your collector needs a key. Without an endpoint, tracing is off.
+
 ### Infisical loader accepts only the secrets wallop reads
 
 **BREAKING (self-hosters using Infisical).** The Docker image's start script now refuses to start if an Infisical folder holds any name other than `VAULT_KEY`, `VAULT_KEY_OLD`, `SECRET_KEY_BASE`, `EDGE_SHARED_SECRET`, `HONEYCOMB_API_KEY`, `MET_OFFICE_OBS_API_KEY`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` or an `INFISICAL_CANARY_*` canary. Infisical's values replace the host's, so anyone who could write to the project could otherwise set a name such as `LD_PRELOAD`, `ERL_FLAGS`, `DATABASE_URL` or a proxy and take over or redirect the process. If you keep anything else in Infisical (for example `DATABASE_URL`, `PHX_HOST` or `POOL_SIZE`), move it back to a host variable before upgrading. The refusal names the folder and the offending names on stderr, never values, and exits 1.

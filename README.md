@@ -74,7 +74,7 @@ defmodule MyApp.Repo.Migrations.AddObanAppJobs do
 end
 ```
 
-Your app also needs the `HONEYCOMB_API_KEY` environment variable set, since the OTel exporter runs in your process. `MET_OFFICE_OBS_API_KEY` (a Met Office Weather DataHub Land Observations key) goes only on the service that runs the `weather` queue; an app with an insert-only Oban doesn't need it. That service records, every 10 minutes, whether it holds a usable key, and observation-weather locks in any service are refused (`400` `invalid_argument`) unless it recently said yes. A draw locked before the key went away falls back by rule, visibly in the receipt. The grid-frequency source needs no key. Set a distinct OTel service name so traces are separated in Honeycomb:
+To export traces, set the standard OpenTelemetry variables `OTEL_EXPORTER_OTLP_ENDPOINT` (and `OTEL_EXPORTER_OTLP_HEADERS` if your collector needs a key); without an endpoint, tracing is off. `MET_OFFICE_OBS_API_KEY` (a Met Office Weather DataHub Land Observations key) goes only on the service that runs the `weather` queue; an app with an insert-only Oban doesn't need it. That service records, every 10 minutes, whether it holds a usable key, and observation-weather locks in any service are refused (`400` `invalid_argument`) unless it recently said yes. A draw locked before the key went away falls back by rule, visibly in the receipt. The grid-frequency source needs no key. Set a distinct OTel service name so your app's traces are kept apart from wallop's:
 
 ```elixir
 # In your app's runtime.exs

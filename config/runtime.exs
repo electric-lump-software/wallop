@@ -34,14 +34,9 @@ config :wallop_core,
        :land_obs_daily_cap,
        WallopCore.Weather.LandObsBudget.parse_cap!(System.get_env("LAND_OBS_DAILY_CAP"))
 
-if honeycomb_api_key = System.get_env("HONEYCOMB_API_KEY") do
+if System.get_env("OTEL_EXPORTER_OTLP_ENDPOINT") do
   config :opentelemetry,
     resource: [service: [name: "wallop-core"]]
-
-  config :opentelemetry_exporter,
-    otlp_endpoint: "https://api.honeycomb.io",
-    otlp_headers: [{"x-honeycomb-team", honeycomb_api_key}],
-    otlp_protocol: :http_protobuf
 else
   config :opentelemetry, traces_exporter: :none
 end
